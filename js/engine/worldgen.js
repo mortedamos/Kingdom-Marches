@@ -256,8 +256,13 @@ window.GameEngine = window.GameEngine || {};
     }
 
     // --- Step 5: connectivity + Step 5a: minimum landmass size enforcement ---
+    // 11 (2026-07-20, user-directed, raised from 3): a landmass has to be
+    // able to hold at least one city plus a spare open tile around it (see
+    // ai.js's landmassHasSpareOpenTile) for an invader to ever have
+    // somewhere to land -- too small and the wall-saturation fix there
+    // couldn't leave a gap even if it wanted to.
     let landmasses = findLandmasses(tiles, width, height);
-    landmasses = enforceMinimumLandmassSize(tiles, landmasses, 3);
+    landmasses = enforceMinimumLandmassSize(tiles, landmasses, 11);
 
     // Stamp landmassId onto each tile so road-connectivity checks can detect
     // cross-island founding (which is exempt from the road-connection requirement).

@@ -2198,10 +2198,48 @@ window.GameEngine = window.GameEngine || {};
     return { kind: "unit", id: unitId, cost: discountedCost, turns, score };
   }
 
+  /** True if the landmass containing (x,y) currently has 2+ open (no city,
+   *  no structure -- any civ's) land tiles -- i.e. this civ can still place
+   *  one more structure there and leave at least one tile open afterward.
+   *  AI-only restriction (2026-07-20, user-directed): a fully walled/built
+   *  small island left invaders nowhere to ever land, producing an
+   *  unbreakable stalemate -- this guarantees the AI's own building logic
+   *  always leaves at least one landing tile. Deliberately NOT enforced in
+   *  cities.js's findStructureSlot itself, which stays available to a human
+   *  player who wants to wall their own island shut on purpose. Flying
+   *  units already ignore structure-blocking entirely (see
+   *  isEnemyStructureBlockingTile) -- this is about guaranteeing SOME
+   *  landing spot for everyone else. */
+  function landmassHasSpareOpenTile(x, y, map, civs) {
+    const landmassId = map.tiles[y * map.width + x]?.landmassId;
+    if (landmassId == null || landmassId < 0) return true; // no landmass data -- don't block
+    let openCount = 0;
+    for (let i = 0; i < map.tiles.length; i++) {
+      if (map.tiles[i].landmassId !== landmassId) continue;
+      const tx = i % map.width, ty = Math.floor(i / map.width);
+      let closed = false;
+      for (const c of Object.values(civs)) {
+        if (c.cities.some((cc) => (cc.x === tx && cc.y === ty) || cc.structures.some((s) => s.x === tx && s.y === ty))) {
+          closed = true;
+          break;
+        }
+      }
+      if (!closed) {
+        openCount++;
+        if (openCount > 1) return true;
+      }
+    }
+    return false;
+  }
+
   function chooseBuildAction(civ, city, gameState, weights) {
     const options = [];
     const { map, civs } = gameState;
     const race = window.GameData.getRace(civ.raceId);
+    // Computed once per city -- see landmassHasSpareOpenTile. Gates BOTH the
+    // ordinary building loop and the wall block below, since either kind of
+    // structure closes off a tile the exact same way.
+    const spareOpenTile = landmassHasSpareOpenTile(city.x, city.y, map, civs);
     const militarism      = effectiveMilitarism(civ);
     const expansionism    = race.expansionism    ?? 0.5;
     const industriousness = race.industriousness ?? 0.5;
@@ -2652,6 +2690,7 @@ window.GameEngine = window.GameEngine || {};
         const building = window.GameData.getBuilding(bId);
         if (building.raceOnly && building.raceOnly !== civ.raceId) continue;
         if (window.GameEngine.cities.cityHasStructure(city, bId)) continue; // already built here
+        if (!spareOpenTile) continue; // see landmassHasSpareOpenTile above
         // Must have a free, valid adjacent slot (handles hills/forest placement constraints too)
         if (!window.GameEngine.cities.findStructureSlot(city, civ, map, bId, civs)) continue;
         // Influence-granting structures score higher — influence is the victory metric.
@@ -2718,7 +2757,7 @@ window.GameEngine = window.GameEngine || {};
     const totalWalls = civ.cities.reduce((sum, c) =>
       sum + c.structures.filter((s) => s.id === "wall_section").length, 0);
     const wallGateOk = militaryCount > 0 && totalWalls < militaryCount * wallsPerSoldierAllowed;
-    if (wallGateOk && window.GameEngine.cities.findStructureSlot(city, civ, map, "wall_section", civs)) {
+    if (wallGateOk && spareOpenTile && window.GameEngine.cities.findStructureSlot(city, civ, map, "wall_section", civs)) {
       const wallMechanicBonus = ["ramparts", "rouse_the_people", "hedge_walls"]
         .filter((m) => civ.unlockedMechanics && civ.unlockedMechanics.has(m)).length;
       const wallMult = 1 + wallMechanicBonus;
