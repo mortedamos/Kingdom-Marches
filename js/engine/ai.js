@@ -1551,16 +1551,28 @@ window.GameEngine = window.GameEngine || {};
     return occ;
   }
 
-  function moveUnitToward(unit, targetX, targetY, map, civs) {
+  // Turn-action-economy foundation (2026-07-20, user-directed) -- see
+  // project_turn_action_economy memory. Every unit's turn is either a
+  // NORMAL action (move 0-to-full budget, then optionally act -- attack,
+  // cast, garrison, build a road, start a channel) or a FULL-TURN action
+  // (no movement at all, before or after). Before this, movement budget was
+  // a throwaway local variable recomputed and discarded inside a single
+  // moveUnitToward call, so "move partway, then act" was structurally
+  // impossible -- a unit could move OR act, never both in one turn.
+  // unit.movesRemaining now persists the leftover budget across multiple
+  // calls within the same unit's turn (cleared back to null in turns.js's
+  // per-civ-turn reset, same point usedThisTurn goes false), so a caller can
+  // move a unit partway toward a target and still have an accurate budget
+  // left to check before attempting to act.
+
+  /** Pure movement-budget math for a unit's turn (extracted unchanged from
+   *  the old moveUnitToward), so it can be computed once and persisted
+   *  instead of silently discarded after a single move call. Depends only
+   *  on the unit's CURRENT tile -- terrain/road bonuses reflect wherever
+   *  it's standing when this is first called each turn, not any tile
+   *  crossed mid-path. */
+  function computeMovementBudget(unit, map, civs) {
     const baseUnit = window.GameData.getUnit(unit.typeId);
-    // Flying (base property OR a temporary grant, e.g. Human's Flight -- see
-    // combat.js's isFlying) units may fly OVER a tile occupied by a non-flying
-    // unit (only another flying unit blocks their path); they must still never
-    // actually land/stop on any occupied tile, which the landing-safety check
-    // below enforces using the full occupancy set instead.
-    const flying = window.GameEngine.combat.isFlying(unit);
-    const occupied = flying ? buildFlyingBlockSet(civs, unit) : buildOccupancySet(civs, unit);
-    const fullOccupied = flying ? buildOccupancySet(civs, unit) : occupied;
     // civ.unitOverrides movement delta (e.g. Orc's Swift Hunters: +1 Wolf Rider movement)
     const overrideMovement = unit._moveMods?.unitOverrides?.[unit.typeId]?.movement || 0;
     let movement = baseUnit.movement + overrideMovement;
@@ -1629,6 +1641,30 @@ window.GameEngine = window.GameEngine || {};
       const carrierCiv = civs?.[unit.civId];
       if (carrierCiv?.unlockedMechanics?.has("devoted_companions")) movement = Math.max(1, Math.round(movement * 0.75));
     }
+    return movement;
+  }
+
+  /** Same path-walking core moveUnitToward has always used, but reads/writes
+   *  unit.movesRemaining instead of a throwaway local variable, so leftover
+   *  budget survives across multiple calls within the same unit's turn --
+   *  e.g. closing distance for a spell, then casting it (see
+   *  maybeFreezingTouch/maybeGrantFlight). Lazily computes the budget via
+   *  computeMovementBudget on first use each turn. Returns the leftover
+   *  budget after moving. moveUnitToward (below) is a thin wrapper over
+   *  this that ignores the return value, preserving its existing external
+   *  contract for the ~35 call sites that only ever move a unit once per
+   *  turn (for which persisting vs. discarding the budget is unobservable). */
+  function spendMovement(unit, targetX, targetY, map, civs) {
+    if (unit.movesRemaining == null) unit.movesRemaining = computeMovementBudget(unit, map, civs);
+    const baseUnit = window.GameData.getUnit(unit.typeId);
+    // Flying (base property OR a temporary grant, e.g. Human's Flight -- see
+    // combat.js's isFlying) units may fly OVER a tile occupied by a non-flying
+    // unit (only another flying unit blocks their path); they must still never
+    // actually land/stop on any occupied tile, which the landing-safety check
+    // below enforces using the full occupancy set instead.
+    const flying = window.GameEngine.combat.isFlying(unit);
+    const occupied = flying ? buildFlyingBlockSet(civs, unit) : buildOccupancySet(civs, unit);
+    const fullOccupied = flying ? buildOccupancySet(civs, unit) : occupied;
 
     // Full route via A*, not a per-step greedy hill-climb -- this is what lets a unit
     // detour around a mountain range or bay instead of stopping dead against it. If the
@@ -1642,12 +1678,12 @@ window.GameEngine = window.GameEngine || {};
       return getMoveCost(terrain, baseUnit, unit, tile.hasRoad);
     };
     const path = window.GameEngine.pathfinding.findPath(unit.x, unit.y, targetX, targetY, map, costFn);
-    if (!path) return;
+    if (!path) return unit.movesRemaining;
     window.GameEngine.quips.maybeQuip(unit, civs?.[unit.civId], "move", currentGameStateRef);
     for (let i = 0; i < path.length; i++) {
-      if (movement <= 0) break;
+      if (unit.movesRemaining <= 0) break;
       const step = path[i];
-      const isLandingStep = (i === path.length - 1 || movement - step.cost <= 0);
+      const isLandingStep = (i === path.length - 1 || unit.movesRemaining - step.cost <= 0);
 
       // Hidden: this tile was excluded from `occupied`/`fullOccupied` above
       // if the unit standing there belongs to another civ (see
@@ -1679,8 +1715,29 @@ window.GameEngine = window.GameEngine || {};
       }
       unit.x = step.x;
       unit.y = step.y;
-      movement -= step.cost;
+      unit.movesRemaining -= step.cost;
     }
+    return unit.movesRemaining;
+  }
+
+  function moveUnitToward(unit, targetX, targetY, map, civs) {
+    spendMovement(unit, targetX, targetY, map, civs);
+  }
+
+  /** True while a unit is locked into a multi-turn CHANNELED action
+   *  (Prospector's Claim / Dungeon Delve -- unit._ritualTurns, which
+   *  turns.js resets to 0 the instant the unit leaves its vein/ruin, so a
+   *  positive value here already implies "currently on the anchor tile";
+   *  or a Druid mid-summon -- unit.summonBuild). Channeled actions lock out
+   *  movement and further choices until they resolve or are interrupted. */
+  function isChanneling(unit) {
+    return !!(unit.summonBuild || (unit._ritualTurns || 0) >= 1);
+  }
+
+  /** Whether a unit can still take its one action this turn -- false once
+   *  it's already fully done (usedThisTurn) or locked into a channel. */
+  function canStillAct(unit) {
+    return !unit.usedThisTurn && !isChanneling(unit);
   }
 
   function maybeBuildInCities(civ, gameState, weights, log) {
@@ -3311,22 +3368,43 @@ window.GameEngine = window.GameEngine || {};
     const visible = gameState.visibility[civ.id] || new Set();
     const threshold = minAcceptableWinProbability(civ);
 
+    // Freezing Touch is a normal action (2026-07-20, user-directed): the
+    // Wizard may close distance and still cast the same turn, so candidates
+    // are gathered out to spell range PLUS however far it can still walk
+    // this turn -- not just the old in-range-only search -- see
+    // project_turn_action_economy memory. `reach` is a cheap upper bound
+    // (straight-line Chebyshev, ignoring terrain cost); tryFreeze below
+    // re-checks the REAL post-move distance before casting.
+    const reach = FREEZING_TOUCH_RANGE + (unit.movesRemaining ?? computeMovementBudget(unit, map, civs));
+
     const candidates = [];
     for (const otherCiv of Object.values(civs)) {
       if (otherCiv.id === civ.id || otherCiv.eliminated) continue;
       for (const eu of otherCiv.units) {
         if (eu.conditions?.hidden || eu.conditions?.frozen) continue;
         if (!visible.has(eu.y * map.width + eu.x)) continue;
-        if (window.GameEngine.influence.chebyshev(unit.x, unit.y, eu.x, eu.y) > FREEZING_TOUCH_RANGE) continue;
+        if (window.GameEngine.influence.chebyshev(unit.x, unit.y, eu.x, eu.y) > reach) continue;
         candidates.push(eu);
       }
     }
     if (candidates.length === 0) return false;
 
+    // Moves into spell range if not already there, then casts -- only if
+    // the move actually closes enough distance this turn (a target that
+    // turns out to be unreachable this turn is left for a later turn, not
+    // half-chased).
+    const tryFreeze = (eu) => {
+      if (window.GameEngine.influence.chebyshev(unit.x, unit.y, eu.x, eu.y) > FREEZING_TOUCH_RANGE) {
+        moveTowardWithStandoff(civ, unit, eu.x, eu.y, map, civs, FREEZING_TOUCH_RANGE);
+        if (window.GameEngine.influence.chebyshev(unit.x, unit.y, eu.x, eu.y) > FREEZING_TOUCH_RANGE) return false;
+      }
+      performFreezingTouch(civ, unit, eu, log);
+      return true;
+    };
+
     for (const eu of candidates) {
       if (estimateWinProbability(unit, eu, civs, {}, 20) < threshold) {
-        performFreezingTouch(civ, unit, eu, log);
-        return true;
+        if (tryFreeze(eu)) return true;
       }
     }
 
@@ -3338,8 +3416,7 @@ window.GameEngine = window.GameEngine || {};
         return estimateWinProbability(ally, eu, civs, {}, 20) < threshold;
       });
       if (strugglingAlly) {
-        performFreezingTouch(civ, unit, eu, log);
-        return true;
+        if (tryFreeze(eu)) return true;
       }
     }
 
@@ -3382,16 +3459,27 @@ window.GameEngine = window.GameEngine || {};
    * consumed the Wizard's turn.
    */
   function maybeGrantFlight(civ, unit, gameState, log) {
+    const { map, civs } = gameState;
+    // Grant Flight is a normal action (2026-07-20, user-directed): the
+    // Wizard may walk to an ally's side and still cast the same turn, so
+    // candidates are gathered out to adjacency PLUS however far it can
+    // still walk this turn -- see maybeFreezingTouch/project_turn_action_
+    // economy memory for the same pattern.
+    const reach = 1 + (unit.movesRemaining ?? computeMovementBudget(unit, map, civs));
     let best = null, bestPower = -1;
     for (const ally of civ.units) {
       if (ally === unit || ally.carriedBy) continue;
       if (window.GameData.getUnit(ally.typeId).category !== "military") continue;
-      if (window.GameEngine.influence.chebyshev(unit.x, unit.y, ally.x, ally.y) > 1) continue;
+      if (window.GameEngine.influence.chebyshev(unit.x, unit.y, ally.x, ally.y) > reach) continue;
       if (window.GameEngine.combat.isFlying(ally)) continue;
       const power = unitCombatPower(ally, civ);
       if (power > bestPower) { bestPower = power; best = ally; }
     }
     if (!best) return false;
+    if (window.GameEngine.influence.chebyshev(unit.x, unit.y, best.x, best.y) > 1) {
+      moveTowardWithStandoff(civ, unit, best.x, best.y, map, civs, 1);
+      if (window.GameEngine.influence.chebyshev(unit.x, unit.y, best.x, best.y) > 1) return false;
+    }
     performWizardGrantFlight(civ, unit, best, log);
     return true;
   }
@@ -3658,15 +3746,23 @@ window.GameEngine = window.GameEngine || {};
     if (unit.hp < unit.maxHp * 0.7) return false; // heal up before setting out
     const veinSpot = findNearbyUnclaimedGoldVein(civ, unit, gameState, { sameLandmassOnly: true });
     if (veinSpot) {
+      // Starting a claim is a normal action (2026-07-20, user-directed): if
+      // this turn's movement budget reaches the vein, settle in the SAME
+      // turn instead of always burning a separate arrival turn -- see
+      // project_turn_action_economy memory.
+      if (!(veinSpot.x === unit.x && veinSpot.y === unit.y)) {
+        moveUnitToward(unit, veinSpot.x, veinSpot.y, map, gameState.civs);
+      }
       if (veinSpot.x === unit.x && veinSpot.y === unit.y) {
-        // Already there, just hasn't accrued _ritualTurns yet -- hold position.
+        // Already there, or arrived with movement to spare this turn --
+        // hold position. _ritualTurns hasn't accrued yet (that happens at
+        // the start of the NEXT turn, see turns.js), this just claims the spot.
         unit.resting = true;
         unit.usedThisTurn = true;
         unit.currentMission = "Settling in to start a Gold Vein claim";
         window.GameEngine.quips.maybeQuip(unit, civ, "prospect", gameState);
         return true;
       }
-      moveUnitToward(unit, veinSpot.x, veinSpot.y, map, gameState.civs);
       unit.usedThisTurn = true;
       unit.currentMission = `Marching to a Gold Vein to start a claim at (${veinSpot.x},${veinSpot.y})`;
       log.push(`Prospector's Claim: ${civ.id}'s ${unit.typeId} heading to Gold Vein at (${veinSpot.x},${veinSpot.y})`);
@@ -3741,15 +3837,22 @@ window.GameEngine = window.GameEngine || {};
 
     const ruinSpot = findNearbyUnclaimedRuin(civ, unit, gameState, { sameLandmassOnly: true });
     if (ruinSpot) {
+      // Starting a delve is a normal action (2026-07-20, user-directed): if
+      // this turn's movement budget reaches the ruin, settle in the SAME
+      // turn instead of always burning a separate arrival turn -- see
+      // project_turn_action_economy memory.
+      if (!(ruinSpot.x === unit.x && ruinSpot.y === unit.y)) {
+        moveUnitToward(unit, ruinSpot.x, ruinSpot.y, map, civs);
+      }
       if (ruinSpot.x === unit.x && ruinSpot.y === unit.y) {
-        // Already there, just hasn't accrued _ritualTurns yet -- hold position
-        // so generic idle/explore logic doesn't carry it off first.
+        // Already there, or arrived with movement to spare this turn --
+        // hold position so generic idle/explore logic doesn't carry it off
+        // first. _ritualTurns hasn't accrued yet (see turns.js).
         unit.resting = true;
         unit.usedThisTurn = true;
         unit.currentMission = "Settling in to start a Dungeon Delve";
         return true;
       }
-      moveUnitToward(unit, ruinSpot.x, ruinSpot.y, map, civs);
       unit.usedThisTurn = true;
       unit.currentMission = `Marching to a Ruin to start a Dungeon Delve at (${ruinSpot.x},${ruinSpot.y})`;
       log.push(`Dungeon Delve: ${civ.id}'s Wizard heading to Ruin at (${ruinSpot.x},${ruinSpot.y})`);
@@ -3977,14 +4080,21 @@ window.GameEngine = window.GameEngine || {};
   const ROOTS_EXPANSION_MIN_DIST = 6;
 
   /** Elf "Roots of the World" expansion play: an idle Druid with a known,
-   *  legal, far-off Forest tile blinks straight there and founds a new city
-   *  on arrival (in addition to the normal Pioneer -- see elf_druidism's
-   *  canFoundCity) -- the tech's own AI note: "a druid civ looking for a
-   *  place to build a city may consider far-off forest tiles, teleport the
-   *  druid there, then found a new city." Deliberately simple (no
-   *  militarism/expansionism weighting beyond a hard city-count cap) since
-   *  this is a bonus expansion path on top of the normal Pioneer pipeline,
-   *  not the primary one. Returns true if it consumed the Druid's turn. */
+   *  legal, far-off Forest tile blinks straight there (in addition to the
+   *  normal Pioneer -- see elf_druidism's canFoundCity) -- the tech's own AI
+   *  note: "a druid civ looking for a place to build a city may consider
+   *  far-off forest tiles, teleport the druid there, then found a new
+   *  city." Deliberately simple (no militarism/expansionism weighting
+   *  beyond a hard city-count cap) since this is a bonus expansion path on
+   *  top of the normal Pioneer pipeline, not the primary one.
+   *
+   *  Teleport and Found City are two SEPARATE turns (2026-07-20,
+   *  user-directed -- see project_turn_action_economy memory): Teleportation
+   *  is a full-turn action, so founding can't happen in the same play. This
+   *  function only ever teleports; it stamps `unit._wantsFoundCityAt` on
+   *  success, and maybeElfDruidPlay re-validates + founds there once the
+   *  Druid is no longer `exhausted` (performDruidTeleport's own aftermath)
+   *  and standing on that tile. Returns true if it consumed the Druid's turn. */
   function maybeRootsExpansion(civ, unit, gameState, log) {
     if (civ.cities.length >= 6) return false;
     const { map, civs } = gameState;
@@ -4001,11 +4111,40 @@ window.GameEngine = window.GameEngine || {};
     }
     if (!best || bestScore < 5) return false;
     if (!performDruidTeleport(civ, unit, best.x, best.y, gameState, log)) return false;
-    const city = window.GameEngine.cities.foundCity(civ, map, best.x, best.y);
-    if (city) {
-      civ.hasFoundedCity = true;
-      log.push(`Roots of the World: ${civ.id}'s Druid teleported to (${best.x},${best.y}) and founded ${city.name}`);
+    unit._wantsFoundCityAt = { x: best.x, y: best.y };
+    log.push(`Roots of the World: ${civ.id}'s Druid teleported to (${best.x},${best.y}), will found a city once rested`);
+    return true;
+  }
+
+  /** Second half of Roots of the World (see maybeRootsExpansion above): once
+   *  a Druid carrying `_wantsFoundCityAt` is no longer `exhausted` and is
+   *  standing on that tile, RE-VALIDATE the site (2026-07-20, user-directed
+   *  -- things may have changed during the forced Rest, e.g. a rival
+   *  settling nearby) rather than blindly trusting the stale plan, using the
+   *  exact same legality + score bar maybeRootsExpansion applied. Abandons
+   *  (clears the marker, no city) if it no longer qualifies, letting the
+   *  Druid fall through to normal idle/future-expansion behavior instead of
+   *  forcing a bad city. Returns true if it consumed the Druid's turn
+   *  (founding or abandoning both do, since both are a one-time decision). */
+  function maybeCompleteRootsExpansion(civ, unit, gameState, log) {
+    const target = unit._wantsFoundCityAt;
+    if (!target) return false;
+    if (unit.conditions?.exhausted) return false; // still resting -- try again once healed
+    if (unit.x !== target.x || unit.y !== target.y) { delete unit._wantsFoundCityAt; return false; }
+    const { map, civs } = gameState;
+    const check = window.GameEngine.cities.canFoundCityAt(map, civs, target.x, target.y, civ.raceId, { skipRoadCheck: true });
+    const score = check.ok ? computeTileCityScore(civ, gameState, target.x, target.y) : -Infinity;
+    delete unit._wantsFoundCityAt;
+    if (civ.cities.length >= 6 || !check.ok || score < 5) {
+      log.push(`Roots of the World: ${civ.id}'s Druid found (${target.x},${target.y}) no longer worth settling, abandoning the claim`);
+      return false;
     }
+    const city = window.GameEngine.cities.foundCity(civ, map, target.x, target.y);
+    if (!city) return false;
+    civ.hasFoundedCity = true;
+    unit.usedThisTurn = true;
+    unit.currentMission = `Founded ${city.name} (Roots of the World)`;
+    log.push(`Roots of the World: ${civ.id}'s Druid founded ${city.name} at (${target.x},${target.y})`);
     return true;
   }
 
@@ -4111,6 +4250,12 @@ window.GameEngine = window.GameEngine || {};
    */
   function maybeElfDruidPlay(civ, unit, gameState, weights, difficulty, log) {
     if (unit.typeId !== "druid" || !civ.unlockedMechanics) return false;
+
+    // A pending Roots of the World found-city commitment (see
+    // maybeCompleteRootsExpansion) always takes priority over starting
+    // something new -- it's the second half of a play already in motion,
+    // checked before every fresh decision below.
+    if (unit._wantsFoundCityAt && maybeCompleteRootsExpansion(civ, unit, gameState, log)) return true;
 
     if (civ.unlockedMechanics.has("natures_grace")
         && maybeNaturesGrace(civ, unit, gameState, log)) return true;
@@ -4624,8 +4769,13 @@ window.GameEngine = window.GameEngine || {};
    * here" precision the rest of this file's movement targeting already
    * uses -- findPath still routes around actual obstacles to reach it.
    */
-  function moveTowardWithStandoff(civ, unit, targetX, targetY, map, civs) {
-    const range = window.GameEngine.combat.effectiveRange(unit, civ);
+  // standoffRange (2026-07-20, user-directed): optional override of the
+  // stop distance, defaulting to the unit's own combat range -- lets a
+  // non-combat "move into range then act" play (e.g. maybeFreezingTouch's
+  // spell range, maybeGrantFlight's adjacency) reuse this same standoff-walk
+  // logic instead of duplicating it, see project_turn_action_economy memory.
+  function moveTowardWithStandoff(civ, unit, targetX, targetY, map, civs, standoffRange) {
+    const range = standoffRange != null ? standoffRange : window.GameEngine.combat.effectiveRange(unit, civ);
     if (range <= 1) { moveUnitToward(unit, targetX, targetY, map, civs); return; }
     const dx = targetX - unit.x, dy = targetY - unit.y;
     const dist = Math.max(Math.abs(dx), Math.abs(dy));

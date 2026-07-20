@@ -730,7 +730,11 @@ window.GameEngine = window.GameEngine || {};
       }
     }
 
-    for (const unit of civ.units) { unit.usedThisTurn = false; unit.resting = false; }
+    // movesRemaining reset alongside usedThisTurn -- see ai.js's
+    // spendMovement/computeMovementBudget (project_turn_action_economy
+    // memory): a fresh turn means the persisted leftover-movement budget
+    // from last turn is stale and must be lazily recomputed on first use.
+    for (const unit of civ.units) { unit.usedThisTurn = false; unit.resting = false; unit.movesRemaining = null; }
   }
 
   /**
