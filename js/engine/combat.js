@@ -432,7 +432,14 @@ window.GameEngine = window.GameEngine || {};
    *  unit on an adjacent tile. */
   function canGoHidden(unit, civ, civs) {
     const mechanics = civ.unlockedMechanics;
-    const hasSneak = !!(mechanics && mechanics.has("sneaking_around"));
+    // Halfellow "Sneaking Around" (2026-07-20, user-directed): narrowed to
+    // the Wanderer only, unlike Elf's own unlock of the identical shared
+    // "sneaking_around" flag (elf_shadowed_hush_unseen), which stays
+    // race-wide -- keyed off raceId here rather than splitting the mechanic
+    // into two ids, since every other consumer of "sneaking_around"
+    // (enterHidden, revealHidden, ...) still treats it as one capability.
+    const hasSneak = !!(mechanics && mechanics.has("sneaking_around")
+      && (civ.raceId !== "halfellow" || unit.typeId === "wanderer"));
     const hasInvisibility = !!(mechanics && mechanics.has("invisibility") && unit.typeId === "wizard");
     if (!hasSneak && !hasInvisibility) return false;
     if (hasCondition(unit, "hidden") || hasCondition(unit, "forcedVisible")) return false;
@@ -1062,12 +1069,43 @@ window.GameEngine = window.GameEngine || {};
     return dmg;
   }
 
+  /** Orc "Spikes!"/"Bigger Spikes!" (2026-07-20, user-directed): the higher
+   *  tech (if known) always wins rather than stacking with the lower one --
+   *  same "upgrade tech" convention as e.g. Sudden Doom replacing Strike
+   *  from the Shadows. 0 if the civ has neither. */
+  function spikesAttackRating(civ) {
+    if (!civ.unlockedMechanics) return 0;
+    if (civ.unlockedMechanics.has("bigger_spikes")) return 2;
+    if (civ.unlockedMechanics.has("spikes")) return 1;
+    return 0;
+  }
+
+  /** Orc "Spikes!"/"Bigger Spikes!": structurally identical to Human's
+   *  Ramparts above (same Archer-derived reach, same 25% First-Strike
+   *  discount, no militia spawn) but with a FLAT attack rating
+   *  (spikesAttackRating) instead of deriving from the Archer -- never
+   *  LOWERS the structure's existing attack, same max() convention as
+   *  wallCounterattack/structureCounterattack. Mutates attackerUnit.hp;
+   *  returns the raw counter damage dealt (0 if out of reach). */
+  function spikesCounterattack(structureRecord, defenderCiv, attackerUnit, attackerCiv, flatAttack) {
+    const archer = window.GameData.getUnit("archer");
+    const dist = Math.max(Math.abs(attackerUnit.x - structureRecord.x), Math.abs(attackerUnit.y - structureRecord.y));
+    if (dist > (archer.range || 1)) return 0;
+    const baseAtk = Math.max(structureRecord.attack || 0, flatAttack);
+    const defStat = effectiveDefense(attackerUnit, attackerCiv, {});
+    let dmg = mitigatedDamage(baseAtk, defStat);
+    if (hasFirstStrike(attackerUnit, attackerCiv)) dmg = Math.round(dmg * 0.75);
+    attackerUnit.hp -= dmg;
+    return dmg;
+  }
+
   /** Halfellow "Rouse the People": `chance` probability a Militia spawns
-   *  adjacent to (x,y) -- 1% on being attacked (see attackStructure/
-   *  attackCity below), or 15% specifically when a building/wall is
-   *  actually destroyed (see ai.js considerAttackOrGarrison's destroy
-   *  handling). Returns the spawned unit, or null. */
-  function maybeSpawnMilitia(defenderCiv, x, y, map, civs, chance = 0.01) {
+   *  adjacent to (x,y) -- 5% on being attacked (2026-07-20, user-directed,
+   *  raised from 1% -- see attackStructure/attackCity below), or 15%
+   *  specifically when a building/wall is actually destroyed (see ai.js
+   *  considerAttackOrGarrison's destroy handling). Returns the spawned
+   *  unit, or null. */
+  function maybeSpawnMilitia(defenderCiv, x, y, map, civs, chance = 0.05) {
     if (Math.random() >= chance) return null;
     const offsets = [[-1,-1],[-1,0],[-1,1],[0,-1],[0,1],[1,-1],[1,0],[1,1]];
     for (const [dx, dy] of offsets.sort(() => Math.random() - 0.5)) {
@@ -1104,6 +1142,22 @@ window.GameEngine = window.GameEngine || {};
     return replacement;
   }
 
+  /** Halfellow "Undaunted" (2026-07-20, user-directed): 25% chance a
+   *  Wanderer spawns on a dead Pony Patrol's own tile -- same shape as Orc's
+   *  Hound and Hunter above (spawns on the dead unit's own now-vacated
+   *  tile), just a single replacement type instead of a 50/50 pick. Only
+   *  fires for pony_patrol deaths -- callers gate on `deadUnit.typeId`
+   *  before calling this. Returns the spawned unit, or null. */
+  function maybeSpawnPonyReplacement(civ, x, y, map) {
+    if (Math.random() >= 0.25) return null;
+    const terrain = window.GameData.TERRAIN[map.tiles[y * map.width + x].terrain];
+    if (terrain.isWater || terrain.moveCostLand === window.GameData.IMPASSABLE) return null;
+    const replacement = { typeId: "wanderer", civId: civ.id, x, y, isCivilian: false };
+    initUnitHP(replacement, civ);
+    civ.units.push(replacement);
+    return replacement;
+  }
+
   /**
    * A unit attacks a static structure. Mutates the structure record's hp.
    * Returns { damage, destroyed, counterDamage, militiaSpawned }. Most
@@ -1135,6 +1189,8 @@ window.GameEngine = window.GameEngine || {};
       if (gameState) militiaSpawned = maybeSpawnMilitia(defenderCiv, structureRecord.x, structureRecord.y, gameState.map, gameState.civs);
     } else if (building.isWall && defenderCiv && defenderCiv.unlockedMechanics && defenderCiv.unlockedMechanics.has("ramparts")) {
       counterDamage = wallCounterattack(structureRecord, defenderCiv, unit, attackerCiv);
+    } else if (building.isWall && defenderCiv && spikesAttackRating(defenderCiv) > 0) {
+      counterDamage = spikesCounterattack(structureRecord, defenderCiv, unit, attackerCiv, spikesAttackRating(defenderCiv));
     }
     return { damage: dmg, destroyed: structureRecord.hp <= 0, counterDamage, militiaSpawned };
   }
@@ -1208,6 +1264,8 @@ window.GameEngine = window.GameEngine || {};
       if (gameState) militiaSpawned = maybeSpawnMilitia(defenderCiv, city.x, city.y, gameState.map, gameState.civs);
     } else if (defenderCiv && defenderCiv.unlockedMechanics && defenderCiv.unlockedMechanics.has("ramparts")) {
       counterDamage = wallCounterattack(city, defenderCiv, unit, attackerCiv);
+    } else if (defenderCiv && spikesAttackRating(defenderCiv) > 0) {
+      counterDamage = spikesCounterattack(city, defenderCiv, unit, attackerCiv, spikesAttackRating(defenderCiv));
     }
     return { won, winProb, destroyed, counterDamage, militiaSpawned };
   }
@@ -1283,6 +1341,7 @@ window.GameEngine = window.GameEngine || {};
     attackCity,
     maybeSpawnMilitia,
     maybeSpawnHoundAndHunter,
+    maybeSpawnPonyReplacement,
     markRival,
     hasAltarOfAgesBonus,
     shadowsteedMount,

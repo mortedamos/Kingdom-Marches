@@ -257,7 +257,9 @@ window.GameData.TECHS = {
     effects: [{ type: "lore_per_city", value: 3 }],
   },
   ramparts: {
-    id: "ramparts", label: "Ramparts", category: "military", layer: 3, cost: 40,
+    // category "building" (2026-07-20, user-directed) despite unlocking no
+    // building of its own -- filed there anyway per the user's explicit call.
+    id: "ramparts", label: "Ramparts", category: "building", layer: 3, cost: 40,
     prereqs: ["archery"], raceOnly: "human",
     description: "Walls and cities can counterattack, with an attack rating (at least the Archer's), the Archer's own Ranged reach (an attacker standing further away than that takes no counter damage at all), and a 25% discount against a First-Strike attacker -- same convention as Halfellow's Rouse the People but with no attack bonus or militia spawn.",
     costBreakdown: { lore: 28, coin: 12 },
@@ -974,6 +976,17 @@ window.GameData.TECHS = {
     costBreakdown: { lore: 18, coin: 4 },
     effects: [{ type: "unlock_building", building: "war_camp" }],
   },
+  // 2026-07-20, user-directed: mirrors Human's Ramparts structurally (walls
+  // AND cities, not other buildings, can counterattack; no attack bonus
+  // multiplier, no militia spawn) but with a flat attack rating instead of
+  // deriving from the Archer -- see combat.js's spikesCounterattack.
+  orc_spikes: {
+    id: "orc_spikes", label: "Spikes!", category: "building", layer: 2, cost: 22,
+    prereqs: [], raceOnly: "orc",
+    description: "Walls and cities can counterattack (not other buildings), with an attack rating of 1. No attack bonus multiplier and no militia spawn (unlike Halfellow's Rouse the People, which this mirrors structurally).",
+    costBreakdown: { coin: 14, lore: 8 },
+    effects: [{ type: "unlock_mechanic", mechanic: "spikes" }],
+  },
   orc_impaler_rite: {
     id: "orc_impaler_rite", label: "Impaler Rites", category: "military", layer: 2, cost: 15,
     prereqs: [], raceOnly: "orc",
@@ -1074,6 +1087,17 @@ window.GameData.TECHS = {
     description: "When a Wolf Rider dies, 50% chance a Raider or a Dire Wolf (50/50 between the two) spawns in its place.",
     costBreakdown: { lore: 18, coin: 10 },
     effects: [{ type: "unlock_mechanic", mechanic: "hound_and_hunter" }],
+  },
+  // 2026-07-20, user-directed. Replaces (not stacks with) Spikes!'s attack
+  // rating while both are known -- same "upgrade tech" convention as e.g.
+  // Sudden Doom replacing Strike from the Shadows -- see combat.js's
+  // spikesAttackRating.
+  orc_bigger_spikes: {
+    id: "orc_bigger_spikes", label: "Bigger Spikes!", category: "building", layer: 3, cost: 38,
+    prereqs: ["orc_spikes"], raceOnly: "orc",
+    description: "Walls and cities can counterattack (not other buildings), with an attack rating of 2. No attack bonus multiplier and no militia spawn (unlike Halfellow's Rouse the People, which this mirrors structurally).",
+    costBreakdown: { coin: 22, lore: 16 },
+    effects: [{ type: "unlock_mechanic", mechanic: "bigger_spikes" }],
   },
 
   // --- Layer 4 ---
@@ -1263,7 +1287,12 @@ window.GameData.TECHS = {
   halfellow_sneaking_around: {
     id: "halfellow_sneaking_around", label: "Sneaking Around", category: "military", layer: 1, cost: 25,
     prereqs: [], raceOnly: "halfellow",
-    description: "Every Halfellow unit may spend its whole turn to become Hidden for 3 turns (voluntarily cancellable early). Cannot activate with an enemy unit on an adjacent tile. Whenever a Hidden unit is revealed for ANY reason, it is forced visible for at least 1 turn before it can go Hidden again.",
+    // Restricted to Wanderer only (2026-07-20, user-directed, narrowed from
+    // "every Halfellow unit") -- see combat.js's canGoHidden, which keys
+    // this restriction off raceId so Elf's OWN unlock of the same shared
+    // "sneaking_around" mechanic (elf_shadowed_hush_unseen) stays
+    // unrestricted, race-wide as before.
+    description: "The Wanderer may spend its whole turn to become Hidden for 3 turns (voluntarily cancellable early). Cannot activate with an enemy unit on an adjacent tile. Whenever a Hidden unit is revealed for ANY reason, it is forced visible for at least 1 turn before it can go Hidden again.",
     costBreakdown: { harvest: 15, lore: 10 },
     effects: [{ type: "unlock_mechanic", mechanic: "sneaking_around" }],
   },
@@ -1297,6 +1326,17 @@ window.GameData.TECHS = {
     costBreakdown: { harvest: 14, coin: 10 },
     effects: [{ type: "unlock_unit", unit: "pony_patrol" }],
   },
+  // 2026-07-20, user-directed (unnamed in the request -- "Undaunted" is my
+  // own pick, easy to rename). Mirrors Orc's Hound and Hunter structurally
+  // (spawns on the dead unit's own now-vacated tile, gated on typeId at
+  // every death call site) -- see combat.js's maybeSpawnPonyReplacement.
+  halfellow_undaunted: {
+    id: "halfellow_undaunted", label: "Undaunted", category: "military", layer: 4, cost: 50,
+    prereqs: ["halfellow_pony_patrol"], raceOnly: "halfellow",
+    description: "When a Pony Patrol is killed, 25% chance a Wanderer spawns in its place.",
+    costBreakdown: { harvest: 28, lore: 22 },
+    effects: [{ type: "unlock_mechanic", mechanic: "undaunted" }],
+  },
   // Moved from L4 (2026-07-12), alongside Sneaking Around's move to L1 --
   // see that tech's comment. Its own prereq (Sneaking Around) is still
   // satisfied regardless of layer number; only the city-count gate and
@@ -1307,6 +1347,14 @@ window.GameData.TECHS = {
     description: "A Hidden Halfellow unit attacks at 175%. Attacking always ends Hidden as normal.",
     costBreakdown: { lore: 50 },
     effects: [{ type: "unlock_mechanic", mechanic: "knife_in_the_dark" }],
+  },
+  // 2026-07-20, user-directed.
+  halfellow_courage: {
+    id: "halfellow_courage", label: "Courage", category: "military", layer: 3, cost: 40,
+    prereqs: ["halfellow_knife_in_the_dark"], raceOnly: "halfellow",
+    description: "Wanderer gains +2 attack, +1 defense, and 3% First Strike.",
+    costBreakdown: { harvest: 20, lore: 20 },
+    effects: [{ type: "unit_stat_upgrade", unit: "wanderer", changes: { attack: 2, defense: 1, firstStrikePct: 0.03 } }],
   },
   // New (2026-07-12): a race-wide Ranged grant, added alongside Sneaking
   // Around/Knife in the Dark's move to L1/L2 -- together meant to give
@@ -1371,7 +1419,9 @@ window.GameData.TECHS = {
     effects: [{ type: "unlock_mechanic", mechanic: "high_ground" }],
   },
   halfellow_hedge_walls: {
-    id: "halfellow_hedge_walls", label: "Hedge Walls", category: "military", layer: 3, cost: 38,
+    // category "building" (2026-07-20, user-directed) despite unlocking no
+    // building of its own -- same call as Ramparts above.
+    id: "halfellow_hedge_walls", label: "Hedge Walls", category: "building", layer: 3, cost: 38,
     prereqs: ["halfellow_hillside_harvest"], raceOnly: "halfellow",
     description: "Walls heal 5% of their max HP every turn.",
     costBreakdown: { harvest: 22, lore: 16 },
@@ -1456,7 +1506,7 @@ window.GameData.TECHS = {
   halfellow_rouse_the_people: {
     id: "halfellow_rouse_the_people", label: "Rouse the People", category: "military", layer: 5, cost: 95,
     prereqs: ["halfellow_hearth_and_homeland"], raceOnly: "halfellow",
-    description: "Cities, walls, and buildings gain attack equal to the Militia's (if higher than their current value) and can now counterattack, but only against an attacker standing adjacent (melee range); a Ranged attack takes no counter damage. 1% chance a Militia spawns adjacent to a structure/city that's attacked; 15% chance instead if the attack actually destroys it.",
+    description: "Cities, walls, and buildings gain attack equal to the Militia's (if higher than their current value) and can now counterattack, but only against an attacker standing adjacent (melee range); a Ranged attack takes no counter damage. 5% chance a Militia spawns adjacent to a structure/city that's attacked; 15% chance instead if the attack actually destroys it.",
     costBreakdown: { lore: 55, harvest: 40 },
     effects: [{ type: "unlock_mechanic", mechanic: "rouse_the_people" }],
   },

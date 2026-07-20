@@ -7324,6 +7324,13 @@ window.GameEngine = window.GameEngine || {};
           const replacement = window.GameEngine.combat.maybeSpawnHoundAndHunter(defenderCiv, bestTarget.x, bestTarget.y, map);
           if (replacement) log.push(`Hound and Hunter: ${defenderCiv.id}'s fallen Wolf Rider is replaced by a ${replacement.typeId} at (${replacement.x},${replacement.y})`);
         }
+        // Halfellow "Undaunted" (2026-07-20, user-directed): same shape as
+        // Hound and Hunter above, this time for a defending Pony Patrol's death.
+        if (bestTarget.typeId === "pony_patrol" && defenderCiv.unlockedMechanics
+            && defenderCiv.unlockedMechanics.has("undaunted")) {
+          const replacement = window.GameEngine.combat.maybeSpawnPonyReplacement(defenderCiv, bestTarget.x, bestTarget.y, map);
+          if (replacement) log.push(`Undaunted: ${defenderCiv.id}'s fallen Pony Patrol is replaced by a ${replacement.typeId} at (${replacement.x},${replacement.y})`);
+        }
         // Anti-Titan learning: the defeated civ just lost a unit TO a Titan.
         if (unit.typeId === "runeforged_titan") maybeLearnAntiTitanLesson(defenderCiv);
         // Orc "Honor the Dead": the defeated civ's OWN loss grants them lore,
@@ -7375,6 +7382,12 @@ window.GameEngine = window.GameEngine || {};
         if (unit.typeId === "wolf_rider" && civ.unlockedMechanics && civ.unlockedMechanics.has("hound_and_hunter")) {
           const replacement = window.GameEngine.combat.maybeSpawnHoundAndHunter(civ, unit.x, unit.y, map);
           if (replacement) log.push(`Hound and Hunter: ${civ.id}'s fallen Wolf Rider is replaced by a ${replacement.typeId} at (${replacement.x},${replacement.y})`);
+        }
+        // Halfellow "Undaunted": same shape, this time for the attacker's
+        // own Pony Patrol dying to a counter.
+        if (unit.typeId === "pony_patrol" && civ.unlockedMechanics && civ.unlockedMechanics.has("undaunted")) {
+          const replacement = window.GameEngine.combat.maybeSpawnPonyReplacement(civ, unit.x, unit.y, map);
+          if (replacement) log.push(`Undaunted: ${civ.id}'s fallen Pony Patrol is replaced by a ${replacement.typeId} at (${replacement.x},${replacement.y})`);
         }
         otherCivRemoveDeadUnit(civs, unit);
       }
@@ -7528,6 +7541,12 @@ window.GameEngine = window.GameEngine || {};
           const replacement = window.GameEngine.combat.maybeSpawnHoundAndHunter(civ, unit.x, unit.y, map);
           if (replacement) log.push(`Hound and Hunter: ${civ.id}'s fallen Wolf Rider is replaced by a ${replacement.typeId} at (${replacement.x},${replacement.y})`);
         }
+        // Halfellow "Undaunted": same replacement chance as any other Pony
+        // Patrol death, this time slain by a city's own counterattack.
+        if (unit.typeId === "pony_patrol" && civ.unlockedMechanics && civ.unlockedMechanics.has("undaunted")) {
+          const replacement = window.GameEngine.combat.maybeSpawnPonyReplacement(civ, unit.x, unit.y, map);
+          if (replacement) log.push(`Undaunted: ${civ.id}'s fallen Pony Patrol is replaced by a ${replacement.typeId} at (${replacement.x},${replacement.y})`);
+        }
         civ.units = civ.units.filter((u) => u !== unit);
         log.push(`Rouse the People: ${civ.id}'s ${unit.typeId} was slain by ${bestCity.civ.id}'s city`);
       }
@@ -7586,6 +7605,12 @@ window.GameEngine = window.GameEngine || {};
         if (unit.typeId === "wolf_rider" && civ.unlockedMechanics && civ.unlockedMechanics.has("hound_and_hunter")) {
           const replacement = window.GameEngine.combat.maybeSpawnHoundAndHunter(civ, unit.x, unit.y, map);
           if (replacement) log.push(`Hound and Hunter: ${civ.id}'s fallen Wolf Rider is replaced by a ${replacement.typeId} at (${replacement.x},${replacement.y})`);
+        }
+        // Halfellow "Undaunted": same replacement chance, this time slain
+        // by a structure's own counterattack.
+        if (unit.typeId === "pony_patrol" && civ.unlockedMechanics && civ.unlockedMechanics.has("undaunted")) {
+          const replacement = window.GameEngine.combat.maybeSpawnPonyReplacement(civ, unit.x, unit.y, map);
+          if (replacement) log.push(`Undaunted: ${civ.id}'s fallen Pony Patrol is replaced by a ${replacement.typeId} at (${replacement.x},${replacement.y})`);
         }
         civ.units = civ.units.filter((u) => u !== unit);
         log.push(`Structure counter: ${civ.id}'s ${unit.typeId} was slain by ${bestStruct.s.civ.id}'s ${bestStruct.s.record.id}`);
