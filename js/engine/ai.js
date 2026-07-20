@@ -847,6 +847,47 @@ window.GameEngine = window.GameEngine || {};
     return scoreNextResearch(civ, racialWeights(civ));
   }
 
+  /** Which of civ's own cities (if any) aren't yet reachable from the rest
+   *  through its road network -- BFS out from the civ's first city through
+   *  road tiles (city tiles count as connection points, same convention as
+   *  cities.js's isRoadConnected), then any city never reached is
+   *  "disconnected." Returns the nearest disconnected city to (fromX,fromY),
+   *  or null if the civ has fewer than 2 cities or every city is already
+   *  connected -- used by maybeFoundCity so an idle Pioneer with nothing
+   *  left to settle builds a connecting road instead of wandering.
+   *  2026-07-20, user-directed. */
+  function findNearestDisconnectedCity(civ, gameState, fromX, fromY) {
+    if (civ.cities.length < 2) return null;
+    const { map } = gameState;
+    const visited = new Set();
+    const reached = new Set();
+    const start = civ.cities[0];
+    reached.add(start);
+    const queue = [{ x: start.x, y: start.y }];
+    while (queue.length > 0) {
+      const { x, y } = queue.shift();
+      const idx = y * map.width + x;
+      if (visited.has(idx)) continue;
+      visited.add(idx);
+      const hitCity = civ.cities.find((c) => c.x === x && c.y === y);
+      if (hitCity) reached.add(hitCity);
+      if (!hitCity && !map.tiles[idx].hasRoad) continue;
+      for (let dy = -1; dy <= 1; dy++) {
+        for (let dx = -1; dx <= 1; dx++) {
+          if (dx === 0 && dy === 0) continue;
+          const nx = x + dx, ny = y + dy;
+          if (nx >= 0 && nx < map.width && ny >= 0 && ny < map.height) queue.push({ x: nx, y: ny });
+        }
+      }
+    }
+    const disconnected = civ.cities.filter((c) => !reached.has(c));
+    if (disconnected.length === 0) return null;
+    return disconnected.reduce((best, c) => {
+      const d = window.GameEngine.influence.chebyshev(fromX, fromY, c.x, c.y);
+      return (!best || d < best.d) ? { c, d } : best;
+    }, null).c;
+  }
+
   function maybeFoundCity(civ, gameState, weights, difficulty, log) {
     // Only act on pioneers not currently carried by another unit (e.g. aboard a galley)
     const pioneers = civ.units.filter((u) => u.typeId === "pioneer" && !u.usedThisTurn && !u.carriedBy);
@@ -999,9 +1040,22 @@ window.GameEngine = window.GameEngine || {};
           pioneer.currentMission = `Heading toward a remembered good site at (${rememberedSpot.x},${rememberedSpot.y})`;
           log.push(`Pioneer at (${pioneer.x},${pioneer.y}) — no settle site found nearby, heading toward a remembered good site at (${rememberedSpot.x},${rememberedSpot.y})`);
         } else {
-          wanderUnit(pioneer, gameState.map, gameState.civs);
-          pioneer.currentMission = "Wandering — no settle site found";
-          log.push(`Pioneer wandering at (${pioneer.x},${pioneer.y}) — no settle site found`);
+          // Nothing left to settle and nothing remembered either (2026-07-20,
+          // user-directed): before falling back to a purely random walk,
+          // check whether any of this civ's own cities aren't yet
+          // road-connected to the rest -- a Pioneer with nothing to found is
+          // far more useful laying the missing link than wandering. See
+          // findNearestDisconnectedCity.
+          const disconnectedCity = findNearestDisconnectedCity(civ, gameState, pioneer.x, pioneer.y);
+          if (disconnectedCity) {
+            pioneerRoadStep(pioneer, disconnectedCity.x, disconnectedCity.y, gameState.map, log, gameState.civs);
+            pioneer.currentMission = `Building a connecting road toward ${disconnectedCity.name}`;
+            log.push(`Pioneer at (${pioneer.x},${pioneer.y}) — no settle site found, building a road to connect ${disconnectedCity.name}`);
+          } else {
+            wanderUnit(pioneer, gameState.map, gameState.civs);
+            pioneer.currentMission = "Wandering — no settle site found";
+            log.push(`Pioneer wandering at (${pioneer.x},${pioneer.y}) — no settle site found`);
+          }
         }
         pioneer.usedThisTurn = true;
         continue;
@@ -2797,6 +2851,27 @@ window.GameEngine = window.GameEngine || {};
    * disband/founding site in this codebase), never reordered or spliced
    * back in elsewhere.
    */
+
+  // "Defend" (2026-07-20, user-directed): a universal normal action -- any
+  // race, any unit type. Braces in place, doubling this unit's own defense
+  // (see combat.js's effectiveDefense) until the start of its own next
+  // turn. No movement here -- callers may move first (a normal action
+  // allows it, see project_turn_action_economy memory); this only performs
+  // the "act" half.
+  function performDefend(civ, unit, log) {
+    window.GameEngine.combat.setCondition(unit, "defending", { expiresAtTurn: currentTurnNumber + 1 });
+    unit.usedThisTurn = true;
+    unit.currentMission = "Defending (braced, x2 defense until next turn)";
+    log.push(`Defend: ${civ.id}'s ${unit.typeId} braces at (${unit.x},${unit.y}), doubling its defense until its next turn`);
+  }
+
+  // How much of its max HP a unit must be missing before Resting is worth
+  // the turn -- previously any missing HP at all triggered Rest, which
+  // wasted turns topping off scratch damage. 0.9 keeps Rest close to its old
+  // generous behavior (it's still the last resort after every other branch
+  // in this cascade already passed) while giving "how low" an actual answer.
+  const REST_HP_THRESHOLD = 0.9;
+
   function runUnitTurn(civ, unit, gameState, weights, difficulty, log) {
     if (unit.usedThisTurn) return;
     const militarism = effectiveMilitarism(civ);
@@ -2956,6 +3031,12 @@ window.GameEngine = window.GameEngine || {};
       // Elf Druid: Nature's Grace healing, Raptor/Shadowsteed summon
       // management, and Roots of the World expansion -- see maybeElfDruidPlay.
       if (maybeElfDruidPlay(civ, unit, gameState, weights, difficulty, log)) continue;
+
+      // Elf Blade Dancer: Whirlwind Strike/Blade Storm -- checked before the
+      // ordinary single-target attack below, since a worthwhile sweep (2+
+      // clustered enemies) always beats concentrating full damage on one
+      // target. See maybeBladeDancerSweep.
+      if (maybeBladeDancerSweep(civ, unit, gameState, log)) continue;
 
       // Always try to attack first — aggressiveness and win probability decide
       // whether a specific fight is worth taking.
@@ -3155,6 +3236,23 @@ window.GameEngine = window.GameEngine || {};
         continue;
       }
 
+      // A unit already IN a fight (adjacent to an enemy, or supporting an
+      // ally who is) that didn't attack this turn -- declined above, or
+      // nothing scored well enough -- braces instead of getting pulled away
+      // by one of the generic hunt/raid/reinforce branches below. Those are
+      // for finding a DIFFERENT job when there's nothing to react to right
+      // now, not for abandoning a fight already underway; without this
+      // check they fired unconditionally regardless of nearActiveCombat and
+      // silently ate the unit's turn before Defend/Rest further down ever
+      // got a look-in. Every race-specific tactical branch above (Shield
+      // Wall, Crusade, Titan, Prospector's Claim, garrison, ...) still gets
+      // first refusal, unaffected -- this only intercepts the generic tail.
+      // 2026-07-20, user-directed.
+      if (nearActiveCombat) {
+        performDefend(civ, unit, log);
+        continue;
+      }
+
       // Tactical: aggressiveness sets the odds a garrison-idle unit chases a
       // visible enemy UNIT this turn, rather than waiting for one to wander
       // close. Every race hunts sometimes, scaled by how aggressive they are.
@@ -3197,8 +3295,13 @@ window.GameEngine = window.GameEngine || {};
       pushTowardInfluenceFrontier(civ, unit, gameState, log);
       if (unit.usedThisTurn) continue;
 
-      // Damaged and nothing better to do: Rest instead of wandering around hurt.
-      if (unit.hp < unit.maxHp) {
+      // Damaged and nothing better to do: Rest to heal, but only when it's
+      // actually safe (see REST_HP_THRESHOLD above for "how low"). Safety is
+      // no longer this check's job -- nearActiveCombat is unconditionally
+      // intercepted earlier now (see the Defend check above), so by the
+      // time execution reaches here it's already guaranteed false. 2026-07-20,
+      // user-directed.
+      if (unit.hp < unit.maxHp * REST_HP_THRESHOLD) {
         unit.resting = true;
         unit.usedThisTurn = true;
         unit.currentMission = "Resting to heal (idle)";
@@ -3220,6 +3323,10 @@ window.GameEngine = window.GameEngine || {};
       // nearActiveCombat (computed once, above), in which case the unit
       // just holds its current position (stays "Idle") rather than
       // wandering off while it or an ally is fighting.
+      // nearActiveCombat is always false by this point (the unconditional
+      // Defend check earlier in this cascade already intercepted every true
+      // case), kept here regardless as the original defensive condition.
+      // 2026-07-20, user-directed.
       const racePatrolled = patrolRaceTerrain(civ, unit, gameState);
       if (!racePatrolled && !nearActiveCombat) {
         if (explorable) {
@@ -3990,6 +4097,155 @@ window.GameEngine = window.GameEngine || {};
       return true;
     }
 
+    return false;
+  }
+
+  // Elf "Whirlwind Strike"/"Blade Storm" (2026-07-20, user-directed): both
+  // are a normal action (move, then optionally act -- same category as an
+  // ordinary Attack, see project_turn_action_economy memory) that hits
+  // every enemy unit within a radius in one go, each hit scaled down
+  // (attackDamageMult) and each eligible counter scaled down too
+  // (counterDamageMult) -- see combat.js's resolveRound. Blade Storm's
+  // radius-2 ring naturally denies counters from its outer, non-adjacent
+  // targets: resolveRound's own isAdjacent check already refuses a counter
+  // from anything not adjacent, so no separate handling is needed here for
+  // that half of the spec. Blade Storm does NOT replace Whirlwind Strike --
+  // both stay independently usable; maybeBladeDancerSweep below picks
+  // whichever fits the current cluster of targets.
+  const WHIRLWIND_STRIKE_RADIUS = 1, WHIRLWIND_ATTACK_MULT = 0.5, WHIRLWIND_COUNTER_MULT = 0.25;
+  const BLADE_STORM_RADIUS = 2, BLADE_STORM_ATTACK_MULT = 0.33, BLADE_STORM_COUNTER_MULT = 0.16;
+
+  /** How many currently-visible, non-hidden enemy units sit within `radius`
+   *  of (x,y) -- used to decide whether a sweep is worth using over an
+   *  ordinary single-target attack (see maybeBladeDancerSweep). */
+  function countEnemiesInRadius(civ, x, y, radius, gameState) {
+    const { civs, map } = gameState;
+    const visible = gameState.visibility[civ.id] || new Set();
+    let count = 0;
+    for (const otherCiv of Object.values(civs)) {
+      if (otherCiv.id === civ.id || otherCiv.eliminated) continue;
+      for (const eu of otherCiv.units) {
+        if (eu.conditions?.hidden) continue;
+        if (!visible.has(eu.y * map.width + eu.x)) continue;
+        if (window.GameEngine.influence.chebyshev(x, y, eu.x, eu.y) <= radius) count++;
+      }
+    }
+    return count;
+  }
+
+  /** Executes a Whirlwind Strike/Blade Storm sweep: resolves a full combat
+   *  exchange (combat.js's resolveRound, scaled by attackMult/counterMult)
+   *  against every currently-visible, non-hidden enemy unit within `radius`
+   *  of the Blade Dancer, stopping early if the Blade Dancer itself dies
+   *  mid-sweep. Mirrors considerAttackOrGarrison's core bookkeeping per hit
+   *  (combat event, Hidden reveal, First Frost of Autumn's passive freeze
+   *  chance, death cleanup, XP) but deliberately skips single-target-only
+   *  edge cases (Hound and Hunter, Anti-Titan learning, Orc plunder/lore-on-
+   *  death) that don't meaningfully apply to Elf's own kit. Returns true if
+   *  it hit at least one target. */
+  function performBladeSweep(civ, unit, gameState, log, { label, radius, attackMult, counterMult }) {
+    const { map, civs } = gameState;
+    const visible = gameState.visibility[civ.id] || new Set();
+    const targets = [];
+    for (const otherCiv of Object.values(civs)) {
+      if (otherCiv.id === civ.id || otherCiv.eliminated) continue;
+      for (const eu of otherCiv.units) {
+        if (eu.conditions?.hidden) continue;
+        if (!visible.has(eu.y * map.width + eu.x)) continue;
+        if (window.GameEngine.influence.chebyshev(unit.x, unit.y, eu.x, eu.y) <= radius) targets.push(eu);
+      }
+    }
+    if (targets.length === 0) return false;
+
+    window.GameEngine.quips.maybeQuip(unit, civ, "attack", gameState);
+    window.GameEngine.combat.revealHidden(unit, currentTurnNumber);
+    let hitCount = 0, killCount = 0;
+    for (const target of targets) {
+      const defenderCiv = civs[target.civId];
+      const combatContext = {
+        attackerGarrisoned: isGarrisoned(unit, civ),
+        defenderGarrisoned: isGarrisoned(target, defenderCiv),
+        attackerOnHills: map.tiles[unit.y * map.width + unit.x].terrain === "hills",
+        defenderOnHills: map.tiles[target.y * map.width + target.x].terrain === "hills",
+        attackerInForest: map.tiles[unit.y * map.width + unit.x].terrain === "forest",
+        defenderInForest: map.tiles[target.y * map.width + target.x].terrain === "forest",
+        attackDamageMult: attackMult, counterDamageMult: counterMult,
+      };
+      const result = window.GameEngine.combat.resolveRound(unit, target, civs, combatContext);
+      window.GameEngine.combat.recordCombatEvent({
+        ax: unit.x, ay: unit.y, atkUnit: unit, dx: target.x, dy: target.y, defUnit: target,
+      });
+      window.GameEngine.combat.revealHidden(target, currentTurnNumber);
+      applyElfCombatMechanics(unit, civ, target, defenderCiv, result, gameState);
+      hitCount++;
+
+      if (target.hp <= 0) {
+        killCount++;
+        otherCivRemoveDeadUnit(civs, target);
+        const attackerRace = window.GameData.getRace(civ.raceId);
+        if (attackerRace.healOnKillPct && unit.hp > 0) {
+          const beforeKillHeal = unit.hp;
+          unit.hp = Math.min(unit.maxHp, unit.hp + Math.round(unit.maxHp * attackerRace.healOnKillPct / 100));
+          window.GameEngine.floatingText.spawnHealGain(unit, unit.hp - beforeKillHeal);
+        }
+        if (target.carries) {
+          dropCargoOrKill(target.carries, target.x, target.y, gameState, log);
+          target.carries = null;
+        }
+      }
+      // XP: granted independently per side, whichever is still alive --
+      // mirrors considerAttackOrGarrison's two separate unit.hp>0 gates.
+      if (unit.hp > 0) {
+        grantXPAndAutoLevel(unit, civ, window.GameEngine.combat.xpForCombatAction(
+          { damage: result.fullDamage, killedUnitTypeId: target.hp <= 0 ? target.typeId : null }));
+      }
+      if (target.hp > 0) {
+        grantXPAndAutoLevel(target, defenderCiv, window.GameEngine.combat.xpForCombatAction(
+          { damage: result.counterDamage, killedUnitTypeId: unit.hp <= 0 ? unit.typeId : null }));
+      }
+
+      if (unit.hp <= 0) break; // Blade Dancer fell mid-sweep -- stop hitting further targets
+    }
+
+    if (unit.hp <= 0) {
+      if (unit.carries) { dropCargoOrKill(unit.carries, unit.x, unit.y, gameState, log); unit.carries = null; }
+      otherCivRemoveDeadUnit(civs, unit);
+      log.push(`${label}: ${civ.id}'s Blade Dancer fell mid-sweep after hitting ${hitCount} target(s)`);
+      return true;
+    }
+
+    unit.usedThisTurn = true;
+    unit.currentMission = `${label}: hit ${hitCount} target(s)${killCount ? `, ${killCount} killed` : ""}`;
+    log.push(`${label}: ${civ.id}'s Blade Dancer hit ${hitCount} target(s) around (${unit.x},${unit.y})${killCount ? `, ${killCount} killed` : ""}`);
+    return true;
+  }
+
+  // How many enemies a sweep must hit to be worth using over a normal,
+  // full-damage single-target attack (2026-07-20, tunable) -- below this,
+  // concentrating full damage on one target wins out; at or above it, the
+  // combined AoE output outweighs its own higher total counter-risk.
+  const BLADE_SWEEP_MIN_TARGETS = 2;
+
+  /** Elf Blade Dancer: prefers Blade Storm over Whirlwind Strike whenever
+   *  either would be worth using (strictly wider radius, same decision),
+   *  falls back to Whirlwind Strike alone, and does nothing (returns false,
+   *  letting the normal single-target attack dispatch handle it instead) if
+   *  neither tech is unlocked or too few enemies are clustered nearby.
+   *  Checked before the ordinary attack dispatch in runUnitTurn. */
+  function maybeBladeDancerSweep(civ, unit, gameState, log) {
+    if (unit.typeId !== "blade_dancer" || !civ.unlockedMechanics) return false;
+    const hasBladeStorm = civ.unlockedMechanics.has("blade_storm");
+    const hasWhirlwind = civ.unlockedMechanics.has("whirlwind_strike");
+    if (!hasBladeStorm && !hasWhirlwind) return false;
+
+    if (hasBladeStorm && countEnemiesInRadius(civ, unit.x, unit.y, BLADE_STORM_RADIUS, gameState) >= BLADE_SWEEP_MIN_TARGETS) {
+      return performBladeSweep(civ, unit, gameState, log,
+        { label: "Blade Storm", radius: BLADE_STORM_RADIUS, attackMult: BLADE_STORM_ATTACK_MULT, counterMult: BLADE_STORM_COUNTER_MULT });
+    }
+    if (hasWhirlwind && countEnemiesInRadius(civ, unit.x, unit.y, WHIRLWIND_STRIKE_RADIUS, gameState) >= BLADE_SWEEP_MIN_TARGETS) {
+      return performBladeSweep(civ, unit, gameState, log,
+        { label: "Whirlwind Strike", radius: WHIRLWIND_STRIKE_RADIUS, attackMult: WHIRLWIND_ATTACK_MULT, counterMult: WHIRLWIND_COUNTER_MULT });
+    }
     return false;
   }
 

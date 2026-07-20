@@ -518,6 +518,28 @@ window.GameData.TECHS = {
     costBreakdown: { lore: 12, coin: 4 },
     effects: [{ type: "unlock_unit", unit: "blade_dancer" }],
   },
+  // 2026-07-20, user-directed: a normal action (move, then optionally act --
+  // see project_turn_action_economy memory), same category as an ordinary
+  // Attack, not a full-turn action. See ai.js's performBladeSweep for the
+  // shared implementation and combat.js's resolveRound for the
+  // attackDamageMult/counterDamageMult context both this and Blade Storm rely on.
+  elf_whirlwind_strike: {
+    id: "elf_whirlwind_strike", label: "Whirlwind Strike", category: "military", layer: 2, cost: 45,
+    prereqs: ["elf_wind_and_flashing_steel"], raceOnly: "elf",
+    description: "As a normal action, the Blade Dancer attacks every enemy unit within 1 tile of itself, each hit dealing 50% damage (as if attacking normally). Each target may counterattack, at 25% effectiveness.",
+    costBreakdown: { lore: 30, coin: 15 },
+    effects: [{ type: "unlock_mechanic", mechanic: "whirlwind_strike" }],
+  },
+  // Does NOT replace Whirlwind Strike (2026-07-20, user-directed) -- both
+  // mechanics stay independently usable; the AI picks whichever suits the
+  // current cluster of targets (see ai.js's maybeBladeDancerSweep).
+  elf_blade_storm: {
+    id: "elf_blade_storm", label: "Blade Storm", category: "military", layer: 3, cost: 55,
+    prereqs: ["elf_whirlwind_strike"], raceOnly: "elf",
+    description: "Does not replace Whirlwind Strike. As a normal action, the Blade Dancer attacks every enemy unit within 2 tiles of itself, each hit dealing 33% damage (as if attacking normally). Only targets adjacent to the Blade Dancer may counterattack, at 16% effectiveness.",
+    costBreakdown: { lore: 35, coin: 20 },
+    effects: [{ type: "unlock_mechanic", mechanic: "blade_storm" }],
+  },
   elf_shadowed_hush_unseen: {
     id: "elf_shadowed_hush_unseen", label: "Shadowed Hush, Unseen", category: "military", layer: 1, cost: 25,
     prereqs: [], raceOnly: "elf",

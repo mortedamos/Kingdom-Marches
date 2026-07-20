@@ -241,6 +241,7 @@ window.UI = window.UI || {};
     if (heavyMetalAura) properties.push(`Heavy Metal Aura (+${heavyMetalAura.defenseBonus} defense, +${Math.round(heavyMetalAura.siegePctBonus * 100)}% siege, 5% heal/turn)`);
     const powerMetalAura = unit.conditions?.powerMetalAura;
     if (powerMetalAura) properties.push(`Power Metal Aura (+${powerMetalAura.attackBonus} attack, +${Math.round(powerMetalAura.firstStrikePctBonus * 100)}% first strike)`);
+    if (unit.conditions?.defending) properties.push('Defending (x2 defense until next turn)');
 
     // Veteran leveling (see combat.js's LEVELING section) -- permanent,
     // player/AI-chosen stat bonuses earned through combat XP, distinct from
@@ -265,6 +266,11 @@ window.UI = window.UI || {};
 
     const canRest = isHumanUnit && !unit.usedThisTurn;
     const restBtn = canRest ? `<button id="rest-unit-btn" class="action-btn">Rest</button>` : '';
+    // Defend (2026-07-20, user-directed): a universal normal action, any
+    // race/unit -- same availability gate as Rest (human-controlled, not
+    // already acted this turn).
+    const canDefend = isHumanUnit && !unit.usedThisTurn;
+    const defendBtn = canDefend ? `<button id="defend-unit-btn" class="action-btn">Defend</button>` : '';
     const disbandBtn = isHumanUnit ? `<button id="disband-unit-btn" class="action-btn action-btn-danger">Disband Unit</button>` : '';
 
     // Spectator-only: every unit in a spectator game is AI-controlled, so
@@ -294,6 +300,7 @@ window.UI = window.UI || {};
         ${carriedByTag}${carriesTag}
         ${pioneerActions}
         ${restBtn}
+        ${defendBtn}
         ${disbandBtn}
       </div>`;
   }

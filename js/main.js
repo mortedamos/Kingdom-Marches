@@ -1104,6 +1104,8 @@
     if (disbandBtn) disbandBtn.onclick = handleDisbandUnit;
     const restBtn = $("rest-unit-btn");
     if (restBtn) restBtn.onclick = handleRestUnit;
+    const defendBtn = $("defend-unit-btn");
+    if (defendBtn) defendBtn.onclick = handleDefendUnit;
 
     for (const btn of document.querySelectorAll(".view-tech-tree-btn")) {
       btn.onclick = () => { viewState.techTreeCivId = btn.dataset.civId; redraw(); };
@@ -1217,6 +1219,19 @@
     const unit = viewState.selectedUnit;
     if (unit.usedThisTurn) return;
     unit.resting = true;
+    unit.usedThisTurn = true;
+    redraw();
+  }
+
+  // Defend (2026-07-20, user-directed): a universal normal action, any
+  // race/unit -- doubles this unit's own defense (see combat.js's
+  // effectiveDefense) until the start of its next turn, same expiresAtTurn
+  // convention ai.js's performDefend uses for the AI side.
+  function handleDefendUnit() {
+    if (!humanCivId || !viewState.selectedUnit) return;
+    const unit = viewState.selectedUnit;
+    if (unit.usedThisTurn) return;
+    window.GameEngine.combat.setCondition(unit, "defending", { expiresAtTurn: (gameState.turnNumber || 0) + 1 });
     unit.usedThisTurn = true;
     redraw();
   }

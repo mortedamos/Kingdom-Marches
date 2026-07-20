@@ -561,6 +561,14 @@ window.GameEngine = window.GameEngine || {};
     // Hidden: staying concealed means fighting from cover/surprise -- +50% defense.
     if (unit.conditions?.hidden) def *= 1.5;
 
+    // "Defend" (2026-07-20, user-directed): a universal normal action, any
+    // race/unit -- braces in place for x2 defense until the start of this
+    // unit's own next turn (see ai.js's performDefend, which sets the
+    // condition with an expiresAtTurn ticked by tickConditions). Stacks
+    // multiplicatively with Hidden above, same as every other condition
+    // multiplier here.
+    if (unit.conditions?.defending) def *= 2;
+
     // Tech: Halfellow "High Ground" -- +50% defense while standing on Hills.
     if (context.defenderOnHills && civ.unlockedMechanics && civ.unlockedMechanics.has("high_ground")) def *= 1.50;
 
@@ -819,6 +827,15 @@ window.GameEngine = window.GameEngine || {};
       fullNegated = rollsInvulnerable(defenderUnit, defenderCiv);
       if (!fullNegated) {
         fullDamage = mitigatedDamage(atkStat, defStat);
+        // Elf "Whirlwind Strike"/"Blade Storm" (2026-07-20, user-directed):
+        // an AoE normal action that deals a FRACTION of a normal hit's
+        // damage to every target in range -- scaled here, post-mitigation
+        // (a straightforward "% of normal damage" reading), rather than by
+        // shrinking atkStat pre-mitigation, which wouldn't scale linearly
+        // through mitigatedDamage's ratio. Defaults to 1 (a no-op) for
+        // every ordinary single-target call site. See ai.js's
+        // performBladeSweep, the sole caller that passes this.
+        if (context.attackDamageMult != null) fullDamage = Math.round(fullDamage * context.attackDamageMult);
         // Tech: Halfellow "Resilient Spirit" -- a would-be-lethal hit has a
         // 50% chance to be negated entirely instead (forces a Rest next turn).
         // Dwarf "Unyielding" -- same shape, own decay rate/probabilistic rest.
@@ -851,6 +868,12 @@ window.GameEngine = window.GameEngine || {};
       counterNegated = counterIsNegated(attackerUnit, attackerCiv);
       if (!counterNegated) {
         let dmg = Math.round(mitigatedDamage(counterAtkStat, counterDefStat) / 2);
+        // Whirlwind Strike/Blade Storm (see attackDamageMult above) --
+        // counterDamageMult scales an already-adjacent target's counter down
+        // further (25%/16% effectiveness); a non-adjacent Blade Storm target
+        // never reaches this function at all (isAdjacent already guards
+        // dealReturn's entry above), so it needs no separate suppression here.
+        if (context.counterDamageMult != null) dmg = Math.round(dmg * context.counterDamageMult);
         counterDamage = Math.max(0, dmg);
         // Tech: Halfellow "Resilient Spirit" -- same death-save, applied to a
         // would-be-lethal COUNTERATTACK against the original attacker.
