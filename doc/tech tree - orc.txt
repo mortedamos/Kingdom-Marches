@@ -1,0 +1,31 @@
+
+
+ORC - L1 - CIVIC: Marsh Paths - +1 move on Swamp [12 lore]
+ORC - L1 - CIVIC: Forced March - +1 move on Plains for Raiders, Wolf Riders, and Ogres [10 lore, 4 harvest]
+ORC - L1 - CIVIC: Violent Momentum - +2 movement for a unit, if the unit has killed an enemy the previous turn [14 lore]
+ORC - L2 - CIVIC: Wetland Harvest - +1 Harvest from Swamp [14 lore, 6 harvest]
+ORC - L2 - CIVIC: Spoils of War (requires War Camp) - when an orc unit kills an enemy unit gain +3 coin and +4 lore [30 lore, 10 coin]
+ORC - L3 - CIVIC: Pillage and Loot (requires Spoils of War) - An orc unit standing within an enemy city's radius has a 2 tile radius (Chebyshev) around it which removes any filled-in enemy influence from those tiles, cutting off their yield immediately and fully stripping the tile of ownership after 3 consecutive turns of sustained suppression, and generates +1 harvest, +1 coin, and +1 lore for EACH tile where influence was actually suppressed this turn. Lasts until the orc unit moves to a new tile (moving the effect with it), leaves the enemy city's radius, or is killed. Does not stack with other orc units on the same tile [26 lore, 14 coin]. (2026-07-14: merged in from the former standalone L5 "Campaign of Terror" tech, which has been removed -- that tech only ever did the suppression side, with no resource payout at all, and had a bug that made it a near-total no-op against already-owned enemy tiles, its actual intended target; both are fixed here.)
+ORC - L4 - CIVIC: The Old Ways - +1 Lore from Swamp [50 lore]
+ORC - L4 - CIVIC: Honor the Dead - When an orc unit dies gain +5 lore. Orc units have a 50% chance to resist being raised from the dead (if killed by an undead unit, only a 50% chance that the undead will raise a new unit) [45 lore, 10 harvest]
+
+ORC - L2 - BUILDING: War Camp - Orc unit cost is reduced by 20% across all resources (not just coin), build time is reduced by the same 20%, and ongoing per-turn upkeep for the whole army is also reduced by 20% (raised from 10%/cost-only on 2026-07-14; upkeep discount added same day) [18 lore, 4 coin]
+ORC - L3 - BUILDING: Butchery - +10% harvest per turn (this city only) [28 lore, 7 coin]
+ORC - L4 - BUILDING: Dragon Den - +10% coin per turn (this city only) [40 lore, 15 coin]
+ORC - L5 - BUILDING: Ancestral Dolmen (requires The Old Ways) - +10% lore per turn (this city only) [95 lore]
+
+ORC - L1 - MILITARY: Raiders - unlocks Raider unit (basic melee unit). Granted free at civ creation, same as every other race's basic melee unit [Atk 3, Def 1, Mov 1, Vis 2] [11 lore, 4 coin]
+ORC - L1 - MILITARY: Dire Wolf - unlocks the Dire Wolf unit, a fast savage hunter-beast [Atk 2, Def 1, Mov 3, Vis 3, First Strike 3%] [9 lore, 4 coin]. Unique action "hunt": regardless of fog of war, the Dire Wolf always knows the way to the nearest enemy unit on its own landmass and relentlessly closes the distance, attacking anything it catches along the way -- its preferred action, ahead of every other Orc strategy. Orc civ strategy always tries to keep at least one Dire Wolf active, and stops building new Scouts once Dire Wolf is available.
+ORC - L2 - MILITARY: Wolf Riders (requires Dire Wolf) - unlocks Wolf Rider unit (relatively high movement). +1 move in Forest [Atk 4, Def 2, Mov 3, Vis 2] [12 lore, 4 coin]
+ORC - L2 - MILITARY: Impaler Rites - unlocks Impaler unit (high defense, low attack, low movement) [Atk 4, Def 4, Mov 1, Vis 2] [11 lore, 4 coin]
+ORC - L2 - MILITARY: Bog Witch - unlocks Bog Witch unit (Ranged 2). Units that kill a Bog Witch lose 50% attack and 50% movement for 3 turns [Atk 5, Def 4, Mov 1, Vis 3] [18 lore, 7 coin]
+ORC - L2 - MILITARY: Swift Hunters (requires Wolf Riders) - Wolf Rider unit gains 15% First Strike, +2 attack, and +1 movement [17 lore, 7 coin]
+ORC - L3 - MILITARY: Tip of the Spear (requires Impaler Rites) - Impaler unit gains First Strike 25% [22 lore]
+ORC - L3 - MILITARY: Battering Ram - unlocks the Battering Ram unit (relatively low movement, Siege 150%) [Atk 8, Def 4, Mov 1, Vis 2] [26 lore, 14 coin]
+ORC - L3 - MILITARY: Ogre - unlocks the Ogre unit (high attack, Siege 50%) [Atk 8, Def 8, Mov 2, Vis 3] [28 lore, 14 coin]
+ORC - L3 - MILITARY: Malefic Malediction (requires Bog Witch) - units damaged by a Bog Witch lose 50% attack and 50% movement for 3 turns. Stacks alongside Bog Witch's own death-curse [38 lore]
+ORC - L3 - MILITARY: Wasteland Riders (requires Forced March) - +1 move on Desert for Raiders, Wolf Riders, and Ogres [18 lore, 6 harvest]
+ORC - L3 - MILITARY: Hound and Hunter (requires Wolf Riders AND Dire Wolf) - When a Wolf Rider dies, 50% chance a Raider or a Dire Wolf (50/50 between the two) spawns in its place [18 lore, 10 coin]
+ORC - L4 - MILITARY: Siege Tactics (requires Ogre and Battering Ram) - if an orc unit already has the siege property it increases by 20 percentage points, otherwise they gain the property: siege 20% [40 lore, 15 coin]
+ORC - L5 - MILITARY: Draconic Mastery (requires Dragon Den) - unlocks Dragon unit, the single most powerful unit in the game (flying, Ranged 2, Siege 66%) [Atk 14, Def 10, Mov 4, Vis 5] [67 lore, 25 coin]. Deliberately rare, not just expensive: each Dragon a civ already owns (or has queued) compounds the cost AND build time of the next one by 45% (compounding) -- affordable to field 2-3 as a flagship investment, ruinous to mass-produce past that.
+ORC - L5 - MILITARY: Dragon Riders (requires Draconic Mastery) - Dragon unit gains the Carry property (can only carry one other Orc unit, not another Dragon). If the Dragon dies while carrying another unit, that unit spawns into the space the Dragon formerly occupied. A carried unit cannot act except to disembark [70 lore, 25 coin]

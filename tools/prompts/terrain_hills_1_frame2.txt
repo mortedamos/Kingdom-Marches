@@ -1,0 +1,14 @@
+This is the reference image: a single square hills terrain tile viewed
+from an elevated 3/4 angle, showing a gentle hill rise with a muted
+dark-olive ridge outline at its crest and a soft gradient blending into
+the base color at its foot. Produce an updated version of this EXACT
+same image — same hill shape, same muted ridge outline, same gradient
+shading, same overall composition, same edge-to-edge base fill with no
+border around the tile — with only ONE tiny change: nudge the small
+grass-tuft marks a few pixels from their current positions, as if a
+light breeze moved them slightly. Keep the hill shape itself completely
+unchanged. Do not change the background color, do not add any new
+elements, do not add a black outline or border anywhere, do not change
+the framing, camera angle, or zoom level. This is frame 2 of a 2-frame
+idle animation loop, so the change must be subtle — barely noticeable,
+not a dramatic shift.

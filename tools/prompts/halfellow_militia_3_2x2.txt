@@ -1,0 +1,103 @@
+Create a single image containing a 2x2 grid of four equal square
+panels (top-left, top-right, bottom-left, bottom-right), separated by
+a thin visible gap so they can be cut apart afterward. This is a
+4-frame idle animation sprite sheet for a small ANGRY MOB of FOUR
+halfellow villagers-turned-fighters, not a single character. The SAME
+four individuals must appear in all four panels — identical
+identities, art style, colors, palette, proportions, equipment, and
+camera angle/distance for each of the four. Only their poses change,
+panel to panel.
+
+CRITICAL: there are exactly FOUR halfellow figures in this image, in
+every single panel — never three, never five, never a duplicate or
+missing member. The same four individuals (same clothes, same skin
+tone, same weapon each) must be clearly identifiable in every panel.
+Each of the four carries exactly one weapon each and never picks up a
+second — one lit torch, one pitchfork, one rolling pin, one kitchen
+cleaver, one per person, and no other duplicate copies of any of these
+four items anywhere in the scene.
+
+CRITICAL: all four halfellows are short, stocky, hobbit-like figures
+with big round heads and large bare feet (the SAME small halfellow
+scale used elsewhere in this game — noticeably smaller and stockier
+than a human), NOT human-scaled. They are visibly angry and riled
+up — furious scowling expressions, gritted teeth, wide glaring eyes —
+an improvised peasant mob defending their homes, not trained soldiers.
+
+CRITICAL — skin tone diversity: the four halfellows have four visibly
+different skin tones from each other — one fair/pale, one deep brown,
+one warm golden-tan, and one medium olive-tan — so the group reads as
+diverse at a glance.
+
+Art style (applies to all four panels): a cel-shaded outline style —
+thick, clean black outlines around the silhouette and major interior
+linework, sharp details, cel-shaded flat colors with a limited palette
+(2-3 hard-edged tonal steps per surface, no soft airbrushed gradients).
+Warm, cozy, rustic palette (homespun browns, cream, garden green),
+except the torch's flame which may be a bright warm orange-yellow and
+the cleaver's blade a bright steel gray. Furious, riled-up mob mood,
+not whimsical. Elevated 3/4 top-down "strategy game" view, the same
+short/stocky halfellow proportions with big round heads used elsewhere
+in this game.
+
+Subject — the four individuals (applies to all four panels), arranged
+in a tight huddled group two-by-two:
+1. A halfellow male with a fair/pale skin tone and curly hair, wearing
+a rolled-sleeve shirt and patched apron, gripping a lit torch held up
+and out threateningly in one hand.
+2. A halfellow female with a deep brown skin tone and hair tied back
+in a scarf, wearing a homespun dress with a patched apron, gripping a
+farming pitchfork held up and out threateningly in one hand.
+3. A halfellow male with a warm golden-tan skin tone and messy hair,
+wearing a simple rustic tunic, gripping a wooden rolling pin held up
+and out threateningly in one hand.
+4. A halfellow female with a medium olive-tan skin tone and a single
+braid, wearing a rolled-sleeve blouse and a simple skirt, gripping a
+large kitchen cleaver held up and out threateningly in one hand.
+All four stand close together as a small huddled group, no armor, no
+uniforms, no shields — just angry villagers with improvised weapons
+and their bare hairy feet. Minimal ornamentation — no extra straps,
+buckles, or jewelry. In every panel each of the four holds their one
+weapon in a natural, anatomically correct grip in the SAME hand and on
+the SAME side of their body as every other panel — weapons must never
+switch hands or sides, and no one ever holds a second weapon.
+
+Panel 1 (top-left) — neutral base pose: all four standing close
+together in a tight group, facing forward, each brandishing their
+weapon up and out at roughly chest height, angry expressions.
+
+Panel 2 (top-right) — riled up further, moderate motion: all four lean
+forward aggressively and their heads/torsos turn a clear, obvious
+amount to look off to one side together, as if spotting an intruder —
+this must be immediately noticeable at a glance. Each of the four
+shifts their weapon to a clearly different, more aggressive raised
+position than panel 1 — obviously different at a glance, but a
+natural repositioning, not a dramatic wide swinging arc. Weapons stay
+in their same hands.
+
+Panel 3 (bottom-left) — riled up, looking the other way: all four turn
+their heads/torsos a clear, obvious amount toward the other direction
+from panel 2, still standing in the same tight group — this is the
+same four individuals in the same default facing orientation and same
+relative positions as panel 1, simply turning together to look the
+opposite way. This is NOT a mirrored or horizontally flipped image —
+every weapon remains in its same hand and on its same side of its
+owner's body as every other panel. Each weapon shifts to another
+clearly different, aggressive position — distinct from both panel 1
+and panel 2.
+
+Panel 4 (bottom-right) — settling, mid-transition: all four turn back
+toward facing forward together, partway between panel 3 and panel 1.
+Each weapon moves back toward its panel-1 resting position but pauses
+at a noticeably different point along the way, not fully back to panel
+1 yet. Expressions stay angry throughout.
+
+Every panel: the group of four is centered within its panel at the
+same scale, same camera distance, and same padding, all four full
+bodies visible head to feet, on a single flat, solid, saturated
+magenta (#FF00FF) background — completely uniform, no gradient, no
+shadow, no vignette.
+
+Do not include any text, panel labels, numbers, watermark, logo, UI
+elements, sparkle/star decorations, or border anywhere in the image.
+Overall image should be a square 1:1 aspect ratio.

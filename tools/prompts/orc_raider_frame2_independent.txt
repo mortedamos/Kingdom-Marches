@@ -1,0 +1,57 @@
+Game asset: Orc Raider (race: Orc, category: unit) — idle animation frame
+2 of 4.
+
+A single game asset in a cel-shaded outline style: thick, clean black
+outlines around the silhouette and major interior linework, sharp
+details, cel-shaded flat colors with a limited palette (2-3 hard-edged
+tonal steps per surface — base, shadow, occasional highlight — no soft
+airbrushed gradients or blurry ambient occlusion). Clear legibility when
+zoomed out to a small size. Muted, desaturated, earthy fantasy palette
+(olive greens, weathered browns, stone grays, faded ochres) — no
+saturated cartoon colors. Dark-fantasy mood, weathered and lived-in, not
+cute or whimsical. Single consistent light direction from the upper left,
+implied by the shadow/highlight color steps rather than rendered soft
+light.
+
+This asset must stay legible when shrunk down to a very small size, so:
+use strong contrast between neighboring color regions (a bright/light
+element against a dark one, not two similar mid-tones touching); hold
+weapons, shields, or other identifying details out and away from the
+body/silhouette rather than overlapping the head or torso, so key shapes
+don't merge together; and keep ornamental detail minimal — favor a
+small number of bold, simple shapes over fine texture like rivets,
+straps, or fabric folds that won't survive downscaling anyway.
+
+Subject: a stocky, green-skinned orc raider warrior with a horned
+helmet. His weight is shifted fully onto his right leg, which is
+straight and bearing full weight; his left leg is relaxed, bent, and
+slightly lifted at the heel. His hips and shoulders are tilted visibly
+toward the right side as a result. A large two-handed battle axe with a
+bright silver/steel blade is held down and out to his right side, away
+from his head and torso, blade angled so it reads as its own clear
+shape against open background. A round wooden shield with a pale
+bone-white skull painted on it is held out to his left side at waist
+height, also clear of the body silhouette. Simple dark leather armor
+across the chest with no more than one or two visible straps — no
+rivets, buckles, pouches, or fabric folds. Plain dark trousers and
+boots, no decorative texture.
+
+Framing: elevated 3/4 top-down "strategy game" view, single character
+centered with ~10% padding on all sides, stubby proportions at roughly
+1:3 head-to-body ratio, facing the camera or slightly to the right,
+full body visible head to feet. Character should be the same apparent
+size and camera distance as a neutral standing pose of the same
+character would be — do not zoom in or out.
+
+Background: a single flat, solid, saturated magenta (#FF00FF)
+background, completely uniform, no gradient, no shadow cast onto it,
+no vignette — this will be chroma-keyed out, so nothing in the subject
+itself should be magenta or near-magenta.
+
+Race material language: green skin, weathered wood and hide, bone/skull
+trophy motif on the shield. A dark red (#7a2e2e) accent may appear only
+as a small detail — a strip of cloth wrapped on the axe handle — never
+as the dominant color of skin, armor, or gear.
+
+Do not include any text, watermark, logo, UI elements, sparkle/star
+decorations, or border in the image. Square 1:1 aspect ratio.

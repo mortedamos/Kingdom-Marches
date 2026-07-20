@@ -1,0 +1,39 @@
+HUMAN - CIVIC - L1: Spirit of Exploration - +1 movement when starting on Plains. [14 lore]
+
+HUMAN - CIVIC - L1: Rivercraft - +1 movement when starting on Rivers. [14 lore]
+
+
+HUMAN - CIVIC - L1: Homestead - +1 harvest from Plains [14 lore, 6 coin]
+HUMAN - CIVIC - L2: Trade Roads (requires Homestead) - +1 coin per road tile within a city's radius, up to 8 road tiles per city [40 coin]
+HUMAN - CIVIC - L2: Make Way (requires Rivercraft) - Galleys gain +2 movement and +1 vision [14 coin, 8 lore]
+HUMAN - CIVIC - L3: Common Tongue (requires Trade Roads) - +3 lore per turn for each city owned [55 lore]
+HUMAN - CIVIC - L4: Dungeon Delve (requires Wizardry) - A Wizard stationed 2+ turns on a Ruin gradually claims the 1-tile radius around itself (counts toward territorial victory like any owned tile), yields +6 lore and +5 coin per turn, and harvests the resources of every tile it has claimed in that radius. Instantly loses everything it was claiming/generating if the Wizard moves off the Ruin or dies. [26 lore, 14 coin]
+HUMAN - CIVIC - L5: Sovereign Power (requires Common Tongue) - +1 influence radius in every city [60 lore, 25 coin, 15 harvest]
+
+HUMAN - BUILDING - L2: Marketcraft - unlocks Bazaar building (+10% harvest per turn, this city only) [12 coin, 8 harvest]
+HUMAN - BUILDING - L3: Guild Charter - unlocks Guild Hall building (+10% coin per turn, this city only) [22 lore, 13 coin]
+HUMAN - BUILDING - L4: Mage College (requires Wizardry) - unlocks Mage College building (+20% lore per turn, this city only) [35 lore, 15 coin]
+HUMAN - BUILDING - L5: Palace (requires Sovereign Power) - unlocks Palace building, adds +1 influence radius to the city it is next to. Stacks with Sovereign Power on that same city -- deliberately, so Humans get an outsized late-game influence advantage on their capital. [25 harvest, 20 lore, 15 coin]
+
+
+
+HUMAN - MILITARY - L1: Spears Raised - unlocks Spearguard unit (a high defense, low attack, low movement unit). Granted free at civ creation, same as every other race's basic melee unit. [Atk 3, Def 5, Mov 1, Vis 2] [11 lore, 4 coin]
+HUMAN - MILITARY - L2: Defense of the Kingdom (requires Spears Raised) - Spearguard gains +5 defense while garrisoned in a city or on a building tile. [22 lore]
+HUMAN - MILITARY - L2: Longspear (requires Spears Raised) - Grants the Spearguard +2 attack and +1 defense. [22 lore]
+HUMAN - MILITARY - L2: Cavalry - unlocks Cavalry unit (a relatively high movement unit) [Atk 6, Def 4, Mov 3, Vis 3] [17 lore, 8 harvest]
+HUMAN - MILITARY - L2: Archery - unlocks Archer unit (Ranged 2) [Atk 5, Def 3, Mov 2, Vis 3] [17 lore, 8 coin]
+HUMAN - MILITARY - L3: Knighthood (requires Cavalry) - unlocks Knight unit (replaces Cavalry) (a relatively high movement and high attack unit) [Atk 8, Def 7, Mov 4, Vis 3] [20 harvest, 15 lore, 10 coin]
+HUMAN - MILITARY - L3: Longbow (requires Archery) - unlocks Longbowman unit (replaces Archer), higher attack rating and Ranged 3 [Atk 7, Def 4, Mov 2, Vis 4] [28 lore, 12 coin]
+HUMAN - MILITARY - L3: Catapult Engineering (requires Archery) - unlocks Catapult unit (relatively low movement, Ranged 2, Siege 100%) -- a separate unit from Archer/Longbowman, not a replacement; a civ can field both [Atk 7, Def 3, Mov 1, Vis 2] [28 lore, 12 coin]
+HUMAN - MILITARY - L2: Wizardry - unlocks Wizard unit (Ranged 2) [Atk 3, Def 3, Mov 2, Vis 3] [32 lore, 13 coin]
+HUMAN - MILITARY - L3: Freezing Touch (requires Wizardry) - The Wizard may use this action (costs its whole turn, no exhaustion afterward) to apply the Frozen condition to an enemy unit within short range for 3 turns: Frozen sets the target's movement to 0 (cannot move at all) and reduces its attack by 25%. Implemented AI: defensively, freezes a nearby enemy the Wizard itself would lose a straight fight against, so it can't close in or escape while the civ regroups; offensively, freezes an enemy that's about to fight (or already fighting) one of the Wizard's allies in a losing or marginal matchup, swinging the odds in the ally's favor. [30 lore, 12 coin]
+HUMAN - MILITARY - L3: Ramparts (requires Archery) - Walls AND cities can counterattack (not other buildings), with an attack rating at least the Archer's, the Archer's own Ranged reach (2 tiles -- an attacker standing further away takes no counter damage at all), and a First-Strike attacker takes 25% less counter damage -- no attack bonus multiplier and no militia spawn (unlike Halfellow's Rouse the People, which this mirrors structurally) [28 lore, 12 coin]
+HUMAN - MILITARY - L3: Flight (requires Wizardry) - As an action that consumes the Wizard's whole turn, it may grant an adjacent allied unit the Flying property, plus +2 movement and +2 vision, for 5 turns. [42 lore, 18 coin]
+HUMAN - MILITARY - L4: Trebuchet (requires Catapult Engineering) - unlocks Trebuchet unit (replaces Catapult) (very low movement, Ranged 2, Siege 200%) [Atk 9, Def 4, Mov 1, Vis 2] [38 lore, 17 coin]
+HUMAN - MILITARY - L4: Battle Mage (requires Mage College) - Wizard upgraded in place (not replaced): Ranged rises to 3, plus +3 attack and +3 defense [40 lore, 15 coin]
+HUMAN - MILITARY - L4: Teleportation (requires Wizardry) - Wizard may instantly move to any unoccupied tile the civ has ever explored (not just currently visible). This costs the Wizard's entire turn (no move/attack after), and it cannot act again until healed to 100% HP. Implemented AI: uses this both defensively (a badly hurt Wizard blinks to the safest known tile) and offensively -- scans for a confirmed-undefended enemy city/structure and teleports an adjacent ally onto it, preferring a Trebuchet if one's on hand (Teleport erases its crippling movement-1, and its Siege 200% wrecks an undefended target) over the strongest adjacent unit; self-teleports only as a Fireball-setup fallback. [60 lore, 30 coin]
+HUMAN - MILITARY - L4: Chivalric Order (requires Knighthood) - unlocks Paladin unit (replaces Knight) (high attack and defense) [Atk 10, Def 8, Mov 4, Vis 4] [22 harvest, 20 lore, 13 coin]
+HUMAN - MILITARY - L5: Fireball! (requires Battle Mage) - Wizard gains Siege 66% and +3 attack; damage also splashes to every enemy unit and structure adjacent to the target [65 lore, 30 coin]
+HUMAN - MILITARY - L5: Invulnerability (requires Battle Mage) - The wizard unit gains 33% chance to negate all damage from both incoming attacks and counterattacks. [60 lore, 30 coin]
+HUMAN - MILITARY - L5: Invisibility (requires Battle Mage) - The wizard unit can use an action to gain the hidden condition for 3 turns. [40 lore, 20 coin]
+HUMAN - MILITARY - L5: Crusade (requires Chivalric Order and Sovereign Power) - The Paladin exudes a holy aura: in a 1-tile radius around itself (including itself), allied units heal 20% of their HP per turn regardless of whether they're resting, and gain +1 attack, +1 defense, and +25% siege [55 lore, 20 coin, 15 harvest]

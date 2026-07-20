@@ -1,0 +1,52 @@
+Create a single square game terrain tile image, NOT a grid, NOT
+multiple panels — one single flat square image only.
+
+Game asset: Tundra terrain tile, alternate variant (a small snow-dusted
+rock as a foreground accent, for visual variety across a map). This is
+a STATIC tile (no animation), so it only needs to exist as one single
+frame.
+
+Style: this is a TERRAIN tile, not a character or object — it must
+recede visually behind game units, which use bold black outlines and
+sharp cel-shaded flat colors. The ground texture itself uses soft,
+smoothly blended color gradients with no hard black outlines. This tile
+is also rendered very small on screen, so it must read as one or two
+bold, simple shapes — not a detailed illustration.
+
+Subject: open frozen tundra ground, viewed from directly above
+(top-down — this is flat frozen soil/permafrost, not a raised
+landform). The base fill is this flat solid color: hex #B4BFC2 (a pale,
+cold, desaturated gray-blue). On top of that base fill, add 1-2 gently
+curved, soft-edged patches (like faint shadow lines of frost cracks or
+patchy thin snow cover), each a subtle, softly-blended slightly darker
+cold gray-blue (hex #9AACAF) that fades smoothly into the base color on
+both sides — NO hard edge, NO outline of any kind on these patches,
+just soft gradient blending, like a shallow shadow. Additionally, add
+ONE small, simple, bold rounded boulder shape with a light dusting of
+snow on its upper surface (flat muted gray fill, hex #8B9296, with a
+small soft white highlight patch on top suggesting snow — no separate
+outline needed for the snow patch itself), with a normal thin BLACK
+outline around the rock silhouette (like the small foreground
+grass-tuft marks used on plains tiles — the rock is a foreground
+detail, not part of the ground shading). Keep the rock simple and bold,
+not a detailed illustration. The rock must be positioned off-center
+with a clear margin from every edge of the tile.
+
+Framing: top-down flattened tile view (camera looking straight down,
+NOT an elevated 3/4 angle), square 1:1 composition. The base color fill
+extends completely edge-to-edge across the entire image with zero
+padding or margin — only the rock stays clear of the edges, per above.
+
+CRITICAL: there is no black outline, border, frame, or line drawn
+around the edge of the image, and there are no corner brackets, crop
+marks, tick marks, or any small graphic mark of any kind in any of the
+four corners or along any edge — completely plain and unmarked at the
+tile boundary. There is also no vignette or corner darkening — overall
+brightness stays even corner to corner. This is a single seamless
+texture tile meant to butt up directly against identical neighboring
+tiles with zero visible seam, so nothing in this image may mark or
+outline its own boundary in any way.
+
+Do not include any text, labels, numbers, watermark, logo, UI elements,
+or border anywhere in the image. Overall image should be a square 1:1
+aspect ratio.

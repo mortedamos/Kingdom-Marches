@@ -1,0 +1,61 @@
+Create a single square game terrain tile image, NOT a grid, NOT
+multiple panels — one single flat square image only.
+
+Game asset: Swamp/Marsh terrain tile, alternate variant (a cluster of
+mangrove trees with tangled roots rising from murky water, for visual
+variety across a map — swamps should feel alive, not just empty murky
+ground).
+
+Style: this is a TERRAIN tile, not a character or object — it must
+recede visually behind game units, which use bold black outlines and
+sharp cel-shaded flat colors. Terrain does the OPPOSITE: soft, smoothly
+blended color gradients, with a muted (never black) outline used only
+sparingly. This tile is also rendered very small on screen, so it must
+read as one simple, bold silhouette — not a detailed illustration of
+individual leaves or roots.
+
+Subject: a small cluster of mangrove trees, viewed from an elevated 3/4
+angle — like looking at the trees from slightly above and in front, NOT
+a flat top-down view. The base fill is this flat solid color: hex
+#56613C (a murky, desaturated olive-brown-green swamp ground). Below
+the canopy, show a simple tangle of a few curved, gnarled mangrove
+roots in a muted dark brown (simple curved line shapes arching down
+into the water, not fine detailed root hairs) rising out of a dark
+murky water patch (same style as a swamp pool — soft gradient, muted
+outline, no hard edge) at the base. Above the roots, an irregular,
+somewhat messy overlapping canopy mass (2-3 overlapping rounded lobes
+of uneven size, like the forest tiles in this game), filled with a
+deep, murky, desaturated green (hex #3F4A2E), shaded with a soft
+gradient — a gentle lighter highlight on the upper-left, smoothly
+darkening toward the lower-right, NOT hard 2-tone cel-shaded blocks.
+The canopy has a soft, THIN outline in a MUTED DARK shade of the same
+murky green family (NOT black, NOT a hard cartoon outline). The whole
+cluster (roots, water patch, and canopy) must be positioned with a
+clear margin from every edge of the tile, fully contained well inside
+the tile boundary — do not let any part touch or approach the tile's
+edges, since identical neighboring tiles need to butt up against this
+one with zero visible seam. Add 1-2 small simple marsh-grass tufts
+(thin, spiky shapes with a normal thin BLACK outline, like the small
+foreground grass-tuft marks used on plains tiles) scattered nearby.
+
+Framing: elevated 3/4 top-down "strategy game" view (~30-40° downward
+tilt, the same camera angle used for this game's units, hills,
+mountains, and forest, NOT a flat orthographic top-down view), square
+1:1 composition. The base color fill extends completely edge-to-edge
+across the entire image with zero padding or margin — only the mangrove
+cluster stays clear of the edges, per above.
+
+CRITICAL: there is no black outline, border, frame, or line drawn
+around the edge of the image, and there are no corner brackets, crop
+marks, tick marks, or any small graphic mark of any kind in any of the
+four corners or along any edge — completely plain and unmarked at the
+tile boundary. This is a single seamless texture tile meant to butt up
+directly against identical neighboring tiles with zero visible seam, so
+nothing in this image may mark or outline its own boundary in any way.
+Do not render this as a rotated diamond/rhombus floating tile with
+visible thickness or a drop shadow around its own boundary — the base
+color is a plain flat square reaching every edge.
+
+Do not include any text, labels, numbers, watermark, logo, UI elements,
+or border anywhere in the image. Overall image should be a square 1:1
+aspect ratio.

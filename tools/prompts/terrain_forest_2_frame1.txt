@@ -1,0 +1,83 @@
+Create a single square game terrain tile image, NOT a grid, NOT
+multiple panels — one single flat square image only.
+
+Game asset: Forest terrain tile, alternate variant (canopy mass shifted
+toward the opposite side/corner of the tile from the standard variant,
+with a slightly denser trunk cluster, for visual variety across a map).
+
+Style: this is a TERRAIN tile, not a character or object — it must
+recede visually behind game units, which use bold black outlines and
+sharp cel-shaded flat colors. Terrain does the OPPOSITE: soft, smoothly
+blended color gradients, with a muted (never black) outline used only
+sparingly. This tile is also rendered very small on screen, so it must
+read as a simple, bold mass of tree canopy — not a detailed
+illustration of individual leaves.
+
+Subject: forest tree canopy, viewed from an elevated 3/4 angle — like
+looking at a stand of trees from slightly above and in front, NOT a
+flat top-down view. The base fill is this flat solid color: hex
+#6EA54A (the same plains green, since forest directly borders plains).
+On top of that base fill, add an irregular, organic, MESSY mass of
+overlapping tree canopy — several overlapping rounded canopy lobes of
+uneven size, bunched together unevenly (NOT neatly arranged in a tidy
+row or a clean symmetric cluster — vary the lobe sizes and let them
+overlap at irregular angles, like a real ragged tree line, not a
+bouquet), filled with a noticeably deeper, richer, more saturated green
+than the base (hex #3E7A3C), shaded with a soft gradient — a gentle
+lighter highlight on the upper-left, smoothly darkening toward the
+lower-right, NOT hard 2-tone cel-shaded blocks. The canopy mass should
+be large and irregular enough that it extends very close to at least
+two edges of the tile, positioned toward the BOTTOM-LEFT of the frame
+this time rather than the top-right — coming within a small margin of
+the boundary, not centered as a neat padded-all-around blob — but MUST
+fade/thin back down to the plain base color before the literal pixel
+edge, the same way the hill and mountain tiles in this game fade their
+landform shading to the base color before their edges: this tile needs
+to sit flush against an identical copy of itself with zero visible
+seam, and if the canopy's full-saturation color or outline touched the
+literal boundary pixels, an identical neighboring copy would NOT line
+up and would create a hard mismatched edge right at the tile seam. So:
+let the canopy come close to the edge, but always leave the outermost
+few pixels of every edge as plain base color, with the canopy softly
+thinning out (fewer/smaller lobes, fading shade) as it approaches
+rather than being cut off abruptly at full strength. Only the outer
+silhouette of the canopy mass against the open sky/background has a
+soft, THIN outline in a MUTED DARK shade of the same deep green family
+(a dark desaturated forest green, NOT black, NOT a hard cartoon
+outline) — the bottom of the canopy, where it meets the ground, blends
+and fades SEAMLESSLY into the surrounding base color with NO outline,
+so the trees look like they are growing out of the ground, not pasted
+on top of it. In 3-4 of the gaps between canopy lobes near the base,
+show a short, simple, narrow tree trunk in a muted brown (a small
+simple vertical shape, no branch detail) poking out below the canopy
+line.
+
+Framing: elevated 3/4 top-down "strategy game" view (~30-40° downward
+tilt, the same camera angle used for this game's units, hills, and
+mountains, NOT a flat orthographic top-down view) applied ONLY to how
+the trees themselves are drawn (their canopy shapes and trunks angled
+as if seen from slightly above and in front). The image canvas itself
+is a plain SQUARE, and the base green color fills that ENTIRE square
+canvas edge-to-edge on all four sides, corner to corner, like a solid
+wall-to-wall floor color — NOT a rotated diamond or rhombus shape, NOT
+an isometric floating platform/island, NOT a shape with any visible
+edge or boundary of its own, NOT surrounded by white or transparent
+background. There is no ground-plane edge drawn anywhere; the green
+base color simply IS the entire square image outside the tree canopy,
+exactly like the hills and mountains tiles in this same game, which
+use this identical square edge-to-edge base fill with only the raised
+landform getting the 3D-angled treatment.
+
+CRITICAL: there is no black outline, border, frame, or line drawn
+around the edge of the image, and there are no corner brackets, crop
+marks, tick marks, or any small graphic mark of any kind in any of the
+four corners or along any edge — completely plain and unmarked at the
+tile boundary. This is a single seamless texture tile meant to butt up
+directly against identical neighboring tiles with zero visible seam, so
+nothing in this image may mark or outline its own boundary in any way.
+The image must be a full plain square from edge to edge — no diamond
+shape, no white corners, no background visible around a smaller shape.
+
+Do not include any text, labels, numbers, watermark, logo, UI elements,
+or border anywhere in the image. Overall image should be a square 1:1
+aspect ratio.

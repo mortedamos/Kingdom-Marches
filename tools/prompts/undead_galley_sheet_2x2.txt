@@ -1,0 +1,63 @@
+Create a single image containing a 2x2 grid of four equal square
+panels (top-left, top-right, bottom-left, bottom-right), separated by
+a thin visible gap so they can be cut apart afterward. This is a
+4-frame idle animation sprite sheet for a single video game vehicle —
+a ship, not a character. The SAME ship must appear in all four panels
+— identical identity, art style, colors, palette, proportions, and
+camera angle/distance. Only small details of its motion change, panel
+to panel, as if gently rocking on open water.
+
+Art style (applies to all four panels): a cel-shaded outline style —
+thick, clean black outlines around the silhouette and major interior
+linework, sharp details, cel-shaded flat colors with a limited palette
+(2-3 hard-edged tonal steps per surface, no soft airbrushed gradients).
+Muted, desaturated, earthy fantasy palette (rotted dark timber, bone
+whites, weathered gray). Dark-fantasy mood, not cute or whimsical.
+Elevated 3/4 top-down "strategy game" view, the same angle and framing
+used for other units in this game.
+
+Subject (applies to all four panels): a derelict undead ghost ship —
+a rotted, waterlogged wooden hull with a few dark planks missing or
+broken, bleached bone fragments and a single skull lashed to the prow
+as a grim figurehead, a single cracked mast carrying a tattered,
+shredded dark sail, a row of worn oars along each side, and a faint
+wisp of pale green necrotic mist curling up from the deck. A dark
+purple-gray (#5b5470) accent may appear only as a small detail on a
+tattered banner or a painted trim stripe along the hull — never as the
+dominant color of the wood or sail. Minimal ornamentation beyond the
+prow skull and mist — no elaborate carvings. The ship's overall shape,
+hull, and mast position stay the same in every panel — this is the
+same ship, not a different pose or angle.
+
+Panel 1 (top-left) — neutral resting pose: the ship sits level in the
+water, sail loosely hanging in tatters, oars resting at a neutral
+angle, the banner hanging with only a slight droop.
+
+Panel 2 (top-right) — a clear, obvious gust of wind: the banner streams
+out clearly and visibly in the wind, and the tattered sail bells
+outward slightly more than panel 1 — an obviously different, noticeable
+change at a glance, but a natural amount of motion, not an exaggerated
+storm. The oars may dip slightly differently than panel 1.
+
+Panel 3 (bottom-left) — rocking the other way on a swell: the ship's
+hull tilts a clear, obvious amount to one side as if riding a gentle
+swell — noticeably different from both panel 1 and panel 2. The
+banner and sail shift naturally with the tilt. This is NOT a mirrored
+or horizontally flipped image — the ship's hull shape, mast, and
+overall silhouette stay consistent with the other panels, only the
+tilt and cloth motion change.
+
+Panel 4 (bottom-right) — settling, mid-transition: the ship levels
+back out partway between panel 3 and panel 1, banner and sail motion
+settling down but not fully back to panel 1's resting state yet.
+
+Every panel: the ship is centered within its panel at the same scale,
+same camera distance, and same padding, the full vessel visible bow to
+stern, on a single flat, solid, saturated magenta (#FF00FF)
+background — completely uniform, no gradient, no shadow, no vignette,
+and no water/waves rendered under the ship (the ship itself floats in
+the flat magenta field).
+
+Do not include any text, panel labels, numbers, watermark, logo, UI
+elements, sparkle/star decorations, or border anywhere in the image.
+Overall image should be a square 1:1 aspect ratio.

@@ -1,0 +1,71 @@
+Create a single image containing a 2x2 grid of four equal square
+panels (top-left, top-right, bottom-left, bottom-right), separated by
+a thin visible gap so they can be cut apart afterward. This is a
+4-frame idle animation sprite sheet for a single video game character.
+The SAME character must appear in all four panels — identical
+identity, art style, colors, palette, proportions, equipment, and
+camera angle/distance. Only his pose changes, panel to panel.
+
+Art style (applies to all four panels): a cel-shaded outline style —
+thick, clean black outlines around the silhouette and major interior
+linework, sharp details, cel-shaded flat colors with a limited palette
+(2-3 hard-edged tonal steps per surface, no soft airbrushed gradients).
+Muted, desaturated, earthy fantasy palette (warm browns, cream, faded
+denim blue, weathered tan). Grounded, practical mood — a civilian
+worker, not a soldier. Elevated 3/4 top-down "strategy game" view,
+stubby proportions at roughly 1:3 head-to-body ratio.
+
+Character (applies to all four panels): a human settler/pioneer — no
+armor, no weapon. Simple practical traveling clothes: a rolled-sleeve
+tunic, sturdy trousers, worn boots, and a wide-brimmed traveling hat.
+He carries a wooden survey stake bundled with rolled parchment maps
+under one arm, and holds a simple iron pickaxe down and out to his
+other side in a natural grip. Minimal ornamentation — no extra straps,
+buckles, or pouches beyond a single small tool belt. A muted purple
+(#8e44ad) accent may appear only as a small detail, such as a
+kerchief or a ribbon tied to the map roll. In every panel he holds the
+pickaxe in a natural, anatomically correct grip — never behind his
+back, never reversed or backwards. The pickaxe stays in the same hand
+and on the same side of his body in every single panel, and the
+map/stake bundle stays under the same arm in every single panel — they
+must never switch sides between panels. Only the height, angle, and
+position of the pickaxe may change; which hand holds it must stay
+fixed across all four panels.
+
+Panel 1 (top-left) — neutral base pose: standing in a relaxed stance,
+facing forward, pickaxe held down and out to one side in a natural
+grip, map bundle tucked under his other arm.
+
+Panel 2 (top-right) — alert and industrious, moderate motion: his head
+and torso turn a clear, obvious amount to look off to one side, as if
+sizing up the land — this must be immediately noticeable at a glance,
+not a subtle glance. At the same time he shifts the pickaxe to a
+clearly different position — raised a moderate amount higher, or
+angled noticeably differently, than panel 1 — obviously different at a
+glance, but a natural repositioning, not a dramatic wide swinging arc.
+
+Panel 3 (bottom-left) — alert and industrious, looking the other way:
+his head and torso turn a clear, obvious amount to look toward the
+other direction from panel 2 — this is the same character in the same
+default facing orientation as panel 1, simply turning his head and
+torso to look the opposite way. This is NOT a mirrored or horizontally
+flipped image — the pickaxe and map bundle remain on their same sides
+of his body as every other panel, exactly as instructed above. The
+pickaxe shifts to another clearly different moderate position —
+distinct from both panel 1 and panel 2 — again a natural
+repositioning, not an extreme swinging arc.
+
+Panel 4 (bottom-right) — settling, mid-transition: his head and torso
+turn back toward facing forward, partway between panel 3 and panel 1.
+The pickaxe moves back toward its panel-1 resting position but pauses
+at a noticeably different point along the way, not fully back to panel
+1 yet.
+
+Every panel: the character is centered within its panel at the same
+scale, same camera distance, and same padding, full body visible head
+to feet, on a single flat, solid, saturated magenta (#FF00FF)
+background — completely uniform, no gradient, no shadow, no vignette.
+
+Do not include any text, panel labels, numbers, watermark, logo, UI
+elements, sparkle/star decorations, or border anywhere in the image.
+Overall image should be a square 1:1 aspect ratio.

@@ -1,0 +1,73 @@
+Create a single image containing a 2x2 grid of four equal square
+panels (top-left, top-right, bottom-left, bottom-right), separated by
+a thin visible gap so they can be cut apart afterward. This is a
+4-frame idle animation sprite sheet for a single video game siege
+engine — a machine, not a character. The SAME battering ram must
+appear in all four panels — identical identity, art style, colors,
+palette, proportions, and camera angle/distance. Only the hanging
+angle of its ram log changes, panel to panel, as if it sways gently on
+its chains while at rest.
+
+CRITICAL: this battering ram has exactly ONE wooden ram log, capped
+with exactly ONE crude iron head, suspended by chains inside its
+frame, in every single panel — never two ram logs, never two iron
+heads, never missing. Each panel below shows the SAME single ram log,
+simply drawn hanging at a different fixed angle. Do not think of these
+as a before/after transition or a swinging motion — each panel is an
+independent static snapshot of the one log at one angle. Never draw
+the log at two angles, or two iron heads, within the same panel.
+
+Art style (applies to all four panels): a cel-shaded outline style —
+thick, clean black outlines around the silhouette and major interior
+linework, sharp details, cel-shaded flat colors with a limited palette
+(2-3 hard-edged tonal steps per surface, no soft airbrushed gradients).
+Muted, desaturated, earthy fantasy palette (weathered wood brown, dull
+iron gray, dark red accent). Crude, tribal orc craftsmanship, not
+cute or whimsical. Elevated 3/4 top-down "strategy game" view, the
+same angle and framing used for other units in this game.
+
+Subject (applies to all four panels): a SIMPLE, ICONIC orc battering
+ram — deliberately simplified geometry, not a detailed engineering
+replica. Just three structural pieces: (1) a sturdy peaked wooden
+frame on four small wheels, roughly the shape of a small covered cart,
+crudely built from thick plain timber beams lashed together with rope,
+(2) a simple angled wooden roof over the top for cover, decorated with
+a few crude bone or tusk trophies lashed along its ridge, (3) one thick
+wooden ram log capped with a crude, blunt iron head, hanging inside
+the frame from a small number of simple chains. A dark red (#7a2e2e)
+accent may appear only as a small detail, such as a painted tribal
+marking on the frame — never as the dominant color of the wood or
+iron. This should read as a simple, bold, instantly-recognizable
+battering ram silhouette at a glance — think a children's-book
+illustration of a battering ram, not a mechanically-accurate diagram.
+The frame's overall shape, wheel position, and roof stay the same in
+every panel — this is the same machine, not a different pose or
+angle.
+
+Panel 1 (top-left): the ram log hangs low and centered, close to
+straight down, at rest.
+
+Panel 2 (top-right): the ram log hangs swung forward, clearly and
+obviously toward the front of the frame — noticeably different from
+panel 1 at a glance.
+
+Panel 3 (bottom-left): the ram log hangs swung backward, toward the
+rear of the frame — clearly distinct from both panel 1 and panel 2.
+This is NOT a mirrored or horizontally flipped image — the frame,
+wheels, and roof stay consistent with the other panels, only the
+log's hanging angle changes.
+
+Panel 4 (bottom-right): the ram log hangs swung forward again, similar
+to panel 2 but at a slightly different angle from it — still clearly
+distinct from panel 1's centered position.
+
+Every panel: the battering ram is centered within its panel at the
+same scale, same camera distance, and same padding, the full machine
+visible, on a single flat, solid, saturated magenta (#FF00FF)
+background — completely uniform, no gradient, no shadow, no vignette,
+and no ground/terrain rendered under the wheels (the machine itself
+sits in the flat magenta field).
+
+Do not include any text, panel labels, numbers, watermark, logo, UI
+elements, sparkle/star decorations, or border anywhere in the image.
+Overall image should be a square 1:1 aspect ratio.

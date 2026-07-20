@@ -1,0 +1,19 @@
+This is the reference image: a single square deep-ocean terrain tile
+viewed from directly above, with TWO soft-edged, gently curved,
+roughly-horizontal wave-crest bands (lighter teal-blue highlight with a
+thin soft pale foam highlight line along each ridge) on a deep blue
+base fill, edge-to-edge with no border — one band in the upper third of
+the tile, one in the lower third. Produce frame 2 of a 4-frame rolling
+wave animation loop: an updated version of this EXACT same image — same
+base color, same overall style, same soft gradient blending, same lack
+of any border or outline around the tile edge — but shift BOTH
+wave-crest bands downward by a visible amount, as if the swells are
+rolling steadily down the tile (the band that was in the lower third
+should now be nearing the bottom edge; the band that was in the upper
+third should now be near the middle). Their shape, width, and softness
+stay consistent with the reference, only their vertical position moves.
+Do not add any new elements, do not add a black outline or border
+anywhere, do not change the base color or the framing/zoom level. The
+motion should be clearly visible frame-to-frame, not barely noticeable
+— this is a prominent, deliberate wave animation, not a subtle idle
+sway.

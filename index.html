@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Arcane Empires</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;700;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+  <!-- Title screen: visible before a game starts -->
+  <div id="title-screen" class="title-screen">
+
+    <!-- Toolbar: all launch controls live here -->
+    <div class="title-toolbar">
+      <div id="toolbar-controls" class="toolbar-controls"></div>
+      <button id="start-game-btn" class="start-btn-toolbar">Begin</button>
+    </div>
+
+    <!-- Main area: faded background image + logo -->
+    <div class="title-main">
+      <div class="title-bg-overlay"></div>
+      <div class="title-content">
+        <img class="title-logo" src="assets/img/logo.png" alt="Arcane Empires">
+        <p class="title-byline">2026 Shawn Nicolen</p>
+        <button id="title-music-btn" class="title-music-btn">♪ Play Music</button>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Game screen: shown once a game is running -->
+  <div id="game-screen" class="game-screen" style="display:none;">
+    <div class="menu-bar">
+      <div class="menu-item">
+        <button class="menu-btn" id="menu-file-btn">File</button>
+        <div class="menu-dropdown" id="menu-file-dropdown" style="display:none;">
+          <div class="audio-panel-row now-playing-row">
+            <span>Map Seed</span>
+            <span id="map-seed-label" class="now-playing-value">—</span>
+          </div>
+          <button id="save-game-btn" class="menu-dropdown-btn">Save Game</button>
+          <button id="load-game-btn" class="menu-dropdown-btn">Load Game</button>
+        </div>
+      </div>
+      <div class="menu-item">
+        <button class="menu-btn" id="menu-interface-btn">Interface</button>
+        <div class="menu-dropdown" id="menu-interface-dropdown" style="display:none;">
+          <button id="influence-toggle-btn" class="menu-dropdown-btn">Toggle Influence Overlay</button>
+          <div id="fog-of-war-panel" class="fow-panel" style="display:none;">
+            <div class="fow-panel-label">Fog of War</div>
+            <label class="audio-panel-row"><span>Off</span><input type="radio" name="fow-mode" id="fow-mode-off" value="off" checked></label>
+            <label class="audio-panel-row"><span>On (All Races)</span><input type="radio" name="fow-mode" id="fow-mode-all" value="all"></label>
+            <label class="audio-panel-row"><span>On (Selected Races)</span><input type="radio" name="fow-mode" id="fow-mode-selected" value="selected"></label>
+            <div id="fow-race-list" class="fow-race-list" style="display:none;"></div>
+          </div>
+          <div id="tile-score-panel" class="fow-panel">
+            <div class="fow-panel-label">Tile City Score</div>
+            <label class="audio-panel-row">
+              <span>Show</span>
+              <input type="checkbox" id="tile-score-toggle">
+            </label>
+            <label class="audio-panel-row">
+              <span>Race</span>
+              <select id="tile-score-race-select"></select>
+            </label>
+          </div>
+        </div>
+      </div>
+      <div class="menu-item">
+        <button class="menu-btn" id="menu-audio-btn">Audio</button>
+        <div class="menu-dropdown audio-panel" id="menu-audio-dropdown" style="display:none;">
+          <div class="audio-panel-row now-playing-row">
+            <span>Now Playing</span>
+            <span id="now-playing-label" class="now-playing-value">(silence)</span>
+          </div>
+          <label class="audio-panel-row">
+            <span>Mute</span>
+            <input type="checkbox" id="audio-mute-checkbox">
+          </label>
+          <label class="audio-panel-row">
+            <span>Volume</span>
+            <input type="range" id="audio-volume-slider" min="0" max="100" value="100">
+          </label>
+          <label class="audio-panel-row">
+            <span>Track</span>
+            <select id="audio-track-select">
+              <option value="">Auto</option>
+            </select>
+          </label>
+        </div>
+      </div>
+      <div class="menu-item">
+        <button class="menu-btn" id="menu-report-btn">Report</button>
+        <div class="menu-dropdown" id="menu-report-dropdown" style="display:none;">
+          <button class="menu-dropdown-btn" id="report-influence-btn">Influence</button>
+          <button class="menu-dropdown-btn" id="report-power-btn">Military Power</button>
+          <button class="menu-dropdown-btn" id="report-ai-actions-btn">AI Actions</button>
+          <button class="menu-dropdown-btn" id="report-ai-tech-trees-btn">AI Tech Trees</button>
+        </div>
+      </div>
+      <div class="menu-item" id="menu-speed-item" style="display:none;">
+        <button class="menu-btn" id="menu-speed-btn">Speed</button>
+        <div class="menu-dropdown" id="menu-speed-dropdown" style="display:none;">
+          <div class="speed-btn-row">
+            <button class="speed-btn active" data-speed="1">1x</button>
+            <button class="speed-btn" data-speed="2">2x</button>
+            <button class="speed-btn" data-speed="4">4x</button>
+            <button class="speed-btn" data-speed="8">8x</button>
+            <button class="speed-btn" data-speed="16">16x</button>
+          </div>
+          <button id="spectator-pause-btn" class="menu-dropdown-btn">Pause</button>
+        </div>
+      </div>
+      <div class="zoom-control">
+        <button class="zoom-btn" id="zoom-out-btn" title="Zoom out">−</button>
+        <span class="zoom-level-label" id="zoom-level-label">100%</span>
+        <button class="zoom-btn" id="zoom-in-btn" title="Zoom in">+</button>
+      </div>
+    </div>
+    <div class="game-body">
+      <div class="map-area">
+        <canvas id="map-canvas"></canvas>
+        <input type="file" id="load-game-file-input" accept="application/json" style="display:none;">
+      </div>
+      <div id="sidebar" class="sidebar"></div>
+    </div>
+    <div id="techtree-overlay" class="techtree-overlay" style="display:none;">
+      <div id="techtree-modal" class="techtree-modal">
+        <button class="techtree-close-btn" id="techtree-close-btn">Close</button>
+        <div id="techtree-content"></div>
+      </div>
+    </div>
+    <div id="reports-overlay" class="techtree-overlay" style="display:none;">
+      <div id="reports-modal" class="techtree-modal reports-modal">
+        <button class="techtree-close-btn" id="reports-close-btn">Close</button>
+        <div id="reports-content"></div>
+      </div>
+    </div>
+    <div id="game-dialog-overlay" class="techtree-overlay" style="display:none;">
+      <div id="game-dialog-modal" class="techtree-modal game-dialog-modal"></div>
+    </div>
+  </div>
+
+  <!-- Data files (must load before engine files) -->
+  <script src="js/data/sprite-manifests.js"></script>
+  <script src="js/data/races.js"></script>
+  <script src="js/data/race-names.js"></script>
+  <script src="js/data/terrain.js"></script>
+  <script src="js/data/units.js"></script>
+  <script src="js/data/unit-names.js"></script>
+  <script src="js/data/quips.js"></script>
+  <script src="js/data/techs.js"></script>
+  <script src="js/data/buildings.js"></script>
+
+  <!-- Engine files (must load before main.js) -->
+  <script src="js/engine/worldgen.js"></script>
+  <script src="js/engine/influence.js"></script>
+  <script src="js/engine/pathfinding.js"></script>
+  <script src="js/engine/cities.js"></script>
+  <script src="js/engine/combat.js"></script>
+  <script src="js/engine/quips.js"></script>
+  <script src="js/engine/floatingtext.js"></script>
+  <script src="js/engine/tech.js"></script>
+  <script src="js/engine/strategy.js"></script>
+  <script src="js/engine/ai.js"></script>
+  <script src="js/engine/turns.js"></script>
+  <script src="js/engine/savegame.js"></script>
+
+  <!-- Audio -->
+  <script src="js/audio/music.js"></script>
+
+  <!-- UI -->
+  <script src="js/ui/sprites.js"></script>
+  <script src="js/ui/render.js"></script>
+  <script src="js/ui/sidebar.js"></script>
+  <script src="js/ui/techtree.js"></script>
+  <script src="js/ui/reports.js"></script>
+  <script src="js/ui/dialog.js"></script>
+  <script src="js/ui/input.js"></script>
+
+  <!-- Bootstrap (last) -->
+  <script src="js/main.js"></script>
+</body>
+</html>

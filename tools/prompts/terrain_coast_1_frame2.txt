@@ -1,0 +1,15 @@
+This is the reference image: a single square shallow coastal water
+terrain tile viewed from directly above, with 2 soft, round-ish glowing
+highlight patches (pale bright cyan radial glow) scattered over a
+brighter turquoise-blue base fill, edge-to-edge with no border. Produce
+frame 2 of a 2-frame gentle shimmer idle animation loop: an updated
+version of this EXACT same image — same base color, same overall
+composition, same lack of any border or outline around the tile edge —
+with only a subtle change: the two glowing highlight patches shift
+slightly in position and brightness (as if sunlight glinting on the
+water's surface flickered gently), like a light shimmer or twinkle. The
+shapes stay soft round glows in roughly the same area, just subtly
+different — this is a gentle idle shimmer, not a dramatic change. Do
+not change the background color, do not add any new elements, do not
+add a black outline or border anywhere, do not change the framing or
+zoom level.

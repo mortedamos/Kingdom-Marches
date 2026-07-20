@@ -1,0 +1,15 @@
+This is the reference image: a single square shallow coastal water
+terrain tile viewed from directly above, with a soft, blurred, pale
+sandy-tan shoal patch glimpsed beneath the water and one small soft
+round glowing cyan highlight patch, over a brighter turquoise-blue base
+fill, edge-to-edge with no border. Produce frame 2 of a 2-frame gentle
+shimmer idle animation loop: an updated version of this EXACT same
+image — same base color, same sandy shoal patch position/shape/opacity,
+same lack of any border or outline around the tile edge — with only a
+subtle change: the glowing cyan highlight patch shifts slightly in
+position and brightness (as if sunlight glinting on the water's surface
+flickered gently), like a light shimmer or twinkle. This is a gentle
+idle shimmer, not a dramatic change. Do not change the background
+color, do not change the sandy shoal patch, do not add any new
+elements, do not add a black outline or border anywhere, do not change
+the framing or zoom level.

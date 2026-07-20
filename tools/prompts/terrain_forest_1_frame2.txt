@@ -1,0 +1,16 @@
+This is the reference image: a single square forest terrain tile
+viewed from an elevated 3/4 angle, showing a messy, irregular mass of
+tree canopy with a muted dark-green outline against the sky, occasional
+tree trunks visible at the base, and the canopy base blending seamlessly
+into a plains-green ground. Produce an updated version of this EXACT
+same image — same base color, same canopy mass shape/position/size,
+same trunks, same muted outline, same gradient shading, same overall
+composition, same edge-to-edge base fill with no border around the tile
+— with only ONE tiny change: a very subtle shift in the canopy's
+highlight/shading, as if a light breeze stirred the treetops slightly
+(the silhouette shape itself stays the same, just the internal soft
+shading shifts a little). Do not change the background color, do not
+add any new elements, do not add a black outline or border anywhere, do
+not change the framing, camera angle, or zoom level. This is frame 2 of
+a 2-frame idle animation loop, so the change must be subtle — barely
+noticeable, not a dramatic shift.

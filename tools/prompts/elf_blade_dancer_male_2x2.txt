@@ -1,0 +1,76 @@
+Create a single image containing a 2x2 grid of four equal square
+panels (top-left, top-right, bottom-left, bottom-right), separated by
+a thin visible gap so they can be cut apart afterward. This is a
+4-frame idle animation sprite sheet for a single video game character
+— a male elven Blade Dancer, an agile melee duelist. The SAME character
+must appear in all four panels — identical identity, art style,
+colors, palette, proportions, equipment, and camera angle/distance.
+Only his pose changes, panel to panel.
+
+CRITICAL: there is exactly ONE character in this image, appearing
+exactly once per panel, in ALL FOUR panels including both bottom
+panels. Each of the 4 panels contains a single solitary figure — never
+two characters, never a duplicate, twin, or mirrored copy standing
+side by side in the same panel. If you find yourself about to draw a
+second figure in any panel, stop and draw only one.
+
+Art style (applies to all four panels): a cel-shaded outline style —
+thick, clean black outlines around the silhouette and major interior
+linework, sharp details, cel-shaded flat colors with a limited palette
+(2-3 hard-edged tonal steps per surface, no soft airbrushed
+gradients). Muted, desaturated, earthy fantasy palette (olive greens,
+weathered browns, stone grays, faded ochres). Dark-fantasy mood,
+weathered and lived-in, not cute or whimsical. Single consistent light
+direction from the upper left. Elevated 3/4 top-down "strategy game"
+view. IMPORTANT proportions note specific to elves: unlike the stockier
+stubby/chibi ~1:3 head-to-body ratio used for other races in this
+game, elves are tall and slender — use a noticeably smaller head
+relative to body height, roughly a 1:4.5 head-to-body ratio, an
+elongated elegant build, NOT the stubby chibi look. Use this exact
+same slender 1:4.5 ratio for the female variant of this same unit too
+— neither gender should be more chibi/large-headed than the other.
+
+Subject (applies to all four panels): a male wood-elf duelist, lightly
+armored and built for speed and grace rather than heavy defense — pale
+skin, dark brown hair tied back, unmistakably pointed ears visible,
+wearing a fitted sleeveless leather vest over a tan tunic, wrapped
+leather bracers on both forearms, and a long trailing cloth sash at
+the waist that suggests fluid, dance-like movement. He wields a pair
+of matched curved short blades, one in each hand, held out and away
+from the body in a ready stance — not overlapping the torso. A single
+elven-green (#3f8f5c) accent may appear only as a small detail, such
+as the sash color or a blade-hilt wrap — otherwise stay in the muted
+olive/tan/brown leather palette, living-wood and forest material
+language, minimal metal. Framing: elevated 3/4 top-down "strategy
+game" view, single character centered with ~10% padding on all sides,
+tall and slender elf proportions at roughly 1:4.5 head-to-body ratio
+(noticeably less chibi/stubby than other races), facing the camera or
+slightly to the right, full body visible head to feet.
+
+Panel 1 (top-left) — neutral base pose: standing in a light, poised
+ready stance, both blades held out to the sides, facing forward.
+
+Panel 2 (top-right) — alert, moderate motion: weight shifts into a
+clear, obvious half-turn to one side, blades angling with the motion
+— immediately noticeable at a glance, not a subtle glance. Sash
+trailing with the movement.
+
+Panel 3 (bottom-left) — alert, looking the other way: weight shifts a
+clear, obvious amount toward the other direction from panel 2 — the
+same character in the same default ready stance as panel 1, simply
+turning to face the opposite way. This is NOT a mirrored or
+horizontally flipped image — both blades stay in the same hands as
+every other panel.
+
+Panel 4 (bottom-right) — settling, mid-transition: turning back toward
+facing forward, partway between panel 3 and panel 1, sash settling.
+
+Every panel: the character is centered within its panel at the same
+scale, same camera distance, and same padding, full body visible head
+to feet, on a single flat, solid, saturated magenta (#FF00FF, bright
+hot pink, not a duller or darker mauve) background — completely
+uniform, no gradient, no shadow, no vignette.
+
+Do not include any text, panel labels, numbers, watermark, logo, UI
+elements, sparkle/star decorations, or border anywhere in the image.
+Overall image should be a square 1:1 aspect ratio.

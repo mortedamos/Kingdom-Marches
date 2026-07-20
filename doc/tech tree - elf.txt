@@ -1,0 +1,42 @@
+
+
+
+
+ELF - CIVIC - L1: "Home in the Trees" - +1 movement when starting on Forest.
+ELF - CIVIC - L1: "Nature Provides" - +1 harvest from Forest 
+ELF - CIVIC - L1: "The Murmuring of Leaves" - +1 lore from Forest 
+ELF - CIVIC - L1: "Architecture of Light and Air" - +2 lore per building constructed in a city (walls don't count) 
+ELF - CIVIC - L2: "Whispering Waters" - +1 lore from river. 
+ELF - CIVIC - L2: "Reverie of Sunset" (requires "Architecture of Light and Air") - +8 lore from any tile with a ruin covered by elven influence.
+ELF - CIVIC - L2: "Longstrider" - +1 movement when starting on Plains.
+ELF - CIVIC - L3: "Dancing Upon Azure Waves" (requires "Whispering Waters") - Galleys gain +2 movement and +1 vision
+ELF - CIVIC - L3: "Gems of Starlight" - +1 coin from mountains.
+ELF - CIVIC - L4: "Wind From Distant Treetops" (requires "The Murmuring of Leaves") - All forest tiles anywhere on the map are always revealed (no fog of war in those tiles, all forest tiles are always visible to elf player/AI).
+ELF - CIVIC - L5: "Vision Beyond Sight" (requires "Air Beneath, Eyes Above") - All elf units gain +1 vision. 
+
+
+
+ELF - BUILDING - L2: "Aelderwatch" - unlocks the Treetop Watch building. The city this building is adjacent to gains +2 vision radius.
+ELF - BUILDING - L3: "Silverleaf Atelier" (requires "Architecture of Light and Air" AND "Gems of Starlight") - unlocks the Silverleaf Atelier building, which grants +10% coin and +10% lore to its city.
+ELF - BUILDING - L4: "Altar of Ages" (requires "Druidism" AND "Reverie of Sunset") - unlocks the Altar of Ages building, granting all elf units created in this city gain an extra 25% xp. 
+ELF - BUILDING - L5: "Wellspring Grove" - (requires "The Murmuring of Leaves" AND "Whispering Waters") All elf units and walls and buildings within this city's radius heal 5% health per turn (minimum 1 HP), regardless of if they are resting or not.
+
+
+
+ELF - MILITARY - L1: "Watching, Hunting" - unlocks the Ranger unit. Range 2, first strike. Granted free at civ creation, same as every other race's basic unit.
+ELF - MILITARY - L1: "Wind and Flashing Steel" - unlocks the Blade Dancer unit. Melee, first strike.
+ELF - MILITARY - L1: "Shadowed Hush, Unseen" - Every elf unit may spend its whole turn to become Hidden for 3 turns (voluntarily cancellable early). Cannot activate with an enemy unit on an adjacent tile. Unit becomes unhidden when it attacks. Whenever a Hidden unit is revealed for any reason, it is forced visible for at least 1 turn before it can go Hidden again. 
+ELF - MILITARY - L2: Strike from the Shadows (requires "Shadowed Hush, Unseen") - A Hidden elf unit gains +50% bonus to attack score. Attacking uses this bonus, then ends Hidden as normal. Implemented AI: weighs an isolated sneak-ambush against a full multi-unit assault based on militarism; goes Hidden defensively when it would probably lose a straight fight, and offensively can hold its strongest nearby unit visible as bait while weaker allies go Hidden nearby to spring the ambush once this tech makes it worth the setup. Different from halfellow - elf ranger, because of their ranged attacks, may make use of this tactic even against stronger enemies or while a single unit without allies nearby - hide, attack at range with the attack bonus, then hide again. 
+ELF - MILITARY - L2: Druidism (requires "The Murmuring of Leaves" AND "Whispering Waters") - unlocks the druid unit (magic unit, like human wizard, utility unit). range 2. may found a city (in addition to the Pioneer)
+ELF - MILITARY - L2: "Air Beneath, Eyes Above" (requires "Druidism") - The druid may summon a Raptor to assist elven allies. Like a city, the druid "builds" the unit, spending resources and several rounds of time to do so. While building this unit, the druid cannot move or take other actions (but it can build this unit while hidden, if it was already hidden before it started). The raptor unit has attack 1, defense 0, flight, first strike 2%, very high movement and very high vision. Its purpose in game is to explore and scout, and should priortize doing so. Cities cannot build Raptor units.
+ELF - MILITARY - L2: "First Frost of Autumn" - Elf unit attacks have a 10% chance to inflict the Frozen condition.
+ELF - MILITARY - L3: "Hunter's Soul" (requires "Watching, Hunting") - Rangers gain +1 range and +1 attack. 
+ELF - MILITARY - L3: "Nature's Grace" (requires "Druidism" AND "Nature Provides") - The druid unit may use this action (costs its whole turn, no exhaustion afterward) to restore between 10% to 30% (random) health to an adjacent ally unit.
+ELF - MILITARY - L3: "Steely Eyed" - All elf units gain +1 vision. 
+ELF - MILITARY - L3: "Sudden Doom" (requires "Strike from the Shadows") - Replacing Strike from Shadows (one effect, not two stacking bonuses), the bonus to attack score while hidden increases to +100% instead of +50% and the unit also gains first strike +10%. Both of these bonuses end when the unit is no longer hidden.
+ELF - MILITARY - L3: "Silverlight Steel" (requires "Silverleaf Atelier") - Blade Dancers gain +1 attack and +1% first strike.
+ELF - MILITARY - L3: "Roots of the World" (requires "Druidism") - A druid unit may instantly move to any unoccupied tile the civ has ever explored (not just currently visible). This costs the druid's entire turn (no move/attack after), and it cannot act again until healed to 100% HP. Implemented AI: uses this both defensively (a badly hurt druid blinks to the safest known tile) and to expand: a druid civ looking for a place to build a city may consider far-off forest tiles, teleport the druid there, then found a new city.
+ELF - MILITARY - L4: "Quick as a Shadow" (requires "Strike from the Shadows") - A hidden elf unit can move at full speed, unlike most hidden units.
+ELF - MILITARY - L4: "Sanctuary under Green Boughs" - All elves gain +20% defense when in forest. 
+ELF - MILITARY - L5: "Shadowsteed" (requires "Air Beneath, Eyes Above" AND "Quick as a Shadow") - The druid may summon a flying horse made of shadow to assist elven allies. Like a city, the druid "builds" the unit, spending resources and several rounds of time to do so. While building this unit, the druid cannot move or take other actions (but it can build this unit while hidden, if it was already hidden before it started). The "shadow steed" is its own unit with flying, carry, first strike 5%, attack 1, defense 1. It cannot carry an Awakened Oak or Raptor. When it carries another unit, it gains the range, attack, defense, siege, and first strike of that unit (keeping its own first strike if higher). Then it gains 2 attack and 1 defense while carrying a unit. Need to impliment AI strategy so that a druid will summon a shadow steed, and the steed will obtain a rider. Cities cannot build Shadow Steed units.
+ELF - MILITARY - L5: "The Living Forest" (requires "Druidism" AND "Sanctuary under Green Boughs") - unlocks the Awakened Oak unit, a living, walking tree. (massive, rare, very tough, high attack and defense, high siege, neverExplores).

@@ -1,0 +1,5 @@
+# Large binary art assets and manual zip backups are excluded to keep the
+# repo lean -- this refactor only touches engine code (js/), which is what
+# needs to be reviewable/revertible. Re-add if full asset versioning is wanted.
+assets/
+backups/

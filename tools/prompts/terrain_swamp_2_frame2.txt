@@ -1,0 +1,15 @@
+This is the reference image: a single square swamp terrain tile viewed
+from an elevated 3/4 angle, showing a weeping willow tree with a muted
+dark-green drooping canopy, a visible trunk, a small dark water pool at
+its base, and marsh-grass tufts nearby, all contained well within the
+tile boundary on a murky ground. Produce an updated version of this
+EXACT same image — same base color, same tree shape/position/size, same
+pool, same muted outline, same gradient shading, same overall
+composition, same edge-to-edge base fill with no border around the tile
+— with only ONE tiny change: a very subtle shift in the drooping willow
+fronds and marsh-grass tufts, as if a light breeze moved them slightly
+(the trunk and overall canopy silhouette stay the same). Do not change
+the background color, do not add any new elements, do not add a black
+outline or border anywhere, do not change the framing or zoom level.
+This is frame 2 of a 2-frame idle animation loop, so the change must be
+subtle — barely noticeable, not a dramatic shift.

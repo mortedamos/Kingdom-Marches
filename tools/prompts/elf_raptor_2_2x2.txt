@@ -1,0 +1,82 @@
+Create a single image containing a 2x2 grid of four equal square
+panels (top-left, top-right, bottom-left, bottom-right), separated by
+a thin visible gap so they can be cut apart afterward. This is a
+4-frame idle animation sprite sheet for a single video game creature —
+a silent hunting owl bonded to elven scouts, a small flying beast,
+shown actively FLYING/HOVERING in mid-air, not perched or standing on
+the ground. The SAME owl must appear in all four panels — identical
+identity, art style, colors, palette, proportions, and camera
+angle/distance. Only its wing position and pose changes, panel to
+panel, as if hovering in place and flapping.
+
+CRITICAL: there is exactly ONE owl in this image, appearing exactly
+once per panel. Each of the 4 panels contains a single solitary
+creature — never two owls, never a duplicate, twin, or mirrored copy
+standing side by side in the same panel. The owl always has exactly
+one head, two wings, two legs, and one tail — never extra or missing
+parts in any panel.
+
+Art style (applies to all four panels): a cel-shaded outline style —
+thick, clean black outlines around the silhouette and major interior
+linework (feather groupings, wing edges), sharp details, cel-shaded
+flat colors with a limited palette (2-3 hard-edged tonal steps per
+surface, no soft airbrushed gradients). Muted, desaturated, earthy
+fantasy palette (olive greens, weathered browns, stone grays, faded
+ochres). Dark-fantasy mood, wild and weathered, not cute or
+whimsical. Elevated 3/4 top-down "strategy game" view, the same
+camera angle used for every other unit in this game.
+
+Subject (applies to all four panels): a small owl of prey, distinct
+in silhouette from a hawk — a round compact body, a large flat
+forward-facing facial disc framing large round eyes, a short hooked
+beak, mottled gray-brown and pale ochre plumage with fine dark
+speckled barring, broad ROUNDED wings (not pointed like a hawk's),
+shown actively FLYING through the air with both wings extended
+outward and legs/talons tucked up close to its body (NOT standing on
+legs, NOT perched, no ground or branch anywhere in the frame). A
+single elven-green (#3f8f5c) accent may appear only as a small
+detail, such as a thin woven cord or leather jess wrapped around one
+tucked leg — never as the dominant color of its feathers. This is a
+noticeably SMALL creature — render it clearly smaller and more
+compact within its panel than a human-sized unit would be, with
+generous open padding on all sides (at least 25-30% of the panel),
+not filling the frame edge to edge. This should read as a bold,
+instantly-recognizable owl-in-flight silhouette at a glance — the
+round facial disc and broad rounded wings are the key features that
+must distinguish it from a hawk.
+
+Panel 1 (top-left) — neutral base flight pose: wings spread wide and
+level, mid-glide, body angled slightly forward, tail fanned slightly
+for balance, facing forward, facial disc clearly visible.
+
+Panel 2 (top-right) — active wingbeat, upstroke: both wings raised
+upward at a clear, obvious angle above the body — immediately
+noticeable at a glance as a strong upward flap, distinct from panel
+1's level glide. Body tilts very slightly with the motion.
+
+Panel 3 (bottom-left) — active wingbeat, downstroke, looking the other
+way: both wings pulled down and back at a clear, obvious angle below
+the body — the opposite extreme of panel 2's upstroke, obviously
+different at a glance. The owl's head turns a clear amount to look
+toward the other direction from its default forward facing (owls can
+turn their heads much further than other birds — show a pronounced
+head turn while the facial disc still reads clearly). This is NOT a
+mirrored or horizontally flipped image — the owl's body and
+proportions stay consistent with every other panel.
+
+Panel 4 (bottom-right) — settling toward level glide, mid-transition:
+wings partway between panel 3's downstroke and panel 1's level glide
+— a noticeably different wing angle from both, head turning back
+toward facing forward.
+
+Every panel: the owl is centered within its panel at the same scale,
+same camera distance, and same generous padding, the full creature
+visible including both wings and tail fully spread in flight, on a
+single flat, solid, saturated magenta (#FF00FF) background —
+completely uniform, no gradient, no shadow, no vignette, and
+absolutely no ground, perch, branch, moon, or cloud rendered anywhere
+(the owl itself flies within the flat magenta field).
+
+Do not include any text, panel labels, numbers, watermark, logo, UI
+elements, sparkle/star decorations, or border anywhere in the image.
+Overall image should be a square 1:1 aspect ratio.

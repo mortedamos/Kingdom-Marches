@@ -1,0 +1,84 @@
+Create a single image containing a 2x2 grid of four equal square
+panels (top-left, top-right, bottom-left, bottom-right), separated by
+a thin visible gap so they can be cut apart afterward. This is a
+4-frame idle animation sprite sheet for a single video game creature —
+a war-dragon bonded to an orc tribe, not a rider on its back. The SAME
+dragon must appear in all four panels — identical identity, art style,
+colors, palette, proportions, equipment, and camera angle/distance.
+Only its pose changes, panel to panel.
+
+CRITICAL: there is exactly ONE dragon in this image, appearing exactly
+once per panel. Each of the 4 panels contains a single solitary
+creature — never two dragons, never a duplicate, twin, or mirrored
+copy standing side by side in the same panel. If you find yourself
+drawing a second dragon in any panel, stop and draw only one. The
+dragon always has exactly one head, one tail, two wings, and two legs
+— never extra or missing limbs, heads, or wings in any panel.
+
+Art style (applies to all four panels): a cel-shaded outline style —
+thick, clean black outlines around the silhouette and major interior
+linework, sharp details, cel-shaded flat colors with a limited palette
+(2-3 hard-edged tonal steps per surface, no soft airbrushed gradients).
+Muted, desaturated, earthy fantasy palette (olive greens, weathered
+browns, stone grays, faded ochres). Dark-fantasy mood, savage and
+weathered, not cute or whimsical. Elevated 3/4 top-down "strategy
+game" view, chunky and powerful proportions — a stocky body and short
+thick limbs rather than a long sleek serpentine dragon, matching the
+same bold, slightly stubby proportions used for other units in this
+game.
+
+Subject (applies to all four panels): a squat, powerful two-legged
+war-dragon standing on the ground, bonded to the orc tribes as a
+war-beast — dark olive-green and charcoal scales in a rough, weathered
+hide texture, a pair of thick leathery bat-like wings folded mostly
+against its back at rest, a short spiked tail, blunt curved horns on
+its head, and small, crude bone and tusk trophies lashed around its
+neck and shoulders on a simple leather harness. A dark red (#7a2e2e)
+accent may appear only as a small detail, such as tribal paint
+markings on its hide or a strip of cloth on the harness — never as the
+dominant color of its scales. No rider, no saddle, no passenger in any
+panel — just the dragon itself. This should read as a bold,
+instantly-recognizable dragon silhouette at a glance. The wings stay
+mostly folded at rest in every panel — flexing or shifting slightly is
+fine, but never fully spread open or flapping into a flying pose; the
+dragon stays grounded and standing in all four panels.
+
+Panel 1 (top-left) — neutral base pose: standing in a low, watchful
+stance, facing forward, wings folded at rest, tail resting on the
+ground behind it.
+
+Panel 2 (top-right) — alert and restless, moderate motion: its head
+and neck turn a clear, obvious amount to look off to one side — this
+must be immediately noticeable at a glance, not a subtle glance. At
+the same time its wings shift to a clearly different position —
+flexed or raised a moderate amount higher along its back than panel 1
+— obviously different at a glance, but a natural repositioning, not a
+dramatic full wing-spread. The tail may curl slightly.
+
+Panel 3 (bottom-left) — alert and restless, looking the other way: its
+head and neck turn a clear, obvious amount to look toward the other
+direction from panel 2 — this is the same creature in the same default
+facing orientation as panel 1, simply turning its head and neck to
+look the opposite way. This is NOT a mirrored or horizontally flipped
+image — the dragon's stance, legs, and wing positions stay consistent
+with the same body proportions as every other panel. The wings shift
+to another clearly different moderate position — distinct from both
+panel 1 and panel 2 — again a natural repositioning, not a dramatic
+full wing-spread.
+
+Panel 4 (bottom-right) — settling, mid-transition: its head and neck
+turn back toward facing forward, partway between panel 3 and panel 1.
+The wings move back toward their panel-1 resting position but pause at
+a noticeably different point along the way, not fully folded flat like
+panel 1 yet.
+
+Every panel: the dragon is centered within its panel at the same
+scale, same camera distance, and same padding, the full creature
+visible including both wings and tail, on a single flat, solid,
+saturated magenta (#FF00FF) background — completely uniform, no
+gradient, no shadow, no vignette, and no ground/terrain rendered under
+its feet (the dragon itself sits in the flat magenta field).
+
+Do not include any text, panel labels, numbers, watermark, logo, UI
+elements, sparkle/star decorations, or border anywhere in the image.
+Overall image should be a square 1:1 aspect ratio.

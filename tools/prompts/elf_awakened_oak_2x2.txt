@@ -1,0 +1,83 @@
+Create a single image containing a 2x2 grid of four equal square
+panels (top-left, top-right, bottom-left, bottom-right), separated by
+a thin visible gap so they can be cut apart afterward. This is a
+4-frame idle animation sprite sheet for a single video game unit — an
+Awakened Oak, a massive ancient tree-being animated by elven nature
+magic, like a giant Ent or treeherd — a proper humanoid giant made of
+living wood, not a formless root-mass. The SAME creature must appear
+in all four panels — identical identity, art style, colors, palette,
+proportions, and camera angle/distance. Only its pose changes, panel
+to panel.
+
+CRITICAL: there is exactly ONE Awakened Oak in this image, appearing
+exactly once per panel. Each of the 4 panels contains a single
+solitary creature — never two, never a duplicate, twin, or mirrored
+copy standing side by side in the same panel.
+
+Art style (applies to all four panels): a cel-shaded outline style —
+thick, clean black outlines around the silhouette and major interior
+linework, sharp details, cel-shaded flat colors with a limited palette
+(2-3 hard-edged tonal steps per surface, no soft airbrushed
+gradients). Muted, desaturated, earthy fantasy palette (olive greens,
+weathered browns, stone grays, faded ochres). Dark-fantasy mood,
+weathered and ancient, not cute or whimsical. Single consistent light
+direction from the upper left. Elevated 3/4 top-down "strategy game"
+view.
+
+Subject (applies to all four panels): a hulking, massive humanoid
+tree-giant, built like Treebeard from Lord of the Rings — a clearly
+bipedal figure with a distinct upright torso, two arms, and a HEAD
+(not a headless trunk). It has TWO SEPARATE LEGS, each leg its own
+thick tapering tree-trunk column ending in a spread of small gnarled
+roots that act as feet planted on the ground — the legs are clearly
+distinct from each other with visible space/a gap between them, not a
+single fused trunk or a splayed skirt of roots. The torso is a single
+thick, deeply-furrowed bark trunk. The arms are long, knotted branches
+ending in twig-and-root "hands" with a few thick claw-like digits. The
+head is a knotted, bark-covered mass with a face-like arrangement of
+two small glowing elven-green (#3f8f5c) eye-knots, a heavy jutting
+brow of bark, and a beard-like tangle of roots or thin hanging
+branches beneath a mouth-like knot. Sparse clusters of green leaves
+and small living branches grow from the TOP of the head and the upper
+shoulders like hair/a crown — not scattered across the whole body.
+Rough dark bark with patches of moss cover the torso, arms, and legs.
+A single glowing elven-green (#3f8f5c) rune is set into the bark of
+the chest as the only extra color accent beyond the leaf crown and
+eyes — otherwise entirely bark-brown, moss, and stone-gray. This is a
+massive, imposing unit — render it noticeably larger and bulkier in
+its frame than a normal humanoid unit would be, filling most of the
+panel height with its bulk, standing upright like a giant, not
+hunched or crawling. Framing: elevated 3/4 top-down "strategy game"
+view, single creature centered with ~8% padding on all sides, facing
+the camera or slightly to the right, full body visible from feet to
+the top of its leafy crown.
+
+Panel 1 (top-left) — neutral base pose: standing tall and rooted,
+weight balanced evenly over both legs, arms hanging heavy at its
+sides, facing forward.
+
+Panel 2 (top-right) — slow shifting motion: one heavy branch-arm
+raises partway and the upper body leans and turns a clear, obvious
+amount to one side, as if slowly turning to look — immediately
+noticeable at a glance, not a subtle glance. The leafy crown and moss
+stir with the motion, both legs stay planted.
+
+Panel 3 (bottom-left) — slow shifting the other way: the upper body
+leans and turns a clear, obvious amount toward the other direction
+from panel 2 — the same creature in the same default stance as panel
+1, simply leaning to look the opposite way. This is NOT a mirrored or
+horizontally flipped image.
+
+Panel 4 (bottom-right) — settling, mid-transition: the upper body
+straightening back toward facing forward, partway between panel 3 and
+panel 1, the raised branch-arm lowering back down.
+
+Every panel: the creature is centered within its panel at the same
+scale, same camera distance, and same padding, full body visible from
+feet to the top of its crown, on a single flat, solid, saturated
+magenta (#FF00FF, bright hot pink, not a duller or darker mauve)
+background — completely uniform, no gradient, no shadow, no vignette.
+
+Do not include any text, panel labels, numbers, watermark, logo, UI
+elements, sparkle/star decorations, or border anywhere in the image.
+Overall image should be a square 1:1 aspect ratio.

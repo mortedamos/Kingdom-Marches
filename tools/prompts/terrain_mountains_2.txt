@@ -1,0 +1,59 @@
+Create a single square game terrain tile image, NOT a grid, NOT
+multiple panels — one single flat square image only.
+
+Game asset: Mountains terrain tile, alternate variant (two smaller
+connected peaks side by side, rather than one tall peak, for visual
+variety across a map). This is a STATIC tile (no animation), so it only
+needs to exist as one single frame.
+
+Style: this is a TERRAIN tile, not a character or object — it must
+recede visually behind game units, which use bold black outlines and
+sharp cel-shaded flat colors. Terrain does the OPPOSITE: soft, smoothly
+blended color gradients, with a muted (never black) outline used only
+sparingly. This tile is also rendered very small on screen, so it must
+read as bold simple rocky peak shapes — not a detailed illustration,
+not a full mountain range, and absolutely no snow caps or fine rock
+texture detail (all of that reads as blurry mud at the game's small
+render size — keep this drastically simpler than a realistic mountain
+painting).
+
+Subject: two smaller connected rocky mountain peaks, viewed from an
+elevated 3/4 angle — like looking at a low mountain slope from slightly
+above and in front, NOT a flat map-symbol view. The base fill is this
+flat solid color: hex #7D7D82 (a cool, neutral gray, slightly
+darker/cooler than hills). Suggest TWO simple angular peak shapes side
+by side (rocky rises with a somewhat more angular, jagged silhouette
+than a hill's smooth curve — but still just simple facets each, not
+multiple jagged spikes) using a soft gradient: the near (bottom) side
+of each peak blends and fades SEAMLESSLY into the surrounding base
+color with NO edge and NO outline at all — the base of each peak must
+look like it emerges directly out of the ground, not like an object
+sitting on top of it. Only the top ridge/crest of each peak — the far
+upper edge where the rise is highest — has a soft, THIN outline in a
+MUTED DARK shade of the same cool gray family (a dark, desaturated
+slate gray, NOT black, NOT a hard cartoon outline), just enough to read
+as each peak's silhouette against the sky/distance, fading away before
+it reaches the bottom sides. Shade each peak's slope with a gentle
+gradient: a soft cool highlight near the ridge catching the light,
+smoothly darkening down toward the base where it blends into the
+surrounding ground. No snow, no individual rock/boulder texture, no
+trees, no path lines — keep it to the two bold simple peak shapes and
+nothing else.
+
+Framing: elevated 3/4 top-down "strategy game" view (~30-40° downward
+tilt, the same camera angle used for this game's units and cities, NOT
+a flat orthographic top-down view), square 1:1 composition. The base
+color fill extends completely edge-to-edge across the entire image with
+zero padding or margin outside the peak shapes.
+
+CRITICAL: there is no black outline, border, frame, or line drawn
+around the edge of the image, and there are no corner brackets, crop
+marks, tick marks, or any small graphic mark of any kind in any of the
+four corners or along any edge — completely plain and unmarked at the
+tile boundary. This is a single seamless texture tile meant to butt up
+directly against identical neighboring tiles with zero visible seam, so
+nothing in this image may mark or outline its own boundary in any way.
+
+Do not include any text, labels, numbers, watermark, logo, UI elements,
+or border anywhere in the image. Overall image should be a square 1:1
+aspect ratio.

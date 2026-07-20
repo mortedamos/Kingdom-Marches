@@ -1,0 +1,27 @@
+This is the reference image: a single square deep-ocean terrain tile
+viewed from directly above, with a soft-edged diagonal wave-crest band
+(lighter teal-blue highlight with a thin soft pale foam highlight line
+along its ridge) sweeping across a deep blue base fill, edge-to-edge
+with no border, now positioned past the tile's center toward the
+upper-right. Produce frame 4 of a 4-frame rolling wave animation loop
+(the final frame, which loops back into frame 1): an updated version of
+this EXACT same image — same base color, same overall style, same soft
+gradient blending — but shift the wave-crest band further toward the
+upper-right so it is now fading out near that edge (lower opacity /
+thinner as it exits), while a new, faint wave-crest band begins
+emerging from the lower-left corner (same style, but lower opacity,
+just starting to form) — this bridges the animation back toward frame
+1's starting position for a smooth loop. Do not add any new element
+types beyond these two wave bands.
+
+CRITICAL — output format: the output image must be a plain flat square
+of solid color reaching every single edge, exactly like the reference
+image. Do NOT render this as a canvas, painting, photograph, framed
+artwork, or object sitting on a wall or surface. Do NOT add a
+background, a visible surface behind/around the tile, a drop shadow, a
+frame, matting, or any margin of a different color around the square.
+There is no black outline, border, or line drawn around the edge of the
+image, and no corner brackets, crop marks, or tick marks in any corner
+or along any edge. The blue water fill touches all four edges of the
+image directly with zero surrounding padding, identical in framing to
+the reference image.

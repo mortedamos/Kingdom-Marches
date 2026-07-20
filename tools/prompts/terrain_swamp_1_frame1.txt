@@ -1,0 +1,49 @@
+Create a single square game terrain tile image, NOT a grid, NOT
+multiple panels — one single flat square image only.
+
+Game asset: Swamp/Marsh terrain tile, standard variant.
+
+Style: this is a TERRAIN tile, not a character or object — it must
+recede visually behind game units, which use bold black outlines and
+sharp cel-shaded flat colors. Terrain does the OPPOSITE: soft, smoothly
+blended color gradients, with a muted (never black) outline used only
+sparingly. This tile is also rendered very small on screen, so it must
+read as one or two bold, simple shapes — not a detailed illustration.
+
+Subject: murky wetland/swamp ground, viewed from directly above
+(top-down — swamp is flat waterlogged ground, not a raised landform).
+The base fill is this flat solid color: hex #56613C (a murky,
+desaturated olive-brown-green — a muddier, muddier relative of the
+plains/forest green family). On top of that base fill, add ONE
+irregular, soft-edged dark water pool/puddle shape (an uneven, organic
+blob, NOT a neat circle or oval — like a real murky puddle), filled
+with a noticeably darker, murkier brown-green than the base (hex
+#33391F), shaded with a soft gradient — a subtle darker center fading
+gently toward its own edges, NOT a hard flat-fill shape. The pool has a
+soft, THIN outline in a MUTED DARK shade of the same murky family (NOT
+black, NOT a hard cartoon outline), and it must be positioned with a
+clear margin from every edge of the tile, fully contained well inside
+the tile boundary — do not let the pool touch or approach the tile's
+edges, since identical neighboring tiles need to butt up against this
+one with zero visible seam. Add 3-4 small, simple reed/marsh-grass
+tufts (thin, spiky, simple shapes with a normal thin BLACK outline,
+like the small foreground grass-tuft marks used on plains tiles) in a
+muted dark green, scattered near the edge of the pool.
+
+Framing: top-down flattened tile view (camera looking straight down,
+NOT an elevated 3/4 angle), square 1:1 composition. The base color fill
+extends completely edge-to-edge across the entire image with zero
+padding or margin — only the pool shape stays clear of the edges, per
+above.
+
+CRITICAL: there is no black outline, border, frame, or line drawn
+around the edge of the image, and there are no corner brackets, crop
+marks, tick marks, or any small graphic mark of any kind in any of the
+four corners or along any edge — completely plain and unmarked at the
+tile boundary. This is a single seamless texture tile meant to butt up
+directly against identical neighboring tiles with zero visible seam, so
+nothing in this image may mark or outline its own boundary in any way.
+
+Do not include any text, labels, numbers, watermark, logo, UI elements,
+or border anywhere in the image. Overall image should be a square 1:1
+aspect ratio.
