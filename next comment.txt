@@ -1,5 +1,0 @@
-i am still seeing the error, but with the border I can determine more.
-
-
-
-a city with population 1 has a border radius encompassing 8 squares. however, the "filled tiles" shows the max tiles of 25. 25 is the number of tiles contained in a radius from 2 levels of population. 
