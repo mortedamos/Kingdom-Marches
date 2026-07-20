@@ -780,6 +780,14 @@ window.GameEngine = window.GameEngine || {};
     tile.ownerCivId = null;
     tile.status = "neutral";
     tile.contestedTurns = 0;
+    // A razed city leaves a Ruin behind (2026-07-20, user-directed) -- a
+    // plain isRuin flag, identical to a worldgen-placed one (see
+    // worldgen.js's mapgen pass), so it's claimable via Dungeon Delve,
+    // heals Undead, factors into settle-site scoring, etc. exactly like any
+    // other Ruin. No special "already looted" state to set -- Ruins don't
+    // carry one (see turns.js's RESOURCE_EXHAUSTION_CHANCE for how a Ruin
+    // can later disappear again).
+    tile.isRuin = true;
 
     for (const key of city.filledOffsets) {
       const [dx, dy] = key.split(",").map(Number);

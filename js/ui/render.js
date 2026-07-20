@@ -126,6 +126,7 @@ window.UI = window.UI || {};
     resource: { color: "#8bc34a", bold: false, sizeFrac: 0.20 },
     heal: { color: "#69f0ae", bold: false, sizeFrac: 0.22 },
     aura: { color: "#ce93d8", bold: true, sizeFrac: 0.26 },
+    warning: { color: "#ff7043", bold: true, sizeFrac: 0.24 },
     default: { color: "#ffffff", bold: false, sizeFrac: 0.22 },
   };
 

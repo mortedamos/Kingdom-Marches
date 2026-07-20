@@ -190,6 +190,14 @@ window.GameEngine = window.GameEngine || {};
     }
   }
 
+  // Resource exhaustion (2026-07-20, user-directed): each turn a Dungeon
+  // Delve Wizard or Prospector's Claim unit actively works its anchor tile,
+  // there's a flat chance the Ruin/Gold Vein runs out and is permanently
+  // removed from the map -- see beginRound's ritual-tracking loop below.
+  // Deliberately NOT applied to Dark Ritual (Undead), which the user didn't
+  // include in this request.
+  const RESOURCE_EXHAUSTION_CHANCE = 0.02;
+
   /**
    * Once-per-round setup, run before any civ takes its turn: refresh vision,
    * advance Dark Ritual/Dungeon Delve tracking, and resolve this round's
@@ -276,7 +284,20 @@ window.GameEngine = window.GameEngine || {};
         const tile = map.tiles[unit.y * map.width + unit.x];
         const onRuin = !!(tile && tile.isRuin);
         const onGoldVein = !!(tile && tile.resource === "gold");
-        const onAnchor = isClaimUnit ? onGoldVein : onRuin;
+        let onAnchor = isClaimUnit ? onGoldVein : onRuin;
+
+        // Resource exhaustion (see RESOURCE_EXHAUSTION_CHANCE above):
+        // clearing the tile flag and forcing onAnchor false HERE, before the
+        // ownership/_ritualTurns bookkeeping below, makes exhaustion fall
+        // through the exact same "no longer on anchor" cleanup path as
+        // moving away or dying -- no separate cleanup logic needed.
+        if ((isDelveWizard || isClaimUnit) && onAnchor && Math.random() < RESOURCE_EXHAUSTION_CHANCE) {
+          if (isDelveWizard) tile.isRuin = false; else tile.resource = null;
+          window.GameEngine.floatingText.spawnFloatingText(
+            unit, isDelveWizard ? "Ruin Exhausted!" : "Vein Exhausted!", "warning");
+          onAnchor = false;
+        }
+
         const stayedPut = unit.x === oldX && unit.y === oldY;
         const continuingRitual = onAnchor && stayedPut;
         unit._ritualTurns = onAnchor ? (stayedPut ? (unit._ritualTurns || 0) + 1 : 1) : 0;
