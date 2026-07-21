@@ -88,12 +88,14 @@ window.GameData.TERRAIN_LIST = Object.keys(window.GameData.TERRAIN);
 // (128x128) canvas per doc/art_style_guide.md, so relative sizing between
 // resource types (e.g. a small fish shoal vs a bigger ruin) is purely a
 // render-time scale knob, not baked into separate art resolutions.
+
+// Ruin size defined in render.js as RUIN_ICON_SCALE
 window.GameData.RESOURCES = {
-  iron:    { id: "iron",    label: "Iron Deposit",  validTerrain: ["hills", "mountains"],          bonus: { coin: 1 },     iconScale: 0.85 },
-  game:    { id: "game",    label: "Game",           validTerrain: ["forest", "plains"],            bonus: { harvest: 1 }, iconScale: 0.85 },
-  gold:    { id: "gold",    label: "Gold Vein",      validTerrain: ["hills", "mountains", "desert"],bonus: { coin: 1 },     iconScale: 0.85 },
-  fertile: { id: "fertile", label: "Fertile Soil",   validTerrain: ["plains", "swamp"],             bonus: { harvest: 1 }, iconScale: 0.85 },
-  fish:    { id: "fish",    label: "Fish Shoal",     validTerrain: ["coast"],                       bonus: { harvest: 1 }, iconScale: 0.65 },
+  iron:    { id: "iron",    label: "Iron Deposit",  validTerrain: ["hills", "mountains"],          bonus: { coin: 1 },     iconScale: 0.5 },
+  game:    { id: "game",    label: "Game",           validTerrain: ["forest", "plains"],            bonus: { harvest: 1 }, iconScale: 0.6 },
+  gold:    { id: "gold",    label: "Gold Vein",      validTerrain: ["hills", "mountains", "desert"],bonus: { coin: 1 },     iconScale: 0.5 },
+  fertile: { id: "fertile", label: "Fertile Soil",   validTerrain: ["plains", "swamp"],             bonus: { harvest: 1 }, iconScale: 0.75 },
+  fish:    { id: "fish",    label: "Fish Shoal",     validTerrain: ["coast"],                       bonus: { harvest: 1 }, iconScale: 1.0 },
 };
 window.GameData.RESOURCE_LIST = Object.keys(window.GameData.RESOURCES);
 
