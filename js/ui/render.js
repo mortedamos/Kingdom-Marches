@@ -521,14 +521,27 @@ window.UI = window.UI || {};
           continue; // fog of war: nothing live (units, current buildings/roads) renders for unseen tiles
         }
 
-        // Terrain — sprite if available, otherwise solid color
+        // Terrain — sprite on top of a flat color-matched backing fill, not
+        // sprite-only. Some terrain art still carries a leftover chroma-key
+        // resize seam (a column of not-fully-opaque edge pixels -- see
+        // doc/art_style_guide.md's -SeamlessEdges section, only ever applied
+        // to some terrain types) -- confirmed live via direct pixel
+        // sampling: alpha<255 pixels recurring at every tile-boundary column
+        // even after the render-time pixel-alignment fix above. Drawn over a
+        // transparent canvas, that translucent seam blends with whatever's
+        // behind the canvas (dark page background), showing as a faint
+        // line at every tile edge independent of the grid-line stroke. The
+        // same backing fill this branch already used as its sprite-missing
+        // fallback works as a fix too: any translucent sprite pixel now
+        // blends into a matching solid terrain color instead of the empty
+        // canvas, so the seam disappears regardless of which terrain PNGs
+        // still have the defect.
+        ctx.fillStyle = window.GameData.TERRAIN[tile.terrain].color;
+        ctx.fillRect(screenX, screenY, ts, ts);
         const terrainSprite = window.UI.sprites.pick(`terrain/${tile.terrain}`, tile);
         if (terrainSprite) {
           const f = window.UI.sprites.currentFrame(terrainSprite.manifest, "idle", tile);
           ctx.drawImage(terrainSprite.image, f.sx, f.sy, f.sw, f.sh, screenX, screenY, ts, ts);
-        } else {
-          ctx.fillStyle = window.GameData.TERRAIN[tile.terrain].color;
-          ctx.fillRect(screenX, screenY, ts, ts);
         }
 
         // River — composited stub overlay, drawn UNDER roads (see
@@ -1121,13 +1134,14 @@ window.UI = window.UI || {};
       return;
     }
 
+    // Flat backing fill under the sprite, same seam-hiding reasoning as the
+    // live render() terrain block above.
+    ctx.fillStyle = window.GameData.TERRAIN[snapshot.terrain].color;
+    ctx.fillRect(screenX, screenY, ts, ts);
     const terrainSprite = window.UI.sprites.pick(`terrain/${snapshot.terrain}`, snapshot);
     if (terrainSprite) {
       const f = window.UI.sprites.currentFrame(terrainSprite.manifest, "idle", snapshot);
       ctx.drawImage(terrainSprite.image, f.sx, f.sy, f.sw, f.sh, screenX, screenY, ts, ts);
-    } else {
-      ctx.fillStyle = window.GameData.TERRAIN[snapshot.terrain].color;
-      ctx.fillRect(screenX, screenY, ts, ts);
     }
 
     // River drawn UNDER road, same reasoning as the live render loop.
