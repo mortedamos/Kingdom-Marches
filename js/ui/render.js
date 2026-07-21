@@ -389,6 +389,34 @@ window.UI = window.UI || {};
     return { x: unit._renderX, y: unit._renderY };
   }
 
+  // Stable pseudo-random horizontal slot (0=left, 1=center, 2=right) for a
+  // tile enhancement icon (resource/ruin), seeded by tile coordinates so
+  // it's identical for a live tile and its remembered/fog-of-war snapshot,
+  // and never jitters frame to frame.
+  function tileIconSlot(x, y) {
+    const h = ((x * 374761393) ^ (y * 668265263)) >>> 0;
+    return h % 3;
+  }
+
+  const RESOURCE_ICON_MARGIN_FRAC = 0.08; // space kept between the tile edge and the icon
+
+  // Bottom-anchored box position for a tile enhancement icon of size `sz`,
+  // in one of 3 horizontal slots (tileIconSlot) with margin from the tile
+  // edges -- user-directed: icons should sit low-left/low-center/low-right,
+  // never dead-center, with breathing room from the edge. Mirrors units'
+  // bottom-anchored biggerPct growth (see the unit draw loop below) rather
+  // than growing from a fixed center point, so `sz` is as freely adjustable
+  // per resource/ruin as biggerPct is per unit.
+  function tileIconBox(screenX, screenY, ts, sz, x, y) {
+    const margin = ts * RESOURCE_ICON_MARGIN_FRAC;
+    const slot = tileIconSlot(x, y);
+    const boxX = slot === 0 ? screenX + margin
+      : slot === 2 ? screenX + ts - margin - sz
+      : screenX + (ts - sz) / 2;
+    const boxY = screenY + ts - margin - sz;
+    return { boxX, boxY };
+  }
+
   function clampOffset(offsetX, offsetY, canvas, map, ts) {
     const maxX = Math.max(0, map.width  * ts - canvas.width);
     const maxY = Math.max(0, map.height * ts - canvas.height);
@@ -401,7 +429,7 @@ window.UI = window.UI || {};
   function render(canvas, gameState, viewState) {
     const ctx = canvas.getContext("2d");
     const { map, civs } = gameState;
-    const { showInfluence, selectedUnit, selectedCity, humanCivId } = viewState;
+    const { showInfluence, showGrid, selectedUnit, selectedCity, humanCivId } = viewState;
     const ts = TILE_SIZE * (viewState.zoomLevel || 1); // effective tile size
     const now = performance.now();
     updateCombatAnims(now);
@@ -460,7 +488,7 @@ window.UI = window.UI || {};
                   x, y
                 )
               : null;
-            drawRememberedTile(ctx, screenX, screenY, ts, memory[idx], roadConn);
+            drawRememberedTile(ctx, screenX, screenY, ts, memory[idx], roadConn, x, y, showGrid);
             if (tileScoreMemory) drawTileScoreOverlay(ctx, screenX, screenY, ts, tileScoreMemory[idx]?.cityScore);
           } else {
             ctx.fillStyle = "#1a1a1a";
@@ -493,13 +521,13 @@ window.UI = window.UI || {};
           drawRoadOverlay(ctx, screenX, screenY, ts, conn);
         }
 
-        // Resource — sprite if available, otherwise gold dot. Drawn centered
-        // on the tile at the resource's own iconScale (terrain.js) times ts,
-        // so idle animation reads clearly and relative sizing between
-        // resource types (a small fish shoal vs. a bigger ruin) is a
-        // render-time scale knob, not baked into the source art. The
-        // sprite's own transparent padding is what lets terrain/road/river
-        // show through around it.
+        // Resource — sprite if available, otherwise gold dot. Drawn bottom-
+        // anchored in one of 3 stable-random horizontal slots (see
+        // tileIconBox), not dead-center, at the resource's own iconScale
+        // (terrain.js) times ts -- relative sizing between resource types
+        // (a small fish shoal vs. a bigger ruin) is a render-time scale
+        // knob, not baked into the source art. The sprite's own transparent
+        // padding is what lets terrain/road/river show through around it.
         if (tile.resource) {
           const resSprite = window.UI.sprites.pick(`enhancement/resource_${tile.resource}`, tile);
           if (resSprite) {
@@ -507,8 +535,8 @@ window.UI = window.UI || {};
             const resDef = window.GameData.RESOURCES[tile.resource];
             const iconScale = (resDef && resDef.iconScale) || 1.0;
             const sz = ts * iconScale;
-            const off = (ts - sz) / 2;
-            ctx.drawImage(resSprite.image, f.sx, f.sy, f.sw, f.sh, screenX + off, screenY + off, sz, sz);
+            const { boxX, boxY } = tileIconBox(screenX, screenY, ts, sz, x, y);
+            ctx.drawImage(resSprite.image, f.sx, f.sy, f.sw, f.sh, boxX, boxY, sz, sz);
           } else {
             ctx.fillStyle = "#f0d060";
             ctx.beginPath();
@@ -517,15 +545,16 @@ window.UI = window.UI || {};
           }
         }
 
-        // Ruin — sprite if available, otherwise "?" text. Centered, a little
-        // bigger than a tile-fill resource icon (RUIN_ICON_SCALE).
+        // Ruin — sprite if available, otherwise "?" text. Same bottom-
+        // anchored slot placement as resources, a little bigger
+        // (RUIN_ICON_SCALE).
         if (tile.isRuin) {
           const ruinSprite = window.UI.sprites.pick("enhancement/ruin", tile);
           if (ruinSprite) {
             const f = window.UI.sprites.currentFrame(ruinSprite.manifest, "idle", tile);
             const sz = ts * RUIN_ICON_SCALE;
-            const off = (ts - sz) / 2;
-            ctx.drawImage(ruinSprite.image, f.sx, f.sy, f.sw, f.sh, screenX + off, screenY + off, sz, sz);
+            const { boxX, boxY } = tileIconBox(screenX, screenY, ts, sz, x, y);
+            ctx.drawImage(ruinSprite.image, f.sx, f.sy, f.sw, f.sh, boxX, boxY, sz, sz);
           } else {
             ctx.fillStyle = "#b08060";
             ctx.font = `${Math.max(8, ts * 0.36)}px monospace`;
@@ -545,10 +574,12 @@ window.UI = window.UI || {};
           }
         }
 
-        // Grid line
-        ctx.strokeStyle = "rgba(0,0,0,0.15)";
-        ctx.lineWidth = 1;
-        ctx.strokeRect(screenX, screenY, ts, ts);
+        // Grid line — toggleable via the Interface menu
+        if (showGrid) {
+          ctx.strokeStyle = "rgba(0,0,0,0.15)";
+          ctx.lineWidth = 1;
+          ctx.strokeRect(screenX, screenY, ts, ts);
+        }
 
         if (tileScoreMemory) drawTileScoreOverlay(ctx, screenX, screenY, ts, tileScoreMemory[idx]?.cityScore);
       }
@@ -1046,7 +1077,7 @@ window.UI = window.UI || {};
    * visible). Finished with a dark scrim so it reads as visibly "remembered,
    * possibly stale" rather than currently seen.
    */
-  function drawRememberedTile(ctx, screenX, screenY, ts, snapshot, roadConn) {
+  function drawRememberedTile(ctx, screenX, screenY, ts, snapshot, roadConn, x, y, showGrid) {
     if (!snapshot) {
       // Explored should always have a matching memory entry, but fall back
       // to plain fog rather than throw if the two ever disagree.
@@ -1078,8 +1109,8 @@ window.UI = window.UI || {};
         const resDef = window.GameData.RESOURCES[snapshot.resource];
         const iconScale = (resDef && resDef.iconScale) || 1.0;
         const sz = ts * iconScale;
-        const off = (ts - sz) / 2;
-        ctx.drawImage(resSprite.image, f.sx, f.sy, f.sw, f.sh, screenX + off, screenY + off, sz, sz);
+        const { boxX, boxY } = tileIconBox(screenX, screenY, ts, sz, x, y);
+        ctx.drawImage(resSprite.image, f.sx, f.sy, f.sw, f.sh, boxX, boxY, sz, sz);
       } else {
         ctx.fillStyle = "#f0d060";
         ctx.beginPath();
@@ -1093,8 +1124,8 @@ window.UI = window.UI || {};
       if (ruinSprite) {
         const f = window.UI.sprites.currentFrame(ruinSprite.manifest, "idle", snapshot);
         const sz = ts * RUIN_ICON_SCALE;
-        const off = (ts - sz) / 2;
-        ctx.drawImage(ruinSprite.image, f.sx, f.sy, f.sw, f.sh, screenX + off, screenY + off, sz, sz);
+        const { boxX, boxY } = tileIconBox(screenX, screenY, ts, sz, x, y);
+        ctx.drawImage(ruinSprite.image, f.sx, f.sy, f.sw, f.sh, boxX, boxY, sz, sz);
       } else {
         ctx.fillStyle = "#b08060";
         ctx.font = `${Math.max(8, ts * 0.36)}px monospace`;
@@ -1125,11 +1156,15 @@ window.UI = window.UI || {};
 
     // Dimming scrim + subdued grid line -- visually distinct from a tile
     // currently in vision (which gets full brightness and a lighter grid line).
+    // Grid line itself is toggleable via the Interface menu, same as the
+    // live-tile grid line.
     ctx.fillStyle = "rgba(10,12,16,0.55)";
     ctx.fillRect(screenX, screenY, ts, ts);
-    ctx.strokeStyle = "rgba(0,0,0,0.3)";
-    ctx.lineWidth = 1;
-    ctx.strokeRect(screenX, screenY, ts, ts);
+    if (showGrid) {
+      ctx.strokeStyle = "rgba(0,0,0,0.3)";
+      ctx.lineWidth = 1;
+      ctx.strokeRect(screenX, screenY, ts, ts);
+    }
   }
 
   /**

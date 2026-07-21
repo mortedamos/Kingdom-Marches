@@ -276,7 +276,7 @@
     window.GameEngine.turns.refreshVisibility(gameState);
     updateMapSeedLabel();
     viewState = {
-      scrollX: 0, scrollY: 0, zoomLevel: 1.0, showInfluence: false,
+      scrollX: 0, scrollY: 0, zoomLevel: 1.0, showInfluence: false, showGrid: true,
       selectedUnit: null, selectedCity: null, selectedTile: null, humanCivId,
       fogMode: "off", fogCivIds: new Set(Object.keys(gameState.civs)), // spectator-only; see setupFogControls
       tileScoreCivId: null, // Interface menu's Tile City Score overlay -- available in both spectator and human modes
@@ -300,6 +300,10 @@
     window.UI.sprites.preloadAll().then(() => redraw());
     $("influence-toggle-btn").addEventListener("click", () => {
       viewState.showInfluence = !viewState.showInfluence;
+      redraw();
+    });
+    $("grid-toggle-btn").addEventListener("click", () => {
+      viewState.showGrid = !viewState.showGrid;
       redraw();
     });
     $("report-influence-btn").addEventListener("click", () => {
@@ -912,7 +916,7 @@
 
     for (const k of Object.keys(viewState)) delete viewState[k];
     Object.assign(viewState, {
-      scrollX: 0, scrollY: 0, zoomLevel: 1.0, showInfluence: false,
+      scrollX: 0, scrollY: 0, zoomLevel: 1.0, showInfluence: false, showGrid: true,
       selectedUnit: null, selectedCity: null, selectedTile: null, humanCivId,
       fogMode: "off", fogCivIds: new Set(Object.keys(gameState.civs)),
       tileScoreCivId: null, dialog: null,
