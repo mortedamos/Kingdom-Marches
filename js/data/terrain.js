@@ -82,13 +82,18 @@ window.GameData.TERRAIN = {
 
 window.GameData.TERRAIN_LIST = Object.keys(window.GameData.TERRAIN);
 
-// Resource layer: flat bonus yield on top of base terrain, restricted to terrain types
+// Resource layer: flat bonus yield on top of base terrain, restricted to terrain types.
+// iconScale: presentation-only multiplier applied to the tile-icon sprite at
+// render time (see render.js) -- sprite art itself is a fixed unit-size
+// (128x128) canvas per doc/art_style_guide.md, so relative sizing between
+// resource types (e.g. a small fish shoal vs a bigger ruin) is purely a
+// render-time scale knob, not baked into separate art resolutions.
 window.GameData.RESOURCES = {
-  iron:    { id: "iron",    label: "Iron Deposit",  validTerrain: ["hills", "mountains"],          bonus: { coin: 1 } },
-  game:    { id: "game",    label: "Game",           validTerrain: ["forest", "plains"],            bonus: { harvest: 1 } },
-  gold:    { id: "gold",    label: "Gold Vein",      validTerrain: ["hills", "mountains", "desert"],bonus: { coin: 1 } },
-  fertile: { id: "fertile", label: "Fertile Soil",   validTerrain: ["plains", "swamp"],             bonus: { harvest: 1 } },
-  fish:    { id: "fish",    label: "Fish Shoal",     validTerrain: ["coast"],                       bonus: { harvest: 1 } },
+  iron:    { id: "iron",    label: "Iron Deposit",  validTerrain: ["hills", "mountains"],          bonus: { coin: 1 },     iconScale: 0.85 },
+  game:    { id: "game",    label: "Game",           validTerrain: ["forest", "plains"],            bonus: { harvest: 1 }, iconScale: 0.85 },
+  gold:    { id: "gold",    label: "Gold Vein",      validTerrain: ["hills", "mountains", "desert"],bonus: { coin: 1 },     iconScale: 0.85 },
+  fertile: { id: "fertile", label: "Fertile Soil",   validTerrain: ["plains", "swamp"],             bonus: { harvest: 1 }, iconScale: 0.85 },
+  fish:    { id: "fish",    label: "Fish Shoal",     validTerrain: ["coast"],                       bonus: { harvest: 1 }, iconScale: 0.65 },
 };
 window.GameData.RESOURCE_LIST = Object.keys(window.GameData.RESOURCES);
 

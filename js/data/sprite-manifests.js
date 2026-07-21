@@ -233,6 +233,29 @@ window.GameData.SPRITE_MANIFESTS = {
   // "city/human": { ... },
 
   // --- Enhancements ---
-  // "enhancement/ruin": { ... },
+  "enhancement/resource_iron": {
+    frameWidth: 128, frameHeight: 128, layout: "horizontal",
+    animations: { idle: { frames: [0, 1, 2, 3], fps: 2 } },
+  },
+  "enhancement/resource_game": {
+    frameWidth: 128, frameHeight: 128, layout: "horizontal",
+    animations: { idle: { frames: [0, 1, 2, 3], fps: 2 } },
+  },
+  "enhancement/resource_gold": {
+    frameWidth: 128, frameHeight: 128, layout: "horizontal",
+    animations: { idle: { frames: [0, 1, 2, 3], fps: 2 } },
+  },
+  "enhancement/resource_fertile": {
+    frameWidth: 128, frameHeight: 128, layout: "horizontal",
+    animations: { idle: { frames: [0, 1, 2, 3], fps: 2 } },
+  },
+  "enhancement/resource_fish": {
+    frameWidth: 128, frameHeight: 128, layout: "horizontal",
+    animations: { idle: { frames: [0, 1, 2, 3], fps: 2 } },
+  },
+  "enhancement/ruin": {
+    frameWidth: 128, frameHeight: 128, layout: "horizontal",
+    animations: { idle: { frames: [0, 1, 2, 3], fps: 2 } },
+  },
 
 };

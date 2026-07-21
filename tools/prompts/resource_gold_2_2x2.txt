@@ -1,0 +1,78 @@
+Create a single image containing a 2x2 grid of four equal square
+panels (top-left, top-right, bottom-left, bottom-right), separated by
+a thin visible gap so they can be cut apart afterward. This is a
+4-frame idle animation sprite sheet for a small game-map tile resource
+icon — a "Gold Vein" resource on a hills/mountains/desert tile: two
+separate, distinct chunks/nuggets of raw muted-gold ore sitting among
+a small scatter of gray rock fragments, NOT a colored vein or streak
+running through rock — the gold chunks read as their own separate
+lumps resting among the rocks, a distinctly different arrangement from
+a single rock-with-one-nugget variant. The SAME rocks and gold nuggets
+(identical shape, position, and camera angle) must appear in all four
+panels — they do not move or change pose at all. The ONLY thing that
+changes panel to panel is a subtle glint of light catching the
+metallic gold surfaces, like a slow shimmer.
+
+CRITICAL: there are exactly two gold nuggets (plus small gray rock
+fragments around them) in this image, appearing once per panel, in the
+exact same position, shape, and size in every panel — do not shift,
+rotate, or resize them between panels; only the glint highlight
+changes.
+
+Style: this is a small tile-resource overlay icon, not a full scene
+illustration — it sits on top of a terrain tile, underneath the
+player's units, and must not visually compete with unit art. Cel-
+shaded flat colors with a limited, muted, desaturated palette (cool
+gray rock, warm muted old-gold/ochre-yellow nuggets — NOT a bright
+neon or cartoon yellow, a duller antique-gold tone), 2-3 hard tonal
+steps, no soft gradients except for the small glint highlight itself.
+IMPORTANT outline rule, different from normal game units: do NOT use a
+thick black outline. Instead use a THIN outline in a muted, dark shade
+of each shape's own hue family (dark gray for the rock, dark muted
+brown-gold for the nuggets) — just enough to separate the silhouette
+from the background, never pure black. Keep interior linework minimal
+— one or two lines per shape suggesting facets, not detailed texture
+or heavy cross-hatching. One or two bold, simple shapes only; this
+icon renders very small on screen, so fine detail won't survive
+downscaling and should not be attempted.
+
+Subject (applies to all four panels): a small scatter of gray rock
+fragments with two separate, distinct rounded/faceted chunks of muted
+old-gold ore resting among them — one chunk slightly larger than the
+other — each gold chunk clearly its own rock-like object with its own
+rough, angular silhouette, not a flat color patch painted onto the
+gray rock.
+
+Framing: top-down flattened "tile icon" view (NOT the elevated 3/4
+diorama angle used for full-size units), the rocks and gold nuggets
+centered together in each panel filling the frame at roughly 10-15%
+padding on all sides — the same fill amount as a normal game unit
+portrait, NOT a small icon floating in a mostly-empty frame. Any
+relative size difference between this and other tile resources is
+handled separately at render time, not by leaving extra padding here.
+
+Panel 1 (top-left) — no glint: both gold nuggets' surfaces are matte,
+no highlight visible, base colors only.
+
+Panel 2 (top-right) — glint begins: a small, soft bright highlight
+appears on the larger gold nugget, catching the light — immediately
+noticeable at a glance, not a subtle glance.
+
+Panel 3 (bottom-left) — glint peak: the highlight has moved to the
+smaller gold nugget and is at its brightest, a clear, obvious change
+from panel 2.
+
+Panel 4 (bottom-right) — glint fading: the highlight is dimming out on
+the smaller nugget, partway between panel 3 and panel 1's matte state.
+
+Every panel: the rocks and gold nuggets are centered within their
+panel at the same scale, same camera distance, and same padding, on a
+single flat, solid, saturated magenta (#FF00FF, bright hot pink, not a
+duller or darker mauve) background — completely uniform, no gradient,
+no shadow, no vignette (the glint highlight itself is the one
+exception to "no gradient," confined to the gold nuggets' surfaces
+only).
+
+Do not include any text, panel labels, numbers, watermark, logo, UI
+elements, sparkle/star decorations, or border anywhere in the image.
+Overall image should be a square 1:1 aspect ratio.

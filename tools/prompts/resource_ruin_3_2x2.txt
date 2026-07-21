@@ -1,0 +1,88 @@
+Create a single image containing a 2x2 grid of four equal square
+panels (top-left, top-right, bottom-left, bottom-right), separated by
+a thin visible gap so they can be cut apart afterward. This is a
+4-frame idle animation sprite sheet for a small game-map tile
+enhancement icon — a "Ruin" tile feature: a round stone entrance set
+into the ground, carved with old rune symbols around its rim, leading
+down into a pool of solid black shadow/darkness, like the sealed
+entrance to a fantasy dungeon or barrow — distinctly different from an
+archway or a gated doorway (this one is a flatter, round sunken
+entrance, viewed more from above, with one carved rune glowing
+faintly, like a magic ward).
+
+CRITICAL — the stone entrance structure itself does NOT move or
+animate at all: the carved stone rim, the rune symbols, the black
+shadow opening, and every crack must be PIXEL-FOR-PIXEL IDENTICAL in
+all four panels, as if the exact same structure image were copied into
+all four panels and only the glow brightness was added on top. Do not
+shift, resize, or redraw the stonework differently between panels —
+treat it as a fixed, unmoving background element. The ONLY thing
+allowed to change panel to panel is the brightness of the glow coming
+from ONE of the carved runes. Everything else must stay exactly the
+same.
+
+CRITICAL: there is exactly ONE stone entrance in this image, appearing
+once per panel, in the exact same position, shape, and size in every
+panel.
+
+Style: this is a small tile-overlay icon, not a full scene
+illustration — it sits on top of a terrain tile, underneath the
+player's units, and must not visually compete with unit art. Cel-
+shaded flat colors with a limited, muted, desaturated palette
+(weathered pale gray stone, muted green moss patches, solid black
+shadow in the opening, one small soft elven-green glowing rune
+accent), 2-3 hard tonal steps, no soft gradients except the rune's own
+glow. IMPORTANT outline rule, different from normal game units: do NOT
+use a thick black outline on the stone silhouette. Instead use a THIN
+outline in a muted, dark gray shade — just enough to separate shapes,
+never a heavy black line (the solid black shadow INSIDE the entrance
+opening is a fill, not an outline, and is fine as-is). Keep interior
+linework minimal — a few simple lines suggesting the carved rune
+symbols and cracked stone, not detailed texture or heavy
+cross-hatching. This icon renders small on screen, so fine detail
+won't survive downscaling and should not be attempted.
+
+Subject (applies to all four panels): a round, sunken stone entrance
+set into the ground, its rim carved with a ring of simple rune
+symbols, patches of green moss growing across the weathered stone, the
+entrance itself filled with solid flat black shadow. One rune on the
+rim glows faintly with a soft elven-green light.
+
+Framing: top-down flattened "tile icon" view (a slightly elevated
+top-down angle is fine, NOT the full elevated 3/4 diorama angle used
+for full-size units), the stone entrance centered in each panel
+filling the frame at roughly 10-15% padding on all sides — the same
+fill amount as a normal game unit portrait, NOT a small icon floating
+in a mostly-empty frame. This resource renders a little larger on the
+tile than other resource icons, but that relative size difference is
+handled separately at render time, not by leaving extra or less
+padding here — keep the same ~10-15% padding convention regardless.
+
+Panel 1 (top-left) — neutral base pose: the rune is dim, barely
+visible, base colors only. The stone entrance exactly as described
+above.
+
+Panel 2 (top-right) — glow begins: the rune brightens noticeably,
+casting a small soft glow — immediately noticeable at a glance, not a
+subtle glance. The stone entrance itself is UNCHANGED, pixel-for-pixel
+identical to panel 1.
+
+Panel 3 (bottom-left) — glow peak: the rune is at its brightest, a
+clear, obvious change from panel 2. The stone entrance itself is
+UNCHANGED, pixel-for-pixel identical to panel 1.
+
+Panel 4 (bottom-right) — glow fading: the rune is dimming back down,
+partway between panel 3 and panel 1's dim state. The stone entrance
+itself is UNCHANGED, pixel-for-pixel identical to panel 1.
+
+Every panel: the stone entrance is centered within its panel at the
+same scale, same camera distance, and same padding, on a single flat,
+solid, saturated magenta (#FF00FF, bright hot pink, not a duller or
+darker mauve) background — completely uniform, no gradient, no shadow,
+no vignette (the black shadow filling the entrance opening, and the
+rune's glow, are the exceptions, since they are part of the subject,
+not the background).
+
+Do not include any text, panel labels, numbers, watermark, logo, UI
+elements, sparkle/star decorations, or border anywhere in the image.
+Overall image should be a square 1:1 aspect ratio.

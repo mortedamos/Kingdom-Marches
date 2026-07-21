@@ -1,0 +1,87 @@
+Create a single image containing a 2x2 grid of four equal square
+panels (top-left, top-right, bottom-left, bottom-right), separated by
+a thin visible gap so they can be cut apart afterward. This is a
+4-frame idle animation sprite sheet for a small game-map tile
+enhancement icon — a "Ruin" tile feature: an old broken stone doorway
+with a rusted, partially-collapsed iron portcullis/gate hanging
+crooked in front of a pool of solid black shadow/darkness, like the
+sealed entrance to a fantasy dungeon, with ivy growing across the
+stonework — distinctly different from a plain archway (this one has
+the collapsed metal gate as its key feature).
+
+CRITICAL — the doorway and gate structure itself does NOT move or
+animate at all: the stone frame, the crooked iron gate bars, the black
+shadow opening, and every crack must be PIXEL-FOR-PIXEL IDENTICAL in
+all four panels, as if the exact same structure image were copied into
+all four panels and only small extra details were added on top. Do not
+lean, tilt, shift, resize, or redraw the doorway/gate differently
+between panels — treat it as a fixed, unmoving background element. The
+ONLY thing allowed to change panel to panel is the ivy leaves swaying
+gently. Everything else must stay exactly the same.
+
+CRITICAL: there is exactly ONE doorway in this image, appearing once
+per panel, in the exact same position, shape, and size in every panel.
+
+Style: this is a small tile-overlay icon, not a full scene
+illustration — it sits on top of a terrain tile, underneath the
+player's units, and must not visually compete with unit art. Cel-
+shaded flat colors with a limited, muted, desaturated palette
+(weathered pale gray-tan stone, dark rusted red-brown iron gate, muted
+green ivy, solid black shadow in the opening), 2-3 hard tonal steps,
+no soft gradients. IMPORTANT outline rule, different from normal game
+units: do NOT use a thick black outline on the stone/gate silhouette.
+Instead use a THIN outline in a muted, dark shade of each shape's own
+hue family (dark gray for stone, dark rust for the iron gate, dark
+green for ivy) — just enough to separate shapes, never a heavy black
+line (the solid black shadow INSIDE the doorway opening is a fill, not
+an outline, and is fine as-is). Keep interior linework minimal — a few
+simple lines suggesting cracked stone and bent bars, not detailed
+texture or heavy cross-hatching. This icon renders small on screen, so
+fine detail won't survive downscaling and should not be attempted.
+
+Subject (applies to all four panels): a low, weathered stone doorway
+frame with a crooked, partially-broken rusted iron portcullis/gate
+hanging in front of a solid black shadowed opening — like a sealed,
+long-abandoned dungeon entrance. Ivy vines climb across part of the
+stone frame.
+
+Framing: top-down flattened "tile icon" view (a slightly elevated
+top-down angle is fine, NOT the full elevated 3/4 diorama angle used
+for full-size units), the doorway centered in each panel filling the
+frame at roughly 10-15% padding on all sides — the same fill amount as
+a normal game unit portrait, NOT a small icon floating in a mostly-
+empty frame. This resource renders a little larger on the tile than
+other resource icons, but that relative size difference is handled
+separately at render time, not by leaving extra or less padding here
+— keep the same ~10-15% padding convention regardless.
+
+Panel 1 (top-left) — neutral base pose: ivy leaves resting still, no
+lean. The doorway/gate structure exactly as described above.
+
+Panel 2 (top-right) — ambient detail only: the ivy leaves lean a
+clear, obvious amount to one side as if stirred by a breeze —
+immediately noticeable at a glance, not a subtle glance. The
+doorway/gate structure itself is UNCHANGED, pixel-for-pixel identical
+to panel 1.
+
+Panel 3 (bottom-left) — ambient detail continues: the ivy leaves lean
+a clear, obvious amount toward the other direction from panel 2, a
+genuinely redrawn moment, not a horizontally flipped copy of panel 2.
+The doorway/gate structure itself is UNCHANGED, pixel-for-pixel
+identical to panel 1.
+
+Panel 4 (bottom-right) — settling: ivy leaves straightening back
+toward resting, partway between panel 3 and panel 1. The doorway/gate
+structure itself is UNCHANGED, pixel-for-pixel identical to panel 1.
+
+Every panel: the doorway is centered within its panel at the same
+scale, same camera distance, and same padding, on a single flat,
+solid, saturated magenta (#FF00FF, bright hot pink, not a duller or
+darker mauve) background — completely uniform, no gradient, no shadow,
+no vignette (the black shadow filling the doorway opening itself is
+the one exception, since that is part of the subject, not the
+background).
+
+Do not include any text, panel labels, numbers, watermark, logo, UI
+elements, sparkle/star decorations, or border anywhere in the image.
+Overall image should be a square 1:1 aspect ratio.

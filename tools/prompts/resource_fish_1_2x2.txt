@@ -1,0 +1,73 @@
+Create a single image containing a 2x2 grid of four equal square
+panels (top-left, top-right, bottom-left, bottom-right), separated by
+a thin visible gap so they can be cut apart afterward. This is a
+4-frame idle animation sprite sheet for a small game-map tile resource
+icon — a "Fish Shoal" resource on a coast tile: a small group of two
+fish jumping/breaking the water surface. The SAME two fish (same
+identity, colors, sizes, relative positions) must appear in all four
+panels — only their pose/height changes, panel to panel, as if
+repeatedly leaping.
+
+CRITICAL: there are exactly TWO fish in this image, appearing in every
+panel — never one, never three or more, never a duplicated extra
+shoal. Do NOT paint any filled water, ocean, or wave background of any
+kind — the background is a plain flat color plate (see below) with
+only the two fish (and small stylized water-droplet marks right at
+their bodies) on it, no painted sea surface, no horizon, no filled
+blue area.
+
+Style: this is a small tile-resource overlay icon, not a full scene
+illustration — it sits on top of a terrain tile, underneath the
+player's units, and must not visually compete with unit art. Cel-
+shaded flat colors with a limited, muted, desaturated palette (cool
+silvery gray-blue, pale belly, small soft-gray fin accents), 2-3 hard
+tonal steps, no soft gradients. IMPORTANT outline rule, different from
+normal game units: do NOT use a thick black outline. Instead use a
+THIN outline in a muted, dark shade of the fish's own gray-blue hue
+family — just enough to separate the silhouette from the background,
+never pure black. Keep interior linework minimal — one small dark line
+for the eye, one line for the gill — not detailed scale texture. One
+or two bold, simple shapes only; this icon renders very small on
+screen, so fine detail won't survive downscaling and should not be
+attempted.
+
+Subject (applies to all four panels): two small silvery trout-like
+fish with a pale cream belly, mid-leap out of the water, arched
+bodies, tails flicking. A few small, simple stylized water-droplet
+marks (tiny pale ovals, same muted outline treatment, not a filled
+splash shape) near their tails suggest they just broke the surface.
+
+Framing: top-down-adjacent flattened "tile icon" view treating this
+like a small side-on vignette of the pair leaping (NOT the full
+elevated 3/4 diorama angle used for full-size units), the two fish
+together centered in each panel filling the frame at roughly 10-15%
+padding on all sides — the same fill amount as a normal game unit
+portrait, NOT a small icon floating in a mostly-empty frame. Any
+relative size difference between this and other tile resources is
+handled separately at render time, not by leaving extra padding here.
+
+Panel 1 (top-left) — neutral base pose: both fish arched mid-leap at a
+moderate height, side by side.
+
+Panel 2 (top-right) — higher leap, moderate motion: both fish arched
+higher and further along their leap arc — immediately noticeable at a
+glance, not a subtle glance.
+
+Panel 3 (bottom-left) — descending: both fish angled downward as if
+falling back toward the water, a clear, obvious change in angle from
+panel 2. This is NOT a mirrored or horizontally flipped image — both
+fish stay in the same relative positions as every other panel.
+
+Panel 4 (bottom-right) — settling, mid-transition: both fish low and
+flat, just at/re-entering the surface, partway between panel 3 and
+panel 1.
+
+Every panel: the two fish are centered within their panel at the same
+scale, same camera distance, and same padding, on a single flat,
+solid, saturated magenta (#FF00FF, bright hot pink, not a duller or
+darker mauve) background — completely uniform, no gradient, no shadow,
+no vignette.
+
+Do not include any text, panel labels, numbers, watermark, logo, UI
+elements, sparkle/star decorations, or border anywhere in the image.
+Overall image should be a square 1:1 aspect ratio.

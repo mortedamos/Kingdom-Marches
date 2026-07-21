@@ -1,0 +1,74 @@
+Create a single image containing a 2x2 grid of four equal square
+panels (top-left, top-right, bottom-left, bottom-right), separated by
+a thin visible gap so they can be cut apart afterward. This is a
+4-frame idle animation sprite sheet for a small game-map tile resource
+icon — an "Iron Deposit" resource on a hills/mountains tile: one large,
+prominent chunk/boulder of raw rust-colored iron ore sitting alone
+directly on the ground, NOT a colored vein or streak running through a
+separate gray rock, and NOT small scattered fragments — this variant
+is one single big ore chunk, distinctly different in scale and
+arrangement from the other Iron Deposit variants. The SAME ore chunk
+(identical shape, position, and camera angle) must appear in all four
+panels — it does not move or change pose at all. The ONLY thing that
+changes panel to panel is a subtle glint of light catching the
+metallic ore surface, like a slow shimmer.
+
+CRITICAL: there is exactly ONE ore chunk in this image, appearing once
+per panel, in the exact same position, shape, and size in every panel
+— do not shift, rotate, or resize it between panels; only the glint
+highlight changes.
+
+Style: this is a small tile-resource overlay icon, not a full scene
+illustration — it sits on top of a terrain tile, underneath the
+player's units, and must not visually compete with unit art. Cel-
+shaded flat colors with a limited, muted, desaturated palette (warm
+rust-orange/red-brown ore, with just a few small gray mineral flecks
+on its surface, no separate gray rock base needed this time), 2-3 hard
+tonal steps, no soft gradients except for the small glint highlight
+itself. IMPORTANT outline rule, different from normal game units: do
+NOT use a thick black outline. Instead use a THIN outline in a muted,
+dark rust-brown shade — just enough to separate the silhouette from
+the background, never pure black. Keep interior linework minimal — one
+or two lines suggesting the ore chunk's rough faceted surface, not
+detailed texture or heavy cross-hatching. One or two bold, simple
+shapes only; this icon renders very small on screen, so fine detail
+won't survive downscaling and should not be attempted.
+
+Subject (applies to all four panels): one large, rounded/faceted chunk
+of rust-orange raw iron ore, roughly boulder-sized relative to the
+frame, with a rough angular silhouette and a few small darker gray
+mineral fleck details on its surface.
+
+Framing: top-down flattened "tile icon" view (NOT the elevated 3/4
+diorama angle used for full-size units), the ore chunk centered in
+each panel filling the frame at roughly 10-15% padding on all sides —
+the same fill amount as a normal game unit portrait, NOT a small icon
+floating in a mostly-empty frame. Any relative size difference between
+this and other tile resources is handled separately at render time,
+not by leaving extra padding here.
+
+Panel 1 (top-left) — no glint: the ore chunk's surface is matte, no
+highlight visible, base colors only.
+
+Panel 2 (top-right) — glint begins: a small, soft bright highlight
+appears near the top of the ore chunk, catching the light —
+immediately noticeable at a glance, not a subtle glance.
+
+Panel 3 (bottom-left) — glint peak: the highlight has moved down
+toward the middle of the ore chunk and is at its brightest, a clear,
+obvious change from panel 2.
+
+Panel 4 (bottom-right) — glint fading: the highlight has moved further
+down and is dimming out, partway between panel 3 and panel 1's matte
+state.
+
+Every panel: the ore chunk is centered within its panel at the same
+scale, same camera distance, and same padding, on a single flat,
+solid, saturated magenta (#FF00FF, bright hot pink, not a duller or
+darker mauve) background — completely uniform, no gradient, no shadow,
+no vignette (the glint highlight itself is the one exception to "no
+gradient," confined to the ore chunk's surface only).
+
+Do not include any text, panel labels, numbers, watermark, logo, UI
+elements, sparkle/star decorations, or border anywhere in the image.
+Overall image should be a square 1:1 aspect ratio.

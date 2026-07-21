@@ -106,14 +106,19 @@ All assets are PNG, transparent background, no baked-in drop shadow.
 | City tier | 128×128 | Single static image | `assets/cities/{raceId}_city_{tier}.png` (tier 1–6) | Full isometric diorama, transparent around the silhouette (not a filled square, see reference); tier 1 = small camp/hamlet, tier 6 = large fortified city — scale up structure count, wall height, and fortification with tier |
 | Building (individual) | 128×128 | Single static image | `assets/buildings/{buildingId}.png` (or `_1..._3` for variants) | Elevated diorama angle matching city tier art, single structure only; **not yet wired into the renderer** — `render.js` currently only draws the per-tier city diorama, no per-building sprite lookup exists yet, so this is a forward-looking spec |
 | Wall segment | 128×128 | Single static image | `assets/buildings/wall_section.png` (or `_1..._3` for variants) | Universal across all races (not race-specific, per `buildings.js`); same forward-looking caveat as individual buildings above |
-| Enhancement / resource icon | 64×64 per frame | 1 static frame, or 4-frame idle sheet (256×64, default — see §7) | `assets/enhancements/{enhancementId}_{n}.png` | Same treatment as terrain tiles — small overlay icon, not a full scene |
-| Ruin | 64×64 | 1 static frame or idle sheet | `assets/enhancements/ruin_{n}.png` | Same as enhancement icons |
+| Enhancement / resource icon | 128×128 per frame (matches unit-sprite canvas — see below) | 4-frame idle sheet (512×128) — living/animated resources (Game, Fish Shoal) get real motion; mineral ones (Iron, Gold Vein, Fertile Soil) get a subtle ambient idle | `assets/enhancements/resource_{enhancementId}_{n}.png` | Drawn centered on the tile at `ts * iconScale` (see `window.GameData.RESOURCES[id].iconScale` in `terrain.js`, applied in `render.js`) — relative sizing between resource types is a render-time scale knob, not baked into the art. See the muted-outline subsection below for why it still doesn't compete with units |
+| Ruin | 128×128 per frame | 4-frame idle sheet (512×128) — subtle ambient motion (drifting dust, swaying weeds), not a static landmark | `assets/enhancements/ruin_{n}.png` | Same muted-outline treatment as resource icons; drawn centered at `ts * RUIN_ICON_SCALE` (currently 1.15, a little bigger than a resource icon — see `render.js`) |
 
 City/building/wall art all standardize on 128×128 (matching unit sprite
 size) rather than the original 1024×1024 city renders — every asset is
 downscaled to the same on-screen tile size at render time regardless of
 source resolution (see `render.js`'s `ctx.drawImage(..., ts, ts)`), so the
 extra resolution bought nothing but generation cost and file size.
+Enhancement/resource icons and Ruin also standardize on 128×128 for the
+same reason — decided with the user specifically so relative on-tile
+sizing between resource types (a small fish shoal vs. a bigger ruin)
+stays a render-time scale knob (`iconScale` / `RUIN_ICON_SCALE`), not a
+choice baked into separate source-art resolutions per type.
 
 An optional same-named `.json` next to any PNG can override
 `frameWidth`/`frameHeight`/`layout`/`animations` if a generated asset doesn't
@@ -357,6 +362,9 @@ Subject description is what should win.
   silhouette (not a filled square background), square 1:1 composition.`
 - **Enhancement/resource icon:** `Framing: top-down flattened icon view,
   square 1:1 composition, small overlay-scale detail, not a full scene.`
+  Also uses the muted-outline exception (thin, same-hue-family outline,
+  never black) documented in the terrain section below — see "Tile
+  resource & ruin icons" for the full rationale.
 
 ---
 
@@ -711,6 +719,55 @@ terrain specifically:
 `js/data/sprite-manifests.js`. The 4-frame Ocean sheet needs its own
 manifest entry (or per-file `.json`) since no default terrain manifest
 currently declares 4 frames.
+
+### Tile resource & ruin icons — muted outline, unit-size canvas, render-time scale
+
+Decided with the user when designing the Iron/Game/Gold/Fertile/Fish
+resource icons and Ruin: these sit in the render stack between terrain
+overlays (river, road) and units (`render.js`'s per-tile draw order is
+terrain → river → road → resource/ruin → units), and are meant to read
+as ambient tile detail, not compete with the unit standing on top of
+them. Two deliberate departures from the general unit/city rules in §1:
+
+- **Outline is muted, not black.** Same idea as the landform-shading
+  exception above (a hard black cel-shade outline makes something pop
+  as a foreground object), but resources/ruins ARE discrete objects
+  sitting on the tile — unlike a landform, they shouldn't blend
+  invisibly into the base. So keep a full outline around the
+  silhouette (don't drop it at the base the way landforms do), but
+  make it **thin and a muted dark shade of the same hue family as the
+  subject**, never pure black, and keep interior linework minimal —
+  one or two defining lines (an eye, a wing fold, a vein seam), not
+  full unit-style detail linework. This is what keeps a deer or fish
+  shoal from visually shouting over the unit standing on the same
+  tile.
+- **Art fills its 128×128 canvas at ~10-15% padding, matching unit
+  convention** — NOT a deliberately small/padded icon. User correction
+  (2026-07-18): relative size between resource types (a small fish
+  shoal vs. a bigger ruin) is a **render-time concern only**, handled
+  by `iconScale` per resource (`terrain.js`'s `RESOURCES` table) and
+  `RUIN_ICON_SCALE` (`render.js`), which scale the sprite centered on
+  the tile (`ts * iconScale`, offset to stay centered). Generation-time
+  padding should stay close to the unit convention so the art itself
+  doesn't double up on the shrinking `iconScale` already does — this is
+  what makes idle animation (a deer's head turning, a fish breaking the
+  surface) actually legible even after render-time downscale.
+
+Otherwise these follow the terrain conventions above: top-down
+flattened icon framing (not the 3/4 elevated angle), one or two bold
+simple shapes, no fine texture that won't survive downscale, muted
+earthy palette matching the underlying terrain family it appears on.
+
+**Animation and variant plan:**
+
+| Resource | Variants | Frames | Notes |
+|---|---|---|---|
+| Game | 3 | 4 (idle) | a deer or similar animal, head/ears movement — real motion, it's a living creature |
+| Fish Shoal | 3 | 4 (idle) | fish breaking the surface / jumping — real motion |
+| Iron Deposit | 3 | 4 (idle) | subtle ambient motion (a glint catching the light), not a moving object |
+| Gold Vein | 3 | 4 (idle) | same subtle-glint treatment as Iron |
+| Fertile Soil | 3 | 4 (idle) | subtle sway (grass/crop tufts), matches terrain's idle-sway convention |
+| Ruin | 3 | 4 (idle) | subtle ambient motion (drifting dust, swaying weeds, a flicker) — not a static landmark, but not a living creature either |
 
 ### Resize step must use `-SeamlessEdges` for terrain, never for units
 

@@ -1,0 +1,67 @@
+Create a single image containing a 2x2 grid of four equal square
+panels (top-left, top-right, bottom-left, bottom-right), separated by
+a thin visible gap so they can be cut apart afterward. This is a
+4-frame idle animation sprite sheet for a small game-map tile resource
+icon — a "Fertile Soil" resource on a plains/swamp tile: a small row
+of leafy green crop plants (like young cabbage or leafy vegetable
+plants) growing from a patch of dark rich soil, a distinctly different
+crop type and silhouette from a wheat-stalk variant. The SAME crop row
+(identical shape, position, and camera angle) must appear in all four
+panels — only the leaves sway gently, panel to panel, as if stirred by
+a light breeze.
+
+CRITICAL: there is exactly ONE row of crop plants in this image,
+appearing once per panel, in the same general position and size in
+every panel — do not duplicate it; only the sway/lean of the leaves
+changes.
+
+Style: this is a small tile-resource overlay icon, not a full scene
+illustration — it sits on top of a terrain tile, underneath the
+player's units, and must not visually compete with unit art. Cel-
+shaded flat colors with a limited, muted, desaturated palette (muted
+leafy green, dark rich brown soil), 2-3 hard tonal steps, no soft
+gradients. IMPORTANT outline rule, different from normal game units:
+do NOT use a thick black outline. Instead use a THIN outline in a
+muted, dark shade of each shape's own hue family (dark brown for the
+soil, dark olive-green for the leaves) — just enough to separate the
+silhouette from the background, never pure black. Keep interior
+linework minimal — a few simple lines suggesting individual leaves,
+not a densely detailed field. One or two bold, simple shapes only;
+this icon renders very small on screen, so fine detail won't survive
+downscaling and should not be attempted.
+
+Subject (applies to all four panels): a small patch of dark rich soil
+with 3-4 small leafy green crop plants growing from it in a short row,
+broad rounded leaves.
+
+Framing: top-down flattened "tile icon" view (NOT the elevated 3/4
+diorama angle used for full-size units), the crop row centered in each
+panel filling the frame at roughly 10-15% padding on all sides — the
+same fill amount as a normal game unit portrait, NOT a small icon
+floating in a mostly-empty frame. Any relative size difference between
+this and other tile resources is handled separately at render time,
+not by leaving extra padding here.
+
+Panel 1 (top-left) — neutral base pose: leaves upright, straight, no
+lean.
+
+Panel 2 (top-right) — swaying, moderate motion: all leaves lean a
+clear, obvious amount to one side, as if pushed by a breeze —
+immediately noticeable at a glance, not a subtle glance.
+
+Panel 3 (bottom-left) — swaying the other way: all leaves lean a
+clear, obvious amount toward the other direction from panel 2 — a
+genuinely redrawn sway, not a horizontally flipped copy of panel 2.
+
+Panel 4 (bottom-right) — settling, mid-transition: leaves straightening
+back toward upright, partway between panel 3 and panel 1.
+
+Every panel: the crop row and soil patch are centered within their
+panel at the same scale, same camera distance, and same padding, on a
+single flat, solid, saturated magenta (#FF00FF, bright hot pink, not a
+duller or darker mauve) background — completely uniform, no gradient,
+no shadow, no vignette.
+
+Do not include any text, panel labels, numbers, watermark, logo, UI
+elements, sparkle/star decorations, or border anywhere in the image.
+Overall image should be a square 1:1 aspect ratio.

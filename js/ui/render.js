@@ -13,6 +13,7 @@ window.UI = window.UI || {};
   const TILE_SIZE = 34; // base tile size; actual rendered size = TILE_SIZE * zoomLevel
   const MIN_ZOOM = 0.4;
   const MAX_ZOOM = 3.0;
+  const RUIN_ICON_SCALE = 1.15; // ruins read as a little bigger than a tile-fill resource icon (see per-resource iconScale in terrain.js)
   const MOVE_ANIM_MS = 350; // purely visual glide duration for unit movement
   const ATTACK_ANIM_MS = 500; // total lifetime of a combat "wiggle" (attacker lunge / defender recoil)
   const SLASH_ANIM_MS = 260; // shorter-lived slash/swipe overlay drawn on top
@@ -492,13 +493,22 @@ window.UI = window.UI || {};
           drawRoadOverlay(ctx, screenX, screenY, ts, conn);
         }
 
-        // Resource — sprite if available, otherwise gold dot
+        // Resource — sprite if available, otherwise gold dot. Drawn centered
+        // on the tile at the resource's own iconScale (terrain.js) times ts,
+        // so idle animation reads clearly and relative sizing between
+        // resource types (a small fish shoal vs. a bigger ruin) is a
+        // render-time scale knob, not baked into the source art. The
+        // sprite's own transparent padding is what lets terrain/road/river
+        // show through around it.
         if (tile.resource) {
           const resSprite = window.UI.sprites.pick(`enhancement/resource_${tile.resource}`, tile);
           if (resSprite) {
             const f = window.UI.sprites.currentFrame(resSprite.manifest, "idle", tile);
-            const sz = ts * 0.4;
-            ctx.drawImage(resSprite.image, f.sx, f.sy, f.sw, f.sh, screenX + ts - sz - 1, screenY + 1, sz, sz);
+            const resDef = window.GameData.RESOURCES[tile.resource];
+            const iconScale = (resDef && resDef.iconScale) || 1.0;
+            const sz = ts * iconScale;
+            const off = (ts - sz) / 2;
+            ctx.drawImage(resSprite.image, f.sx, f.sy, f.sw, f.sh, screenX + off, screenY + off, sz, sz);
           } else {
             ctx.fillStyle = "#f0d060";
             ctx.beginPath();
@@ -507,12 +517,15 @@ window.UI = window.UI || {};
           }
         }
 
-        // Ruin — sprite if available, otherwise "?" text
+        // Ruin — sprite if available, otherwise "?" text. Centered, a little
+        // bigger than a tile-fill resource icon (RUIN_ICON_SCALE).
         if (tile.isRuin) {
           const ruinSprite = window.UI.sprites.pick("enhancement/ruin", tile);
           if (ruinSprite) {
             const f = window.UI.sprites.currentFrame(ruinSprite.manifest, "idle", tile);
-            ctx.drawImage(ruinSprite.image, f.sx, f.sy, f.sw, f.sh, screenX, screenY, ts, ts);
+            const sz = ts * RUIN_ICON_SCALE;
+            const off = (ts - sz) / 2;
+            ctx.drawImage(ruinSprite.image, f.sx, f.sy, f.sw, f.sh, screenX + off, screenY + off, sz, sz);
           } else {
             ctx.fillStyle = "#b08060";
             ctx.font = `${Math.max(8, ts * 0.36)}px monospace`;
