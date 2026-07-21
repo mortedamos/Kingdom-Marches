@@ -430,7 +430,16 @@ window.UI = window.UI || {};
     const ctx = canvas.getContext("2d");
     const { map, civs } = gameState;
     const { showInfluence, showGrid, selectedUnit, selectedCity, humanCivId } = viewState;
-    const ts = TILE_SIZE * (viewState.zoomLevel || 1); // effective tile size
+    // Rounded to a whole pixel count -- with a fractional ts (e.g. zoomLevel
+    // 1.37 * TILE_SIZE 34), per-tile screenX/screenY below would land on
+    // sub-pixel positions, and default canvas image smoothing then blends a
+    // sliver of each tile's edge into its neighbor, showing up as a faint
+    // seam at every tile boundary even with the grid-line stroke (showGrid)
+    // toggled off entirely -- a separate rendering artifact from that
+    // intentional stroke, not fixed by gating it. Every screenX/screenY in
+    // this function derives from this same ts + a rounded offset below, so
+    // rounding it once here keeps the whole frame's tile grid pixel-aligned.
+    const ts = Math.round(TILE_SIZE * (viewState.zoomLevel || 1));
     const now = performance.now();
     updateCombatAnims(now);
     updateQuipBubbles(now);
@@ -438,10 +447,12 @@ window.UI = window.UI || {};
 
     // Clamp scroll so we never go out of bounds
     const clamped = clampOffset(viewState.scrollX || 0, viewState.scrollY || 0, canvas, map, ts);
-    viewState.scrollX = clamped.x;
+    viewState.scrollX = clamped.x; // kept at full precision so smooth dragging keeps accumulating cleanly
     viewState.scrollY = clamped.y;
-    const offsetX = -clamped.x;
-    const offsetY = -clamped.y;
+    // ...but the offset actually used for drawing is rounded too, for the
+    // same pixel-alignment reason as ts above.
+    const offsetX = -Math.round(clamped.x);
+    const offsetY = -Math.round(clamped.y);
 
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
