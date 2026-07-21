@@ -13,7 +13,7 @@ window.UI = window.UI || {};
   const TILE_SIZE = 34; // base tile size; actual rendered size = TILE_SIZE * zoomLevel
   const MIN_ZOOM = 0.4;
   const MAX_ZOOM = 3.0;
-  const RUIN_ICON_SCALE = 1.15; // ruins read as a little bigger than a tile-fill resource icon (see per-resource iconScale in terrain.js)
+  const RUIN_ICON_SCALE = .75; // ruins read as a little bigger than a tile-fill resource icon (see per-resource iconScale in terrain.js)
   const MOVE_ANIM_MS = 350; // purely visual glide duration for unit movement
   const ATTACK_ANIM_MS = 500; // total lifetime of a combat "wiggle" (attacker lunge / defender recoil)
   const SLASH_ANIM_MS = 260; // shorter-lived slash/swipe overlay drawn on top
@@ -466,6 +466,19 @@ window.UI = window.UI || {};
       ? (gameState.tileMemory?.[viewState.tileScoreCivId] || {})
       : null;
 
+    // Resource/ruin icons can render larger than one tile (iconScale/
+    // RUIN_ICON_SCALE > 1.0, e.g. a big Ruin or Fish Shoal) and are now
+    // bottom-anchored in one of 3 horizontal slots, so an oversized icon can
+    // legitimately overhang into a neighboring tile's screen area. Drawing
+    // them inline in the per-tile loop below meant that overhang got
+    // silently painted over the moment the next tile in raster order (to
+    // the right, or on the row below) drew its own opaque terrain fill on
+    // top of it. Fix: collect their draws here and flush them in one pass
+    // AFTER the whole terrain/river/road grid is painted (but still before
+    // cities/units, which already get their own later pass for the same
+    // reason) so overhang always lands on top of terrain, never under it.
+    const deferredIcons = [];
+
     for (let y = 0; y < map.height; y++) {
       for (let x = 0; x < map.width; x++) {
         const idx = y * map.width + x;
@@ -488,7 +501,7 @@ window.UI = window.UI || {};
                   x, y
                 )
               : null;
-            drawRememberedTile(ctx, screenX, screenY, ts, memory[idx], roadConn, x, y, showGrid);
+            drawRememberedTile(ctx, screenX, screenY, ts, memory[idx], roadConn, x, y, showGrid, deferredIcons);
             if (tileScoreMemory) drawTileScoreOverlay(ctx, screenX, screenY, ts, tileScoreMemory[idx]?.cityScore);
           } else {
             ctx.fillStyle = "#1a1a1a";
@@ -528,6 +541,8 @@ window.UI = window.UI || {};
         // (a small fish shoal vs. a bigger ruin) is a render-time scale
         // knob, not baked into the source art. The sprite's own transparent
         // padding is what lets terrain/road/river show through around it.
+        // Actual draw is deferred (see deferredIcons above) so any overhang
+        // past this tile's bounds isn't clipped by a later tile's terrain.
         if (tile.resource) {
           const resSprite = window.UI.sprites.pick(`enhancement/resource_${tile.resource}`, tile);
           if (resSprite) {
@@ -536,29 +551,33 @@ window.UI = window.UI || {};
             const iconScale = (resDef && resDef.iconScale) || 1.0;
             const sz = ts * iconScale;
             const { boxX, boxY } = tileIconBox(screenX, screenY, ts, sz, x, y);
-            ctx.drawImage(resSprite.image, f.sx, f.sy, f.sw, f.sh, boxX, boxY, sz, sz);
+            deferredIcons.push(() => ctx.drawImage(resSprite.image, f.sx, f.sy, f.sw, f.sh, boxX, boxY, sz, sz));
           } else {
-            ctx.fillStyle = "#f0d060";
-            ctx.beginPath();
-            ctx.arc(screenX + ts * 0.75, screenY + ts * 0.25, Math.max(1.5, ts * 0.09), 0, Math.PI * 2);
-            ctx.fill();
+            deferredIcons.push(() => {
+              ctx.fillStyle = "#f0d060";
+              ctx.beginPath();
+              ctx.arc(screenX + ts * 0.75, screenY + ts * 0.25, Math.max(1.5, ts * 0.09), 0, Math.PI * 2);
+              ctx.fill();
+            });
           }
         }
 
         // Ruin — sprite if available, otherwise "?" text. Same bottom-
         // anchored slot placement as resources, a little bigger
-        // (RUIN_ICON_SCALE).
+        // (RUIN_ICON_SCALE). Also deferred, same reasoning as Resource above.
         if (tile.isRuin) {
           const ruinSprite = window.UI.sprites.pick("enhancement/ruin", tile);
           if (ruinSprite) {
             const f = window.UI.sprites.currentFrame(ruinSprite.manifest, "idle", tile);
             const sz = ts * RUIN_ICON_SCALE;
             const { boxX, boxY } = tileIconBox(screenX, screenY, ts, sz, x, y);
-            ctx.drawImage(ruinSprite.image, f.sx, f.sy, f.sw, f.sh, boxX, boxY, sz, sz);
+            deferredIcons.push(() => ctx.drawImage(ruinSprite.image, f.sx, f.sy, f.sw, f.sh, boxX, boxY, sz, sz));
           } else {
-            ctx.fillStyle = "#b08060";
-            ctx.font = `${Math.max(8, ts * 0.36)}px monospace`;
-            ctx.fillText("?", screenX + ts / 2 - ts * 0.11, screenY + ts / 2 + ts * 0.11);
+            deferredIcons.push(() => {
+              ctx.fillStyle = "#b08060";
+              ctx.font = `${Math.max(8, ts * 0.36)}px monospace`;
+              ctx.fillText("?", screenX + ts / 2 - ts * 0.11, screenY + ts / 2 + ts * 0.11);
+            });
           }
         }
 
@@ -584,6 +603,11 @@ window.UI = window.UI || {};
         if (tileScoreMemory) drawTileScoreOverlay(ctx, screenX, screenY, ts, tileScoreMemory[idx]?.cityScore);
       }
     }
+
+    // Flush deferred resource/ruin icon draws now that every tile's terrain
+    // is painted (see deferredIcons comment above) -- still ahead of
+    // cities/units below, preserving the normal stacking order.
+    for (const draw of deferredIcons) draw();
 
     // Cities
     for (const civ of Object.values(civs)) {
@@ -1077,7 +1101,7 @@ window.UI = window.UI || {};
    * visible). Finished with a dark scrim so it reads as visibly "remembered,
    * possibly stale" rather than currently seen.
    */
-  function drawRememberedTile(ctx, screenX, screenY, ts, snapshot, roadConn, x, y, showGrid) {
+  function drawRememberedTile(ctx, screenX, screenY, ts, snapshot, roadConn, x, y, showGrid, deferredIcons) {
     if (!snapshot) {
       // Explored should always have a matching memory entry, but fall back
       // to plain fog rather than throw if the two ever disagree.
@@ -1102,6 +1126,15 @@ window.UI = window.UI || {};
       drawRoadOverlay(ctx, screenX, screenY, ts, roadConn || {});
     }
 
+    // Resource/ruin draws are deferred to the same post-grid flush pass as
+    // the live tile loop (see render()'s deferredIcons), for the same
+    // clipping reason -- an oversized icon here would otherwise get painted
+    // over by the next tile's terrain fill. Remembered tiles get their own
+    // dimming scrim drawn AFTER this function returns (see the bottom of
+    // this function), which would normally darken the icon too since it was
+    // drawn before the scrim -- deferring the icon draw would skip that, so
+    // dim it directly via globalAlpha instead to keep the same "this is a
+    // stale memory, not live" look.
     if (snapshot.resource) {
       const resSprite = window.UI.sprites.pick(`enhancement/resource_${snapshot.resource}`, snapshot);
       if (resSprite) {
@@ -1110,12 +1143,19 @@ window.UI = window.UI || {};
         const iconScale = (resDef && resDef.iconScale) || 1.0;
         const sz = ts * iconScale;
         const { boxX, boxY } = tileIconBox(screenX, screenY, ts, sz, x, y);
-        ctx.drawImage(resSprite.image, f.sx, f.sy, f.sw, f.sh, boxX, boxY, sz, sz);
+        deferredIcons.push(() => {
+          const prevAlpha = ctx.globalAlpha;
+          ctx.globalAlpha = prevAlpha * 0.6;
+          ctx.drawImage(resSprite.image, f.sx, f.sy, f.sw, f.sh, boxX, boxY, sz, sz);
+          ctx.globalAlpha = prevAlpha;
+        });
       } else {
-        ctx.fillStyle = "#f0d060";
-        ctx.beginPath();
-        ctx.arc(screenX + ts * 0.75, screenY + ts * 0.25, Math.max(1.5, ts * 0.09), 0, Math.PI * 2);
-        ctx.fill();
+        deferredIcons.push(() => {
+          ctx.fillStyle = "#f0d060";
+          ctx.beginPath();
+          ctx.arc(screenX + ts * 0.75, screenY + ts * 0.25, Math.max(1.5, ts * 0.09), 0, Math.PI * 2);
+          ctx.fill();
+        });
       }
     }
 
@@ -1125,11 +1165,18 @@ window.UI = window.UI || {};
         const f = window.UI.sprites.currentFrame(ruinSprite.manifest, "idle", snapshot);
         const sz = ts * RUIN_ICON_SCALE;
         const { boxX, boxY } = tileIconBox(screenX, screenY, ts, sz, x, y);
-        ctx.drawImage(ruinSprite.image, f.sx, f.sy, f.sw, f.sh, boxX, boxY, sz, sz);
+        deferredIcons.push(() => {
+          const prevAlpha = ctx.globalAlpha;
+          ctx.globalAlpha = prevAlpha * 0.6;
+          ctx.drawImage(ruinSprite.image, f.sx, f.sy, f.sw, f.sh, boxX, boxY, sz, sz);
+          ctx.globalAlpha = prevAlpha;
+        });
       } else {
-        ctx.fillStyle = "#b08060";
-        ctx.font = `${Math.max(8, ts * 0.36)}px monospace`;
-        ctx.fillText("?", screenX + ts / 2 - ts * 0.11, screenY + ts / 2 + ts * 0.11);
+        deferredIcons.push(() => {
+          ctx.fillStyle = "#b08060";
+          ctx.font = `${Math.max(8, ts * 0.36)}px monospace`;
+          ctx.fillText("?", screenX + ts / 2 - ts * 0.11, screenY + ts / 2 + ts * 0.11);
+        });
       }
     }
 
