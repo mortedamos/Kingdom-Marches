@@ -281,14 +281,10 @@ window.GameData.UNIT_QUIPS = {
     },
     raptor: {
       move: [
-        "Wings up, eyes sharper.",
-        "So much sky, so little time.",
-        "Scouting is simply flying with purpose.",
+        "*screech*",
       ],
       attack: [
-        "Talons out. Wasn't the plan.",
-        "A scout, forced to fight.",
-        "This is not what I'm good at.",
+        "*screech*",
       ],
     },
     shadowsteed: {
@@ -376,7 +372,7 @@ window.GameData.UNIT_QUIPS = {
       prospect: [
         "Gold in this rock. I can feel it.",
         "Right, staking my claim here.",
-        "Nobody touches my vein. Nobody.",
+        "I am a dwarf and im digging a hole...",
         "This'll do. Settling in.",
       ],
     },

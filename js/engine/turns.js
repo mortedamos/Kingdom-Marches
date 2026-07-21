@@ -196,7 +196,7 @@ window.GameEngine = window.GameEngine || {};
   // removed from the map -- see beginRound's ritual-tracking loop below.
   // Deliberately NOT applied to Dark Ritual (Undead), which the user didn't
   // include in this request.
-  const RESOURCE_EXHAUSTION_CHANCE = 0.02;
+  const RESOURCE_EXHAUSTION_CHANCE = 0.05;
 
   /**
    * Once-per-round setup, run before any civ takes its turn: refresh vision,
