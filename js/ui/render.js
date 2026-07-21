@@ -1072,16 +1072,34 @@ window.UI = window.UI || {};
     }
 
     if (snapshot.resource) {
-      ctx.fillStyle = "#f0d060";
-      ctx.beginPath();
-      ctx.arc(screenX + ts * 0.75, screenY + ts * 0.25, Math.max(1.5, ts * 0.09), 0, Math.PI * 2);
-      ctx.fill();
+      const resSprite = window.UI.sprites.pick(`enhancement/resource_${snapshot.resource}`, snapshot);
+      if (resSprite) {
+        const f = window.UI.sprites.currentFrame(resSprite.manifest, "idle", snapshot);
+        const resDef = window.GameData.RESOURCES[snapshot.resource];
+        const iconScale = (resDef && resDef.iconScale) || 1.0;
+        const sz = ts * iconScale;
+        const off = (ts - sz) / 2;
+        ctx.drawImage(resSprite.image, f.sx, f.sy, f.sw, f.sh, screenX + off, screenY + off, sz, sz);
+      } else {
+        ctx.fillStyle = "#f0d060";
+        ctx.beginPath();
+        ctx.arc(screenX + ts * 0.75, screenY + ts * 0.25, Math.max(1.5, ts * 0.09), 0, Math.PI * 2);
+        ctx.fill();
+      }
     }
 
     if (snapshot.isRuin) {
-      ctx.fillStyle = "#b08060";
-      ctx.font = `${Math.max(8, ts * 0.36)}px monospace`;
-      ctx.fillText("?", screenX + ts / 2 - ts * 0.11, screenY + ts / 2 + ts * 0.11);
+      const ruinSprite = window.UI.sprites.pick("enhancement/ruin", snapshot);
+      if (ruinSprite) {
+        const f = window.UI.sprites.currentFrame(ruinSprite.manifest, "idle", snapshot);
+        const sz = ts * RUIN_ICON_SCALE;
+        const off = (ts - sz) / 2;
+        ctx.drawImage(ruinSprite.image, f.sx, f.sy, f.sw, f.sh, screenX + off, screenY + off, sz, sz);
+      } else {
+        ctx.fillStyle = "#b08060";
+        ctx.font = `${Math.max(8, ts * 0.36)}px monospace`;
+        ctx.fillText("?", screenX + ts / 2 - ts * 0.11, screenY + ts / 2 + ts * 0.11);
+      }
     }
 
     // Last-known city/structure occupant -- a simplified dimmed marker, not
