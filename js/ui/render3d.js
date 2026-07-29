@@ -1162,21 +1162,53 @@ window.UI = window.UI || {};
     if (st.builtForMap !== map) buildTerrainMesh(st, map);
     ensureRiverGroups(st, map);
 
+    const { visible: fogVisible, explored: fogExplored } = resolveFogSets(gameState, viewState);
+
     if (!canvas.__cam) {
-      // Default target/distance frame the human player's own starting
-      // area, not the map's geometric center -- matches main.js's own
-      // centerViewOnStart() for 2D. Without this, a fresh game (which has
-      // only explored a small patch near its starting units -- see fog of
-      // war) puts that patch at a effectively random point on a huge black
-      // expanse if the camera happens to default to the map center instead,
-      // which reads as "nothing rendered at all" even though it's working
-      // correctly (confirmed live: reported as "just a black screen").
-      let focusTx = map.width / 2, focusTz = map.height / 2;
+      // Default target/distance frame somewhere the fog system actually
+      // shows something, not the map's geometric center -- centering on an
+      // arbitrary point that happens to be unexplored (or, in spectator
+      // games with the Fog of War panel set to All/Selected instead of the
+      // default Off, simply not currently visible to anyone being watched)
+      // reads as "nothing rendered at all" even though it's working
+      // correctly (confirmed live: reported as "just a black screen" both
+      // for a fresh human game and for a spectator game with fog enabled).
+      //
+      // Priority: the human player's own first unit (matches main.js's own
+      // centerViewOnStart() for 2D) if there is one; otherwise any real
+      // civ's city or unit that's currently visible (NOT the mathematical
+      // centroid of every visible tile -- tried that first, but visible
+      // territory is often an irregular, non-convex, or multi-blob shape,
+      // so the coordinate AVERAGE can land in a gap between two explored
+      // clusters that isn't itself visible at all, confirmed live: still
+      // mostly black). Picking one real populated tile guarantees landing
+      // somewhere actually rendered, since it's a member of the visible set
+      // itself, not a synthetic point derived from it.
+      let focusTx = null, focusTz = null;
       if (viewState.humanCivId) {
         const civ = gameState.civs[viewState.humanCivId];
         const unit = civ && civ.units[0];
         if (unit) { focusTx = unit.x; focusTz = unit.y; }
       }
+      if (focusTx === null) {
+        outer:
+        for (const civId of Object.keys(gameState.civs)) {
+          const civ = gameState.civs[civId];
+          if (civ.eliminated) continue;
+          for (const city of civ.cities) {
+            if (fogVisible.has(city.y * map.width + city.x)) { focusTx = city.x; focusTz = city.y; break outer; }
+          }
+          for (const unit of civ.units) {
+            if (fogVisible.has(unit.y * map.width + unit.x)) { focusTx = unit.x; focusTz = unit.y; break outer; }
+          }
+        }
+      }
+      if (focusTx === null && fogVisible.size > 0) {
+        const idx = fogVisible.values().next().value; // any real visible tile, not an average
+        focusTx = idx % map.width;
+        focusTz = Math.floor(idx / map.width);
+      }
+      if (focusTx === null) { focusTx = map.width / 2; focusTz = map.height / 2; }
       canvas.__cam = {
         azimuth: 0.6, elevationDeg: 55,
         distance: 12, // close enough to clearly frame the starting area, not the whole map
@@ -1196,7 +1228,6 @@ window.UI = window.UI || {};
     const proj = mat4Perspective((FOV_DEG * Math.PI) / 180, aspect, 0.1, farPlane);
     const viewProj = mat4Multiply(proj, view);
 
-    const { visible: fogVisible, explored: fogExplored } = resolveFogSets(gameState, viewState);
     updateFogMaskTexture(st, map, fogVisible, fogExplored);
 
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
