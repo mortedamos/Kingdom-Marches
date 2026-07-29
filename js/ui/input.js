@@ -106,5 +106,5 @@ window.UI = window.UI || {};
   }
 
 
-  window.UI.input = { attach };
+  window.UI.input = { attach, handleTileClick };
 })();

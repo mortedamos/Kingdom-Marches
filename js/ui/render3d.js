@@ -39,11 +39,25 @@
  * (boxes/cylinders) -- simpler and reuses the exact same real wall art the
  * 2D view does, at the cost of not being real connected geometry.
  *
+ * v4 adds click-to-select: a click (not a drag) ray-casts into the world
+ * and resolves to a tile (see pickTileAtClient), then hands off to
+ * input.js's own handleTileClick (exported for this reuse -- same
+ * selection logic 2D uses, no duplicated game rules) so the sidebar shows
+ * whatever's on that tile exactly like clicking it in 2D would. No mesh
+ * intersection or depth-buffer read needed for the picking itself: since
+ * terrain is flat within one of only 4 discrete height bands (see
+ * HEIGHT_BY_TERRAIN), the ray is tested against each band's horizontal
+ * plane and only a hit landing on a tile whose real height agrees with
+ * that plane counts, closest-to-camera wins -- equivalent to real depth
+ * testing for this terrain shape. Note this picks by ground footprint,
+ * not billboard geometry -- clicking squarely on a tall sprite that's
+ * leaning toward camera can occasionally resolve to its neighbor.
+ *
  * Not yet included: real 3D wall geometry (currently a billboard like any
- * other structure), billboard animation, 3D click-to-select, and full
- * spectator fog-mode parity (spectator mode shows the union of every civ's
- * vision instead of respecting the Interface menu's fog-of-war selector).
- * All are natural fast-follows once this core loop is proven out.
+ * other structure), billboard animation, and full spectator fog-mode
+ * parity (spectator mode shows the union of every civ's vision instead of
+ * respecting the Interface menu's fog-of-war selector). All are natural
+ * fast-follows once this core loop is proven out.
  */
 
 window.UI = window.UI || {};
@@ -733,15 +747,78 @@ window.UI = window.UI || {};
     return list;
   }
 
-  // ---------- camera controls ----------
+  const FOV_DEG = 45; // must match render()'s mat4Perspective call -- shared by pickTileAtClient's ray construction
+
+  function cameraEyeAndBasis(cam) {
+    const elevRad = cam.elevationDeg * Math.PI / 180;
+    const eye = [
+      cam.target[0] + cam.distance * Math.cos(elevRad) * Math.sin(cam.azimuth),
+      cam.target[1] + cam.distance * Math.sin(elevRad),
+      cam.target[2] + cam.distance * Math.cos(elevRad) * Math.cos(cam.azimuth),
+    ];
+    const camBack = norm(sub(eye, cam.target));
+    const camRight = norm(cross([0,1,0], camBack));
+    const camUp = cross(camBack, camRight);
+    return { eye, camRight, camUp, camBack };
+  }
+
+  /** Ray-casts a screen click into a tile (x,y), or null if it misses the
+   *  map entirely. No depth buffer / mesh intersection needed -- our
+   *  terrain is flat within one of only 4 distinct height bands (see
+   *  HEIGHT_BY_TERRAIN), so this intersects the ray against each band's
+   *  horizontal plane, keeps only hits that land on a tile whose OWN real
+   *  height actually matches that plane (a hit on, say, the water plane
+   *  that lands on a plains tile's footprint is a false positive -- that
+   *  tile isn't actually at water height, so skip it), and picks the
+   *  closest surviving hit to the camera -- which naturally handles a
+   *  mountain occluding whatever is behind it, the same way real depth
+   *  testing would. */
+  function pickTileAtClient(canvas, map, clientX, clientY) {
+    if (!canvas.__cam || canvas.width === 0 || canvas.height === 0) return null;
+    const cam = canvas.__cam;
+    const rect = canvas.getBoundingClientRect();
+    if (rect.width === 0 || rect.height === 0) return null;
+    const pxDpr = canvas.width / rect.width, pyDpr = canvas.height / rect.height;
+    const px = (clientX - rect.left) * pxDpr;
+    const py = (clientY - rect.top) * pyDpr;
+    const ndcX = (px / canvas.width) * 2 - 1;
+    const ndcY = 1 - (py / canvas.height) * 2;
+    const { eye, camRight, camUp, camBack } = cameraEyeAndBasis(cam);
+    const aspect = canvas.width / canvas.height;
+    const halfHeight = Math.tan((FOV_DEG * Math.PI / 180) / 2);
+    const halfWidth = halfHeight * aspect;
+    const dir = norm([
+      -camBack[0] + ndcX*halfWidth*camRight[0] + ndcY*halfHeight*camUp[0],
+      -camBack[1] + ndcX*halfWidth*camRight[1] + ndcY*halfHeight*camUp[1],
+      -camBack[2] + ndcX*halfWidth*camRight[2] + ndcY*halfHeight*camUp[2],
+    ]);
+    let best = null;
+    for (const planeY of new Set(Object.values(HEIGHT_BY_TERRAIN))) {
+      if (Math.abs(dir[1]) < 1e-6) continue;
+      const t = (planeY - eye[1]) / dir[1];
+      if (t <= 0) continue;
+      const hitX = eye[0] + dir[0]*t, hitZ = eye[2] + dir[2]*t;
+      const tx = Math.floor(hitX / TILE + map.width/2);
+      const tz = Math.floor(hitZ / TILE + map.height/2);
+      if (tx < 0 || tx >= map.width || tz < 0 || tz >= map.height) continue;
+      if (Math.abs(cellHeight(map, tx, tz) - planeY) > 1e-4) continue;
+      if (!best || t < best.t) best = { t, tx, tz };
+    }
+    return best ? { x: best.tx, y: best.tz } : null;
+  }
+
+  // ---------- camera controls + click-to-select ----------
   function attachControls(canvas) {
     if (canvas.__render3dControlsAttached) return;
     canvas.__render3dControlsAttached = true;
-    let dragging = false, lastX = 0, lastY = 0;
+    let dragging = false, lastX = 0, lastY = 0, downX = 0, downY = 0, dragMoved = false;
+    const CLICK_MOVE_THRESHOLD = 4; // px -- matches input.js's dragMoved suppression
     canvas.style.touchAction = "none";
     canvas.addEventListener("pointerdown", (e) => {
       if (!canvas.__cam) return;
-      dragging = true; lastX = e.clientX; lastY = e.clientY;
+      dragging = true; dragMoved = false;
+      lastX = e.clientX; lastY = e.clientY;
+      downX = e.clientX; downY = e.clientY;
       canvas.style.cursor = "grabbing";
       canvas.setPointerCapture(e.pointerId);
     });
@@ -749,13 +826,24 @@ window.UI = window.UI || {};
       if (!dragging || !canvas.__cam) return;
       const dx = e.clientX - lastX, dy = e.clientY - lastY;
       lastX = e.clientX; lastY = e.clientY;
+      if (Math.hypot(e.clientX - downX, e.clientY - downY) > CLICK_MOVE_THRESHOLD) dragMoved = true;
       const cam = canvas.__cam;
       cam.azimuth -= dx * 0.008;
       cam.elevationDeg = Math.max(20, Math.min(85, cam.elevationDeg - dy * 0.15));
     });
-    function endDrag() { dragging = false; canvas.style.cursor = "grab"; }
+    function endDrag(e) {
+      dragging = false;
+      canvas.style.cursor = "grab";
+      if (dragMoved || !canvas.__gameState || !canvas.__viewState) return;
+      const map = canvas.__gameState.map;
+      const hit = pickTileAtClient(canvas, map, e.clientX, e.clientY);
+      if (!hit) return;
+      window.UI.input.handleTileClick(hit, canvas.__gameState, canvas.__viewState);
+      const sidebarEl = document.getElementById("sidebar");
+      if (sidebarEl) window.UI.sidebar.render(sidebarEl, canvas.__gameState, canvas.__viewState);
+    }
     canvas.addEventListener("pointerup", endDrag);
-    canvas.addEventListener("pointercancel", endDrag);
+    canvas.addEventListener("pointercancel", () => { dragging = false; canvas.style.cursor = "grab"; });
     canvas.addEventListener("wheel", (e) => {
       if (!canvas.__cam) return;
       e.preventDefault();
@@ -779,6 +867,11 @@ window.UI = window.UI || {};
     const st = ensureInit(canvas);
     const gl = st.gl;
     const map = gameState.map;
+    // Stashed for the click handler (attachControls), which fires from a
+    // real DOM event outside render()'s call stack and needs the current
+    // gameState/viewState to resolve a click into a selection.
+    canvas.__gameState = gameState;
+    canvas.__viewState = viewState;
 
     if (st.builtForMap !== map) buildTerrainMesh(st, map);
     ensureRiverGroups(st, map);
@@ -796,20 +889,12 @@ window.UI = window.UI || {};
     resize(gl, canvas, st.dpr);
     if (canvas.width === 0 || canvas.height === 0) return;
 
-    const elevRad = cam.elevationDeg * Math.PI / 180;
-    const eye = [
-      cam.target[0] + cam.distance * Math.cos(elevRad) * Math.sin(cam.azimuth),
-      cam.target[1] + cam.distance * Math.sin(elevRad),
-      cam.target[2] + cam.distance * Math.cos(elevRad) * Math.cos(cam.azimuth),
-    ];
+    const { eye, camRight, camUp, camBack } = cameraEyeAndBasis(cam);
     const view = mat4LookAt(eye, cam.target, [0, 1, 0]);
     const aspect = canvas.width / canvas.height;
     const farPlane = Math.max(100, cam.maxDistance * 2);
-    const proj = mat4Perspective(45 * Math.PI / 180, aspect, 0.1, farPlane);
+    const proj = mat4Perspective((FOV_DEG * Math.PI) / 180, aspect, 0.1, farPlane);
     const viewProj = mat4Multiply(proj, view);
-    const camBack = norm(sub(eye, cam.target));
-    const camRight = norm(cross([0,1,0], camBack));
-    const camUp = cross(camBack, camRight);
 
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 
