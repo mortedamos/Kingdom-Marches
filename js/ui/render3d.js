@@ -243,7 +243,6 @@ window.UI = window.UI || {};
   // carries its true world position.
   const FOG_GLSL_FS =
     "uniform sampler2D uFogTex;\n" +
-    "uniform vec2 uMapSize;\n" +
     "varying vec2 vMapUV;\n" +
     "float fogFactor() {\n" +
     "  float f = texture2D(uFogTex, vMapUV).r;\n" +
@@ -1164,7 +1163,17 @@ window.UI = window.UI || {};
 
     const { visible: fogVisible, explored: fogExplored } = resolveFogSets(gameState, viewState);
 
+    // Starting a new game (title screen -> game screen is not a page
+    // reload, so the canvas element and everything hung off it survives
+    // across games) must reset the camera, not just the terrain mesh --
+    // otherwise a second game in the same browser session inherits
+    // wherever the camera was left in the FIRST one, which has no
+    // relationship to the new map at all (different seed, different size,
+    // different fog state) and can easily be aimed at nothing but black.
+    if (canvas.__cam && canvas.__camBuiltForMap !== map) canvas.__cam = null;
+
     if (!canvas.__cam) {
+      canvas.__camBuiltForMap = map;
       // Default target/distance frame somewhere the fog system actually
       // shows something, not the map's geometric center -- centering on an
       // arbitrary point that happens to be unexplored (or, in spectator
