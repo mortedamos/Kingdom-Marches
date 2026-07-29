@@ -21,11 +21,19 @@
  * top of that.
  *
  * v1 scope: terrain (all 9 types) + city + unit billboards + orbit camera.
- * Not yet included: roads/rivers/walls as 3D geometry, individual city
- * structures (only the city itself is drawn), and full spectator fog-mode
- * parity (spectator mode shows the union of every civ's vision instead of
- * respecting the Interface menu's fog-of-war selector). All are natural
- * fast-follows once this core loop is proven out.
+ * v2 adds roads and rivers as flat ground decals, using the real road/river
+ * sprite art (not procedural -- these are already flat overlay stamps, not
+ * full-tile relief paintings, so they don't have the terrain art's shading
+ * problem) rotated per-tile the same way render.js's drawRoadOverlay/
+ * drawRiverOverlay composite them, just in world space instead of on a 2D
+ * canvas (see buildDecalQuad and the ROAD_CARDINAL_ANGLE/ROAD_DIAGONAL_ANGLE
+ * tables, kept in exact agreement with render.js's).
+ *
+ * Not yet included: walls as 3D geometry, individual city structures (only
+ * the city itself is drawn), billboard animation, 3D click-to-select, and
+ * full spectator fog-mode parity (spectator mode shows the union of every
+ * civ's vision instead of respecting the Interface menu's fog-of-war
+ * selector). All are natural fast-follows once this core loop is proven out.
  */
 
 window.UI = window.UI || {};
@@ -40,6 +48,22 @@ window.UI = window.UI || {};
   const UNIT_HEIGHT = 0.75;
   const CITY_HEIGHT = 1.15;
   const MIN_DISTANCE = 4;
+  // Each decal layer gets its own tiny Y offset above the terrain surface --
+  // hub/cardinal/diagonal are all full-tile quads (the real road/river art
+  // is authored as full-tile stamps, not thin stubs), so at a junction tile
+  // several of them are otherwise perfectly coincident and would z-fight.
+  // Rivers sit below roads (see render.js: "so a road crossing a river reads
+  // as passing over it").
+  const RIVER_HUB_LIFT = 0.010, RIVER_CARDINAL_LIFT = 0.011;
+  const ROAD_HUB_LIFT = 0.013, ROAD_CARDINAL_LIFT = 0.014, ROAD_DIAGONAL_LIFT = 0.015;
+
+  // Kept in exact agreement with render.js's tables of the same name --
+  // both describe the same road/river stub art, just rotated in world
+  // space here instead of on a 2D canvas. See buildDecalQuad for how the
+  // angle is applied (matches ctx.rotate's clockwise-in-screen-space
+  // convention, since world +X/+Z here map directly to screen east/south).
+  const ROAD_CARDINAL_ANGLE = { e: 0, s: 90, w: 180, n: 270 };
+  const ROAD_DIAGONAL_ANGLE = { ne: 0, se: 90, sw: 180, nw: 270 };
 
   const HEIGHT_BY_TERRAIN = {
     ocean: WATER_HEIGHT, coast: WATER_HEIGHT,
@@ -189,6 +213,29 @@ window.UI = window.UI || {};
   // is unbounded and can invert the geometry at steep top-down angles).
   const UNIT_BLEND = 0.4, CITY_BLEND = 0.7;
 
+  // Flat ground decal (roads/rivers): plain textured quad at a fixed world
+  // position, unlit (matches how the 2D view draws these -- a flat overlay
+  // stamp on top of already-lit terrain, not its own lit surface), with the
+  // same alpha-discard cutout as billboards for a hard stamp edge.
+  const decalVS =
+    "attribute vec3 aPos;\n" +
+    "attribute vec2 aUV;\n" +
+    "uniform mat4 uViewProj;\n" +
+    "varying vec2 vUV;\n" +
+    "void main() {\n" +
+    "  vUV = aUV;\n" +
+    "  gl_Position = uViewProj * vec4(aPos, 1.0);\n" +
+    "}\n";
+  const decalFS =
+    "precision mediump float;\n" +
+    "uniform sampler2D uTex;\n" +
+    "varying vec2 vUV;\n" +
+    "void main() {\n" +
+    "  vec4 c = texture2D(uTex, vUV);\n" +
+    "  if (c.a < 0.5) discard;\n" +
+    "  gl_FragColor = vec4(c.rgb, 1.0);\n" +
+    "}\n";
+
   function compile(gl, type, src) {
     const s = gl.createShader(type);
     gl.shaderSource(s, src);
@@ -219,9 +266,10 @@ window.UI = window.UI || {};
 
     const terrainProg = link(gl, terrainVS, terrainFS);
     const billboardProg = link(gl, billboardVS, billboardFS);
+    const decalProg = link(gl, decalVS, decalFS);
 
     state = {
-      canvas, gl, terrainProg, billboardProg,
+      canvas, gl, terrainProg, billboardProg, decalProg,
       tStride: 8 * 4,
       t_aPos: gl.getAttribLocation(terrainProg, "aPos"),
       t_aNormal: gl.getAttribLocation(terrainProg, "aNormal"),
@@ -236,9 +284,15 @@ window.UI = window.UI || {};
       b_uRight: gl.getUniformLocation(billboardProg, "uRight"),
       b_uUp: gl.getUniformLocation(billboardProg, "uUp"),
       b_uTex: gl.getUniformLocation(billboardProg, "uTex"),
+      d_aPos: gl.getAttribLocation(decalProg, "aPos"),
+      d_aUV: gl.getAttribLocation(decalProg, "aUV"),
+      d_uViewProj: gl.getUniformLocation(decalProg, "uViewProj"),
+      d_uTex: gl.getUniformLocation(decalProg, "uTex"),
       terrainTextures: {}, // terrainId -> WebGLTexture, built once
       billboardTexCache: new WeakMap(), // Image -> {tex, aspect, bottomPadFrac}
       terrainDrawGroups: [],
+      riverDrawGroups: [], // static once built -- see ensureRiverGroups
+      riverGroupsReady: false,
       builtForMap: null,
       mapWidth: 0, mapHeight: 0,
       dpr: Math.min(window.devicePixelRatio || 1, 2),
@@ -359,12 +413,157 @@ window.UI = window.UI || {};
       gl.bufferData(gl.ARRAY_BUFFER, interleaved, gl.STATIC_DRAW);
       st.terrainDrawGroups.push({ texture: st.terrainTextures[terrainId], vbo, vertCount });
     }
+
+    // Rivers never change after worldgen (see worldgen.js's generateRivers),
+    // so in steady state they only need building once per map -- but NOT
+    // here: at the moment the map first changes, the river/hub sprite art
+    // may still be mid-load (sprites.js's preloadAll is async), and
+    // buildRiverDecalGroups silently returns [] until it's ready. Caching
+    // that empty result here would permanently starve rivers for this
+    // map's whole lifetime. See ensureRiverGroups (called every render()
+    // frame instead), which retries until the sprites are actually ready.
+    st.riverGroupsReady = false;
+
     st.builtForMap = map;
 
     // Re-center the camera default target/distance on this map's real size
     // the first time we build it for a given viewState (see render()).
     st.lastMapWforCam = map.width;
     st.lastMapHforCam = map.height;
+  }
+
+  // ---------- road/river decals: full-tile flat quads, textured with the
+  // real overlay art and rotated per-direction the same way render.js's
+  // drawOverlayStub composites them on a 2D canvas. The stub art's default
+  // (0deg) orientation points EAST (matches ROAD_CARDINAL_ANGLE.e === 0),
+  // so an unrotated quad's 4 corners are just the tile's own footprint with
+  // UV (0,0) at the NW corner -- rotating by angleDeg here uses the same
+  // formula ctx.rotate() produces in a Y-down screen space, which is exactly
+  // what world (+X east, +Z south) already is, so no axis flip is needed. ----------
+  function buildDecalQuad(positions, uvs, worldCx, worldCz, height, angleDeg) {
+    const hs = TILE / 2;
+    const rad = (angleDeg * Math.PI) / 180;
+    const cosA = Math.cos(rad), sinA = Math.sin(rad);
+    function corner(lx, lz) {
+      const rx = lx * cosA - lz * sinA;
+      const rz = lx * sinA + lz * cosA;
+      return [worldCx + rx, height, worldCz + rz];
+    }
+    const nw = corner(-hs, -hs), ne = corner(hs, -hs), se = corner(hs, hs), sw = corner(-hs, hs);
+    positions.push(nw[0],nw[1],nw[2], ne[0],ne[1],ne[2], se[0],se[1],se[2]);
+    uvs.push(0,0, 1,0, 1,1);
+    positions.push(nw[0],nw[1],nw[2], se[0],se[1],se[2], sw[0],sw[1],sw[2]);
+    uvs.push(0,0, 1,1, 0,1);
+  }
+
+  function buildDecalVbo(gl, positions, uvs) {
+    const vertCount = positions.length / 3;
+    if (vertCount === 0) return null;
+    const interleaved = new Float32Array(vertCount * 5);
+    for (let i = 0; i < vertCount; i++) {
+      interleaved[i*5+0]=positions[i*3+0]; interleaved[i*5+1]=positions[i*3+1]; interleaved[i*5+2]=positions[i*3+2];
+      interleaved[i*5+3]=uvs[i*2+0]; interleaved[i*5+4]=uvs[i*2+1];
+    }
+    const vbo = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, vbo);
+    gl.bufferData(gl.ARRAY_BUFFER, interleaved, gl.STATIC_DRAW);
+    return { vbo, vertCount };
+  }
+
+  function buildRiverDecalGroups(st, map) {
+    const cardinalSprite = window.UI.sprites.pick("river/cardinal");
+    const hubSprite = window.UI.sprites.pick("river/hub");
+    if (!cardinalSprite || !hubSprite) return [];
+    const cardinalTex = getBillboardTexture(st, cardinalSprite.image, cardinalSprite.manifest);
+    const hubTex = getBillboardTexture(st, hubSprite.image, hubSprite.manifest);
+    const cardinalPos = [], cardinalUv = [], hubPos = [], hubUv = [];
+    for (let tz = 0; tz < map.height; tz++) {
+      for (let tx = 0; tx < map.width; tx++) {
+        const tile = map.tiles[tz * map.width + tx];
+        const r = tile.hasRiver;
+        if (!r || !(r.n || r.s || r.e || r.w)) continue;
+        const cx = worldX(st, tx) + TILE/2, cz = worldZ(st, tz) + TILE/2;
+        const baseY = cellHeight(map, tx, tz);
+        buildDecalQuad(hubPos, hubUv, cx, cz, baseY + RIVER_HUB_LIFT, 0);
+        for (const d of ["e", "s", "w", "n"]) {
+          if (r[d]) buildDecalQuad(cardinalPos, cardinalUv, cx, cz, baseY + RIVER_CARDINAL_LIFT, ROAD_CARDINAL_ANGLE[d]);
+        }
+      }
+    }
+    const groups = [];
+    const hubVbo = buildDecalVbo(st.gl, hubPos, hubUv);
+    if (hubVbo) groups.push({ texture: hubTex.tex, ...hubVbo });
+    const cardinalVbo = buildDecalVbo(st.gl, cardinalPos, cardinalUv);
+    if (cardinalVbo) groups.push({ texture: cardinalTex.tex, ...cardinalVbo });
+    return groups;
+  }
+
+  /** Called every render() frame. Cheap no-op once river groups are
+   *  already built for the current map; retries (via two sprite pick()
+   *  lookups) for as many frames as it takes the river art to finish
+   *  loading, then does the real per-tile scan exactly once. */
+  function ensureRiverGroups(st, map) {
+    if (st.riverGroupsReady) return;
+    const cardinalSprite = window.UI.sprites.pick("river/cardinal");
+    const hubSprite = window.UI.sprites.pick("river/hub");
+    if (!cardinalSprite || !hubSprite) return; // still loading -- try again next frame
+    for (const g of st.riverDrawGroups) st.gl.deleteBuffer(g.vbo);
+    st.riverDrawGroups = buildRiverDecalGroups(st, map);
+    st.riverGroupsReady = true;
+  }
+
+  /** Roads can be built mid-game (see main.js's handleBuildRoad), so unlike
+   *  rivers this rebuilds from live tile data every render() call rather
+   *  than being cached with the terrain mesh. Cheap relative to the terrain
+   *  mesh itself: most tiles have no road, so this is a fast skip-most scan
+   *  plus a handful of quads for however many actually do. */
+  function buildRoadDecalGroups(st, map) {
+    const cardinalSprite = window.UI.sprites.pick("road/cardinal");
+    const diagonalSprite = window.UI.sprites.pick("road/diagonal");
+    const hubSprite = window.UI.sprites.pick("road/hub");
+    if (!cardinalSprite || !diagonalSprite || !hubSprite) return [];
+    const cardinalTex = getBillboardTexture(st, cardinalSprite.image, cardinalSprite.manifest);
+    const diagonalTex = getBillboardTexture(st, diagonalSprite.image, diagonalSprite.manifest);
+    const hubTex = getBillboardTexture(st, hubSprite.image, hubSprite.manifest);
+    const cardinalPos = [], cardinalUv = [], diagonalPos = [], diagonalUv = [], hubPos = [], hubUv = [];
+    const hasRoadAt = (tx, tz) => tx >= 0 && tx < map.width && tz >= 0 && tz < map.height && map.tiles[tz * map.width + tx].hasRoad;
+    for (let tz = 0; tz < map.height; tz++) {
+      for (let tx = 0; tx < map.width; tx++) {
+        if (!map.tiles[tz * map.width + tx].hasRoad) continue;
+        const cx = worldX(st, tx) + TILE/2, cz = worldZ(st, tz) + TILE/2;
+        const baseY = cellHeight(map, tx, tz);
+        const hubY = baseY + ROAD_HUB_LIFT, cardY = baseY + ROAD_CARDINAL_LIFT, diagY = baseY + ROAD_DIAGONAL_LIFT;
+        buildDecalQuad(hubPos, hubUv, cx, cz, hubY, 0);
+        if (hasRoadAt(tx, tz-1)) buildDecalQuad(cardinalPos, cardinalUv, cx, cz, cardY, ROAD_CARDINAL_ANGLE.n);
+        if (hasRoadAt(tx, tz+1)) buildDecalQuad(cardinalPos, cardinalUv, cx, cz, cardY, ROAD_CARDINAL_ANGLE.s);
+        if (hasRoadAt(tx+1, tz)) buildDecalQuad(cardinalPos, cardinalUv, cx, cz, cardY, ROAD_CARDINAL_ANGLE.e);
+        if (hasRoadAt(tx-1, tz)) buildDecalQuad(cardinalPos, cardinalUv, cx, cz, cardY, ROAD_CARDINAL_ANGLE.w);
+        if (hasRoadAt(tx+1, tz-1)) buildDecalQuad(diagonalPos, diagonalUv, cx, cz, diagY, ROAD_DIAGONAL_ANGLE.ne);
+        if (hasRoadAt(tx+1, tz+1)) buildDecalQuad(diagonalPos, diagonalUv, cx, cz, diagY, ROAD_DIAGONAL_ANGLE.se);
+        if (hasRoadAt(tx-1, tz+1)) buildDecalQuad(diagonalPos, diagonalUv, cx, cz, diagY, ROAD_DIAGONAL_ANGLE.sw);
+        if (hasRoadAt(tx-1, tz-1)) buildDecalQuad(diagonalPos, diagonalUv, cx, cz, diagY, ROAD_DIAGONAL_ANGLE.nw);
+      }
+    }
+    const groups = [];
+    const hubVbo = buildDecalVbo(st.gl, hubPos, hubUv);
+    if (hubVbo) groups.push({ texture: hubTex.tex, ...hubVbo, dynamic: true });
+    const cardinalVbo = buildDecalVbo(st.gl, cardinalPos, cardinalUv);
+    if (cardinalVbo) groups.push({ texture: cardinalTex.tex, ...cardinalVbo, dynamic: true });
+    const diagonalVbo = buildDecalVbo(st.gl, diagonalPos, diagonalUv);
+    if (diagonalVbo) groups.push({ texture: diagonalTex.tex, ...diagonalVbo, dynamic: true });
+    return groups;
+  }
+
+  function drawDecalGroup(st, g) {
+    const gl = st.gl;
+    gl.bindTexture(gl.TEXTURE_2D, g.texture);
+    gl.bindBuffer(gl.ARRAY_BUFFER, g.vbo);
+    const stride = 5 * 4;
+    gl.enableVertexAttribArray(st.d_aPos);
+    gl.vertexAttribPointer(st.d_aPos, 3, gl.FLOAT, false, stride, 0);
+    gl.enableVertexAttribArray(st.d_aUV);
+    gl.vertexAttribPointer(st.d_aUV, 2, gl.FLOAT, false, stride, 12);
+    gl.drawArrays(gl.TRIANGLES, 0, g.vertCount);
   }
 
   function cellHeight(map, cx, cz) {
@@ -539,6 +738,7 @@ window.UI = window.UI || {};
     const map = gameState.map;
 
     if (st.builtForMap !== map) buildTerrainMesh(st, map);
+    ensureRiverGroups(st, map);
 
     if (!canvas.__cam) {
       canvas.__cam = {
@@ -586,6 +786,15 @@ window.UI = window.UI || {};
       gl.vertexAttribPointer(st.t_aUV, 2, gl.FLOAT, false, st.tStride, 24);
       gl.drawArrays(gl.TRIANGLES, 0, g.vertCount);
     }
+
+    const roadDrawGroups = buildRoadDecalGroups(st, map);
+    gl.useProgram(st.decalProg);
+    gl.uniformMatrix4fv(st.d_uViewProj, false, viewProj);
+    gl.uniform1i(st.d_uTex, 0);
+    gl.activeTexture(gl.TEXTURE0);
+    for (const g of st.riverDrawGroups) drawDecalGroup(st, g);
+    for (const g of roadDrawGroups) drawDecalGroup(st, g);
+    for (const g of roadDrawGroups) gl.deleteBuffer(g.vbo); // rebuilt fresh every frame -- see buildRoadDecalGroups
 
     const billboards = collectBillboards(gameState, viewState, map.width);
     gl.useProgram(st.billboardProg);
