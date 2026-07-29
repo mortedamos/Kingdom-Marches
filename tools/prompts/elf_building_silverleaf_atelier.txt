@@ -1,0 +1,57 @@
+Game asset: Silverleaf Atelier (race: Elf, category: building).
+
+A single game asset in a cel-shaded outline style: thick, clean black
+outlines around the silhouette and major interior linework, sharp
+details, cel-shaded flat colors with a limited palette (2-3 hard-edged
+tonal steps per surface -- base, shadow, occasional highlight -- no soft
+airbrushed gradients or blurry ambient occlusion). Clear legibility when
+zoomed out to a small size. Muted, desaturated, earthy fantasy palette
+(olive greens, weathered browns, stone grays, faded ochres) -- no
+saturated cartoon colors. Dark-fantasy mood, weathered and lived-in, not
+cute or whimsical. Single consistent light direction from the upper left,
+implied by the shadow/highlight color steps rather than rendered soft
+light.
+
+This asset must stay legible when shrunk down to a very small size, so:
+use strong contrast between neighboring color regions (a bright/light
+element against a dark one, not two similar mid-tones touching); hold
+identifying details out and away from each other rather than overlapping,
+so key shapes don't merge together; and keep ornamental detail minimal --
+favor a small number of bold, simple shapes over fine texture that won't
+survive downscaling anyway.
+
+Subject: a small elven crafting-and-lore workshop grown from a single
+low, wide living-wood dwelling -- pale silvery-toned leaves (a
+distinctive "silverleaf" tree variety, not the usual green canopy) woven
+into its roof and walls, a covered outdoor workbench beside the doorway
+scattered with a few tools, scrolls, and small crafted trinkets. This is
+a single dedicated STRUCTURE on its own tile, not a settlement -- no
+cluster of houses, no crowd, just this one workshop standing alone with
+a few ferns at its base. One small green (#3f8f5c) cloth pennant hangs
+by the doorway as the only accent-color element.
+
+Framing: elevated isometric diorama angle (~30-40 degree downward tilt),
+the structure visible as a self-contained island silhouette (not a
+filled square background), portrait composition, content anchored to
+the bottom of the frame -- ground level sits at the very bottom edge.
+This is an ordinary, modest building -- low and wide rather than tall,
+occupying roughly the bottom half of the frame, clearly shorter than
+even a modest city tier, let alone a tall city spire. The ground itself
+must read as an irregular, organic footprint -- a small mound, roots,
+uneven ground -- NEVER a crisp geometric diamond, rhombus, or flat
+rotated square platform (that would read as a separate isometric tile,
+not an object sitting on the game's actual flat top-down square grid).
+
+Background: a single flat, solid, saturated magenta (#FF00FF) background,
+completely uniform, no gradient, no shadow cast onto it, no vignette --
+this will be chroma-keyed out, so nothing in the subject itself should be
+magenta or near-magenta.
+
+Race material language: living wood grown into architecture (not carved
+timber), pale silverleaf foliage as this building's distinguishing
+material detail, minimal to zero stone. The green (#3f8f5c) accent color
+may only appear as the small pennant described above -- never as the
+dominant hue of wood or foliage.
+
+Do not include any text, watermark, logo, UI elements, or border in the
+image.

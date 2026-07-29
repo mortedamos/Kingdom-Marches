@@ -119,7 +119,7 @@ window.GameEngine = window.GameEngine || {};
     // target, same reasoning as why mountainThresh/hillThresh/etc. aren't
     // fixed constants either.
     const OLD_OCEAN_CUT = 0.415, OLD_LAND_CUT = 0.455;
-    const WATER_REDUCTION = 0.25;
+    const WATER_REDUCTION = 0.3;
     const allElevsAsc = Array.from(elevArr).sort((a, b) => a - b);
     const oldWaterRank = allElevsAsc.findIndex((e) => e >= OLD_LAND_CUT);
     const oldWaterCount = oldWaterRank === -1 ? allElevsAsc.length : oldWaterRank;
@@ -174,7 +174,7 @@ window.GameEngine = window.GameEngine || {};
     // evenly across the other five types so Hills/Plains/Forest/Desert/
     // Swamp stay roughly even with EACH OTHER, just each a little bigger
     // than before to absorb what Mountains gave up.
-    const MOUNTAIN_SHARE_REDUCTION = 0.045;
+    const MOUNTAIN_SHARE_REDUCTION = 0.06;
     const mountainReductionCount = MOUNTAIN_SHARE_REDUCTION * totalLandCount;
     const mountainTarget = Math.max(0, basePerType - mountainReductionCount);
     const otherTarget = basePerType + (basePerType - mountainTarget) / 5;
@@ -262,7 +262,7 @@ window.GameEngine = window.GameEngine || {};
     // somewhere to land -- too small and the wall-saturation fix there
     // couldn't leave a gap even if it wanted to.
     let landmasses = findLandmasses(tiles, width, height);
-    landmasses = enforceMinimumLandmassSize(tiles, landmasses, 11);
+    landmasses = enforceMinimumLandmassSize(tiles, landmasses, 13);
 
     // Stamp landmassId onto each tile so road-connectivity checks can detect
     // cross-island founding (which is exempt from the road-connection requirement).

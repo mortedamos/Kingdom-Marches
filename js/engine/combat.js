@@ -27,7 +27,6 @@ window.GameEngine = window.GameEngine || {};
 
 (function () {
   const TERRAIN = window.GameData.TERRAIN;
-  const HP_RATIO = window.GameData.HP_RATIO;
 
   function roll1d6() { return 1 + Math.floor(Math.random() * 6); }
   function roll3d6() { return roll1d6() + roll1d6() + roll1d6(); }
@@ -56,6 +55,26 @@ window.GameEngine = window.GameEngine || {};
   function drainCombatEvents() {
     const events = pendingCombatEvents;
     pendingCombatEvents = [];
+    return events;
+  }
+
+  /** Same pull-based queue pattern as pendingCombatEvents above, for a
+   *  momentary "this tile radius was just affected" highlight (2026-07-22,
+   *  user-directed) -- Blade Dancer's Whirlwind Strike/Blade Storm sweep and
+   *  Human Wizard's Fireball splash both cover an AREA rather than a single
+   *  attacker/defender pair, so the usual attack-slash animation alone
+   *  doesn't show a player which tiles were actually caught in it. `kind`
+   *  picks the highlight's color in render.js, same convention as
+   *  floatingtext.js's `kind`. */
+  let pendingAreaEffectEvents = [];
+
+  function spawnAreaEffect(x, y, radius, kind = "default") {
+    pendingAreaEffectEvents.push({ x, y, radius, kind });
+  }
+
+  function drainAreaEffectEvents() {
+    const events = pendingAreaEffectEvents;
+    pendingAreaEffectEvents = [];
     return events;
   }
 
@@ -135,14 +154,16 @@ window.GameEngine = window.GameEngine || {};
   // this is the other half -- adding that total on top of the unit's own
   // base value instead of discarding it.
   function effectiveFirstStrikePct(unit, civ) {
-    // Elf "Shadowsteed": mounted, it fights with its RIDER's First Strike --
-    // unless its own base (0.05) is higher, per the tech's own wording
-    // ("keeping its own first strike if higher") -- the one stat where the
-    // Shadowsteed doesn't fully defer to its passenger.
+    // Elf "Shadowsteed": mounted, it fights with its RIDER's First Strike
+    // (unless its own base is higher, per the tech's own wording "keeping
+    // its own first strike if higher" -- the one stat where the Shadowsteed
+    // doesn't fully defer to its passenger), plus a flat +2% on top while
+    // carrying (2026-07-21, user-directed, same "gains X while carrying a
+    // unit" shape as the attack/defense bonuses above).
     const mount = shadowsteedMount(unit);
     if (mount) {
       const ownBase = window.GameData.getUnit("shadowsteed").firstStrikePct || 0;
-      return Math.max(ownBase, effectiveFirstStrikePct(mount, civ));
+      return Math.max(ownBase, effectiveFirstStrikePct(mount, civ)) + 0.02;
     }
     const baseUnit = window.GameData.getUnit(unit.typeId);
     const ov = getUnitOverride(civ, unit.typeId);
@@ -156,6 +177,13 @@ window.GameEngine = window.GameEngine || {};
     if (unit.conditions?.hidden && civ.unlockedMechanics && civ.unlockedMechanics.has("sudden_doom")) pct += 0.10;
     // Veteran leveling -- see LEVELING section below.
     pct += unit.levelBonuses?.firstStrikePct || 0;
+    // Undead "Zombie": a reanimated unit has no reflexes of its own left --
+    // this overrides every other source above rather than stacking with them.
+    if (unit.conditions?.zombie) return 0;
+    // Halfellow "Riddle" (Trouble Maker/Wanderer): a Befuddled unit is too
+    // confused to react fast, regardless of any other First Strike source --
+    // same "overrides everything" shape as Zombie above.
+    if (unit.conditions?.befuddled) return 0;
     return pct;
   }
 
@@ -232,6 +260,8 @@ window.GameEngine = window.GameEngine || {};
   function grantXP(unit, amount) {
     if (!amount || amount <= 0) return;
     if ((unit.level || 0) >= MAX_UNIT_LEVEL) return;
+    // Undead "Zombie": a reanimated unit never learns anything new again.
+    if (unit.conditions?.zombie) return;
     unit.xp = (unit.xp || 0) + amount;
   }
 
@@ -330,7 +360,15 @@ window.GameEngine = window.GameEngine || {};
     if (mount) return effectiveRange(mount, civ);
     const baseUnit = window.GameData.getUnit(unit.typeId);
     const ov = getUnitOverride(civ, unit.typeId);
-    const base = (baseUnit.range || 1) + (ov.range || 0);
+    let base = (baseUnit.range || 1) + (ov.range || 0);
+    // Elf "Upon the Wind": a Ranger gains +1 range while being carried (by a
+    // Shadowsteed) -- checked here since this is the exact point every
+    // Shadowsteed-mount range calc recurses into (see the shadowsteedMount
+    // check above, which re-enters this same function with unit = the rider).
+    if (unit.typeId === "ranger" && unit.carriedBy
+        && civ.unlockedMechanics && civ.unlockedMechanics.has("upon_the_wind")) {
+      base += 1;
+    }
     // Halfellow "Boomerang": civ-wide FLOOR (Math.max), not an additive
     // bonus -- every unit gets AT LEAST this range, but a unit that
     // already has more (e.g. a future higher-range Halfellow unit, or a
@@ -428,8 +466,14 @@ window.GameEngine = window.GameEngine || {};
 
   /** Can `unit` voluntarily go Hidden this turn? Granted by Halfellow's
    *  "Sneaking Around" (any unit) or Human's "Invisibility" (Wizard only).
-   *  Either way: no existing Hidden/forcedVisible condition, and no enemy
-   *  unit on an adjacent tile. */
+   *  Either way: no existing Hidden/forcedVisible condition, and nothing
+   *  enemy -- a unit, a city, or a structure (wall/building) -- on an
+   *  adjacent tile. The city/structure half (2026-07-22, user-directed) is
+   *  what a siege actually looks like: an attacker sits adjacent to the
+   *  same wall or city tile turn after turn, and without this it could
+   *  vanish and re-ambush between hits mid-siege the same way it could
+   *  against a unit before this check existed -- "in the middle of combat"
+   *  isn't just "next to an enemy unit." */
   function canGoHidden(unit, civ, civs) {
     const mechanics = civ.unlockedMechanics;
     // Halfellow "Sneaking Around" (2026-07-20, user-directed): narrowed to
@@ -441,12 +485,26 @@ window.GameEngine = window.GameEngine || {};
     const hasSneak = !!(mechanics && mechanics.has("sneaking_around")
       && (civ.raceId !== "halfellow" || unit.typeId === "wanderer"));
     const hasInvisibility = !!(mechanics && mechanics.has("invisibility") && unit.typeId === "wizard");
-    if (!hasSneak && !hasInvisibility) return false;
+    // Halfellow "Making Trouble" (2026-07-24, user-directed): the Trouble
+    // Maker's own innate stealth, same unit-restricted shape as Invisibility
+    // above -- doesn't need Sneaking Around researched separately.
+    const hasTroubleStealth = !!(mechanics && mechanics.has("making_trouble") && unit.typeId === "trouble_maker");
+    // Halfellow "Keep an Eye Out": civ-wide, ANY Halfellow unit -- same
+    // unrestricted shape as Elf's own sneaking_around unlock.
+    const hasKeepWatch = !!(mechanics && mechanics.has("keep_an_eye_out") && civ.raceId === "halfellow");
+    if (!hasSneak && !hasInvisibility && !hasTroubleStealth && !hasKeepWatch) return false;
     if (hasCondition(unit, "hidden") || hasCondition(unit, "forcedVisible")) return false;
+    const adjacent = (x, y) => Math.max(Math.abs(x - unit.x), Math.abs(y - unit.y)) <= 1;
     for (const otherCiv of Object.values(civs)) {
       if (otherCiv.id === civ.id || otherCiv.eliminated) continue;
       for (const eu of otherCiv.units) {
-        if (Math.max(Math.abs(eu.x - unit.x), Math.abs(eu.y - unit.y)) <= 1) return false;
+        if (adjacent(eu.x, eu.y)) return false;
+      }
+      for (const city of otherCiv.cities) {
+        if (adjacent(city.x, city.y)) return false;
+        for (const s of city.structures) {
+          if (adjacent(s.x, s.y)) return false;
+        }
       }
     }
     return true;
@@ -456,6 +514,16 @@ window.GameEngine = window.GameEngine || {};
    *  responsible for also setting unit.usedThisTurn = true. */
   function enterHidden(unit, turnNumber) {
     setCondition(unit, "hidden", { expiresAtTurn: turnNumber + 3 });
+  }
+
+  /** Halfellow "Riddle"/"Resource Heist": -50% attack, 75% defense (a -25%
+   *  cut), movement capped at 1 (see ai.js's computeMovementBudget), and 0%
+   *  First Strike (see effectiveFirstStrikePct above) for 2 turns. A single
+   *  shared helper since both abilities apply the exact same condition --
+   *  keeps the numbers in one place for tuning instead of duplicated at both
+   *  call sites. */
+  function applyBefuddled(unit, turnNumber) {
+    setCondition(unit, "befuddled", { expiresAtTurn: turnNumber + 2, attackMult: 0.5, defenseMult: 0.75 });
   }
 
   /** Centralizes ending Hidden for any REVEALED-BY-EVENT reason (enemy walked
@@ -475,19 +543,17 @@ window.GameEngine = window.GameEngine || {};
 
   /** Computes a unit's current attack stat with race + tech-override modifiers */
   function effectiveAttack(unit, civ, context = {}) {
-    // Elf "Shadowsteed": mounted, it fights with its RIDER's attack, +2 flat
-    // on top of that (its own "gains 2 attack while carrying a unit") -- see
-    // the tech's wording and shadowsteedMount's doc comment above.
+    // Elf "Shadowsteed": mounted, it fights with its RIDER's attack, +3 flat
+    // on top of that (its own "gains 3 attack while carrying a unit",
+    // raised 2026-07-21, user-directed) -- see the tech's wording and
+    // shadowsteedMount's doc comment above.
     const mount = shadowsteedMount(unit);
-    if (mount) return effectiveAttack(mount, civ, context) + 2;
+    if (mount) return effectiveAttack(mount, civ, context) + 3;
 
     const baseUnit = window.GameData.getUnit(unit.typeId);
     const race = window.GameData.getRace(civ.raceId);
     const ov = getUnitOverride(civ, unit.typeId);
-    // attackOverride is set on raised-dead units to apply the power ratio reduction
-    let atk = (unit.attackOverride != null)
-      ? unit.attackOverride
-      : baseUnit.attack + (ov.attack || 0) + (unit.levelBonuses?.attack || 0);
+    let atk = baseUnit.attack + (ov.attack || 0) + (unit.levelBonuses?.attack || 0);
 
     // Orc Bog Witch curse (death-curse or Malefic Malediction): -50% attack while active.
     if (unit.conditions?.curse) atk *= unit.conditions.curse.attackMult;
@@ -495,6 +561,18 @@ window.GameEngine = window.GameEngine || {};
     // zeroed in ai.js's moveUnitToward -- this condition is generic, not
     // Human-specific, so it applies to whichever race's unit gets frozen).
     if (unit.conditions?.frozen) atk *= unit.conditions.frozen.attackMult;
+    // Undead "Zombie" (2026-07-22 rework of Raise Dead): a captured/reanimated
+    // unit fights at a permanently reduced fraction of its own stats -- see
+    // ai.js's maybeApplyZombie for how statMult is set (0.5 baseline, boosted
+    // by Necropolis).
+    if (unit.conditions?.zombie) atk *= unit.conditions.zombie.statMult;
+
+    // Halfellow "Riddle"/"Resource Heist": Befuddled -- -50% attack for a
+    // few turns (see applyBefuddled below). Same fixed-multiplier-on-the-
+    // condition-object shape as curse/frozen above, not a hardcoded literal,
+    // so a future tech/tuning pass can adjust attackMult without touching
+    // every call site.
+    if (unit.conditions?.befuddled) atk *= unit.conditions.befuddled.attackMult;
 
     // Tech: Halfellow "A Knife in the Dark" -- 166% attack while Hidden (the
     // attack itself then reveals the unit as normal -- see revealHidden's
@@ -555,15 +633,24 @@ window.GameEngine = window.GameEngine || {};
   }
 
   function effectiveDefense(unit, civ, context = {}) {
-    // Elf "Shadowsteed": mounted, it fights with its RIDER's defense, +1 flat
-    // on top of that (its own "gains ... 1 defense while carrying a unit").
+    // Elf "Shadowsteed": mounted, it fights with its RIDER's defense, +2 flat
+    // on top of that (its own "gains ... 2 defense while carrying a unit",
+    // raised 2026-07-21, user-directed).
     const mount = shadowsteedMount(unit);
-    if (mount) return effectiveDefense(mount, civ, context) + 1;
+    if (mount) return effectiveDefense(mount, civ, context) + 2;
 
     const baseUnit = window.GameData.getUnit(unit.typeId);
     const race = window.GameData.getRace(civ.raceId);
     const ov = getUnitOverride(civ, unit.typeId);
     let def = (baseUnit.defense + (ov.defense || 0) + (unit.levelBonuses?.defense || 0)) * (race.defenseMult || 1.0);
+
+    // Undead "Zombie": same reduced-stats condition as effectiveAttack above.
+    if (unit.conditions?.zombie) def *= unit.conditions.zombie.statMult;
+
+    // Halfellow "Riddle"/"Resource Heist": Befuddled -- 75% defense (a -25%
+    // cut) for a few turns. See effectiveAttack's matching check and
+    // applyBefuddled below.
+    if (unit.conditions?.befuddled) def *= unit.conditions.befuddled.defenseMult;
 
     // Hidden: staying concealed means fighting from cover/surprise -- +50% defense.
     if (unit.conditions?.hidden) def *= 1.5;
@@ -943,7 +1030,7 @@ window.GameEngine = window.GameEngine || {};
    */
   function initUnitHP(unit, civ) {
     const baseUnit = window.GameData.getUnit(unit.typeId);
-    unit.maxHp = window.GameData.unitMaxHP(baseUnit.attack || 0, baseUnit.defense || 0);
+    unit.maxHp = window.GameData.unitMaxHP(baseUnit.attack || 0, baseUnit.defense || 0, unit.typeId);
     unit.hp = unit.maxHp;
     if (civ && civ.raceId && !unit.name) {
       // nameSpecial (ship/machine/construct/beast, see units.js's doc
@@ -1158,6 +1245,18 @@ window.GameEngine = window.GameEngine || {};
     return replacement;
   }
 
+  /** Halfellow "Unlock the Gate" (2026-07-24, user-directed): a Trouble
+   *  Maker can disable a targeted wall (and every wall adjacent to it) for
+   *  3 rounds -- zeroes its defense stat AND suppresses every special wall
+   *  defense (Rouse the People, Ramparts, Spikes/Bigger Spikes, Treetop
+   *  Snipers), regardless of which the defender has unlocked. A single flag
+   *  on the structure record, checked at every one of those four call
+   *  sites (attackStructure below, and ai.js's tickTreetopSnipers) instead
+   *  of each mechanic needing its own awareness of it. */
+  function isWallDefenseSuppressed(structureRecord, turnNumber) {
+    return structureRecord.gateUnlockedUntilTurn != null && (turnNumber || 0) < structureRecord.gateUnlockedUntilTurn;
+  }
+
   /**
    * A unit attacks a static structure. Mutates the structure record's hp.
    * Returns { damage, destroyed, counterDamage, militiaSpawned }. Most
@@ -1172,6 +1271,7 @@ window.GameEngine = window.GameEngine || {};
    */
   function attackStructure(unit, structureRecord, attackerCiv, defenderCiv, gameState) {
     const building = window.GameData.getBuilding(structureRecord.id);
+    const gateUnlocked = isWallDefenseSuppressed(structureRecord, gameState && gameState.turnNumber);
     // Siege property only applies when the attacker is actually adjacent --
     // a Ranged attack from further away (see effectiveRange) never benefits
     // from it, EXCEPT a unit with the base-data `siegeAtRange` property
@@ -1179,12 +1279,15 @@ window.GameEngine = window.GameEngine || {};
     const isAdjacent = Math.max(Math.abs(unit.x - structureRecord.x), Math.abs(unit.y - structureRecord.y)) <= 1;
     const isSiege = isAdjacent || !!window.GameData.getUnit(unit.typeId).siegeAtRange;
     const atk = effectiveAttack(unit, attackerCiv, { isSiege, opposingCivId: defenderCiv && defenderCiv.id });
-    const dmg = building.defense
+    const dmg = building.defense && !gateUnlocked
       ? mitigatedDamage(atk, building.defense)
       : Math.round(damageRoll(atk));
     structureRecord.hp -= dmg;
     let counterDamage = 0, militiaSpawned = null;
-    if (defenderCiv && defenderCiv.unlockedMechanics && defenderCiv.unlockedMechanics.has("rouse_the_people")) {
+    if (gateUnlocked) {
+      // Every special wall defense suppressed -- fall straight through with
+      // no counterattack of any kind, regardless of what's unlocked.
+    } else if (defenderCiv && defenderCiv.unlockedMechanics && defenderCiv.unlockedMechanics.has("rouse_the_people")) {
       counterDamage = structureCounterattack(structureRecord, defenderCiv, unit, attackerCiv);
       if (gameState) militiaSpawned = maybeSpawnMilitia(defenderCiv, structureRecord.x, structureRecord.y, gameState.map, gameState.civs);
     } else if (building.isWall && defenderCiv && defenderCiv.unlockedMechanics && defenderCiv.unlockedMechanics.has("ramparts")) {
@@ -1294,14 +1397,18 @@ window.GameEngine = window.GameEngine || {};
             // Hidden: an AoE effect isn't "aimed," so it can still catch a
             // Hidden unit by accident -- being hit this way reveals it.
             revealHidden(splashUnit, gameState.turnNumber || 0);
-            hits.push({ kind: "unit", x, y, damage: dmg, civId: otherCiv.id, typeId: splashUnit.typeId });
+            // `unit` (a direct object reference, not just its coordinates)
+            // lets a caller apply a follow-on unit-specific effect -- e.g.
+            // ai.js's Burning (2026-07-22, user-directed) -- without a
+            // second lookup pass.
+            hits.push({ kind: "unit", x, y, damage: dmg, civId: otherCiv.id, typeId: splashUnit.typeId, unit: splashUnit });
           }
         }
         const structFound = window.GameEngine.cities.findStructureAt(gameState, x, y);
         if (structFound && structFound.civ.id !== attackerUnit.civId) {
           const dmg = Math.round(damageRoll(atk) * 0.5);
           structFound.record.hp -= dmg;
-          hits.push({ kind: "structure", x, y, damage: dmg, civId: structFound.civ.id, id: structFound.record.id });
+          hits.push({ kind: "structure", x, y, damage: dmg, civId: structFound.civ.id, id: structFound.record.id, record: structFound.record });
         }
       }
     }
@@ -1313,6 +1420,8 @@ window.GameEngine = window.GameEngine || {};
     damageRoll,
     recordCombatEvent,
     drainCombatEvents,
+    spawnAreaEffect,
+    drainAreaEffectEvents,
     mitigatedDamage,
     effectiveAttack,
     effectiveDefense,
@@ -1330,6 +1439,8 @@ window.GameEngine = window.GameEngine || {};
     canGoHidden,
     enterHidden,
     revealHidden,
+    applyBefuddled,
+    isWallDefenseSuppressed,
     resolveRound,
     resolveToTheDeath,
     initUnitHP,

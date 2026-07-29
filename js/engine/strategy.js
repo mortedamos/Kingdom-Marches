@@ -102,8 +102,23 @@ window.GameEngine = window.GameEngine || {};
    *  cities it actually needs to keep researching -- conquest's maximum
    *  possible value here is warlikeness(1.0) + trailingBonus(0.4)*warlikeness
    *  (1.0) = 1.4, so the bonus below (1.5 minimum) is sized to clear that in
-   *  every case, not just typical ones. */
-  function macroGoalScores(civ, race, standing, cityGateShortfall = 0) {
+   *  every case, not just typical ones.
+   *
+   *  `cityDelta` (2026-07-23, user-directed -- see ai.js's recentCityDelta
+   *  and the 2026-07-23 balance-audit memory): founded-minus-razed city
+   *  count over the last ~30 turns. `cityGateBonus` above is deliberately
+   *  sized to beat even a fully-warlike race's `conquest` score -- fine
+   *  when the civ is actually converting pioneers into lasting cities, but
+   *  when it's net LOSING cities (an aggressive neighbor razing new
+   *  settlements as fast as they're founded -- confirmed live for both
+   *  Halfellow-vs-Orc and Human-vs-Elf/Dwarf), that same override just
+   *  marches it back into the fire every cycle. Tapers `cityGateBonus`
+   *  toward 0 as `cityDelta` goes more negative (fully gone by -4), and
+   *  redirects that same energy into `consolidate` instead -- "stop
+   *  expanding, hold what's left" is the actually-correct response to a
+   *  losing streak, not "try to expand again." A civ that's flat or
+   *  growing (cityDelta >= 0) sees no change at all. */
+  function macroGoalScores(civ, race, standing, cityGateShortfall = 0, cityDelta = 0) {
     const militarism = window.GameEngine.ai.effectiveMilitarism(civ);
     const expansionism = race.expansionism ?? 0.5;
     const curiosity = race.curiosity ?? 0.5;
@@ -114,11 +129,13 @@ window.GameEngine = window.GameEngine || {};
     const trailingBy = Math.max(0, leadingShare - myShare);
     const leadingBonus = isLeading || trailingBy < 0.05 ? 0.4 : 0;
     const trailingBonus = Math.min(0.4, trailingBy * 2);
-    const cityGateBonus = cityGateShortfall > 0 ? 1.5 + (cityGateShortfall - 1) * 0.5 : 0;
+    const cityLossTaper = cityDelta < 0 ? Math.max(0, 1 + cityDelta * 0.25) : 1;
+    const cityGateBonus = (cityGateShortfall > 0 ? 1.5 + (cityGateShortfall - 1) * 0.5 : 0) * cityLossTaper;
+    const consolidateLossBonus = cityDelta < 0 ? Math.min(2, -cityDelta * 0.5) : 0;
     return {
       conquest: warlikeness + trailingBonus * warlikeness,
       expand: expansionism + trailingBonus * (1 - warlikeness) + cityGateBonus,
-      consolidate: (industriousness + curiosity) / 2 + leadingBonus,
+      consolidate: (industriousness + curiosity) / 2 + leadingBonus + consolidateLossBonus,
     };
   }
 
@@ -199,9 +216,11 @@ window.GameEngine = window.GameEngine || {};
     // macroGoalScores and the suppressDemotion use below.
     const gatedLayer = window.GameEngine.tech.nextGatedTechLayer(civ);
     const cityGateShortfall = gatedLayer !== null ? Math.max(0, gatedLayer - civ.cities.length) : 0;
+    // See macroGoalScores' doc comment and ai.js's recentCityDelta.
+    const cityDelta = window.GameEngine.ai.recentCityDelta(civ, gameState);
 
     const spScores = spineScores(civ, race);
-    const mgScores = macroGoalScores(civ, race, standing, cityGateShortfall);
+    const mgScores = macroGoalScores(civ, race, standing, cityGateShortfall, cityDelta);
 
     if (!civ._strategyMemory) {
       const topSpine = SPINES.reduce((a, b) => (spScores[b] > spScores[a] ? b : a));
@@ -215,11 +234,16 @@ window.GameEngine = window.GameEngine || {};
     // stale demotion "expand" is still serving out from an earlier, unrelated
     // stagnation cycle, so the strong macroGoalScores bonus above can
     // actually take effect immediately instead of waiting out a cooldown.
-    if (cityGateShortfall > 0) mem.demotedGoals.expand = 0;
+    // Gated on cityDelta >= 0 (2026-07-23, user-directed): a civ that's net
+    // LOSING cities lately is NOT "in the middle of doing the right thing"
+    // -- expand isn't working for it right now, so it should stay eligible
+    // for the ordinary stagnation-fallback demotion instead of this
+    // override permanently protecting it. See macroGoalScores' doc comment.
+    if (cityGateShortfall > 0 && cityDelta >= 0) mem.demotedGoals.expand = 0;
 
     const spineResult = advanceDimension(mem.techSpine, mem.demotedSpines, spScores, SPINES, standing.myShare);
     const goalResult = advanceDimension(mem.macroGoal, mem.demotedGoals, mgScores, MACRO_GOALS, standing.myShare,
-      mem.macroGoal.current === "expand" && cityGateShortfall > 0);
+      mem.macroGoal.current === "expand" && cityGateShortfall > 0 && cityDelta >= 0);
 
     const techSpine = spineResult.value;
     const techTarget = findCapstone(civ.raceId, techSpine);

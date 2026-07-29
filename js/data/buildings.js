@@ -16,7 +16,6 @@
  *   radiusBonus: 1                   +1 influence radius for this city
  *   coinPerAdjacentRoad: 1           +coin per road tile in the city's work radius
  *   lorePerAdjacentForest: 1         +lore per forest tile adjacent to the city
- *   coinToLoreConversionRate: 0.5    converts this city's coin income to bonus lore
  *   contestedYieldPenaltyOverride    contested tiles still yield at this rate
  *   unitCostMult: 0.75               cheaper AND faster unit production in this city (all resources, not just coin -- see ai.js buildUnitOption); also discounts the owning civ's whole army's ongoing upkeep, civ-wide (see techs.js unitUpkeep)
  *   raiseDeadPowerBonus: 0.15        raised-dead units are this much stronger

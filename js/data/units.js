@@ -5,11 +5,10 @@
  * modifiers (attackMult etc.) live in races.js and are applied by
  * engine/combat.js -- never baked into these base numbers.
  *
- * HP is derived, not stored: maxHP = round(HP_RATIO * (attack + defense)).
- * (2026-07-17: switched from attack-only so a unit's defense stat actually
- * buys it something -- see project_hp_formula_rework memory for the combat-
- * simulation work behind this and the 0.75 multiplier choice, calibrated to
- * an average 10/10-vs-10/10 duel resolving in ~4 rounds.)
+ * HP is derived, not stored: maxHP = round(attack + defense + unitTechLayer).
+ * (2026-07-21, user-directed: dropped the flat HP_RATIO multiplier in favor
+ * of adding the unit's own tech-tree depth -- see techs.js's unitTechLayer --
+ * so later-tree units are innately tougher, not just better-statted.)
  *
  * visionRadius: how far (in tiles) this unit sees, feeding gameState.visibility
  * (see turns.js's refreshVisibility). Default 3 for every unit below; a tech
@@ -157,7 +156,6 @@
 // 🧨 🔨 ⛏ ⚒ 🗡  ⚔ 💣 🏹 🛡 🧹
 
 window.GameData = window.GameData || {};
-window.GameData.HP_RATIO = 0.75;
 
 window.GameData.UNITS = {
   // --- Shared infrastructure (non-combat) ---
@@ -177,6 +175,11 @@ window.GameData.UNITS = {
     isNaval: true, canCarryUnit: true, coinCost: 25, biggerPct: .5,
     // A ship, not a person -- see unit-names.js's UNIT_TYPE_PROPER_NAMES doc.
     nameSpecial: true,
+    // Opts out of Boomerang's civ-wide Ranged-2 floor (combat.js
+    // effectiveRange), same reasoning as Militia's exemption above: a Galley
+    // isn't a scouting/skirmish unit Boomerang is meant to cover (2026-07-21,
+    // user-directed).
+    exemptFromUniversalRangeGrant: true,
   },
 
   // --- HUMAN full roster (see tech_tree_design.md) ---
@@ -257,7 +260,7 @@ window.GameData.UNITS = {
   // summon -- see ai.js's UTILITY_UNIT_MECHANICS and maybeElfDruidPlay).
   druid: {
     id: "druid", label: "Druid", symbol: "✦", category: "military", raceOnly: "elf",
-    attack: 3, defense: 3, movement: 2, visionRadius: 3, range: 2, siege: 0.1,
+    attack: 3, defense: 3, movement: 2, visionRadius: 3, range: 2, siegePct: 0.1,
     canFoundCity: true, // additional settler option alongside the shared Pioneer -- see elf_druidism
     coinCost: 30, attackChars: ["🍃", "✨", "🌙"],
   },
@@ -283,7 +286,7 @@ window.GameData.UNITS = {
   // effectiveFirstStrikePct, and ai.js's operateShadowsteedCarry.
   shadowsteed: {
     id: "shadowsteed", label: "Shadowsteed", symbol: "♞", category: "military", raceOnly: "elf",
-    attack: 1, defense: 1, movement: 5, visionRadius: 4, flying: true, canCarryUnit: true, firstStrikePct: 0.05,
+    attack: 1, defense: 2, movement: 5, visionRadius: 4, flying: true, canCarryUnit: true, firstStrikePct: 0.05,
     coinCost: 40, attackChars: ["ʊ"], biggerPct: 0.2, rare: true,
     // noUpkeep (2026-07-18, user-directed): a Druid-summoned support unit,
     // not a standing-army one -- see techs.js's unitUpkeep.
@@ -304,7 +307,7 @@ window.GameData.UNITS = {
   // the Titan.
   awakened_oak: {
     id: "awakened_oak", label: "Awakened Oak", symbol: "♣", category: "military", raceOnly: "elf",
-    attack: 11, defense: 10, movement: 1, visionRadius: 3, siegePct: 1.5,
+    attack: 11, defense: 11, movement: 1, visionRadius: 3, siegePct: 1.5,
     coinCost: 65, biggerPct: 1.0, attackChars: ["🌳", "💥"],
     rare: true, neverExplores: true,
     nameSpecial: true, // a living tree, not a person -- see unit-names.js
@@ -338,6 +341,17 @@ window.GameData.UNITS = {
     // whole army.
     exemptFromUniversalRangeGrant: true,
   },
+  // Deliberately unremarkable combat stats, same "the real value is the
+  // kit, not front-line stats" philosophy as Human's Wizard -- see
+  // ai.js's UTILITY_UNIT_MECHANICS. Resource Heist and Unlock the Gate are
+  // built into the unit itself (see "Making Trouble" in techs.js); Riddle
+  // needs its own further tech ("The Riddle Game"). range:2 so Riddle
+  // works at range independent of whether Boomerang is researched yet.
+  trouble_maker: {
+    id: "trouble_maker", label: "Trouble Maker", symbol: "?", category: "military", raceOnly: "halfellow",
+    attack: 3, defense: 3, movement: 2, visionRadius: 3, range: 2,
+    coinCost: 32, attackChars: ["🪤", "🔓"], 
+  },
 
   // --- DWARF full roster (redesigned tree, no stubs -- see techs.js) ---
   foehammer: {
@@ -346,7 +360,7 @@ window.GameData.UNITS = {
     coinCost: 15,
   },
   troubadour: {
-    id: "troubadour", label: "Troubadour", symbol: "♪", category: "military", raceOnly: "dwarf",
+    id: "troubadour", label: "Metal Singer", symbol: "♪", category: "military", raceOnly: "dwarf",
     attack: 3, defense: 3, movement: 2, visionRadius: 3, range: 2,
     coinCost: 20, attackChars: ["🎸", "🤘", "🎶", "🎵", "🥁"],
   },
@@ -389,7 +403,7 @@ window.GameData.UNITS = {
   goblin_miscreant: {
     id: "goblin_miscreant", label: "Goblin Miscreant", symbol: "◇", category: "military", raceOnly: "orc",
     attack: 1, defense: 0, movement: 2, visionRadius: 2,
-    coinCost: 8, attackChars: ["🔪"], biggerPct: -0.2,
+    coinCost: 8, attackChars: ["🔪", "💣", "🗡", "🧨"], biggerPct: -0.2,
     cheap: true,
   },
   raider: {
@@ -420,7 +434,7 @@ window.GameData.UNITS = {
   },
   bog_witch: {
     id: "bog_witch", label: "Bog Witch", symbol: "✦", category: "military", raceOnly: "orc",
-    attack: 5, defense: 4, movement: 1, visionRadius: 3, range: 2,
+    attack: 5, defense: 3, movement: 1, visionRadius: 3, range: 2,
     coinCost: 22,
     // Baked directly into the unit rather than a tech effect -- the curse is
     // inherent to the Bog Witch herself, always active the moment you have
@@ -436,8 +450,8 @@ window.GameData.UNITS = {
   },
   ogre: {
     id: "ogre", label: "Ogre", symbol: "⚔", category: "military", raceOnly: "orc",
-    attack: 9, defense: 7, movement: 2, visionRadius: 3, siegePct: 0.50, attackChars: ["🪓", "💥", "🪨"],
-    coinCost: 32,  biggerPct: .5,
+    attack: 9, defense: 6, movement: 2, visionRadius: 3, siegePct: 0.50, attackChars: ["🪓", "💥", "🪨"],
+    coinCost: 32,  biggerPct: .5, rare: true,
   },
   // Pinnacle unit (2026-07-12): meant to be the single most powerful unit
   // in the game and genuinely feared, not a mid-tier pick that happens to
@@ -449,7 +463,7 @@ window.GameData.UNITS = {
   // See project_dragon_rebalance memory.
   dragon: {
     id: "dragon", label: "Dragon", symbol: "D", category: "military", raceOnly: "orc",
-    attack: 12, defense: 8, movement: 4, visionRadius: 5, flying: true, range: 2, siegePct: 1.00,
+    attack: 11, defense: 8, movement: 4, visionRadius: 5, flying: true, range: 2, siegePct: 1.00,
     coinCost: 55, biggerPct: 1.0, attackChars: ["🔥"], rare: true,
     nameSpecial: true, // a beast, not a person -- see unit-names.js
   },
@@ -476,14 +490,7 @@ window.GameData.getAttackChars = function (unitId) {
   return (unit && unit.attackChars) || window.GameData.DEFAULT_ATTACK_CHARS;
 };
 
-window.GameData.unitMaxHP = function (attackStat, defenseStat) {
-  return Math.max(1, Math.round(window.GameData.HP_RATIO * (attackStat + (defenseStat || 0))));
-};
-
-/** The basic melee (military) unit id available to a given race. */
-window.GameData.meleeUnitForRace = function (raceId) {
-  return window.GameData.UNIT_LIST.find((id) => {
-    const u = window.GameData.UNITS[id];
-    return u.category === "military" && !u.isNaval && u.raceOnly === raceId;
-  });
+window.GameData.unitMaxHP = function (attackStat, defenseStat, unitId) {
+  const techLevel = unitId ? window.GameData.unitTechLayer(unitId) : 0;
+  return Math.max(1, Math.round(attackStat + (defenseStat || 0) + techLevel));
 };

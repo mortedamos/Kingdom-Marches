@@ -103,9 +103,9 @@ All assets are PNG, transparent background, no baked-in drop shadow.
 |---|---|---|---|---|
 | Terrain tile | 64×64 per frame | 1 static frame, or 4-frame horizontal idle sheet (256×64 total, default — see §7) | `assets/terrain/{terrainId}_{n}.png` (n = 1–3 for random variants) | Content should fill the tile edge-to-edge so tiles abut seamlessly; subtle depth only, not a full isometric diorama |
 | Unit sprite | 128×128 per frame | 1 static frame, or 4-frame horizontal idle sheet (512×128 total, default — see §7) | `assets/units/{unitId}.png` for race-locked units (e.g. `raider.png`, Orc-only); `assets/units/{raceId}_{unitId}.png` for the 3 universal units — Pioneer, Scout, Galley (e.g. `human_pioneer.png`) | Centered, ~10% padding on all sides within the frame. Universal-unit race art is optional per race — `pickUnit(unitId, raceId, seed)` in `js/ui/sprites.js` tries the race-qualified art first and falls back to a plain `{unitId}.png` (not currently shipped for these 3) if that race doesn't have custom art yet, so partial rollout across races never breaks rendering |
-| City tier | 128×128 | Single static image | `assets/cities/{raceId}_city_{tier}.png` (tier 1–6) | Full isometric diorama, transparent around the silhouette (not a filled square, see reference); tier 1 = small camp/hamlet, tier 6 = large fortified city — scale up structure count, wall height, and fortification with tier |
-| Building (individual) | 128×128 | Single static image | `assets/buildings/{buildingId}.png` (or `_1..._3` for variants) | Elevated diorama angle matching city tier art, single structure only; **not yet wired into the renderer** — `render.js` currently only draws the per-tier city diorama, no per-building sprite lookup exists yet, so this is a forward-looking spec |
-| Wall segment | 128×128 | Single static image | `assets/buildings/wall_section.png` (or `_1..._3` for variants) | Universal across all races (not race-specific, per `buildings.js`); same forward-looking caveat as individual buildings above |
+| City tier | 128×256 portrait (see §12) | Single static image | `assets/cities/{raceId}_city_{tier}.png` (tier 1–6) | Full isometric diorama, transparent around the silhouette (not a filled square, see reference); tier 1 = small camp/hamlet, tier 6 = large fortified city — scale up structure count, wall height, and fortification with tier |
+| Building (individual) | 128×128 up to 128×192 portrait, capped (see §13) | Single static image | `assets/buildings/{buildingId}.png` (or `_1..._3` for variants) | Elevated diorama angle matching city tier art, single structure only, bottom-anchored like city tiers — wired into the renderer as of §13 |
+| Wall segment | 128×128 | Single static image | `assets/buildings/wall_section.png` (or `_1..._3` for variants) | Universal across all races (not race-specific, per `buildings.js`); same rendering path as individual buildings above, not yet generated |
 | Enhancement / resource icon | 128×128 per frame (matches unit-sprite canvas — see below) | 4-frame idle sheet (512×128) — living/animated resources (Game, Fish Shoal) get real motion; mineral ones (Iron, Gold Vein, Fertile Soil) get a subtle ambient idle | `assets/enhancements/resource_{enhancementId}_{n}.png` | Drawn centered on the tile at `ts * iconScale` (see `window.GameData.RESOURCES[id].iconScale` in `terrain.js`, applied in `render.js`) — relative sizing between resource types is a render-time scale knob, not baked into the art. See the muted-outline subsection below for why it still doesn't compete with units |
 | Ruin | 128×128 per frame | 4-frame idle sheet (512×128) — subtle ambient motion (drifting dust, swaying weeds), not a static landmark | `assets/enhancements/ruin_{n}.png` | Same muted-outline treatment as resource icons; drawn centered at `ts * RUIN_ICON_SCALE` (currently 1.15, a little bigger than a resource icon — see `render.js`) |
 
@@ -359,7 +359,18 @@ Subject description is what should win.
   head to feet.`
 - **City tier:** `Framing: elevated isometric diorama angle (~30-40°
   downward tilt), the full settlement visible as a self-contained island
-  silhouette (not a filled square background), square 1:1 composition.`
+  silhouette (not a filled square background), portrait 1:2 (width:height)
+  composition, all content anchored to the bottom of the frame — ground
+  level sits at the very bottom edge, empty transparent space above
+  wherever the settlement doesn't reach the top. Only tall tiers/races
+  should actually use the full height (see §12). The ground the
+  settlement sits on must read as an irregular, organic footprint —
+  uneven natural terrain, a mound, a spread of roots, a rough-edged
+  clearing — NEVER a crisp geometric diamond, rhombus, or flat rotated
+  square platform. A clean diamond-shaped base reads as its own
+  isometric tile, which clashes with the game's actual flat top-down
+  square grid (the asset is placed on one ordinary square tile, not a
+  diamond).`
 - **Enhancement/resource icon:** `Framing: top-down flattened icon view,
   square 1:1 composition, small overlay-scale detail, not a full scene.`
   Also uses the muted-outline exception (thin, same-hue-family outline,
@@ -952,3 +963,574 @@ gotchas hit along the way, worth knowing before doing this again:
 9. If it's a variant (`_1`/`_2`/`_3`) or non-default frame size, verify
    against `js/ui/sprites.js` loader expectations; add a sibling `.json`
    manifest only if the frame grid differs from the category default.
+
+---
+
+## 12. City tier art — portrait canvas for height (2026-07-21)
+
+Decided with the user before generating any race's city tiers beyond
+Orc's existing square set. Motivated by Elf, whose lore calls for tall
+grown-wood spires that a square 128×128 frame squashes flat — but the
+change applies to the whole City tier category, not just Elf.
+
+### Canvas: 128×256, bottom-anchored, not a fixed "tall building"
+
+City tier art moves from a square 128×128 frame to a **portrait
+128×256 (1:2 width:height) frame**. Content is always anchored to the
+**bottom** of the frame — ground level sits at the very bottom edge,
+same logic as unit-sprite padding conventions — and how much of the
+vertical space actually gets used is a per-tier, per-race judgment
+call, not a fixed requirement:
+
+- Low tiers (a tier-1 hamlet, a handful of ground-level huts) can leave
+  most of the upper frame empty/transparent. That's expected, not a
+  mistake — don't stretch a small settlement to fill height it doesn't
+  need.
+- Only tiers/races whose actual subject is tall (a tier-5/6 Elf canopy
+  spire, a Dwarf tier-6 fortress rising up a mountainside) should use
+  the frame's full height.
+
+This keeps a single canvas spec for the whole category instead of
+inventing per-race dimensions, while still letting each race's
+architecture read at its natural scale.
+
+### Rendering: aspect-ratio-driven, not a hardcoded portrait stretch
+
+`render.js`'s city draw call computes the on-screen draw height from
+the image's own aspect ratio and anchors it to the bottom of the
+city's tile (draw height = `ts * (naturalHeight / naturalWidth)`,
+drawn from `screenY + ts - drawHeight`). This is deliberately
+backward-compatible: Orc's existing square 128×128 tiles keep
+rendering exactly as before (drawHeight = ts, no bleed), while a new
+portrait 128×256 image for another race naturally draws twice as tall,
+bleeding into the tile north of the city — no per-race special-casing,
+no format flag needed. A race can mix square and portrait tiers across
+its own 1-6 set if that's what the subject calls for (unlikely, but
+the renderer doesn't care either way).
+
+### Known tradeoff: north-tile overlap is accepted, not engineered around
+
+A tall city sprite bleeding upward can visually collide with a
+building or wall structure if one gets placed on the tile directly
+north of the city — structures draw after cities in `render.js`'s
+stacking order (see `render.js`'s Cities pass vs. its later Structures
+pass), so a structure there would draw its icon on top of the bled-up
+spire art. Decided with the user: **accept this as a rare, minor
+visual overlap** rather than adding engine complexity (e.g. biasing
+structure-slot placement away from a tall-art race's north tile, or
+capping bleed height below a full tile) to avoid it. North is only 1 of
+8 possible adjacent structure slots, and only the tallest tiers of a
+tall-art race actually reach that far. Revisit only if it turns out to
+look bad in practice, not preemptively.
+
+### Recurring defect: a crisp diamond-shaped ground base reads as an isometric tile
+
+Caught on the first Elf city tier batch (tiers 2 and 3): Gemini's
+default instinct for an "elevated isometric diorama" subject is to give
+it a small geometric platform to stand on — a clean rotated
+square/diamond, like a single isometric tile. That's exactly the wrong
+read here, since the game's actual map is a flat top-down square grid
+with no isometric tile shape anywhere in it (confirmed in
+`render.js`: tiles are drawn as plain `x*ts, y*ts` squares, no diamond
+projection). A crisp diamond base makes the asset look like it's
+standing on its own separate isometric tile rather than sitting
+directly on the flat square cell it's actually rendered into. Tier 1
+avoided this by accident (an organic mound, not a platform); the
+explicit guard now in the City tier framing block above (§5) exists
+specifically to prevent this — describe the ground as irregular/organic
+(mound, roots, uneven clearing), never a geometric platform.
+
+### Buildings and walls: deferred at the time, now covered by §13
+
+This portrait-canvas change was originally scoped to City tier art only
+— individual buildings and the wall segment stayed on the square
+128×128 spec, un-wired into the renderer. That deferral ended with the
+Elf building pass; see §13 for the buildings-specific spec and the
+renderer wiring that replaced it.
+
+---
+
+## 13. Building art — capped portrait canvas, wired into the renderer (2026-07-21)
+
+Decided with the user when starting Elf building art (the first race to
+get any). Buildings reuse almost everything from §12's city-tier
+approach — bottom-anchored portrait canvas, aspect-ratio-driven
+rendering — with one deliberate difference: a hard cap so no building
+can ever rival a city's own tallest tier.
+
+### Canvas: 128×128 up to 128×192, capped well below the city's 128×256 max
+
+A building's frame is the same 128-wide canvas as everything else, but
+its height must never exceed **192px (1.5 tiles)** — noticeably short
+of a city tier's 256px (2 tiles) ceiling. Content is bottom-anchored
+exactly like city tiers (ground level at the very bottom edge, empty
+transparent space above wherever the structure doesn't reach the cap).
+Most buildings should sit well under the cap (a small shrine or grove
+building is close to square, ~128×128–150); reserve the upper end of
+the range for the one genuinely tall building in a race's roster (e.g.
+Elf's Treetop Watch, a watchtower) — and even that one must read as
+clearly shorter than the race's own tier-6 city image sitting next to
+it, never approaching or matching it.
+
+### Rendering: same aspect-ratio/bottom-anchor code as cities, generalized
+
+`render.js`'s Structures pass now looks up `building/{buildingId}` via
+the ordinary `pick()` variant registry (structures don't need a
+dedicated tiered loader like cities do — there's only ever one art
+asset per building, no population-driven selection) and, when art
+exists, draws it with the exact same aspect-ratio/bottom-anchor formula
+already used for city tiers (`drawHeight = ts * (naturalHeight /
+naturalWidth)`, anchored to `screenY + ts - drawHeight`). A building
+without art yet keeps the original placeholder (civ-colored rounded
+square + symbol character), so partial rollout across races and
+buildings never breaks rendering — same fallback convention used
+everywhere else in this pipeline. `sprites.js`'s `preloadAll()` now
+loads every id in `window.GameData.BUILDING_LIST` (all race buildings
+plus the universal `wall_section`) under the `building/{id}` key.
+
+Because a building sits on its own dedicated tile (not sharing one with
+a city), the same north-tile-overlap tradeoff from §12 doesn't apply
+here in the same way — a tall building bleeding upward can still
+overlap whatever's on the tile above it (another structure, a unit),
+which is the same accepted-rare-overlap tradeoff as §12's, not a new
+one to re-litigate per building.
+
+### Wall segment: race-specific art, same optional-fallback convention as universal units
+
+`wall_section` (`isWall: true`, no `raceOnly`) is mechanically shared
+across every race, but decided with the user (2026-07-21) that its ART
+should still be race-themed — a living wall for Elf reads nothing like
+a stone palisade for another race, even though both are the same
+building in game terms. This reuses the exact optional race-qualified
+fallback pattern already established for the 3 universal units
+(Pioneer/Scout/Galley — see §3): `pickBuilding(buildingId, raceId,
+seed)` in `sprites.js` tries `assets/buildings/{raceId}_
+{buildingId}.png` first, falling back to the plain `assets/buildings/
+{buildingId}.png` if that race doesn't have its own art yet. Partial
+rollout across races never breaks rendering. Ordinary race-only
+buildings don't use this path at all (they only ever belong to one
+race, so there's nothing to qualify against) — `preloadAll()` only
+attempts the race-qualified variant for `isWall` buildings specifically.
+
+### Wall orientation: 3 purpose-authored variants, not stub rotation (2026-07-21)
+
+Decided with the user once Elf wall art moved to a design with an
+upright tree integrated into the stonework (see below): walls placed
+around a city (`cities.js`'s `findStructureSlot` prefers the Chebyshev-2
+ring, so they form a real perimeter, not scattered tiles) need their art
+to connect visually with same-civ wall neighbors — a straight run should
+look like a straight run, a bend should look like a bend.
+
+This does NOT reuse the road/river overlay's ROTATE-one-stub technique
+(one small stub authored once, rotated 0/90/180/270 at draw time,
+composited per tile — see §10) — rotating a tile 90° to turn a
+horizontal run into a vertical one would tip the integrated tree onto
+its side, since the world's vertical axis never rotates even though the
+wall's run direction does. `render.js`'s `wallOrientation(map, civId, x,
+y)` checks the 4 cardinal neighbor tiles for a same-civ `wall_section`
+structure and picks between 3 separately-authored variants instead:
+
+- **`horizontal`** — a wall neighbor to the east and/or west only.
+- **`vertical`** — a wall neighbor to the north and/or south only.
+- **`node`** — a wall neighbor on BOTH axes (a corner or junction) OR no
+  wall neighbor at all (isolated). Both cases read naturally as a
+  reinforced strongpoint, so they deliberately share one variant instead
+  of needing true NE/NW/SE/SW corner art or a separate lone-segment
+  asset — accepted as a reasonable simplification at this game's actual
+  render scale, not pursued further unless it looks wrong in practice.
+
+**First attempt used the wrong camera angle and was corrected the same
+day.** The initial generation kept the general building convention's
+elevated 3/4 diorama angle and portrait canvas (self-contained island
+silhouette, bottom-anchored) — this rendered each wall tile as its own
+isolated little diorama that did not connect edge-to-edge with its
+neighbors, reading as a row of separate small walls rather than one
+continuous wall (confirmed live: visible gaps and mismatched angles
+between adjacent segments). **Walls are a connecting/tiling asset, like
+roads and rivers, not a standalone object like Treetop Watch or Altar of
+Ages, and needed that category's conventions instead:**
+
+- **Square 1:1 canvas** (matching one tile), not the portrait building
+  canvas — required so all 3 variants share the same aspect ratio and a
+  connecting edge lands at the same relative screen position across all
+  of them after `render.js`'s uniform scale-to-`ts`-anchor-bottom
+  transform.
+- **Flat, mostly top-down camera** (`render.js` draws these with the
+  ordinary bottom-anchored building formula, but the ART itself must
+  look flat, not diorama-tilted), matching the terrain/road/river
+  framing convention from §5 and §9, not the elevated 3/4 angle used for
+  freestanding buildings and units.
+- **Content cut off flat at the frame edges the wall continues past**
+  (both left+right for `horizontal`, both top+bottom for `vertical`, all
+  four edge midpoints for `node`) — generated with consistent stone
+  height/position across the whole frame so identical or complementary
+  neighboring tiles' stonework lines up exactly, the same "fills the
+  frame edge-to-edge" requirement §9 applies to terrain tiling.
+- **`-BorderClearPx 0 -SeamlessEdges` on the chroma-key/resize step**
+  (not the unit/building default of `-BorderClearPx 2`) — that default
+  clears a couple of edge pixels to transparent, which is exactly wrong
+  here since the stonework must stay fully opaque all the way to the
+  frame edge for the tiling to look seamless. Same reasoning as §9's
+  terrain resize guidance.
+
+Verified live after the fix: a 3-tile horizontal run, a 3-tile vertical
+run, an L-shaped corner, and a standalone isolated segment all render as
+one continuous, level, gap-free wall (or a sensible standalone
+watchtower node), with `node`'s hub cleanly meeting a straight run's
+edge on whichever side actually has a neighbor.
+
+**`node` shape, refined same day:** the first `node` art used a small
+central bastion with four thin rectangular stubs reaching out to the
+edge midpoints (mirroring the road hub piece's construction). Per user
+feedback this read as "a series of small walls" rather than one
+structure, and doesn't actually need directional stubs at all — a wall
+can arrive at a junction from any of the 4 cardinal sides, so a ROUND
+bastion sized so its own circular edge is tangent to all four frame
+edges (diameter = full tile width) connects seamlessly to a neighbor on
+ANY side with no straight arms required, and reads better standing alone
+too (a plain tower, not an armless stub cluster). Needed an explicit
+"this is a single circle, do not add rectangular arms/a cross shape"
+constraint in the prompt — Gemini's first two attempts kept re-adding
+stub-like arms into the corners even when only asked for a circle.
+
+### Pixel-verified edge alignment, not eyeballing (2026-07-21)
+
+"Looks continuous" at a glance is not the same claim as "pixel-aligned."
+Confirmed by directly measuring each wall PNG's alpha channel at its
+connecting edges (`tools/align-wall-edges.ps1`'s companion measurement
+snippet: scan a column/row, report the contiguous opaque range) rather
+than trusting the live-render screenshots from earlier in this pass:
+
+- `node.png`'s first "round bastion" draft had **zero opaque pixels at
+  its own top edge** — the circle fell ~3px short of actually being
+  tangent to the frame, despite the prompt explicitly asking for exact
+  tangency. A north-side connection would have shown a hairline gap.
+- `vertical.png`'s own top and bottom edges didn't match each other (a
+  self-tiling issue: two copies of the same image stacked wouldn't line
+  up perfectly).
+
+Image generation does not reliably hit exact pixel positions or
+reproduce identical geometry across separate calls — this is the same
+lesson as §7/§8's animation-frame drift and §9's terrain edge-seam
+issues, just applied to a new asset category. `tools/align-wall-edges.ps1`
+does the same kind of thing `make-seamless.ps1` does for terrain: force
+pixel-exact edge behavior as a deterministic post-process rather than
+hoping the generation nailed it, given a target opaque pixel range
+`[RangeStart,RangeEnd]` for one edge (`left`/`right`/`top`/`bottom`):
+extends the nearest real content out to the true edge (`-MaxSearchDepth`
+controls how far inward it'll look, never invents fake texture beyond
+that), or clips existing content back to the range with
+`-ClipOutsideRange` when the native art is already wider than the
+target rather than narrower.
+
+**Straight-to-straight edges can and should match exactly.**
+`horizontal.png`'s own left/right already matched (51-88 both — no
+action needed); `vertical.png`'s top/bottom were reconciled to an
+identical range (35-87, using the achievable intersection of its two
+native edges, not their union — see below for why) via one `-ClipOutsideRange` call.
+
+**Round-to-straight joins CANNOT match exactly, and forcing them to is
+a real trap.** First attempt tried extending `node.png`'s edges to
+`horizontal.png`'s full 38px-wide band — this looks correct as a target
+on paper, but a circle is only that wide at its own diameter (center);
+right at the tangent point it's naturally much narrower, converging to
+a single point. Forcing the full band width to be opaque at the exact
+edge column necessarily draws a rectangular patch bridging the gap
+between the edge and the circle's real (indented) boundary — which
+**recreates the flat-armed cross shape this whole redesign was trying
+to eliminate.** The fix: extend only a modest, closely-padded range
+around the circle's own natural near-edge fragments (closing small
+antialiasing gaps and adding a few px of margin, not matching the
+straight pieces' full width) — a narrower, gracefully-tapered join
+where a round tower meets a straight wall is normal, real castle
+geometry, not a defect. When picking a target range for an edge
+alignment call, first measure what the art can ALREADY nearly support
+(intersection/near-native) rather than reaching for the widest
+theoretically-possible match.
+
+Filenames: `assets/buildings/{raceId}_wall_section_{orientation}.png`
+(e.g. `elf_wall_section_horizontal.png`). Looked up via
+`pickWallSegment(buildingId, raceId, orientation, seed)` in `sprites.js`,
+which falls back race+orientation → race-only → plain-orientation →
+shared plain, in that order, so a race with only some variants (or none
+yet) still renders sensibly.
+
+### Elf wall redesign: stone reinforced by living trees, not a hedge (2026-07-21)
+
+Superseded the original hedge-wall concept per the user's direction:
+Elf walls are now a stone wall with trees growing UP THROUGH the
+stonework as structural support, not breaking it — the trees are part of
+the wall, gripping and reinforcing it with roots woven into the blocks.
+Corner/junction/isolated (`node`) segments feature a taller, more
+mature tree whose lower boughs form a lookout perch, functioning as a
+watchtower built into the wall itself, distinct from the free-standing
+Treetop Watch building. Straight (`horizontal`/`vertical`) segments keep
+a smaller, subordinate tree or root growth integrated into the stone —
+present throughout, but not every segment needs to read as a full tower.
+
+---
+
+## 14. Dwarf race decisions (2026-07-21)
+
+Decided with the user before generating any Dwarf city/building/wall
+art, deliberately contrasting several of the Elf-pass defaults rather
+than reusing them verbatim:
+
+- **Low and wide, not tall.** Dwarf lore is mass/depth/fortification
+  ("deep halls, heavy masonry"), not height — the opposite emphasis from
+  Elf's spires. Growth across the 6 city tiers should read as increasing
+  width, structure count, and fortification (more halls, thicker/taller
+  walls, a wider carved facade), staying close to square throughout and
+  rarely if ever using much of the portrait canvas's extra headroom from
+  §12. This is a deliberate visual contrast to Elf's tier-6 spire
+  reaching the frame's full height, not an oversight if Dwarf's tiers
+  end up looking comparatively squat.
+- **Terrain-agnostic freestanding stonework, not an assumed mountain
+  backdrop.** Unlike Elf (which assumes a forest/canopy setting
+  regardless of the actual tile), Dwarf city/building/wall art should
+  read as solid carved-stone construction that works visually on
+  whatever terrain the city actually occupies, without requiring an
+  implied cliff or mountain face behind it. **Exception, and not a
+  contradiction:** Deep Forge (`requiresHillsAdjacent: true` in
+  `buildings.js`) is mechanically guaranteed to always be placed next to
+  hills, so its own art specifically depicting a forge built into/against
+  a hillside is grounded in real placement logic, not stylistic license
+  — this is the one Dwarf asset where a rock-face backdrop is expected.
+- **Square/blocky wall node, not a round tower.** Elf's round bastion
+  (§13) elegantly solves "connects from any direction" because a circle
+  presents the same profile from every angle — but a filled SQUARE block
+  sized to span the full tile solves the same problem even more simply
+  and entirely avoids the width-matching trap that round nodes fall
+  into: a square's edge is already at full width along its whole length
+  (no tapering toward a tangent point the way a circle has), so a
+  straight wall's connecting band is trivially a subset of the square's
+  own edge with no reconciliation needed. Also reads as more distinctly
+  dwarven/geometric than reusing Elf's round-tower silhouette.
+- **Metal/rune accents as a recurring race-wide material, not a
+  single-building callout.** Light exposed iron banding, rivets, or
+  carved rune-work should appear as a recurring material detail across
+  most Dwarf structures (city tiers, ordinary buildings, walls) —
+  reinforcing "forge motifs" as a race-wide identity trait per §4's race
+  table, not something reserved only for Deep Forge specifically. This
+  is in addition to, not a replacement for, the race's official
+  banner/trim accent color (`#9a7b56`, tan/brown per §4) — metal/rune
+  detail is a material choice (reads gray/silver/dark, whatever the
+  actual metal), the accent color rule still governs any cloth banner or
+  painted marking specifically.
+
+### Dwarf wall results
+
+Generated straight to the flat, edge-to-edge, square-canvas convention
+from §13's wall sections this time (learned from Elf's costly first
+attempt at a diorama-angle wall) — no rework needed for `horizontal`/
+`vertical`. `vertical.png` still needed the same kind of self-tiling fix
+as Elf's did (top/bottom edges didn't natively match each other;
+reconciled with `align-wall-edges.ps1`'s `-ClipOutsideRange`).
+
+The square `node` bastion did NOT arrive genuinely edge-to-edge on all
+four sides despite the prompt explicitly asking for a solid square block
+reaching every edge — Gemini still drew it with a few pixels of natural
+padding/rounding on each side, same failure mode as Elf's round node
+falling short of true tangency. `align-wall-edges.ps1` closed most of
+it (extending real nearby content out to the edge), but roughly half of
+each edge's positions had no real content within a 20px search depth to
+extend from (the tower's silhouette narrows toward its corners more than
+a literal cube would), so the node's edges are wider than before but
+still not a perfect full-width square. Verified live anyway: it still
+connects sensibly to straight segments from any direction and reads
+fine as a standalone watchtower — treat "genuinely fills every pixel of
+all 4 edges" as an ideal to approach, not a hard requirement to keep
+re-generating for, once the connection reads correctly in practice.
+
+---
+
+## 15. Human race decisions (2026-07-21)
+
+Decided with the user before generating any Human city/building/wall
+art. Human already had an implicit reference in `assets/img/title-bg.png`
+(the pale-white spired castle in the left background) — confirmed by
+looking at it directly before asking questions, and it visibly supports
+the brief given ("fantasy castle, tall towers, white stone"): genuinely
+bright/pale stone, clearly whiter than the surrounding earthy landscape,
+many tall conical-roofed round towers, several visible banners.
+
+- **Verticality can rival Elf's.** Unlike Dwarf's deliberate low-and-wide
+  contrast, Human tier 6 is allowed to approach or match Elf's use of
+  the full §12 portrait canvas — stone castle towers competing directly
+  for height, not staying deliberately under it. Growth across tiers 1-6
+  should read as both more towers AND taller towers.
+- **Round turret wall node, reusing Elf's proven geometry.** Matches the
+  reference art's round conical-roofed towers directly. Same underlying
+  trick as §13's Elf node (a circle presents the same profile from any
+  connecting direction) — reskin in white dressed stone, expect the same
+  "don't force full straight-wall-width matching onto the circle's
+  tangent point" caution documented there, and the same
+  "Gemini undershoots true edge tangency by a few px, needs an
+  align-wall-edges.ps1 touch-up" expectation.
+- **Genuinely pale/bright stone, a deliberate palette departure.** Push
+  past the general style guide's "muted, desaturated, earthy palette"
+  default (§1) for this race specifically — bright white-gray dressed
+  stone is a real identity trait (orderly, civilized), not a rule
+  violation to soften. This makes Human read as noticeably lighter than
+  every other race shipped so far (Orc's weathered wood, Elf's greens,
+  Dwarf's grays-with-warm-iron). Keep the cel-shaded hard-edged
+  tonal-step shading convention from §1 even at this higher brightness —
+  still flat shadow/highlight blocks, not a soft painterly glow.
+- **Prominent multi-banner heraldry, departing from the restrained
+  single-accent convention.** Elf and Dwarf each used exactly one small
+  banner/pennant per asset. Human structures should carry MULTIPLE
+  purple (`#8e44ad`) banners, pennants, or tapestries per asset where it
+  fits (tower tops, gate arches) — matching the reference art's
+  flag-heavy castle and the race's orderly "Trade Connector" identity.
+  Still governed by §4's rule that the accent color is trim/cloth only,
+  never the dominant hue of stone — there's just more of it than other
+  races get.
+
+---
+
+## 16. Orc race decisions (2026-07-21)
+
+Orc is a special case: `assets/cities/orc_city_{1-6}.png` already existed
+before this whole pipeline was built — it's the original ground-truth
+reference the entire style guide was reverse-engineered from (§2), and
+it already works correctly in-engine. Decided with the user before
+touching anything:
+
+- **Regenerate the city tiers anyway**, rather than leaving the legacy
+  set in place. The existing files are 1024×1024 (predating the
+  128×128 standardization in §3's closing note) and square (predating
+  the portrait canvas in §12) — functionally fine (the renderer scales
+  any source size down at draw time regardless), but out of step with
+  every convention adopted since, and a bigger file size than needed.
+  Regenerating brings Orc to full parity with Elf/Dwarf/Human and picks
+  up conventions established after the original set was made (the
+  organic non-diamond ground-base guard, notably — the original set
+  predates that fix and was never audited against it).
+- **Keep the established identity, don't reinvent it.** The legacy
+  reference (a spread-out tribal camp — tents, a central campfire, a
+  simple log-post perimeter, low and wide, no verticality at all) is
+  exactly what §4's race table already describes: "green-skinned,
+  weathered wood palisades, bone/skull trophies, tribal thatch." New
+  generations should continue this look and its already-low-and-wide
+  growth direction (more tents/huts, a taller palisade, a watchtower by
+  the later tiers), not redesign the race's visual identity the way Elf's
+  wall or Dwarf's city direction were freshly decided from scratch.
+- **Irregular spiked-cluster wall node — a deliberate experiment, not
+  the proven pattern.** Elf and Human both settled on a round tower
+  (a circle presents the same connecting profile from any direction);
+  Dwarf used a filled square block (trivially full-width on every edge).
+  For Orc, the user chose a third, unproven option: an irregular
+  spiked/totem cluster junction piece instead of either clean geometric
+  shape — a better tribal fit, but explicitly acknowledged going in as
+  higher-risk (an irregular silhouette has no inherent guarantee of
+  presenting a consistent connecting edge to a straight wall segment
+  the way a circle or square does by construction). Expect this one to
+  need more `align-wall-edges.ps1` iteration than Elf/Dwarf/Human's
+  nodes did, and don't be surprised if it needs a design adjustment
+  (e.g. a more consolidated central mass with the spikes kept as
+  silhouette-only ornament that doesn't extend into the edge-connecting
+  area) if the first attempt doesn't connect cleanly.
+
+### Two pipeline fixes found while regenerating Orc's city tiers (2026-07-21)
+
+**Low-alpha resize contamination — fixed at the tool level, affects every
+race's assets, not just Orc's.** User flagged Orc tier 1's alpha mask for
+a check; direct pixel inspection found ~25 near-invisible pixels (alpha
+3-6 out of 255) around the subject's own silhouette edge that still
+carried strong magenta RGB values (e.g. R=255 G=61 B=255). Root cause:
+`ProcessBuffer` only spill-corrects pixels with `0 < alpha < 255` — a
+fully keyed-out pixel (`alpha == 0`) never gets its RGB touched, so its
+raw magenta is still sitting in the buffer when the subsequent
+HighQualityBicubic resize blends it into a neighboring opaque pixel,
+producing a new pixel with low-but-nonzero alpha AND contaminated color.
+This is a DIFFERENT defect from the one `BorderClearPx` already fixes
+(that one only cleans the outer canvas border; this happens at ANY
+interior boundary between subject and background, i.e. on nearly every
+asset ever generated). Fixed generally: `chroma-key.ps1` now takes
+`-LowAlphaSnapThreshold` (default 12, applied automatically whenever
+resizing) and snaps any pixel with `0 < alpha <= threshold` fully
+transparent post-resize via a new `SnapLowAlpha` function — removes the
+contaminated color with no visible cost, since those pixels were already
+almost invisible. Re-running existing shipped assets through this isn't
+required (the contamination is too faint to matter in practice) but
+costs nothing if convenient; it's applied automatically going forward.
+
+**Hard-edged ground silhouette — a per-generation variance issue, not
+systemic, fixed with a stronger prompt guard.** Orc tier 2's ground base
+came back with visibly straight/angular facet edges (reading like a cut
+gemstone or rock mesa) instead of the soft organic blob every other
+tier produced — the existing "NEVER a crisp geometric diamond" guard
+(§9/§12) prevents the diamond-specific failure but doesn't actually
+require a SOFT edge; an irregular but still hard-angled polygon
+technically satisfies "not a diamond" while still looking wrong. Added
+a second, explicit sentence to the ground-base guard for Orc's prompts:
+the edge must read as a soft organic blend with "no straight or angular
+facet edges, never a hard polygonal outline." Worth folding into the
+shared per-category framing block (§5) if this recurs on a future race.
+
+**Also confirmed: the animation-frame "duplicate subject" defect (§7)
+also happens on city tiers, not just multi-frame sheets.** Orc tier 5
+duplicated 3 times in a row (two full settlements side-by-side/stacked)
+before adding an explicit "ONE single image... do not split the canvas
+into two panels... do not repeat the subject" guard up front — which
+fixed it immediately, and was then added pre-emptively to tier 6 too
+(which generated clean on the first attempt). Same lesson as §7's
+already-documented guidance for animation sheets, just not previously
+known to apply to single-image city tier generation as well.
+
+### Orc totem-cluster wall node: the experiment's outcome
+
+The irregular spiked-cluster node (§16) needed one extra iteration
+beyond Elf/Dwarf/Human's nodes, confirming the "higher-risk" framing was
+warranted: the first attempt's connecting log ring fell ~35-40px short
+of the frame edges (not the few-pixel shortfall every other race's node
+had) — the model drew the whole ring-plus-totems composition shrunk
+down with generous padding, closer to how a standalone building gets
+framed than an edge-to-edge tile. Adding explicit sizing language
+("fill nearly the ENTIRE canvas... reach within a few pixels of all
+four frame edges... a small centered composition is WRONG") brought the
+gap back down into the normal few-pixel range, closed the rest with the
+usual `align-wall-edges.ps1` pass. The two-part design from §16 (a
+geometrically-simple full-ring base carrying the connection, chaotic
+totem/spike ornament kept inside it) held up as planned — verified live
+across a corner, a T-junction, and standing alone, all connect
+correctly, with a minor log-tone difference at the straight-to-ring
+seam that reads as "different sections of the same wall," not a defect.
+
+---
+
+## 17. Halfellow race decisions (2026-07-22)
+
+Halfellow already had the richest pre-existing identity of any race
+reached so far — hobbit-scale figures, low militarism (0.2), whimsical
+improvised-weapon flavor (Militia uses pitchforks/rolling pins, not
+real weapons), and a building roster that includes a literal
+Neighborhood Pub. Decided with the user before generating anything:
+
+- **Very low and cozy — lower than Dwarf's already-restrained ceiling.**
+  Growth across the 6 city tiers reads as a spreading homestead village
+  (more cottages, garden plots, maybe a windmill by the later tiers),
+  with even less verticality than Dwarf's fortified-hold growth —
+  reinforcing Halfellow as the most grounded, least martial race in the
+  game.
+- **Walls are a green hedge grown into a barrier, not stone.** The
+  user's own framing, and deliberately distinct from Elf's wall (which
+  settled on a stone-and-tree HYBRID, not a pure hedge — see §13).
+  Halfellow's wall should be a dense, well-tended hedgerow read as a
+  property/garden boundary rather than a military fortification,
+  matching the race's non-martial identity. The junction/corner node
+  reuses the proven round-tower geometry from Elf/Human (§12/§15) — a
+  rounded hedge mound/topiary shape is both a safe, already-validated
+  connecting geometry AND a natural, charming fit for a garden hedge
+  rounding a corner.
+- **Warmer and more inviting than the general weathered-grim mood — a
+  deliberate tonal exception for this one race.** Every other race so
+  far followed §1's default "weathered and lived-in... dark-fantasy
+  mood... not cute or whimsical." Halfellow gets an explicit exception:
+  still the same cel-shaded outline technique and a muted (not
+  saturated-cartoon) palette, but leaning toward cozy/lived-in warmth —
+  tended flower boxes, warm lit windows, tidy gardens — rather than
+  weathered/grim, matching the Militia's already-established
+  "homespun, not grim" character (§4) rather than fighting against it.
+- **Accent color `#c9a857` (gold/warm-yellow) per §4**, same
+  banner/trim-only rule as every other race.

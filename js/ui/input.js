@@ -90,7 +90,14 @@ window.UI = window.UI || {};
     }
     for (const civ of Object.values(civs)) {
       const unit = civ.units.find((u) => u.x === x && u.y === y);
-      if (unit) { viewState.selectedUnit = unit; return; }
+      if (unit) {
+        viewState.selectedUnit = unit;
+        // "move" sfx plays on selection (clicking the unit), not on actual
+        // movement (2026-07-24, user-directed) -- it's a "here I am, ready"
+        // acknowledgement sound, not a footstep-timed one.
+        window.SfxSystem.playAction(civ.raceId, unit.typeId, "move");
+        return;
+      }
     }
     const structure = window.GameEngine.cities.findStructureAt(gameState, x, y);
     if (structure) { viewState.selectedStructure = structure; return; }

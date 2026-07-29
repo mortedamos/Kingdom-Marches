@@ -1,0 +1,21 @@
+1. prospecting / delve / fishing should not begin based on number of turns sitting on a resouce. initiating these is a full turn action that results in the unit channeling each turn until channel is broken or resource ie exhausted. need to correct this in turns.js, around lines 517 through 868.
+
+2. unit death sounds are not playing. we also need to make sure they play on a very sloght delay after the sound of the attack that killed them.
+
+3. what is the difference between exhausted and forced rest? I am not sure forced rest is working well, and may want to replace it. When it forced rest invoked?
+
+4. like units, a burning wall should also have the red glow effect.
+
+5. im not sure the near-death blow mechanic is working correctly. ive watched runforged titans at full health suddenly halt with this message, when the enemy could not have almost killed them. please double check.
+
+6. If a unit took damage the previous turn, it cannot choose to rest this turn.
+
+7. if a dwarf city is under attack, its armies will immediately go to that city to defend it.
+
+8. if a halfellow city is under attack, its armies will immediately go to that city to defend it.
+
+9. all civs should have a higher rate of garrisoning a unit at their city, especially dwarf and halfellow.
+
+10. elf units should travel together in stealthed hunting parties of 3 or more, attacking any enemy from hidden. hunting party units all attack the same target until it is defeated. this is similar to orc swarm.
+
+11. 

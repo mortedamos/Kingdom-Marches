@@ -1,0 +1,65 @@
+Game asset: Wall Segment, east-west run (race: Dwarf, category: wall).
+
+A single game asset in a cel-shaded outline style: thick, clean black
+outlines around the silhouette and major interior linework, sharp
+details, cel-shaded flat colors with a limited palette (2-3 hard-edged
+tonal steps per surface -- base, shadow, occasional highlight -- no soft
+airbrushed gradients or blurry ambient occlusion). Clear legibility when
+zoomed out to a small size. Muted, desaturated, earthy fantasy palette
+(olive greens, weathered browns, stone grays, faded ochres) -- no
+saturated cartoon colors. Dark-fantasy mood, weathered and lived-in, not
+cute or whimsical. Single consistent light direction from the upper left,
+implied by the shadow/highlight color steps rather than rendered soft
+light.
+
+This asset must stay legible when shrunk down to a very small size, so:
+use strong contrast between neighboring color regions (a bright/light
+element against a dark one, not two similar mid-tones touching); keep
+ornamental detail minimal -- favor a small number of bold, simple shapes
+over fine texture that won't survive downscaling anyway.
+
+Subject: one straight segment of a heavy dwarven defensive wall, built
+from massive roughly-hewn gray stone blocks, running PERFECTLY
+HORIZONTALLY across the image, from the exact left edge to the exact
+right edge of the frame. This is a connecting tile-art piece, like a
+road tile: the wall is CUT OFF FLAT by the frame at both the left and
+right edges -- no finished end caps, no tapering -- because identical
+segments will be placed on the neighboring tiles to the left and right,
+and their stonework must line up and continue seamlessly as one long
+wall. The wall's height, top line, and base line must therefore be
+CONSISTENT across the full width of the image -- perfectly level, not
+rising or dipping, with its centerline running through the vertical
+middle of the frame. Camera: viewed from above and slightly in front (a
+mostly top-down "strategy game map" view, like a road or river drawn on
+a map tile) -- ABSOLUTELY NOT an isometric or diagonal three-quarter
+diorama angle, no perspective recession, no vanishing point; the wall
+face is seen straight-on with a narrow strip of the wall's flat top
+surface visible above the face, taller and heavier-looking than a
+typical wall (thick dwarven masonry), drawn low in the frame (the band
+of wall occupying roughly the middle third of the image height). A
+horizontal band of dark iron plating with visible rivets reinforces the
+wall partway up its face, running the width of the segment. No banner,
+no living/organic elements -- pure stone and iron.
+
+Framing: SQUARE 1:1 composition (equal width and height), matching one
+terrain tile -- same convention as this game's road and river tile art,
+not the portrait canvas used for standalone buildings. The wall band's
+vertical position within this square frame must be IDENTICAL to the
+other wall variants' connecting points, so segments align exactly
+tile-to-tile: keep the wall's centerline at the vertical middle of the
+square frame.
+
+Background: a single flat, solid, saturated magenta (#FF00FF)
+background, completely uniform, no gradient, no shadow cast onto it, no
+vignette -- this will be chroma-keyed out, so nothing in the subject
+itself should be magenta or near-magenta. The magenta must show above
+and below the wall band; only the wall itself touches the left and
+right edges.
+
+Race material language: massive roughly-hewn gray stone blocks as the
+dominant material, a dark iron reinforcement band with rivets as a
+recurring metal accent (no tan/brown cloth accent needed on this
+utilitarian piece).
+
+Do not include any text, watermark, logo, UI elements, or border in the
+image.

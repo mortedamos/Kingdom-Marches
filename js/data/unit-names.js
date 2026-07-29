@@ -5,8 +5,10 @@
  * every individual unit instance a name (distinct from its unit TYPE
  * label, e.g. "Aldric Ironhand" the Cavalry, not just "Cavalry"). Purely
  * cosmetic/flavor -- no gameplay effect. See js/engine/combat.js's
- * initUnitHP (and ai.js's maybeRaiseDead) for where this gets stamped
- * onto a unit at creation, and js/ui/sidebar.js for where it's displayed.
+ * initUnitHP for where this gets stamped onto a unit at creation (a unit
+ * later turned into an Undead zombie via ai.js's maybeApplyZombie keeps its
+ * original name -- it's the same unit, just reanimated), and js/ui/sidebar.js
+ * for where it's displayed.
  *
  * Mirrors race-names.js's CITY_NAMES pattern (curated per-race lists +
  * a picker function) but deliberately does NOT track/dedupe used names

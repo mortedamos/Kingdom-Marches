@@ -3,3 +3,5 @@
 # needs to be reviewable/revertible. Re-add if full asset versioning is wanted.
 assets/
 backups/
+scratch/
+*.zip

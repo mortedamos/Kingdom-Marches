@@ -3,21 +3,36 @@
  * ---------
  * Utility/scoring AI: each turn, enumerate candidate actions, score them
  * using race weights + aggressiveness, execute the highest-scoring ones
- * within budget. See realms_of_influence_ai_behavior.md and the AI action
- * mechanics addendum for full design rationale.
+ * within budget.
  *
  * This is informationally limited like a human player would be in a real
  * game -- AI only considers what's within its own civ's currently-owned
  * territory or unit/city vision, never the full map state.
  *
  * Unit carrying: units use `carriedBy` (ref to carrying unit, or null) and
- * `carries` (ref to carried unit, or null). Currently only galleys carry
- * pioneers, but the fields are generic for future carrier types.
+ * `carries` (ref to carried unit, or null) -- used by galleys carrying
+ * pioneers, Orc Dragon Riders, Halfellow Devoted Companions, and Elf
+ * Shadowsteed.
  */
 
 window.GameEngine = window.GameEngine || {};
 
 (function () {
+  /** Human-friendly unit label for AI Action log messages (2026-07-22,
+   *  user-directed: "should contain the names of the units, and show
+   *  conditions") -- "Name (typeId)" plus a bracketed list of any active
+   *  unit.conditions keys, e.g. "Sylvara the Keen-Eyed (ranger) [hidden,
+   *  frozen]". Falls back to just the typeId if the unit has no name yet
+   *  (e.g. this same turn, before unit-names.js's naming pass has run) so
+   *  a log line never reads "undefined". Used everywhere a log message or
+   *  currentMission previously interpolated a bare `unit.typeId`. */
+  function describeUnit(unit) {
+    if (!unit) return "unit";
+    const base = unit.name ? `${unit.name} (${unit.typeId})` : unit.typeId;
+    const conditionKeys = unit.conditions ? Object.keys(unit.conditions) : [];
+    return conditionKeys.length ? `${base} [${conditionKeys.join(", ")}]` : base;
+  }
+
   // Halfellow-specific: "fight smarter as they grow more capable" -- each
   // completed military-category tech nudges effective militarism up a
   // little, on top of their otherwise-low racial trait. 11 possible Halfellow
@@ -116,6 +131,37 @@ window.GameEngine = window.GameEngine || {};
       }
     }
     return false;
+  }
+
+  /**
+   * Founded-minus-razed city count over the last CITY_DELTA_WINDOW turns
+   * (2026-07-23, user-directed -- see the 2026-07-23 balance-audit memory).
+   * `civ.cityEvents` is appended to by cities.js's foundCity/destroyCity,
+   * the two canonical places a city is ever gained or lost, so this sees
+   * every source (siege, scout-razing, AI settling, Druid's Roots of the
+   * World, ...) uniformly. Negative means this civ is losing cities faster
+   * than it's founding them -- used to taper the "always expand" bonuses in
+   * strategy.js's macroGoalScores and this file's chooseBuildAction/
+   * chooseStrategy, which previously kept re-committing to settle/expand
+   * even while a civ's new cities were being razed as fast as they went up
+   * (confirmed live for both Halfellow-vs-Orc and Human-vs-Elf/Dwarf).
+   * Opportunistically trims events older than 2x the window so
+   * `civ.cityEvents` doesn't grow unbounded over a long game.
+   */
+  const CITY_DELTA_WINDOW = 30;
+  function recentCityDelta(civ, gameState) {
+    if (!civ.cityEvents || civ.cityEvents.length === 0) return 0;
+    const turn = gameState.turnNumber || 0;
+    const cutoff = turn - CITY_DELTA_WINDOW;
+    if (civ.cityEvents.length > 100) {
+      civ.cityEvents = civ.cityEvents.filter((e) => e.turn >= turn - CITY_DELTA_WINDOW * 2);
+    }
+    let delta = 0;
+    for (const e of civ.cityEvents) {
+      if (e.turn < cutoff) continue;
+      delta += e.type === "founded" ? 1 : -1;
+    }
+    return delta;
   }
 
   /**
@@ -414,15 +460,27 @@ window.GameEngine = window.GameEngine || {};
     // very next gated step needs more cities than we have, that's a hard,
     // immediate reason to settle -- weight it in directly rather than
     // waiting for expansionism/macroGoal to eventually favor it.
-    if (cityGateShortfall > 0) scores.settle += cityGateShortfall * 10;
+    //
+    // Net-city-loss taper (2026-07-23, user-directed): the bonus above is
+    // exactly the mechanism that kept both Halfellow-vs-Orc and Human-vs-
+    // Elf/Dwarf re-committing to "settle" turn after turn while their new
+    // cities were being razed as fast as they went up -- a civ that's net
+    // LOSING cities lately (see recentCityDelta) doesn't need MORE reasons
+    // to found another one it probably can't hold, it needs to stop and
+    // consolidate. Tapers linearly to 0 by -4 cities/window; a civ that's
+    // merely flat or growing (delta >= 0) is completely unaffected.
+    const cityDelta = recentCityDelta(civ, gameState);
+    const cityLossTaper = cityDelta < 0 ? Math.max(0, 1 + cityDelta * 0.25) : 1;
+    if (cityGateShortfall > 0) scores.settle += cityGateShortfall * 10 * cityLossTaper;
 
     const focus = Object.entries(scores).reduce((a, b) => b[1] > a[1] ? b : a)[0];
 
+    const losingCitiesNote = cityDelta < 0 ? ` (lost ${-cityDelta} more than founded recently — falling back)` : "";
     const reasons = {
       explore:    `only ${cityCount} cit${cityCount === 1 ? 'y' : 'ies'}, need to scout`,
-      settle:     cityGateShortfall > 0
+      settle:     (cityGateShortfall > 0
         ? `need ${cityGateShortfall} more cit${cityGateShortfall === 1 ? 'y' : 'ies'} to unlock further research`
-        : `expanding to ${cityCount + 1} cities`,
+        : `expanding to ${cityCount + 1} cities`) + losingCitiesNote,
       tech:       hasResearch ? `advancing ${civ.currentResearch}` : `no research active`,
       military:   `${militaryCount} soldiers vs ${cityCount * 2} target`,
       aggression: `${nearbyEnemies} enemies visible`,
@@ -547,7 +605,18 @@ window.GameEngine = window.GameEngine || {};
 
     const doctrine = window.GameEngine.strategy.computeDoctrine(civ, gameState);
     const { focus, reason } = chooseStrategy(civ, gameState, weights, doctrine);
-    log.push(`[${race.label}] Strategy: ${focus} — ${reason}`);
+    // Log-spam fix (2026-07-23, user-directed): this used to fire every
+    // single turn unconditionally, even when focus/reason were byte-for-byte
+    // identical to last turn -- a civ genuinely stuck settling for 100+
+    // turns in a row produced 100+ identical log lines, drowning out the
+    // moments the strategy actually changed and making "how often is this
+    // civ stuck" impossible to read at a glance (see the 2026-07-23
+    // balance-audit memory). Only log on an actual change.
+    const strategyLogText = `[${race.label}] Strategy: ${focus} — ${reason}`;
+    if (strategyLogText !== civ._lastStrategyLogText) {
+      log.push(strategyLogText);
+      civ._lastStrategyLogText = strategyLogText;
+    }
 
     // Apply focus as a temporary weight boost this turn
     const boosted = { ...weights };
@@ -694,7 +763,7 @@ window.GameEngine = window.GameEngine || {};
       if (candidates.length > 0) {
         const toDisband = candidates[0].u;
         civ.units = civ.units.filter(u => u !== toDisband);
-        log.push(`Disband: ${toDisband.typeId} disbanded (army ${militaryCount} over population cap ${militaryCap})`);
+        log.push(`Disband: ${describeUnit(toDisband)} disbanded (army ${militaryCount} over population cap ${militaryCap})`);
         return; // one trim per turn is enough
       }
     }
@@ -769,7 +838,7 @@ window.GameEngine = window.GameEngine || {};
           if (candidates.length > 0) {
             const toDisband = candidates[0].u;
             civ.units = civ.units.filter(u => u !== toDisband);
-            log.push(`Disband: ${toDisband.typeId} disbanded to relieve army-size strain (${strain.toFixed(2)}x upkeep) -- freeing resources for other priorities`);
+            log.push(`Disband: ${describeUnit(toDisband)} disbanded to relieve army-size strain (${strain.toFixed(2)}x upkeep) -- freeing resources for other priorities`);
           }
         }
       }
@@ -785,7 +854,7 @@ window.GameEngine = window.GameEngine || {};
     if (candidates.length === 0) return;
     const toDisband = candidates[0].u;
     civ.units = civ.units.filter(u => u !== toDisband);
-    log.push(`Disband: ${toDisband.typeId} disbanded pre-emptively (~${Math.floor(turnsUntilBroke)} turns of runway left)`);
+    log.push(`Disband: ${describeUnit(toDisband)} disbanded pre-emptively (~${Math.floor(turnsUntilBroke)} turns of runway left)`);
   }
 
   /**
@@ -1016,7 +1085,15 @@ window.GameEngine = window.GameEngine || {};
       const landmassConquered = !!(civ._landmassMajority && civ._landmassMajority.get(pioneerLandmassId));
       const shouldEmbark = !!emptyGalley && (citiesOnLandmass >= 2 || landmassConquered);
 
-      const candidate = findBestSettleSite(civ, gameState, pioneer);
+      // "Radius fully filled" auto-settler (2026-07-22, user-directed): a
+      // Pioneer queued because one of this civ's cities has nothing left to
+      // fill in (see chooseBuildAction's fullyFilledCityBonus) skips the
+      // usual tile-SCORE search entirely and just grabs the nearest legal
+      // spot -- see findClosestValidSettleSite. Stamped once at spawn
+      // (spawnUnitInCity's extra-fields param) and never re-evaluated.
+      const candidate = pioneer._useClosestSpotSettle
+        ? findClosestValidSettleSite(civ, gameState, pioneer)
+        : findBestSettleSite(civ, gameState, pioneer);
       // A tech-driven need for more cities always wins over "time to expand by
       // sea": don't abandon a perfectly good local site just because
       // citiesOnLandmass crossed the old threshold while a tech is still gated.
@@ -1039,6 +1116,12 @@ window.GameEngine = window.GameEngine || {};
           moveUnitToward(pioneer, rememberedSpot.x, rememberedSpot.y, gameState.map, gameState.civs);
           pioneer.currentMission = `Heading toward a remembered good site at (${rememberedSpot.x},${rememberedSpot.y})`;
           log.push(`Pioneer at (${pioneer.x},${pioneer.y}) — no settle site found nearby, heading toward a remembered good site at (${rememberedSpot.x},${rememberedSpot.y})`);
+        } else if (maybeEnvoyPlay(civ, pioneer, gameState, log)) {
+          // Halfellow "Envoy": nothing left to settle, but there's still an
+          // unclaimed in-radius tile worth claiming outright -- see
+          // maybeEnvoyPlay's doc comment. Tried before the road-connector/
+          // wander fallbacks below since it's genuinely productive, not
+          // just "less random."
         } else {
           // Nothing left to settle and nothing remembered either (2026-07-20,
           // user-directed): before falling back to a purely random walk,
@@ -1072,8 +1155,39 @@ window.GameEngine = window.GameEngine || {};
           gameState.map, gameState.civs, pioneer.x, pioneer.y, civ.raceId,
           { emergencyFound: !!candidate.emergency, skipRoadCheck: pioneer.typeId === "druid" });
         if (check.ok) {
+          // Escort gate (2026-07-23, user-directed): founding a defenseless
+          // city in contested land is exactly how the founding/razing
+          // treadmill starts (see the 2026-07-23 balance-audit memory --
+          // Halfellow-vs-Orc and Human-vs-Elf/Dwarf both lost the large
+          // majority of every city founded this way). Holds off founding a
+          // NON-first city for a few turns if there's genuine local danger
+          // (settleDangerPenalty > 0 -- visible enemy military within
+          // SETTLE_DANGER_RADIUS, or the tile itself is contested) and no
+          // friendly military unit is nearby to help hold it. Explicitly
+          // exempt: this civ's very first city (civ.cities.length === 0)
+          // never waits, so the opening is never delayed -- and the wait is
+          // bounded (ESCORT_WAIT_CAP turns) so a pioneer can never stall
+          // forever waiting for an escort that never comes, matching every
+          // other bounded-retry idiom in this function (pioneer._idleTurns
+          // above, isUnitStalled elsewhere).
+          const ESCORT_RADIUS = 2;
+          const ESCORT_WAIT_CAP = 5;
+          const isFirstCity = civ.cities.length === 0;
+          const hasEscortNearby = !isFirstCity && civ.units.some((u) =>
+            u !== pioneer && !u.carriedBy && window.GameData.getUnit(u.typeId).category === "military"
+            && window.GameEngine.influence.chebyshev(u.x, u.y, pioneer.x, pioneer.y) <= ESCORT_RADIUS);
+          const localDanger = !isFirstCity && !hasEscortNearby
+            && settleDangerPenalty(civ, gameState, pioneer.x, pioneer.y) > 0;
+          if (localDanger && (pioneer._escortWaitTurns || 0) < ESCORT_WAIT_CAP) {
+            pioneer._escortWaitTurns = (pioneer._escortWaitTurns || 0) + 1;
+            pioneer.usedThisTurn = true;
+            pioneer.currentMission = `Holding at (${pioneer.x},${pioneer.y}) — no escort nearby, waiting before founding in contested land`;
+            log.push(`Pioneer holding at (${pioneer.x},${pioneer.y}) — no escort and local threat detected, waiting before founding (${pioneer._escortWaitTurns}/${ESCORT_WAIT_CAP})`);
+            continue;
+          }
+          delete pioneer._escortWaitTurns;
           window.GameEngine.quips.maybeQuip(pioneer, civ, "found", gameState);
-          const city = window.GameEngine.cities.foundCity(civ, gameState.map, pioneer.x, pioneer.y);
+          const city = window.GameEngine.cities.foundCity(civ, gameState, pioneer.x, pioneer.y);
           civ.units = civ.units.filter((u) => u !== pioneer);
           log.push(`Settle: founded ${city.name} at (${pioneer.x},${pioneer.y})`);
         } else if (check.reason && check.reason.includes("must connect")) {
@@ -1401,6 +1515,37 @@ window.GameEngine = window.GameEngine || {};
     return best;
   }
 
+  /** "Radius fully filled" auto-settler's site pick (2026-07-22, user-
+   *  directed): unlike findBestSettleSite above, this does NOT weigh
+   *  candidates by computeTileCityScore at all -- it scans outward ring by
+   *  ring (Chebyshev distance) from the pioneer and returns the FIRST
+   *  legal spot found, i.e. the genuinely closest one, ties broken by scan
+   *  order. Same landmass restriction and canFoundCityAt legality check as
+   *  the normal search. Returns null if nothing legal exists within
+   *  CLOSEST_SPOT_SEARCH_RADIUS at all (an emergency-spacing relax like
+   *  findBestSettleSite's fallback isn't worth it here -- this is already
+   *  the "just grab anything nearby" path). */
+  const CLOSEST_SPOT_SEARCH_RADIUS = 20;
+  function findClosestValidSettleSite(civ, gameState, pioneer) {
+    const { map, civs } = gameState;
+    const pioneerTile = map.tiles[pioneer.y * map.width + pioneer.x];
+    const pioneerLandmassId = pioneerTile ? pioneerTile.landmassId : -1;
+    for (let r = 0; r <= CLOSEST_SPOT_SEARCH_RADIUS; r++) {
+      for (let dy = -r; dy <= r; dy++) {
+        for (let dx = -r; dx <= r; dx++) {
+          if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue; // this ring only
+          const x = pioneer.x + dx, y = pioneer.y + dy;
+          if (x < 0 || x >= map.width || y < 0 || y >= map.height) continue;
+          const tile = map.tiles[y * map.width + x];
+          if (pioneerLandmassId >= 0 && tile.landmassId !== pioneerLandmassId) continue;
+          const check = window.GameEngine.cities.canFoundCityAt(map, civs, x, y, civ.raceId, { skipRoadCheck: true });
+          if (check.ok) return { x, y };
+        }
+      }
+    }
+    return null;
+  }
+
   /** True if `tile` holds a structure (wall OR any other building) belonging
    *  to a civ other than `civId` -- ownership check only, no flying
    *  exemption. Used both by isEnemyStructureBlockingTile below (which DOES
@@ -1687,14 +1832,27 @@ window.GameEngine = window.GameEngine || {};
     if (unit.conditions?.frozen) movement = 0;
 
     // Hidden: moving carefully to stay unseen costs 66% of movement, floored
-    // at 1 so a Hidden unit is slow, never fully immobile.
-    if (unit.conditions?.hidden) movement = Math.max(1, Math.round(movement * 0.34));
+    // at 1 so a Hidden unit is slow, never fully immobile. Elf "Quick as a
+    // Shadow" (2026-07-22, previously unimplemented despite the tech's own
+    // wording -- "a hidden elf unit can move at full speed, unlike most
+    // hidden units") waives this entirely once known.
+    if (unit.conditions?.hidden) {
+      const movementCiv = civs?.[unit.civId];
+      const bypassesHiddenPenalty = movementCiv?.raceId === "elf"
+        && movementCiv.unlockedMechanics?.has("quick_as_a_shadow");
+      if (!bypassesHiddenPenalty) movement = Math.max(1, Math.round(movement * 0.34));
+    }
 
     // Tech: Halfellow "Devoted Companions" -- carrying a passenger costs 25% movement.
     if (unit.carries) {
       const carrierCiv = civs?.[unit.civId];
       if (carrierCiv?.unlockedMechanics?.has("devoted_companions")) movement = Math.max(1, Math.round(movement * 0.75));
     }
+    // Halfellow "Riddle"/"Resource Heist": Befuddled caps movement at 1 --
+    // confused, not paralyzed, same floor-shape as Hidden's penalty above,
+    // just an absolute cap instead of a percentage. Applied last so nothing
+    // above can push a Befuddled unit back over the cap.
+    if (unit.conditions?.befuddled) movement = Math.min(movement, 1);
     return movement;
   }
 
@@ -1788,12 +1946,6 @@ window.GameEngine = window.GameEngine || {};
     return !!(unit.summonBuild || (unit._ritualTurns || 0) >= 1);
   }
 
-  /** Whether a unit can still take its one action this turn -- false once
-   *  it's already fully done (usedThisTurn) or locked into a channel. */
-  function canStillAct(unit) {
-    return !unit.usedThisTurn && !isChanneling(unit);
-  }
-
   function maybeBuildInCities(civ, gameState, weights, log) {
     for (const city of civ.cities) {
       if (city.buildQueue) {
@@ -1811,7 +1963,10 @@ window.GameEngine = window.GameEngine || {};
           for (const [k, v] of Object.entries(choice.cost)) {
             civ.stockpile[k] = Math.max(0, (civ.stockpile[k] || 0) - v);
           }
-          city.buildQueue = { kind: "unit", id: choice.id, turnsRemaining: choice.turns };
+          // totalTurns kept alongside the countdown (2026-07-21) purely so
+          // the UI (sidebar.js) can display a progress percentage -- the
+          // countdown itself only ever reads turnsRemaining.
+          city.buildQueue = { kind: choice.kind, id: choice.id, turnsRemaining: choice.turns, totalTurns: choice.turns };
         } else {
           city.buildQueue = { ...choice, progress: 0 };
         }
@@ -2057,10 +2212,7 @@ window.GameEngine = window.GameEngine || {};
   function unitBuildTurns(civ, unitId) {
     const power = window.GameData.unitPower(unitId);
     const rate = raceUnitBuildRate(civ);
-    // Tech: build_speed_mult (Dwarf "Runeforged Tools") -- divides the
-    // resulting turn count, civ-wide, for every power-based unit.
-    const buildSpeedMult = civ.buildSpeedMult || 1;
-    return Math.max(1, Math.round((power / rate) * BUILD_SLOWNESS / buildSpeedMult));
+    return Math.max(1, Math.round((power / rate) * BUILD_SLOWNESS));
   }
 
   /** Units whose real value is an unlocked MECHANIC rather than their own
@@ -2076,6 +2228,15 @@ window.GameEngine = window.GameEngine || {};
   const UTILITY_UNIT_MECHANICS = {
     wizard: ["teleportation", "fireball_splash", "dungeon_delve", "invisibility", "invulnerability_chance", "freezing_touch", "flight_grant"],
     druid: ["natures_grace", "roots_of_the_world", "raptor_summon", "shadow_steed_summon"],
+    // Halfellow Trouble Maker (2026-07-24, user-directed): unlike Wizard/
+    // Druid above, resource_heist and unlock_the_gate are granted
+    // automatically the moment the unit itself unlocks (see "Making
+    // Trouble" in techs.js) -- so relevantMechanics.length is already >= 2
+    // as soon as the unit exists, giving it a real build score right away
+    // instead of needing separate tech investment first, same as its
+    // built-in framing. riddle only counts once "The Riddle Game" is
+    // separately researched, same shape as Wizard's per-spell techs.
+    trouble_maker: ["resource_heist", "unlock_the_gate", "riddle"],
   };
 
   // Elf "one Shadowsteed per Druid": extra Druid build score when every
@@ -2088,6 +2249,26 @@ window.GameEngine = window.GameEngine || {};
   // big enough to reliably outcompete a garrison/offense pick (typically
   // 3-13, see chooseBuildAction) when the civ has zero live Dire Wolves.
   const DIRE_WOLF_SHORTAGE_BONUS = 20;
+  // Orc "Dire Wolf" combat-drought response (2026-07-22, user-directed): if
+  // it's been this many turns since any Orc unit last saw real combat, a
+  // city force-builds a Dire Wolf to go stir one up -- scored far above any
+  // other candidate so it always wins the build slot once triggered (this
+  // is meant to be a guaranteed reaction to a real drought, not just a
+  // nudged preference). See turns.js's beginCivTurn for the counter and
+  // markCombatEngaged below for where it resets.
+  const DIRE_WOLF_DROUGHT_TURNS = 20;
+  const DIRE_WOLF_DROUGHT_BONUS = 999;
+
+  /** Resets `civ`'s combat-drought counter (see turns.js's beginCivTurn) --
+   *  called at every real (board) combat call site where one of `civ`'s own
+   *  units was actually involved, either as attacker or defender. Currently
+   *  only consumed by Orc's Dire Wolf drought response above, but reset
+   *  unconditionally for every civ (cheap, and avoids the alternative of
+   *  gating every call site by race). No-op if `civ` is falsy (some call
+   *  sites attack a structure/city with no defending civ unit involved). */
+  function markCombatEngaged(civ) {
+    if (civ) civ.turnsSinceCombat = 0;
+  }
 
   /** Does civ.stockpile currently cover every resource key in `cost`? */
   function canAffordBuildCost(civ, cost) {
@@ -2128,6 +2309,59 @@ window.GameEngine = window.GameEngine || {};
   // techs.js for the upkeep side) -- user-directed, see
   // project_pairwise_balance_human_orc_halfellow memory.
   const CHEAP_UNIT_DISCOUNT_RATE = 0.30;
+
+  // "Cultural Influence" tech-tree capstone (2026-07-21, user-directed):
+  // flat multi-resource cost + turn count, deliberately large/slow --
+  // "high cost... several turns" per the user's own spec -- since its whole
+  // purpose is soaking up a late-game surplus stockpile, not competing with
+  // real economy/military spending on price. See chooseBuildAction's own
+  // option push above and performClaimInfluenceTile below.
+  const CULTURAL_INFLUENCE_COST = { harvest: 60, coin: 60, lore: 60 };
+  const CULTURAL_INFLUENCE_TURNS = 6;
+
+  /** Whether `city` still has at least one tile within its own influence
+   *  radius that isn't already filled in -- mirrors advanceCityFill's own
+   *  candidate computation (cities.js) exactly, just as a yes/no check
+   *  instead of picking one. Cultural Influence has nothing left to do once
+   *  this is false (the whole radius is already this civ's). */
+  function cityHasUnclaimedInfluenceTile(city, map) {
+    const radius = city.influenceRadius;
+    for (let dy = -radius; dy <= radius; dy++) {
+      for (let dx = -radius; dx <= radius; dx++) {
+        if (city.filledOffsets.has(`${dx},${dy}`)) continue;
+        const tx = city.x + dx, ty = city.y + dy;
+        if (tx < 0 || tx >= map.width || ty < 0 || ty >= map.height) continue;
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /** Completes a "Cultural Influence" build (see progressBuildQueue's
+   *  "influence" branch): claims exactly ONE random currently-unfilled
+   *  offset within the city's radius, immediately (unlike organic growth's
+   *  gradual advanceCityFill) -- the whole point of paying the tech's steep
+   *  cost is skipping the wait. No-ops (silently) if the radius filled in
+   *  from some other source since this build started -- rare, but possible
+   *  if a radius bonus tech was researched mid-build. */
+  function performClaimInfluenceTile(city, map, log) {
+    const radius = city.influenceRadius;
+    const candidates = [];
+    for (let dy = -radius; dy <= radius; dy++) {
+      for (let dx = -radius; dx <= radius; dx++) {
+        const key = `${dx},${dy}`;
+        if (city.filledOffsets.has(key)) continue;
+        const tx = city.x + dx, ty = city.y + dy;
+        if (tx < 0 || tx >= map.width || ty < 0 || ty >= map.height) continue;
+        candidates.push(key);
+      }
+    }
+    if (candidates.length === 0) return;
+    const key = candidates[Math.floor(Math.random() * candidates.length)];
+    city.filledOffsets.add(key);
+    const [dx, dy] = key.split(",").map(Number);
+    log.push(`Cultural Influence: ${city.name} claims influence over (${city.x + dx},${city.y + dy})`);
+  }
 
   /**
    * Builds a "unit" option for chooseBuildAction's options array, in
@@ -2339,7 +2573,14 @@ window.GameEngine = window.GameEngine || {};
       // worth more (and a low-industriousness race, like Orc, slightly less),
       // rather than this being a Halfellow-only special case.
       const settleInfluenceBonus = (window.GameEngine.cities.industriousnessInfluenceMult(race) - 1.0) * 30;
-      const cityGateBonus = cityGateShortfall > 0 ? cityGateShortfall * 10 : 0;
+      // Net-city-loss taper (2026-07-23, user-directed): same fix as
+      // chooseStrategy's and strategy.js's macroGoalScores' cityGateBonus --
+      // don't keep sweetening the pioneer build score on tech-gate pressure
+      // alone while this civ is net losing cities faster than founding them
+      // (see recentCityDelta). A civ that's flat or growing sees no change.
+      const cityDeltaForBuild = recentCityDelta(civ, gameState);
+      const cityLossTaperForBuild = cityDeltaForBuild < 0 ? Math.max(0, 1 + cityDeltaForBuild * 0.25) : 1;
+      const cityGateBonus = (cityGateShortfall > 0 ? cityGateShortfall * 10 : 0) * cityLossTaperForBuild;
       // settleWeight is racialWeights().settle (0.4-1.5x, scaled from expansionism),
       // doubled on top of that whenever THIS turn's chooseStrategy focus is "settle"
       // (see runAITurn's `boosted` weights) -- previously computed but never actually
@@ -2350,6 +2591,21 @@ window.GameEngine = window.GameEngine || {};
       const opt = buildUnitOption(civ, "pioneer",
         (expansionism * 14 + settleEconBonus + settleInfluenceBonus + cityGateBonus) * settleWeight, unitCostMult);
       if (opt) options.push(opt);
+    }
+
+    // "Radius fully filled" auto-settler (2026-07-22, user-directed): once
+    // THIS city has nothing left to claim in its own radius, it should
+    // SOMETIMES spin off an extra pioneer regardless of the normal viable-
+    // site heuristics just above -- flagged (closestSpot) to skip tile-
+    // score entirely and just grab the nearest legal spot once built (see
+    // findClosestValidSettleSite/maybeFoundCity). Capped at one pioneer in
+    // flight at a time (any kind, via totalPioneers from just above) so a
+    // fully-grown empire doesn't spam settlers.
+    const FULLY_FILLED_SETTLER_CHANCE = 0.10;
+    if (totalPioneers === 0 && pioneerAffordable && !cityHasUnclaimedInfluenceTile(city, map)
+        && Math.random() < FULLY_FILLED_SETTLER_CHANCE) {
+      const opt = buildUnitOption(civ, "pioneer", 5 + expansionism * 6, unitCostMult);
+      if (opt) { opt.closestSpot = true; options.push(opt); }
     }
 
     // Galley — coastal expansion; needs a pioneer aboard, island-locked, multi-city
@@ -2529,8 +2785,51 @@ window.GameEngine = window.GameEngine || {};
         const siegeCredit = ownedSiegeUnits < SIEGE_UNIT_SATURATION ? (ud.siegePct || 0) * 6 : 0;
         return ud.attack + firstStrike * 60 + siegeCredit + rangeCredit + auraCredit;
       };
-      const bestByValue = (forDefense) => unlockedMilitary.reduce((best, id) =>
-        (!best || militaryValue(id, forDefense) > militaryValue(best, forDefense)) ? id : best, null);
+      // Elf "teamwork army" (2026-07-21, user-directed): raw-stat scoring
+      // (militaryValue above) always converges on a single "best" unit --
+      // fine for races whose army is genuinely one dominant fighter type,
+      // but Elf's kit is built around utility/teamwork (Ranger volleys,
+      // Blade Dancer ambush sweeps, Awakened Oak as a siege-proof anchor --
+      // see maybeRangerRegroup/maybeBladeDancerSweep/units.js's Oak stats),
+      // so a pure stat-max pick just spams whichever of the three currently
+      // scores highest instead of fielding the intended mix. Overrides
+      // bestByValue's pick for Elf ONLY, targeting a fixed composition
+      // ratio among whichever of the three are actually unlocked so far
+      // (Druid is deliberately excluded -- it already has its own dedicated
+      // build path via UTILITY_UNIT_MECHANICS above, and Galley/Druid's own
+      // Raptor-Shadowsteed summons are separate production paths entirely,
+      // untouched by this).
+      const ELF_UNIT_RATIO = { ranger: 0.5, blade_dancer: 0.2, awakened_oak: 0.3 };
+      const elfRatioCandidates = civ.raceId === "elf"
+        ? unlockedMilitary.filter((id) => ELF_UNIT_RATIO[id] != null) : [];
+      /** Whichever Elf ratio candidate sits furthest BELOW its target share
+       *  of the current (owned + queued) army among the three -- a
+       *  deficit-driven pick so the mix converges toward 50/20/30 over time
+       *  as the army grows, rather than trying to enforce the ratio on any
+       *  single build. Normalizes the target shares against whichever
+       *  subset is currently unlocked, so e.g. only having Ranger unlocked
+       *  so far just means 100% Ranger until Blade Dancer/Awakened Oak
+       *  research catches up. */
+      function elfRatioPick(civ, candidates) {
+        const totalWeight = candidates.reduce((s, id) => s + ELF_UNIT_RATIO[id], 0);
+        const counts = {};
+        for (const id of candidates) {
+          counts[id] = civ.units.filter((u) => u.typeId === id).length + countQueuedUnits(civ, (uid) => uid === id);
+        }
+        const totalCount = candidates.reduce((s, id) => s + counts[id], 0);
+        let best = null, bestDeficit = -Infinity;
+        for (const id of candidates) {
+          const targetShare = ELF_UNIT_RATIO[id] / totalWeight;
+          const deficit = targetShare * (totalCount + 1) - counts[id]; // +1: value of building this one next
+          if (deficit > bestDeficit) { bestDeficit = deficit; best = id; }
+        }
+        return best;
+      }
+      const bestByValue = (forDefense) => {
+        if (elfRatioCandidates.length > 0) return elfRatioPick(civ, elfRatioCandidates);
+        return unlockedMilitary.reduce((best, id) =>
+          (!best || militaryValue(id, forDefense) > militaryValue(best, forDefense)) ? id : best, null);
+      };
 
       // Garrison — scored by militarism; preference exists but isn't forced.
       // Gated by the same population military cap as the offense option below --
@@ -2569,9 +2868,25 @@ window.GameEngine = window.GameEngine || {};
 
       const bestDef = bestByValue(true);
       const hasBestDefenderHere = civ.units.some((u) => u.x === city.x && u.y === city.y && u.typeId === bestDef);
+      // Undefended-city floor (2026-07-23, user-directed): distinct from
+      // hasBestDefenderHere above -- that's true for BOTH "zero defenders"
+      // and "has A defender, just not the ideal one," and scores them
+      // identically. The zero case is the real emergency (this is exactly
+      // how a founding/razing treadmill starts -- a brand-new city with no
+      // garrison gets ground down by a single raider over a few turns, see
+      // the 2026-07-23 balance-audit memory's Human/Halfellow findings), so
+      // it gets its own floor, independent of this race's peacetime
+      // militarism personality -- a low-militarism race (Halfellow 0.2)
+      // could otherwise never clear the score needed to win the build slot
+      // even once. Same "guarantee a floor" shape as the wall-gate and
+      // utility-unit-taper precedents in this function.
+      const hasAnyDefenderHere = civ.units.some((u) => u.x === city.x && u.y === city.y && isMilitaryLand(u.typeId));
       if (!hasBestDefenderHere && militaryCount < militaryCap) {
         // Garrison score: weighted by militarism; threat raises it; scaled by economic sustainability
-        const garrisonScore = (militarism * 8 + (underThreat ? agg * 4 : 0)) * militaryEconMult;
+        const UNDEFENDED_GARRISON_FLOOR_MILITARISM = 0.5;
+        const baseGarrisonScore = (militarism * 8 + (underThreat ? agg * 4 : 0)) * militaryEconMult;
+        const garrisonScore = hasAnyDefenderHere ? baseGarrisonScore
+          : Math.max(baseGarrisonScore, (UNDEFENDED_GARRISON_FLOOR_MILITARISM * 8 + agg * 4) * militaryEconMult);
         const opt = tryWithMiscreantFallback(bestDef, garrisonScore);
         if (opt) options.push(opt);
       }
@@ -2619,7 +2934,20 @@ window.GameEngine = window.GameEngine || {};
       // fully prioritized (guarantees the tactic gets run at all), while each
       // additional one increasingly has to compete fairly with garrison/
       // offense instead of automatically dominating them.
-      if (militaryCount < militaryCap) {
+      //
+      // Undefended-city gate (2026-07-23, user-directed): that taper alone
+      // wasn't enough -- a first-copy Wizard's score (relevantMechanics.length
+      // * 7, e.g. 49 for Human's 7 mechanics) still dwarfs even the new
+      // undefended-garrison floor just above, so a brand-new, zero-defender
+      // city would keep losing its build slot to Wizard anyway. Confirmed
+      // directly as the mechanism behind Human's near-zero Spearguard counts
+      // in the 2026-07-23 balance-audit memory. This city simply doesn't
+      // propose a utility-unit build AT ALL while it has zero defenders --
+      // same shape as the wall-gate's "zero walls until the civ has fielded
+      // at least one real defender," just scoped to this one city instead of
+      // civ-wide. Once it has any defender (even an outdated one), utility
+      // builds compete normally again.
+      if (militaryCount < militaryCap && hasAnyDefenderHere) {
         for (const [unitId, mechanics] of Object.entries(UTILITY_UNIT_MECHANICS)) {
           if (!civ.unlockedUnits || !civ.unlockedUnits.has(unitId)) continue;
           const relevantMechanics = mechanics.filter((m) => civ.unlockedMechanics && civ.unlockedMechanics.has(m));
@@ -2663,6 +2991,22 @@ window.GameEngine = window.GameEngine || {};
       const hasLiveDireWolf = civ.units.some((u) => u.typeId === "dire_wolf");
       if (!hasLiveDireWolf) {
         const opt = buildUnitOption(civ, "dire_wolf", DIRE_WOLF_SHORTAGE_BONUS, unitCostMult);
+        if (opt) options.push(opt);
+      }
+    }
+
+    // Orc "Dire Wolf" combat-drought response (2026-07-22, user-directed):
+    // no Orc unit has fought in DIRE_WOLF_DROUGHT_TURNS turns -- force-build
+    // a Dire Wolf (which then hunts for combat on its own via
+    // maybeDireWolfHunt) regardless of the ordinary shortage check above.
+    // Guarded by "already have one alive or queued" rather than a one-shot
+    // flag -- once that Dire Wolf either wins a fight (resetting the
+    // counter via markCombatEngaged) or dies trying, this can fire again.
+    if (orcHasDireWolfAvailable && (civ.turnsSinceCombat || 0) >= DIRE_WOLF_DROUGHT_TURNS) {
+      const alreadyResponding = civ.units.some((u) => u.typeId === "dire_wolf")
+        || countQueuedUnits(civ, (id) => id === "dire_wolf") > 0;
+      if (!alreadyResponding) {
+        const opt = buildUnitOption(civ, "dire_wolf", DIRE_WOLF_DROUGHT_BONUS, unitCostMult);
         if (opt) options.push(opt);
       }
     }
@@ -2766,6 +3110,26 @@ window.GameEngine = window.GameEngine || {};
         score: ((militarism + industriousness) / 2) * 12 * wallMult });
     }
 
+    // "Cultural Influence" (2026-07-21, user-directed): the tech-tree
+    // capstone for every race (requires every OTHER tech in that civ's own
+    // tree already researched -- see techs.js's programmatic prereqs at the
+    // bottom of that file). A city with the mechanic unlocked and at least
+    // one still-unclaimed tile in its own radius may spend several turns
+    // and a large multi-resource cost to claim exactly one more -- same
+    // power-based cost/turnsRemaining shape buildUnitOption uses, just
+    // producing a claimed tile instead of a unit (see progressBuildQueue's
+    // "influence" branch and performClaimInfluenceTile below). Deliberately
+    // scored far below every real option (military/building/settle) so it
+    // only ever wins the slot when nothing more useful is available this
+    // turn -- exactly the late-game resource sink the surplus-stockpile
+    // problem (see project_roads_upkeep_stall_review memory) calls for.
+    if (civ.unlockedMechanics && civ.unlockedMechanics.has("cultural_influence")
+        && cityHasUnclaimedInfluenceTile(city, map)
+        && canAffordBuildCost(civ, CULTURAL_INFLUENCE_COST)) {
+      options.push({ kind: "influence", id: "cultural_influence",
+        cost: { ...CULTURAL_INFLUENCE_COST }, turns: CULTURAL_INFLUENCE_TURNS, score: 1 });
+    }
+
     // Orc "Miscreant" true last-resort: the garrison/offense retries above
     // already cover "budget strained" (substituting Miscreant for whichever
     // real pick wasn't affordable, at that pick's own score -- so it
@@ -2793,7 +3157,7 @@ window.GameEngine = window.GameEngine || {};
    *  queued and retry next turn rather than losing a completed build.
    *  Shared by progressBuildQueue's legacy coin-accumulation path and its
    *  power-based fixed-turn-timer path. */
-  function spawnUnitInCity(civ, city, unitId, gameState) {
+  function spawnUnitInCity(civ, city, unitId, gameState, extra = {}) {
     const unitData = window.GameData.getUnit(unitId);
     let spawnX = city.x, spawnY = city.y;
     if (unitData.isNaval) {
@@ -2804,7 +3168,12 @@ window.GameEngine = window.GameEngine || {};
       // If still no water found, defer completion — don't strand galley on land
       if (spawnX === city.x && spawnY === city.y) return false;
     }
-    const newUnit = { typeId: unitId, civId: civ.id, x: spawnX, y: spawnY, isCivilian: ["pioneer", "scout"].includes(unitId), homeCityName: city.name };
+    // `extra` merges in any caller-supplied fields (2026-07-22, user-
+    // directed: progressBuildQueue passes `_useClosestSpotSettle` through
+    // for a Pioneer built via chooseBuildAction's "radius fully filled"
+    // trigger) -- spread AFTER the base fields so it can only add to them,
+    // never silently override typeId/civId/position.
+    const newUnit = { typeId: unitId, civId: civ.id, x: spawnX, y: spawnY, isCivilian: ["pioneer", "scout"].includes(unitId), homeCityName: city.name, ...extra };
     window.GameEngine.combat.initUnitHP(newUnit, civ);
     civ.units.push(newUnit);
     // Orc "Goblin Miscreant" (2026-07-15, user-directed): building one
@@ -2831,12 +3200,18 @@ window.GameEngine = window.GameEngine || {};
   function progressBuildQueue(civ, city, gameState, log) {
     const item = city.buildQueue;
 
-    // Power-based unit build (see buildUnitOption/unitBuildTurns): the cost
-    // was already paid up front in maybeBuildInCities, so this is purely a
+    // Power-based unit/influence build (see buildUnitOption/unitBuildTurns
+    // and chooseBuildAction's Cultural Influence option): the cost was
+    // already paid up front in maybeBuildInCities, so this is purely a
     // countdown independent of the city's income.
     if (item.turnsRemaining !== undefined) {
       item.turnsRemaining--;
       if (item.turnsRemaining > 0) return;
+      if (item.kind === "influence") {
+        performClaimInfluenceTile(city, gameState.map, log);
+        city.buildQueue = null;
+        return;
+      }
       if (!spawnUnitInCity(civ, city, item.id, gameState)) return; // naval retry next turn
       log.push(`Build complete: ${city.name} produced ${item.id}`);
       city.buildQueue = null;
@@ -2855,14 +3230,11 @@ window.GameEngine = window.GameEngine || {};
     const progressCap = building && building.minBuildTurns
       ? item.coinCost / building.minBuildTurns
       : coinThisTurn;
-    // Tech: build_speed_mult (Dwarf "Runeforged Tools") -- scales the actual
-    // per-turn progress credited, civ-wide, INCLUDING wall_section's
-    // minBuildTurns floor (deliberately -- "faster builders, full stop" is a
-    // genuine signature trait, not an oversight to patch around).
-    item.progress += Math.min(coinThisTurn, progressCap) * (civ.buildSpeedMult || 1);
+    item.progress += Math.min(coinThisTurn, progressCap);
     if (item.progress >= item.coinCost) {
       if (item.kind === "unit") {
-        if (!spawnUnitInCity(civ, city, item.id, gameState)) return; // naval retry next turn
+        const extra = item.closestSpot ? { _useClosestSpotSettle: true } : undefined;
+        if (!spawnUnitInCity(civ, city, item.id, gameState, extra)) return; // naval retry next turn
         log.push(`Build complete: ${city.name} produced ${item.id}`);
       } else {
         // Buildings are external structures placed on a tile adjacent to the city
@@ -2886,7 +3258,7 @@ window.GameEngine = window.GameEngine || {};
    * (stepCivTurnUnit/advanceOneUnitStep) can drive exactly one unit at a
    * time, in civ.units order -- which is creation order in practice, since
    * units are only ever appended (spawnUnitInCity, maybeSpawnMilitia,
-   * maybeRaiseDead) or removed via Array.prototype.filter (every death/
+   * maybeApplyZombie) or removed via Array.prototype.filter (every death/
    * disband/founding site in this codebase), never reordered or spliced
    * back in elsewhere.
    */
@@ -2901,7 +3273,87 @@ window.GameEngine = window.GameEngine || {};
     window.GameEngine.combat.setCondition(unit, "defending", { expiresAtTurn: currentTurnNumber + 1 });
     unit.usedThisTurn = true;
     unit.currentMission = "Defending (braced, x2 defense until next turn)";
-    log.push(`Defend: ${civ.id}'s ${unit.typeId} braces at (${unit.x},${unit.y}), doubling its defense until its next turn`);
+    log.push(`Defend: ${civ.id}'s ${describeUnit(unit)} braces at (${unit.x},${unit.y}), doubling its defense until its next turn`);
+  }
+
+  /** Whether ANY other unit of this civ (not carried -- it isn't really
+   *  "there" independently) is within SUPPORT_RADIUS -- used by the
+   *  cornered-defend fallback below (2026-07-21, user-directed): allies
+   *  nearby mean this unit isn't truly alone, so bracing isn't its only
+   *  option. Mirrors isNearActiveCombat's own SUPPORT_RADIUS use. */
+  function hasNearbyAlly(civ, unit, gameState) {
+    return civ.units.some((u) => u !== unit && !u.carriedBy
+      && window.GameEngine.influence.chebyshev(unit.x, unit.y, u.x, u.y) <= SUPPORT_RADIUS);
+  }
+
+  /** Nearest visible, non-hidden enemy unit to (x,y), or null -- used by the
+   *  flee check below to know which direction is actually "away." */
+  function findNearestVisibleEnemy(civ, x, y, gameState) {
+    const { civs, map } = gameState;
+    const visible = gameState.visibility[civ.id] || new Set();
+    let nearest = null, nearestDist = Infinity;
+    for (const otherCiv of Object.values(civs)) {
+      if (otherCiv.id === civ.id || otherCiv.eliminated) continue;
+      for (const eu of otherCiv.units) {
+        if (eu.conditions?.hidden || !visible.has(eu.y * map.width + eu.x)) continue;
+        const d = window.GameEngine.influence.chebyshev(x, y, eu.x, eu.y);
+        if (d < nearestDist) { nearestDist = d; nearest = eu; }
+      }
+    }
+    return nearest;
+  }
+
+  /** An adjacent tile this unit could step to that's strictly farther from
+   *  `threat` than its current tile, passable for its own movement type
+   *  (naval/land/flying -- see getMoveCost), and not already occupied.
+   *  Returns {x,y}, or null if genuinely cornered -- exactly what "cannot
+   *  run away" means for the fallback below. */
+  function findFleeTile(civ, unit, threat, gameState) {
+    const { map, civs } = gameState;
+    const TERRAIN = window.GameData.TERRAIN;
+    const unitData = window.GameData.getUnit(unit.typeId);
+    const curDist = window.GameEngine.influence.chebyshev(unit.x, unit.y, threat.x, threat.y);
+    let best = null, bestDist = curDist;
+    for (let dy = -1; dy <= 1; dy++) {
+      for (let dx = -1; dx <= 1; dx++) {
+        if (dx === 0 && dy === 0) continue;
+        const nx = unit.x + dx, ny = unit.y + dy;
+        if (nx < 0 || nx >= map.width || ny < 0 || ny >= map.height) continue;
+        const tile = map.tiles[ny * map.width + nx];
+        if (getMoveCost(TERRAIN[tile.terrain], unitData, unit, tile.hasRoad) === window.GameData.IMPASSABLE) continue;
+        if (Object.values(civs).some((c) => c.units.some((u) => u.x === nx && u.y === ny))) continue;
+        const d = window.GameEngine.influence.chebyshev(nx, ny, threat.x, threat.y);
+        if (d > bestDist) { bestDist = d; best = { x: nx, y: ny }; }
+      }
+    }
+    return best;
+  }
+
+  /** Cornered-combat fallback, replacing the old unconditional brace
+   *  (2026-07-21, user-directed): an idle unit already in a fight (see
+   *  nearActiveCombat at this function's call site) only braces
+   *  (performDefend) when it's BOTH unable to retreat AND has no ally
+   *  nearby to back it up. Otherwise it flees (a retreat tile exists,
+   *  checked first -- self-preservation wins even with allies close by) or,
+   *  failing that, simply holds its ground without the defense bonus (allies
+   *  are close enough to help, even though this unit itself is cornered).
+   *  Always consumes the unit's turn -- callers can just `continue` after. */
+  function handleCorneredCombat(civ, unit, gameState, log) {
+    const threat = findNearestVisibleEnemy(civ, unit.x, unit.y, gameState);
+    const fleeTile = threat && findFleeTile(civ, unit, threat, gameState);
+    if (fleeTile) {
+      moveUnitToward(unit, fleeTile.x, fleeTile.y, gameState.map, gameState.civs);
+      unit.usedThisTurn = true;
+      unit.currentMission = `Falling back to (${fleeTile.x},${fleeTile.y})`;
+      log.push(`Flee: ${civ.id}'s ${describeUnit(unit)} falls back to (${fleeTile.x},${fleeTile.y})`);
+      return;
+    }
+    if (hasNearbyAlly(civ, unit, gameState)) {
+      unit.usedThisTurn = true;
+      unit.currentMission = "Holding the line alongside nearby allies";
+      return;
+    }
+    performDefend(civ, unit, log);
   }
 
   // How much of its max HP a unit must be missing before Resting is worth
@@ -2996,10 +3448,18 @@ window.GameEngine = window.GameEngine || {};
       }
 
       // Elf "Roots of the World": same defensive trigger as Human's
-      // Teleportation above, self-only (see attemptDruidTeleport).
-      if (unit.typeId === "druid" && civ.unlockedMechanics && civ.unlockedMechanics.has("roots_of_the_world")
-          && unit.hp < unit.maxHp * 0.4 && attemptDruidTeleport(civ, unit, gameState, log)) {
-        continue;
+      // Teleportation above -- self-flee first, then (2026-07-21,
+      // user-directed) an ally-rescue play: a badly hurt ADJACENT ally gets
+      // blinked to safety instead when the Druid itself isn't the one in
+      // danger. See attemptDruidTeleport/findAdjacentHurtAlly.
+      if (unit.typeId === "druid" && civ.unlockedMechanics && civ.unlockedMechanics.has("roots_of_the_world")) {
+        if (unit.hp < unit.maxHp * 0.4 && attemptDruidTeleport(civ, unit, unit, gameState, log)) {
+          continue;
+        }
+        const hurtAlly = findAdjacentHurtAlly(civ, unit);
+        if (hurtAlly && attemptDruidTeleport(civ, unit, hurtAlly, gameState, log)) {
+          continue;
+        }
       }
 
       // Elf "Shadowsteed" (2026-07-18, user-directed): carrying a rider is
@@ -3044,9 +3504,19 @@ window.GameEngine = window.GameEngine || {};
         // dies in the exchange, considerAttackOrGarrison already drops its
         // cargo onto the tile, same as any other carrier's death.
         if (considerAttackOrGarrison(civ, unit, gameState, weights, difficulty, log)) continue;
+        if (unit.typeId === "galley" && maybeGalleyFishingPlay(civ, unit, gameState, log)) continue;
         operateGalley(civ, unit, gameState, log);
         continue;
       }
+
+      // Elf staged invasion (2026-07-21, user-directed): a unit ferried to
+      // an overseas staging ground (see maybeRootsInvasionFerry's
+      // `_ambushTarget` stamp) hides and WAITS for the rest of the force
+      // before anyone attacks -- checked ahead of every generic combat/
+      // stealth branch so a lone arrival never picks its own fight early.
+      // Falls through (returns false) the moment the force is strong
+      // enough, letting this same turn's normal cascade launch the ambush.
+      if (maybeInvasionAmbushWait(civ, unit, gameState, log)) continue;
 
       // Halfellow "fight smarter, not harder": before committing to a
       // straight fight, weigh going Hidden instead (defensively when
@@ -3054,6 +3524,18 @@ window.GameEngine = window.GameEngine || {};
       // maybeHalfellowStealthPlay. Only ever preempts the turn when hiding
       // actually wins out; otherwise falls through to the normal cascade.
       if (maybeHalfellowStealthPlay(civ, unit, gameState, weights, difficulty, log)) continue;
+
+      // Halfellow "Riddle" (Wanderer -- Trouble Maker's own use lives in
+      // maybeTroubleMakerPlay above): a proactive debuff play, checked
+      // before Envoy since disabling a real threat outranks an economy
+      // action. See maybeRiddlePlay's doc comment.
+      if (unit.typeId === "wanderer" && maybeRiddlePlay(civ, unit, gameState, log)) continue;
+
+      // Halfellow "Envoy" (Wanderer only -- Pioneer's own equivalent lives
+      // in maybeFoundCity): opportunistic, lower priority than combat/
+      // stealth above, so only fires when a Wanderer has nothing more
+      // urgent to do. See maybeEnvoyPlay's doc comment.
+      if (unit.typeId === "wanderer" && maybeEnvoyPlay(civ, unit, gameState, log)) continue;
 
       // Elf "fight smarter, not harder": same idea as Halfellow's above, but
       // split by whether the unit is Ranged (the Ranger's hide-shoot-hide
@@ -3066,6 +3548,27 @@ window.GameEngine = window.GameEngine || {};
       // see maybeHumanWizardPlay. Only preempts the turn when one of those
       // plays actually applies; otherwise falls through to the normal cascade.
       if (maybeHumanWizardPlay(civ, unit, gameState, weights, difficulty, log)) continue;
+
+      // Halfellow Trouble Maker: proactive use of Resource Heist/Unlock the
+      // Gate/Riddle -- see maybeTroubleMakerPlay's doc comment.
+      if (maybeTroubleMakerPlay(civ, unit, gameState, log)) continue;
+
+      // Elf "Shadowsteed" + Druid (2026-07-22, user-directed): a mounted
+      // Shadowsteed carrying a Druid rider can also cast Nature's Grace
+      // itself, at the same range the Druid would have (effectiveRange
+      // already defers to the rider for a mounted Shadowsteed -- see
+      // combat.js's shadowsteedMount). Without this, the ability is
+      // completely unusable for as long as the Druid stays mounted, since a
+      // carried unit's own turn is fully consumed just by being carried
+      // (see the carriedBy skip at the top of this loop). Deliberately just
+      // Nature's Grace, not the Druid's whole kit (maybeElfDruidPlay) --
+      // summons/Roots of the World don't make sense for the Shadowsteed to
+      // perform on the Druid's behalf.
+      if (unit.typeId === "shadowsteed" && unit.carries && unit.carries.typeId === "druid"
+          && civ.unlockedMechanics && civ.unlockedMechanics.has("natures_grace")
+          && maybeNaturesGrace(civ, unit, gameState, log)) {
+        continue;
+      }
 
       // Elf Druid: Nature's Grace healing, Raptor/Shadowsteed summon
       // management, and Roots of the World expansion -- see maybeElfDruidPlay.
@@ -3196,6 +3699,14 @@ window.GameEngine = window.GameEngine || {};
       // MOUNTED Shadowsteed has nothing left to decide here (it already has
       // a rider), so there's no call left to make at this point in the cascade.
 
+      // Halfellow "Devoted Companions": an injured ally a carrier is already
+      // en route to fetch holds position and waits instead of wandering off
+      // mid-rescue (2026-07-22, user-directed) -- see
+      // maybeWaitForCompanionCarry. Checked before the carrier-side plays
+      // below since it's the PATIENT's own turn deciding this, not the
+      // carrier's.
+      if (civ.raceId === "halfellow" && maybeWaitForCompanionCarry(civ, unit, gameState, log)) continue;
+
       // Halfellow "Devoted Companions": pick up (or set back down) an injured
       // ally when otherwise idle -- see operateCompanionCarry. If nothing's
       // adjacent to pick up, look further afield for an injured ally worth
@@ -3207,6 +3718,12 @@ window.GameEngine = window.GameEngine || {};
       // lone units -- see maybeHalfellowRegroup. Checked before the explore
       // roll so grouping up wins out over a lone unit's curiosity.
       if (civ.raceId === "halfellow" && maybeHalfellowRegroup(civ, unit, gameState, log)) continue;
+
+      // Elf "Shadowsteed" mount, reverse half (2026-07-21, user-directed): a
+      // riderless Ranger with a nearby riderless Shadowsteed goes to mount it
+      // -- outranks regrouping with fellow Rangers below, since mounting up
+      // is the bigger combat upgrade. See maybeSeekRiderlessShadowsteed.
+      if (unit.typeId === "ranger" && maybeSeekRiderlessShadowsteed(civ, unit, gameState, log)) continue;
 
       // Elf Ranger "hidden groups" (user-directed): Rangers tend to move in
       // groups, ready to synchronize a volley -- see maybeRangerRegroup. The
@@ -3239,7 +3756,44 @@ window.GameEngine = window.GameEngine || {};
       // further down too).
       const explorable = !window.GameData.getUnit(unit.typeId).neverExplores;
       if (explorable && !nearActiveCombat && Math.random() < explorePostureFor(civ, gameState)) {
+        // Only actually commits to this turn if exploreWith did something --
+        // it's a real no-op (no move, no flag) once this civ's reachable
+        // world is fully explored (findNearestUnseenTile finds nothing),
+        // which is common by mid/late game on these map sizes. Falling
+        // through to the garrison/hunt/defend cascade below instead of
+        // unconditionally ending the turn here means a unit that rolled
+        // "explore" but had nothing left to explore still gets a real shot
+        // at a useful job, rather than silently doing nothing this turn --
+        // confirmed live as the PRIMARY source of Halfellow's Pony Patrol
+        // sitting fully idle ~20-30% of the time (this roll fires often,
+        // clamped to at least 15% per explorePostureFor, well before the
+        // final exploreWith fallback further down -- which already has its
+        // own matching no-op guard -- ever gets a turn). See the 2026-07-23
+        // round-4 balance-audit memory.
+        const preX = unit.x, preY = unit.y;
         exploreWith(unit, gameState, log);
+        if (unit.x !== preX || unit.y !== preY || unit.usedThisTurn) continue;
+      }
+
+      // Halfellow "Keep an Eye Out" (2026-07-24, user-directed; relocated
+      // same day after live diagnosis): originally checked WAY down this
+      // cascade, right before patrolRaceTerrain -- direct instrumentation
+      // showed that placement was fatally crowded: over 150 turns of a real
+      // Halfellow game, 610 unit-turns reached this function, but only 4
+      // ever got as far as pushTowardInfluenceFrontier (several dozen lines
+      // above patrolRaceTerrain), meaning the OLD check was never reached at
+      // all -- garrison-rest, huntNearestEnemy's roll, the offense/reinforce
+      // branch, and pushTowardInfluenceFrontier itself were already
+      // consuming essentially every turn first. Moved here instead, right
+      // where garrison-rest is about to make its own bid for the same idle
+      // turn (the two are thematically the same choice -- "stay put and do
+      // something passive instead of patrolling/exploring" -- lookout duty
+      // just adds vision + stealth instead of just healing) so it actually
+      // gets a fair, real chance most turns rather than being buried under
+      // 7-8 more gates it will essentially never survive to reach.
+      const KEEP_AN_EYE_OUT_PREEMPT_CHANCE = 0.25;
+      if (!nearActiveCombat && Math.random() < KEEP_AN_EYE_OUT_PREEMPT_CHANCE
+          && maybeKeepAnEyeOutPlay(civ, unit, gameState, log)) {
         continue;
       }
 
@@ -3277,7 +3831,7 @@ window.GameEngine = window.GameEngine || {};
 
       // A unit already IN a fight (adjacent to an enemy, or supporting an
       // ally who is) that didn't attack this turn -- declined above, or
-      // nothing scored well enough -- braces instead of getting pulled away
+      // nothing scored well enough -- reacts instead of getting pulled away
       // by one of the generic hunt/raid/reinforce branches below. Those are
       // for finding a DIFFERENT job when there's nothing to react to right
       // now, not for abandoning a fight already underway; without this
@@ -3286,9 +3840,13 @@ window.GameEngine = window.GameEngine || {};
       // got a look-in. Every race-specific tactical branch above (Shield
       // Wall, Crusade, Titan, Prospector's Claim, garrison, ...) still gets
       // first refusal, unaffected -- this only intercepts the generic tail.
-      // 2026-07-20, user-directed.
+      // 2026-07-20, user-directed. The reaction itself is no longer an
+      // unconditional brace (2026-07-21, user-directed): see
+      // handleCorneredCombat -- flee if there's an open retreat tile, just
+      // hold the line if allies are close enough to help, and only brace
+      // (performDefend) when truly cornered AND alone.
       if (nearActiveCombat) {
-        performDefend(civ, unit, log);
+        handleCorneredCombat(civ, unit, gameState, log);
         continue;
       }
 
@@ -3369,7 +3927,32 @@ window.GameEngine = window.GameEngine || {};
       const racePatrolled = patrolRaceTerrain(civ, unit, gameState);
       if (!racePatrolled && !nearActiveCombat) {
         if (explorable) {
+          const preX = unit.x, preY = unit.y;
           exploreWith(unit, gameState, log);
+          // True terminal fallback (2026-07-23, user-directed -- see the
+          // 2026-07-23 round-4 balance-audit memory): exploreWith can be a
+          // complete no-op (findNearestUnseenTile returns null once this
+          // civ's reachable world is fully explored -- common by mid/late
+          // game on these map sizes) and neither moves the unit nor sets
+          // any flag, same for patrolRaceTerrain just above (returns false
+          // when no preferred terrain is nearby). Every branch above this
+          // one is conditional/probabilistic, so a unit that's low-
+          // aggression (rarely hunts), off its home city (garrison-rest
+          // never triggers), and has nothing left to explore could fall
+          // through this entire cascade and take NO action at all --
+          // confirmed live via direct instrumentation as a real, frequent
+          // outcome for Halfellow's Pony Patrol specifically (~20% of its
+          // unit-turns). Mirrors the neverExplores branch's own "hold
+          // position and heal" fallback immediately below -- if exploreWith
+          // didn't actually do anything, do that same thing instead of
+          // leaving the unit with no action at all this turn.
+          if (unit.x === preX && unit.y === preY && !unit.usedThisTurn) {
+            if (!maybeKeepAnEyeOutPlay(civ, unit, gameState, log)) {
+              unit.resting = true;
+              unit.usedThisTurn = true;
+              unit.currentMission = "Nothing left to explore nearby — holding position (resting)";
+            }
+          }
         } else {
           // neverExplores (Dwarf Runeforged Titan): hold position and heal
           // rather than wander off -- see units.js's doc comment on the flag.
@@ -3465,8 +4048,8 @@ window.GameEngine = window.GameEngine || {};
       caster.currentMission = "Blinked away (exhausted, must rest)";
       log.push(`Teleport: ${civ.id}'s Wizard blinked to (${landing.x},${landing.y}), exhausted until fully healed`);
     } else {
-      caster.currentMission = `Teleported a ${targetUnit.typeId} to (${landing.x},${landing.y}) (exhausted, must rest)`;
-      log.push(`Teleport: ${civ.id}'s Wizard teleported a ${targetUnit.typeId} to (${landing.x},${landing.y}), Wizard exhausted until fully healed`);
+      caster.currentMission = `Teleported a ${describeUnit(targetUnit)} to (${landing.x},${landing.y}) (exhausted, must rest)`;
+      log.push(`Teleport: ${civ.id}'s Wizard teleported a ${describeUnit(targetUnit)} to (${landing.x},${landing.y}), Wizard exhausted until fully healed`);
     }
     return true;
   }
@@ -3476,6 +4059,34 @@ window.GameEngine = window.GameEngine || {};
   // magnitude as Halfellow's short-range tactical checks (HALFELLOW_STEALTH_RANGE).
   const FREEZING_TOUCH_RANGE = 2;
   const FROZEN_DURATION = 3;
+
+  // Burning (2026-07-22, user-directed): 1 point of damage at the start of
+  // the affected target's turn for this many turns, unless it's currently
+  // on Coast, Ocean, or a river tile -- see turns.js's tickBurningDamage
+  // for where the actual per-turn damage/exemption/expiry lives (ticked
+  // once per civ-turn, uniformly for every civ, not just AI-controlled
+  // ones; never applies to cities themselves, only units and buildings/
+  // walls -- 2026-07-22, user-directed). This file only ever APPLIES the
+  // condition, at the two mechanics that grant it -- Orc "Burn It All
+  // Down" and Human "Fireball!" (both checked in considerAttackOrGarrison,
+  // right after resolveRound).
+  const BURN_DURATION = 3;
+
+  /** Stamps the Burning condition onto `target` for BURN_DURATION turns
+   *  from now, refreshing (not stacking) if it's already burning. `kind`
+   *  selects where the flag lives: a unit keeps it in `.conditions.burning`
+   *  (so it gets the same fire badge as every other condition -- see
+   *  render.js's CONDITION_ICONS); a structure (no `.conditions` container
+   *  of its own) keeps a plain `.burning` field directly. Never applied to
+   *  cities themselves (2026-07-22, user-directed). */
+  function applyBurning(target, kind, gameState) {
+    const expiresAtTurn = (gameState.turnNumber || 0) + BURN_DURATION;
+    if (kind === "unit") {
+      window.GameEngine.combat.setCondition(target, "burning", { expiresAtTurn });
+    } else {
+      target.burning = { expiresAtTurn };
+    }
+  }
 
   /** Applies the Frozen condition (0 movement, -25% attack -- see combat.js
    *  effectiveAttack and this file's moveUnitToward) to `target` for
@@ -3487,8 +4098,8 @@ window.GameEngine = window.GameEngine || {};
       attackMult: 0.75, expiresAtTurn: currentTurnNumber + FROZEN_DURATION,
     });
     caster.usedThisTurn = true;
-    caster.currentMission = `Froze ${target.civId}'s ${target.typeId} at (${target.x},${target.y})`;
-    log.push(`Freezing Touch: ${civ.id}'s Wizard freezes ${target.civId}'s ${target.typeId} at (${target.x},${target.y})`);
+    caster.currentMission = `Froze ${target.civId}'s ${describeUnit(target)} at (${target.x},${target.y})`;
+    log.push(`Freezing Touch: ${civ.id}'s Wizard freezes ${target.civId}'s ${describeUnit(target)} at (${target.x},${target.y})`);
   }
 
   /**
@@ -3589,8 +4200,8 @@ window.GameEngine = window.GameEngine || {};
       visionBonus: FLIGHT_VISION_BONUS,
     });
     caster.usedThisTurn = true;
-    caster.currentMission = `Granted flight to ${target.typeId} at (${target.x},${target.y})`;
-    log.push(`Flight: ${civ.id}'s Wizard grants flight to their ${target.typeId} at (${target.x},${target.y})`);
+    caster.currentMission = `Granted flight to ${describeUnit(target)} at (${target.x},${target.y})`;
+    log.push(`Flight: ${civ.id}'s Wizard grants flight to their ${describeUnit(target)} at (${target.x},${target.y})`);
   }
 
   /**
@@ -3771,8 +4382,8 @@ window.GameEngine = window.GameEngine || {};
       unit.currentMission = `Teleported to strike ${target.targetCiv.id}'s ${target.kind} at (${target.x},${target.y})`;
       log.push(`Teleport Strike: ${civ.id}'s Wizard teleports itself against ${target.targetCiv.id}'s ${target.kind} at (${target.x},${target.y})`);
     } else {
-      unit.currentMission = `Teleported a ${strikeUnit.typeId} to strike ${target.targetCiv.id}'s ${target.kind} at (${target.x},${target.y})`;
-      log.push(`Teleport Strike: ${civ.id}'s Wizard teleports a ${strikeUnit.typeId} against ${target.targetCiv.id}'s ${target.kind} at (${target.x},${target.y})`);
+      unit.currentMission = `Teleported a ${describeUnit(strikeUnit)} to strike ${target.targetCiv.id}'s ${target.kind} at (${target.x},${target.y})`;
+      log.push(`Teleport Strike: ${civ.id}'s Wizard teleports a ${describeUnit(strikeUnit)} against ${target.targetCiv.id}'s ${target.kind} at (${target.x},${target.y})`);
     }
     return true;
   }
@@ -3815,12 +4426,13 @@ window.GameEngine = window.GameEngine || {};
     return best;
   }
 
-  /** Finds the nearest known Gold Vein tile (currently visible OR remembered
-   *  via tileMemory) that isn't already being claimed by one of this civ's
-   *  OTHER units, within a reasonable search radius. Returns
+  /** Finds the nearest known Gold OR Iron Vein tile (currently visible OR
+   *  remembered via tileMemory) that isn't already being claimed by one of
+   *  this civ's OTHER units, within a reasonable search radius. Returns
    *  {x,y,landmassId} or null. Mirrors findNearbyUnclaimedRuin above --
    *  see Dwarf "Prospector's Claim", including the `sameLandmassOnly`
-   *  option and the reason it exists. */
+   *  option and the reason it exists. Iron Veins qualify too (2026-07-21,
+   *  user-directed) at their own, separate payout -- see turns.js. */
   function findNearbyUnclaimedGoldVein(civ, unit, gameState, options = {}) {
     const { map } = gameState;
     const SEARCH_RADIUS = 20;
@@ -3830,6 +4442,7 @@ window.GameEngine = window.GameEngine || {};
         .filter((u) => u !== unit && (u._ritualTurns || 0) >= 1)
         .map((u) => `${u.x},${u.y}`)
     );
+    const isVeinResource = (r) => r === "gold" || r === "iron";
     const unitTile = map.tiles[unit.y * map.width + unit.x];
     const unitLandmassId = unitTile ? unitTile.landmassId : -1;
     let best = null, bestDist = Infinity;
@@ -3838,8 +4451,8 @@ window.GameEngine = window.GameEngine || {};
         const x = unit.x + dx, y = unit.y + dy;
         if (x < 0 || x >= map.width || y < 0 || y >= map.height) continue;
         const idx = y * map.width + x;
-        const isGoldVein = map.tiles[idx].resource === "gold" || (memory[idx] && memory[idx].resource === "gold");
-        if (!isGoldVein || claimedByOther.has(`${x},${y}`)) continue;
+        const isVein = isVeinResource(map.tiles[idx].resource) || (memory[idx] && isVeinResource(memory[idx].resource));
+        if (!isVein || claimedByOther.has(`${x},${y}`)) continue;
         if (options.sameLandmassOnly && unitLandmassId >= 0 && map.tiles[idx].landmassId !== unitLandmassId) continue;
         const dist = window.GameEngine.influence.chebyshev(unit.x, unit.y, x, y);
         if (dist < bestDist) { bestDist = dist; best = { x, y, landmassId: map.tiles[idx].landmassId }; }
@@ -3863,9 +4476,269 @@ window.GameEngine = window.GameEngine || {};
    *
    * Returns true if it consumed the turn.
    */
+  /**
+   * Cash-out decision for a channeling unit (Prospector's Claim/Dungeon
+   * Delve/Fishing), 2026-07-24 user-directed: since the payout redesign
+   * (see turns.js's accumulateChannelStash/bankChannelStash), a channel
+   * that's never voluntarily stopped never actually delivers its stash to
+   * the civ -- it just accumulates forever, which is worse than the old
+   * instant-payout behavior, not better. Cashes out (delivers the stash,
+   * clears the channel) once either: the stash is worth banking (flat
+   * value threshold, resource-agnostic) or a visible enemy has closed to a
+   * "getting risky" distance -- banking pre-emptively before a possible
+   * attack (or a Halfellow Trouble Maker's Resource Heist) is strictly
+   * better than losing it all to one. Returns true if it cashed out (and
+   * thus consumed the turn resting on the spot, same as continuing to
+   * channel would have). */
+  const CHANNEL_CASHOUT_VALUE = 15;
+  const CHANNEL_CASHOUT_ENEMY_RADIUS = 4;
+  function maybeCashOutChannel(civ, unit, gameState, log, channelLabel) {
+    const stash = unit._channelStash;
+    const stashValue = stash ? (stash.harvest || 0) + (stash.coin || 0) + (stash.lore || 0) : 0;
+    let nearestEnemyDist = Infinity;
+    if (stashValue > 0) {
+      const { civs } = gameState;
+      const visible = gameState.visibility[civ.id] || new Set();
+      const { map } = gameState;
+      for (const oc of Object.values(civs)) {
+        if (oc.id === civ.id || oc.eliminated) continue;
+        for (const eu of oc.units) {
+          if (!visible.has(eu.y * map.width + eu.x) || eu.conditions?.hidden) continue;
+          const d = window.GameEngine.influence.chebyshev(unit.x, unit.y, eu.x, eu.y);
+          if (d < nearestEnemyDist) nearestEnemyDist = d;
+        }
+      }
+    }
+    if (stashValue < CHANNEL_CASHOUT_VALUE && nearestEnemyDist > CHANNEL_CASHOUT_ENEMY_RADIUS) return false;
+    unit.channeling = null;
+    window.GameEngine.turns.bankChannelStash(unit, civ);
+    unit.resting = true;
+    unit.usedThisTurn = true;
+    unit.currentMission = `Cashed out ${channelLabel} (banked the stash)`;
+    log.push(`${channelLabel}: ${civ.id}'s ${describeUnit(unit)} cashes out and banks its stash`);
+    return true;
+  }
+
+  /** Nearest visible enemy unit currently channeling (prospecting/delving/
+   *  fishing) with a non-empty stash -- Resource Heist's target pool.
+   *  Within `radius` tiles (search range, not the melee-adjacency Resource
+   *  Heist itself requires to execute -- see maybeResourceHeistPlay). */
+  function findResourceHeistTarget(civ, unit, gameState, radius = 8) {
+    const { map, civs } = gameState;
+    const visible = gameState.visibility[civ.id] || new Set();
+    let best = null, bestDist = Infinity;
+    for (const otherCiv of Object.values(civs)) {
+      if (otherCiv.id === civ.id || otherCiv.eliminated) continue;
+      for (const eu of otherCiv.units) {
+        if (!eu.channeling || eu.conditions?.hidden) continue;
+        const stash = eu._channelStash;
+        if (!stash || ((stash.harvest || 0) + (stash.coin || 0) + (stash.lore || 0)) <= 0) continue;
+        if (!visible.has(eu.y * map.width + eu.x)) continue;
+        const dist = window.GameEngine.influence.chebyshev(unit.x, unit.y, eu.x, eu.y);
+        if (dist > radius) continue;
+        if (dist < bestDist) { bestDist = dist; best = eu; }
+      }
+    }
+    return best;
+  }
+
+  /**
+   * Halfellow "Resource Heist" (2026-07-24, user-directed): built into
+   * Trouble Maker, no separate tech. Adjacent to an enemy unit that's
+   * actively channeling (Prospector's Claim/Dungeon Delve/Fishing) with a
+   * non-empty stash, steals the WHOLE stash straight into this civ's own
+   * stockpile (window.GameEngine.turns.bankChannelStash is civ-agnostic --
+   * see its doc comment) and resets the victim's channel to zero (clears
+   * `channeling`; the territorial claim/ritual-turn cleanup then happens
+   * naturally next beginCivTurn via the normal "no longer on anchor" path).
+   * The victim is left Befuddled either way. If this Trouble Maker is
+   * currently Hidden, it has a curiosity*0.75 chance (the victim's race's
+   * curiosity) of being spotted and revealed -- otherwise the heist goes
+   * fully unnoticed. Returns true if it consumed the turn (either executing
+   * the heist, or closing distance toward a target). */
+  function maybeResourceHeistPlay(civ, unit, gameState, log) {
+    if (unit.typeId !== "trouble_maker" || !civ.unlockedMechanics || !civ.unlockedMechanics.has("resource_heist")) return false;
+    const target = findResourceHeistTarget(civ, unit, gameState);
+    if (!target) return false;
+    const dist = window.GameEngine.influence.chebyshev(unit.x, unit.y, target.x, target.y);
+    if (dist > 1) {
+      moveUnitToward(unit, target.x, target.y, gameState.map, gameState.civs);
+      unit.usedThisTurn = true;
+      unit.currentMission = `Sneaking up on ${target.civId}'s ${describeUnit(target)} to steal its claim`;
+      return true;
+    }
+    const targetCiv = gameState.civs[target.civId];
+    window.GameEngine.turns.bankChannelStash(target, civ);
+    target.channeling = null;
+    window.GameEngine.combat.applyBefuddled(target, currentTurnNumber);
+    let spotted = false;
+    if (window.GameEngine.combat.hasCondition(unit, "hidden")) {
+      const targetRace = window.GameData.getRace(targetCiv.raceId);
+      const revealChance = (targetRace.curiosity ?? 0.5) * 0.75;
+      if (Math.random() < revealChance) {
+        window.GameEngine.combat.revealHidden(unit, currentTurnNumber);
+        spotted = true;
+      }
+    }
+    unit.usedThisTurn = true;
+    unit.currentMission = `Robbed ${targetCiv.id}'s ${describeUnit(target)} of its claim`;
+    log.push(`Resource Heist: ${civ.id}'s ${describeUnit(unit)} steals ${targetCiv.id}'s ${describeUnit(target)}'s accumulated claim` +
+      (spotted ? " and is spotted doing it" : ""));
+    return true;
+  }
+
+  /** Nearest visible enemy wall not already suppressed -- Unlock the Gate's
+   *  target pool. Within `radius` tiles. */
+  function findUnlockTheGateTarget(civ, unit, gameState, radius = 8) {
+    const { map, civs } = gameState;
+    const visible = gameState.visibility[civ.id] || new Set();
+    let best = null, bestDist = Infinity;
+    for (const otherCiv of Object.values(civs)) {
+      if (otherCiv.id === civ.id || otherCiv.eliminated) continue;
+      for (const city of otherCiv.cities) {
+        for (const s of city.structures) {
+          if (!window.GameData.getBuilding(s.id).isWall) continue;
+          if (window.GameEngine.combat.isWallDefenseSuppressed(s, currentTurnNumber)) continue;
+          if (!visible.has(s.y * map.width + s.x)) continue;
+          const dist = window.GameEngine.influence.chebyshev(unit.x, unit.y, s.x, s.y);
+          if (dist > radius) continue;
+          if (dist < bestDist) { bestDist = dist; best = { structure: s, city, civId: otherCiv.id }; }
+        }
+      }
+    }
+    return best;
+  }
+
+  /**
+   * Halfellow "Unlock the Gate" (2026-07-24, user-directed): built into
+   * Trouble Maker, no separate tech. Adjacent to a targeted enemy wall,
+   * disables it AND every wall adjacent to it (chebyshev <= 1 from the
+   * target, same city) for 3 rounds -- see combat.js's
+   * isWallDefenseSuppressed, checked at every wall-defense call site.
+   * Returns true if it consumed the turn (executing, or closing distance).
+   */
+  const UNLOCK_THE_GATE_ROUNDS = 3;
+  function maybeUnlockTheGatePlay(civ, unit, gameState, log) {
+    if (unit.typeId !== "trouble_maker" || !civ.unlockedMechanics || !civ.unlockedMechanics.has("unlock_the_gate")) return false;
+    const target = findUnlockTheGateTarget(civ, unit, gameState);
+    if (!target) return false;
+    const { structure, city } = target;
+    const dist = window.GameEngine.influence.chebyshev(unit.x, unit.y, structure.x, structure.y);
+    if (dist > 1) {
+      moveUnitToward(unit, structure.x, structure.y, gameState.map, gameState.civs);
+      unit.usedThisTurn = true;
+      unit.currentMission = `Sneaking up on ${target.civId}'s wall at (${structure.x},${structure.y})`;
+      return true;
+    }
+    const expiresAtTurn = currentTurnNumber + UNLOCK_THE_GATE_ROUNDS;
+    let affected = 0;
+    for (const s of city.structures) {
+      if (!window.GameData.getBuilding(s.id).isWall) continue;
+      if (window.GameEngine.influence.chebyshev(structure.x, structure.y, s.x, s.y) > 1) continue;
+      s.gateUnlockedUntilTurn = expiresAtTurn;
+      affected++;
+    }
+    unit.usedThisTurn = true;
+    unit.currentMission = `Unlocked the gate at (${structure.x},${structure.y})`;
+    log.push(`Unlock the Gate: ${civ.id}'s ${describeUnit(unit)} disables ${target.civId}'s wall at (${structure.x},${structure.y}) and ${affected - 1} adjacent segment(s) for ${UNLOCK_THE_GATE_ROUNDS} rounds`);
+    return true;
+  }
+
+  /** Nearest visible enemy unit within `radius` that isn't already
+   *  Befuddled -- Riddle's target pool. */
+  function findRiddleTarget(civ, unit, gameState, radius) {
+    const { map, civs } = gameState;
+    const visible = gameState.visibility[civ.id] || new Set();
+    let best = null, bestDist = Infinity;
+    for (const otherCiv of Object.values(civs)) {
+      if (otherCiv.id === civ.id || otherCiv.eliminated) continue;
+      for (const eu of otherCiv.units) {
+        if (eu.conditions?.hidden || eu.conditions?.befuddled) continue;
+        if (!visible.has(eu.y * map.width + eu.x)) continue;
+        const dist = window.GameEngine.influence.chebyshev(unit.x, unit.y, eu.x, eu.y);
+        if (dist > radius) continue;
+        if (dist < bestDist) { bestDist = dist; best = eu; }
+      }
+    }
+    return best;
+  }
+
+  /**
+   * Halfellow "Riddle" (2026-07-24, user-directed, "The Riddle Game" tech):
+   * Trouble Maker and Wanderer. Ranged debuff (search radius = this unit's
+   * own effectiveRange, so it scales with Boomerang same as a normal
+   * attack) -- poses a riddle to the nearest enemy in range. The target
+   * resists (nothing happens) with a chance equal to its own race's
+   * curiosity * 0.75; otherwise it becomes Befuddled for 2 turns (see
+   * combat.js's applyBefuddled). Using it reveals this unit if Hidden, same
+   * "any offensive action reveals Hidden" convention attacking already
+   * follows. Returns true if it consumed the turn (posing the riddle, or
+   * closing distance toward a target). */
+  // 2026-07-24, user-directed: a flat per-caster cooldown after every
+  // Riddle attempt (resisted or not) -- without this, a single Trouble
+  // Maker could re-target the same unit the instant its 2-turn Befuddled
+  // expired, keeping it in a near-permanent lock for the whole fight
+  // (confirmed live -- see the 2026-07-24 balance-test memory). 3 rounds
+  // guarantees at least 1 clean turn between one Befuddled expiring and
+  // the same caster being able to reapply it.
+  const RIDDLE_COOLDOWN_ROUNDS = 3;
+  function maybeRiddlePlay(civ, unit, gameState, log) {
+    if ((unit.typeId !== "trouble_maker" && unit.typeId !== "wanderer")
+        || !civ.unlockedMechanics || !civ.unlockedMechanics.has("riddle")) return false;
+    if ((unit._riddleCooldownUntilTurn || 0) > currentTurnNumber) return false;
+    const radius = window.GameEngine.combat.effectiveRange(unit, civ);
+    const target = findRiddleTarget(civ, unit, gameState, radius);
+    if (!target) return false;
+    const dist = window.GameEngine.influence.chebyshev(unit.x, unit.y, target.x, target.y);
+    if (dist > radius) {
+      moveUnitToward(unit, target.x, target.y, gameState.map, gameState.civs);
+      unit.usedThisTurn = true;
+      unit.currentMission = `Approaching ${target.civId}'s ${describeUnit(target)} to pose a riddle`;
+      return true;
+    }
+    const targetCiv = gameState.civs[target.civId];
+    const targetRace = window.GameData.getRace(targetCiv.raceId);
+    const resistChance = (targetRace.curiosity ?? 0.5) * 0.75;
+    const resisted = Math.random() < resistChance;
+    if (!resisted) window.GameEngine.combat.applyBefuddled(target, currentTurnNumber);
+    window.GameEngine.combat.revealHidden(unit, currentTurnNumber);
+    unit._riddleCooldownUntilTurn = currentTurnNumber + RIDDLE_COOLDOWN_ROUNDS;
+    unit.usedThisTurn = true;
+    unit.currentMission = resisted ? `Riddle resisted by ${describeUnit(target)}` : `Befuddled ${describeUnit(target)} with a riddle`;
+    log.push(`Riddle: ${civ.id}'s ${describeUnit(unit)} poses a riddle to ${targetCiv.id}'s ${describeUnit(target)} -> ` +
+      (resisted ? "resisted" : "befuddled"));
+    // Speech-bubble flavor (2026-07-24, user-directed): the caster poses
+    // the actual riddle, the target replies with the answer if it
+    // resisted or a stumped non-answer if it got Befuddled -- reuses the
+    // exact same word-bubble system quips.js/render.js already draw for
+    // ordinary flavor quips (see quips.js's spawnQuipText), just an
+    // unconditional/scripted pair instead of a random one-liner.
+    const riddle = window.GameData.getRandomRiddle();
+    window.GameEngine.quips.spawnQuipText(unit, riddle.question);
+    window.GameEngine.quips.spawnQuipText(target, resisted ? riddle.answer : window.GameData.getRandomStumpedResponse());
+    return true;
+  }
+
+  /**
+   * Halfellow Trouble Maker: proactive use of its full kit, same "full kit
+   * dispatcher" shape as maybeHumanWizardPlay. Priority order: Resource
+   * Heist (denies + steals a real investment, time-sensitive since the
+   * victim might cash out first), Unlock the Gate (sets up an assault),
+   * Riddle (a debuff, least urgent of the three). All gated on the
+   * relevant mechanic being unlocked. Returns true if it consumed the
+   * Trouble Maker's turn. */
+  function maybeTroubleMakerPlay(civ, unit, gameState, log) {
+    if (unit.typeId !== "trouble_maker") return false;
+    if (maybeResourceHeistPlay(civ, unit, gameState, log)) return true;
+    if (maybeUnlockTheGatePlay(civ, unit, gameState, log)) return true;
+    if (maybeRiddlePlay(civ, unit, gameState, log)) return true;
+    return false;
+  }
+
   function maybeProspectorsClaimPlay(civ, unit, gameState, log) {
     const { map } = gameState;
-    const onVeinNow = map.tiles[unit.y * map.width + unit.x]?.resource === "gold";
+    const curResource = map.tiles[unit.y * map.width + unit.x]?.resource;
+    const onVeinNow = curResource === "gold" || curResource === "iron";
     const alreadyClaiming = onVeinNow && (unit._ritualTurns || 0) >= 1;
 
     if (alreadyClaiming) {
@@ -3883,15 +4756,19 @@ window.GameEngine = window.GameEngine || {};
       // An adjacent enemy is a fight, not a wander risk -- let the normal
       // attack dispatch handle it further down the cascade.
       if (nearestEnemyDist <= 1) return false;
+      if (maybeCashOutChannel(civ, unit, gameState, log, "Prospector's Claim")) return true;
       unit.resting = true;
       unit.usedThisTurn = true;
-      unit.currentMission = `Working a Gold Vein claim (${unit._ritualTurns} turn${unit._ritualTurns === 1 ? "" : "s"})`;
+      const veinLabel = curResource === "iron" ? "Iron Vein" : "Gold Vein";
+      unit.currentMission = `Working a ${veinLabel} claim (${unit._ritualTurns} turn${unit._ritualTurns === 1 ? "" : "s"})`;
       return true;
     }
 
     if (unit.hp < unit.maxHp * 0.7) return false; // heal up before setting out
     const veinSpot = findNearbyUnclaimedGoldVein(civ, unit, gameState, { sameLandmassOnly: true });
     if (veinSpot) {
+      const spotResource = map.tiles[veinSpot.y * map.width + veinSpot.x]?.resource;
+      const veinLabel = spotResource === "iron" ? "Iron Vein" : "Gold Vein";
       // Starting a claim is a normal action (2026-07-20, user-directed): if
       // this turn's movement budget reaches the vein, settle in the SAME
       // turn instead of always burning a separate arrival turn -- see
@@ -3901,17 +4778,21 @@ window.GameEngine = window.GameEngine || {};
       }
       if (veinSpot.x === unit.x && veinSpot.y === unit.y) {
         // Already there, or arrived with movement to spare this turn --
-        // hold position. _ritualTurns hasn't accrued yet (that happens at
-        // the start of the NEXT turn, see turns.js), this just claims the spot.
+        // start the channel (2026-07-21, user-directed: prospecting is now
+        // an explicitly-started channel, not just "happens to be standing
+        // here" -- see turns.js's onAnchor gate). _ritualTurns hasn't
+        // accrued yet (that happens at the start of the NEXT turn, see
+        // turns.js), this just claims the spot and begins the channel.
+        unit.channeling = "prospecting";
         unit.resting = true;
         unit.usedThisTurn = true;
-        unit.currentMission = "Settling in to start a Gold Vein claim";
+        unit.currentMission = `Settling in to start a ${veinLabel} claim`;
         window.GameEngine.quips.maybeQuip(unit, civ, "prospect", gameState);
         return true;
       }
       unit.usedThisTurn = true;
-      unit.currentMission = `Marching to a Gold Vein to start a claim at (${veinSpot.x},${veinSpot.y})`;
-      log.push(`Prospector's Claim: ${civ.id}'s ${unit.typeId} heading to Gold Vein at (${veinSpot.x},${veinSpot.y})`);
+      unit.currentMission = `Marching to a ${veinLabel} to start a claim at (${veinSpot.x},${veinSpot.y})`;
+      log.push(`Prospector's Claim: ${civ.id}'s ${describeUnit(unit)} heading to ${veinLabel} at (${veinSpot.x},${veinSpot.y})`);
       return true;
     }
 
@@ -3919,8 +4800,67 @@ window.GameEngine = window.GameEngine || {};
     // try to get there by sea instead of walking, which would just strand
     // the unit at the shore forever. See seekOverseasResource.
     const overseasVein = findNearbyUnclaimedGoldVein(civ, unit, gameState);
-    if (overseasVein) return seekOverseasResource(civ, unit, gameState, log, overseasVein, "Gold Vein");
+    if (overseasVein) {
+      const overseasResource = map.tiles[overseasVein.y * map.width + overseasVein.x]?.resource;
+      return seekOverseasResource(civ, unit, gameState, log, overseasVein, overseasResource === "iron" ? "Iron Vein" : "Gold Vein");
+    }
     return false;
+  }
+
+  /**
+   * Galley "Fishing" (2026-07-21, user-directed): a universal channeled
+   * action for ANY Galley (any race, no tech required) -- see turns.js's
+   * beginCivTurn for the actual +5 harvest/+2 coin per-turn payout and
+   * exhaustion chance. Purely opportunistic, unlike Prospector's Claim/
+   * Dungeon Delve above -- a Galley never goes out of its way SEEKING a
+   * Fish Shoal, it only starts fishing when it's already sitting on one
+   * with nothing else to do. Two cases:
+   *
+   *   ALREADY FISHING: holds position, same "adjacent enemy defers to the
+   *   normal attack dispatch" carve-out the other two channels use.
+   *
+   *   NOT YET FISHING: an idle, uncarrying Galley already on a Fish Shoal
+   *   starts the channel.
+   *
+   * Returns true if it consumed the turn.
+   */
+  function maybeGalleyFishingPlay(civ, unit, gameState, log) {
+    const { map, civs } = gameState;
+    const tile = map.tiles[unit.y * map.width + unit.x];
+    const onShoal = !!(tile && tile.resource === "fish");
+
+    if (unit.channeling === "fishing") {
+      // A passenger boarding from its OWN turn (see e.g. maybeFoundCity's
+      // idle-pioneer galley-boarding fallback) can attach mid-channel --
+      // cancel fishing and let the normal ferry dispatch take over instead.
+      if (!onShoal || unit.carries) { unit.channeling = null; return false; }
+      const visible = gameState.visibility[civ.id] || new Set();
+      let nearestEnemyDist = Infinity;
+      for (const oc of Object.values(civs)) {
+        if (oc.id === civ.id || oc.eliminated) continue;
+        for (const eu of oc.units) {
+          if (!visible.has(eu.y * map.width + eu.x) || eu.conditions?.hidden) continue;
+          const d = window.GameEngine.influence.chebyshev(unit.x, unit.y, eu.x, eu.y);
+          if (d < nearestEnemyDist) nearestEnemyDist = d;
+        }
+      }
+      // An adjacent enemy is a fight, not a wander risk -- let the normal
+      // attack dispatch handle it further down the cascade.
+      if (nearestEnemyDist <= 1) return false;
+      if (maybeCashOutChannel(civ, unit, gameState, log, "Fishing")) return true;
+      unit.resting = true;
+      unit.usedThisTurn = true;
+      unit.currentMission = "Fishing a Shoal";
+      return true;
+    }
+
+    if (!onShoal || unit.carries) return false;
+    unit.channeling = "fishing";
+    unit.resting = true;
+    unit.usedThisTurn = true;
+    unit.currentMission = "Settling in to start Fishing";
+    log.push(`Fishing: ${civ.id}'s Galley starts fishing a Shoal at (${unit.x},${unit.y})`);
+    return true;
   }
 
   /**
@@ -3961,6 +4901,7 @@ window.GameEngine = window.GameEngine || {};
       // An adjacent enemy is a fight, not a wander risk -- let the normal
       // attack dispatch handle it further down the cascade.
       if (nearestEnemyDist <= 1) return false;
+      if (maybeCashOutChannel(civ, unit, gameState, log, "Dungeon Delve")) return true;
 
       if (nearestEnemyDist <= 3 && civ.unlockedMechanics.has("invisibility")
           && window.GameEngine.combat.canGoHidden(unit, civ, civs)) {
@@ -3992,8 +4933,11 @@ window.GameEngine = window.GameEngine || {};
       }
       if (ruinSpot.x === unit.x && ruinSpot.y === unit.y) {
         // Already there, or arrived with movement to spare this turn --
-        // hold position so generic idle/explore logic doesn't carry it off
-        // first. _ritualTurns hasn't accrued yet (see turns.js).
+        // start the channel (2026-07-21, user-directed: delving is now an
+        // explicitly-started channel -- see turns.js's onAnchor gate) so
+        // generic idle/explore logic doesn't carry it off first.
+        // _ritualTurns hasn't accrued yet (see turns.js).
+        unit.channeling = "delving";
         unit.resting = true;
         unit.usedThisTurn = true;
         unit.currentMission = "Settling in to start a Dungeon Delve";
@@ -4054,6 +4998,27 @@ window.GameEngine = window.GameEngine || {};
   // order of magnitude as Halfellow's HALFELLOW_STEALTH_RANGE.
   const ELF_STEALTH_RANGE = 2;
 
+  /** Elf ambush follow-through (2026-07-22, user-directed): true while
+   *  `unit` is still mid-fight with the specific target it last sprang a
+   *  hidden ambush on (see the considerAttackOrGarrison call site that
+   *  stamps unit._meleeAmbushVictim) -- checked at the top of maybeElfStealthPlay
+   *  so the unit can't vanish again until that fight is actually over,
+   *  rather than reflexively re-hiding the instant it's technically eligible
+   *  again (Hidden's forced-visible window is only 1 turn). Clears the
+   *  tracking itself once the target is confirmed gone (dead, or no longer
+   *  in its civ's roster for any other reason), so this is self-resetting --
+   *  nothing else needs to remember to clean it up. */
+  function stillEngagedInAmbush(unit, gameState) {
+    const target = unit._meleeAmbushVictim;
+    if (!target) return false;
+    const targetCiv = gameState.civs[target.civId];
+    if (target.hp <= 0 || !targetCiv || !targetCiv.units.includes(target)) {
+      unit._meleeAmbushVictim = null;
+      return false;
+    }
+    return true;
+  }
+
   /**
    * Elf "fight smarter, not harder" -- structurally the same shape as
    * maybeHalfellowStealthPlay (defensive vanish when outmatched; offensive
@@ -4068,6 +5033,12 @@ window.GameEngine = window.GameEngine || {};
    */
   function maybeElfStealthPlay(civ, unit, gameState, weights, difficulty, log) {
     if (civ.raceId !== "elf") return false;
+    // Ambush follow-through takes priority over every hide decision below
+    // (defensive, offensive, and the proactive Quick as a Shadow default) --
+    // see stillEngagedInAmbush's doc comment. Returning false here lets the
+    // normal attack cascade (considerAttackOrGarrison, further down) keep
+    // pressing the same fight instead.
+    if (stillEngagedInAmbush(unit, gameState)) return false;
     // "sneaking_around" is the shared Hidden-capability flag (also used by
     // Halfellow) -- see techs.js's elf_shadowed_hush_unseen.
     if (!civ.unlockedMechanics || !civ.unlockedMechanics.has("sneaking_around")) return false;
@@ -4090,7 +5061,30 @@ window.GameEngine = window.GameEngine || {};
         if (dist < nearestDist) { nearestDist = dist; nearest = eu; }
       }
     }
-    if (!nearest) return false;
+    if (!nearest) {
+      // Elf "Quick as a Shadow" (2026-07-22, user-directed): once known,
+      // hiding stops being purely reactive to a nearby threat -- an Elf
+      // unit prefers to be Hidden as its default resting state, going
+      // hidden proactively even with no enemy anywhere in sight. Safe to
+      // do unconditionally here: canGoHidden (checked at the top of this
+      // function) already refuses this the instant an enemy is adjacent,
+      // which is exactly the "unless in the middle of combat" carve-out --
+      // and computeMovementBudget's matching waiver above means this no
+      // longer costs the mobility it used to. Excludes the Druid, though --
+      // it has its own valuable proactive kit (Nature's Grace, Raptor/
+      // Shadowsteed summons, Roots of the World -- see maybeElfDruidPlay,
+      // checked right after this function in the dispatch cascade) that has
+      // nothing to do with nearby enemies and shouldn't get preempted by
+      // reflexively vanishing every idle turn.
+      if (unit.typeId !== "druid" && civ.unlockedMechanics.has("quick_as_a_shadow")) {
+        window.GameEngine.combat.enterHidden(unit, currentTurnNumber);
+        unit.usedThisTurn = true;
+        unit.currentMission = "Staying hidden";
+        log.push(`Stealth: ${civ.id}'s ${describeUnit(unit)} slips into hiding at (${unit.x},${unit.y})`);
+        return true;
+      }
+      return false;
+    }
     const enemyCiv = civs[nearest.civId];
 
     const winProb = estimateWinProbability(unit, nearest, civs, {}, 20);
@@ -4099,8 +5093,8 @@ window.GameEngine = window.GameEngine || {};
     if (nearestDist === 2 && winProb < threshold * (1 - militarism * 0.5)) {
       window.GameEngine.combat.enterHidden(unit, currentTurnNumber);
       unit.usedThisTurn = true;
-      unit.currentMission = `Going hidden — outmatched by ${enemyCiv.id}'s ${nearest.typeId} nearby`;
-      log.push(`Stealth: ${civ.id}'s ${unit.typeId} goes hidden defensively at (${unit.x},${unit.y})`);
+      unit.currentMission = `Going hidden — outmatched by ${enemyCiv.id}'s ${describeUnit(nearest)} nearby`;
+      log.push(`Stealth: ${civ.id}'s ${describeUnit(unit)} goes hidden defensively at (${unit.x},${unit.y})`);
       return true;
     }
 
@@ -4112,8 +5106,8 @@ window.GameEngine = window.GameEngine || {};
       if (winProb < threshold * 1.5) {
         window.GameEngine.combat.enterHidden(unit, currentTurnNumber);
         unit.usedThisTurn = true;
-        unit.currentMission = `Going hidden — lining up a shot on ${enemyCiv.id}'s ${nearest.typeId}`;
-        log.push(`Stealth: ${civ.id}'s ${unit.typeId} goes hidden to snipe ${enemyCiv.id}'s ${nearest.typeId} near (${unit.x},${unit.y})`);
+        unit.currentMission = `Going hidden — lining up a shot on ${enemyCiv.id}'s ${describeUnit(nearest)}`;
+        log.push(`Stealth: ${civ.id}'s ${describeUnit(unit)} goes hidden to snipe ${enemyCiv.id}'s ${describeUnit(nearest)} near (${unit.x},${unit.y})`);
         return true;
       }
       return false;
@@ -4126,13 +5120,13 @@ window.GameEngine = window.GameEngine || {};
       const myPower = unitCombatPower(unit, civ);
       const isStrongestNearby = alliesNearby.every((u) => unitCombatPower(u, civ) <= myPower);
       if (alliesNearby.length > 0 && isStrongestNearby) {
-        unit.currentMission = `Holding as bait near ${enemyCiv.id}'s ${nearest.typeId} at (${nearest.x},${nearest.y})`;
+        unit.currentMission = `Holding as bait near ${enemyCiv.id}'s ${describeUnit(nearest)} at (${nearest.x},${nearest.y})`;
         return false;
       }
       window.GameEngine.combat.enterHidden(unit, currentTurnNumber);
       unit.usedThisTurn = true;
-      unit.currentMission = `Going hidden — setting up an ambush on ${enemyCiv.id}'s ${nearest.typeId}`;
-      log.push(`Stealth: ${civ.id}'s ${unit.typeId} goes hidden to ambush ${enemyCiv.id}'s ${nearest.typeId} near (${unit.x},${unit.y})`);
+      unit.currentMission = `Going hidden — setting up an ambush on ${enemyCiv.id}'s ${describeUnit(nearest)}`;
+      log.push(`Stealth: ${civ.id}'s ${describeUnit(unit)} goes hidden to ambush ${enemyCiv.id}'s ${describeUnit(nearest)} near (${unit.x},${unit.y})`);
       return true;
     }
 
@@ -4151,8 +5145,11 @@ window.GameEngine = window.GameEngine || {};
   // that half of the spec. Blade Storm does NOT replace Whirlwind Strike --
   // both stay independently usable; maybeBladeDancerSweep below picks
   // whichever fits the current cluster of targets.
-  const WHIRLWIND_STRIKE_RADIUS = 1, WHIRLWIND_ATTACK_MULT = 0.5, WHIRLWIND_COUNTER_MULT = 0.25;
-  const BLADE_STORM_RADIUS = 2, BLADE_STORM_ATTACK_MULT = 0.33, BLADE_STORM_COUNTER_MULT = 0.16;
+  // 2026-07-22, user-directed: Whirlwind Strike 50%->75%, Blade Storm
+  // 33%->50%; counter multiplier for each is always half its own damage
+  // multiplier (37.5% and 25% respectively).
+  const WHIRLWIND_STRIKE_RADIUS = 1, WHIRLWIND_ATTACK_MULT = 0.75, WHIRLWIND_COUNTER_MULT = 0.375;
+  const BLADE_STORM_RADIUS = 2, BLADE_STORM_ATTACK_MULT = 0.5, BLADE_STORM_COUNTER_MULT = 0.25;
 
   /** How many currently-visible, non-hidden enemy units sit within `radius`
    *  of (x,y) -- used to decide whether a sweep is worth using over an
@@ -4197,7 +5194,20 @@ window.GameEngine = window.GameEngine || {};
     if (targets.length === 0) return false;
 
     window.GameEngine.quips.maybeQuip(unit, civ, "attack", gameState);
+    window.SfxSystem.playAction(civ.raceId, unit.typeId, "attack", unit.x, unit.y);
+    // "Ambush!" floating text (2026-07-22, user-directed): checked BEFORE
+    // revealHidden clears the condition, same convention as every other
+    // "was it hidden at the moment it attacked" check in this file.
+    const wasHiddenForSweep = !!unit.conditions?.hidden;
     window.GameEngine.combat.revealHidden(unit, currentTurnNumber);
+    if (wasHiddenForSweep) window.GameEngine.floatingText.spawnFloatingText(unit, "Ambush!", "warning");
+    // Names which sweep this is (2026-07-22, user-directed) -- "label" is
+    // already "Whirlwind Strike" or "Blade Storm" (see maybeBladeDancerSweep's
+    // two call sites below), reused as-is for both the log line and here.
+    window.GameEngine.floatingText.spawnFloatingText(unit, label, "aura");
+    // Highlights the swept radius for a moment (2026-07-22, user-directed) --
+    // see combat.js's spawnAreaEffect/render.js's drawAreaEffects.
+    window.GameEngine.combat.spawnAreaEffect(unit.x, unit.y, radius, "blade_sweep");
     let hitCount = 0, killCount = 0;
     for (const target of targets) {
       const defenderCiv = civs[target.civId];
@@ -4214,6 +5224,8 @@ window.GameEngine = window.GameEngine || {};
       window.GameEngine.combat.recordCombatEvent({
         ax: unit.x, ay: unit.y, atkUnit: unit, dx: target.x, dy: target.y, defUnit: target,
       });
+      markCombatEngaged(civ);
+      markCombatEngaged(defenderCiv);
       window.GameEngine.combat.revealHidden(target, currentTurnNumber);
       applyElfCombatMechanics(unit, civ, target, defenderCiv, result, gameState);
       hitCount++;
@@ -4288,8 +5300,6 @@ window.GameEngine = window.GameEngine || {};
     return false;
   }
 
-  const NATURES_GRACE_RANGE = 1; // adjacent only, per the tech's own wording
-
   /** Elf "Nature's Grace": restores 10%-30% (random) of `target`'s max HP.
    *  Costs the Druid's whole turn, no exhaustion afterward (unlike Roots of
    *  the World). */
@@ -4300,20 +5310,31 @@ window.GameEngine = window.GameEngine || {};
     target.hp = Math.min(target.maxHp, target.hp + healAmount);
     window.GameEngine.floatingText.spawnHealGain(target, target.hp - before);
     caster.usedThisTurn = true;
-    caster.currentMission = `Restored health to ${target.typeId} at (${target.x},${target.y})`;
-    log.push(`Nature's Grace: ${civ.id}'s Druid heals ${target.typeId} at (${target.x},${target.y}) for ${healAmount} HP`);
+    caster.currentMission = `Restored health to ${describeUnit(target)} at (${target.x},${target.y})`;
+    // describeUnit(caster) rather than a hardcoded "Druid" -- caster is the
+    // Shadowsteed itself when a mounted Druid rider casts through it (see
+    // the shadowsteed+Druid dispatch check below), not always the Druid.
+    log.push(`Nature's Grace: ${civ.id}'s ${describeUnit(caster)} heals ${describeUnit(target)} at (${target.x},${target.y}) for ${healAmount} HP`);
   }
 
-  /** Elf "Nature's Grace" AI: heals the most-injured adjacent ally, if any
-   *  is actually missing HP -- purely opportunistic support, no threshold
-   *  math (unlike Freezing Touch, there's no "should I," just "is there
-   *  someone worth healing right next to me"). Returns true if it consumed
-   *  the Druid's turn. */
+  /** Elf "Nature's Grace" AI: heals the most-injured ally within the
+   *  Druid's own effective range (2026-07-22, user-directed: no longer
+   *  adjacent-only -- reaches as far as the Druid's Ranged 2 base, plus any
+   *  tech range upgrades, same as its attack would), if any is actually
+   *  missing HP -- purely opportunistic support, no threshold math (unlike
+   *  Freezing Touch, there's no "should I," just "is there someone worth
+   *  healing in reach"). Returns true if it consumed the Druid's turn. */
   function maybeNaturesGrace(civ, unit, gameState, log) {
+    const range = window.GameEngine.combat.effectiveRange(unit, civ);
+    const { map } = gameState;
     let best = null, bestMissing = 0;
     for (const ally of civ.units) {
       if (ally === unit || ally.carriedBy) continue;
-      if (window.GameEngine.influence.chebyshev(unit.x, unit.y, ally.x, ally.y) > NATURES_GRACE_RANGE) continue;
+      if (window.GameEngine.influence.chebyshev(unit.x, unit.y, ally.x, ally.y) > range) continue;
+      // Same clear-shot requirement a ranged attack uses beyond adjacency
+      // (mountains block it) -- see hasRangedLineOfSight; always true for
+      // an adjacent target, so this is a no-op for the old range-1 case.
+      if (!hasRangedLineOfSight(map, unit.x, unit.y, ally.x, ally.y)) continue;
       const missing = ally.maxHp - ally.hp;
       if (missing > bestMissing) { bestMissing = missing; best = ally; }
     }
@@ -4322,33 +5343,49 @@ window.GameEngine = window.GameEngine || {};
     return true;
   }
 
-  /** Elf "Roots of the World": self-only teleport (unlike Human's
-   *  Teleportation, this can never relocate an ally) -- instantly moves the
-   *  Druid to any unoccupied, ever-explored tile and leaves it exhausted
-   *  (forced Rest until healed to 100%). Reuses the same
+  /** Elf "Roots of the World": instantly moves `targetUnit` -- the Druid
+   *  itself, or (mirroring Human's Teleportation) a currently-adjacent ally
+   *  -- to any unoccupied, ever-explored tile. Reuses the same
    *  isValidTeleportTile/resolveTeleportLanding helpers Human's Teleportation
-   *  uses -- those are already fully generic, not Wizard-specific. */
-  function performDruidTeleport(civ, druid, destX, destY, gameState, log) {
-    const landing = resolveTeleportLanding(gameState, destX, destY, druid);
+   *  uses -- those are already fully generic, not Wizard-specific. Costs the
+   *  DRUID's whole turn and leaves IT exhausted (forced Rest until healed to
+   *  100%) regardless of who was actually moved -- an ally relocated this way
+   *  does NOT become exhausted, only the Druid pays that price, same
+   *  convention as performWizardTeleport. */
+  function performDruidTeleport(civ, druid, targetUnit, destX, destY, gameState, log) {
+    if (targetUnit !== druid
+        && window.GameEngine.influence.chebyshev(druid.x, druid.y, targetUnit.x, targetUnit.y) > 1) {
+      return false; // can only teleport an ally that's currently adjacent
+    }
+    const landing = resolveTeleportLanding(gameState, destX, destY, targetUnit);
     if (!landing) return false;
-    druid.x = landing.x;
-    druid.y = landing.y;
+    targetUnit.x = landing.x;
+    targetUnit.y = landing.y;
     // Suppress the move-glide animation for this jump -- see performWizardTeleport.
-    druid._lastLogicalX = landing.x;
-    druid._lastLogicalY = landing.y;
-    druid._renderX = landing.x;
-    druid._renderY = landing.y;
-    druid._animStart = 0;
+    targetUnit._lastLogicalX = landing.x;
+    targetUnit._lastLogicalY = landing.y;
+    targetUnit._renderX = landing.x;
+    targetUnit._renderY = landing.y;
+    targetUnit._animStart = 0;
     window.GameEngine.combat.setCondition(druid, "exhausted", {});
     druid.usedThisTurn = true;
-    druid.currentMission = "Blinked into the roots of the world (exhausted, must rest)";
-    log.push(`Roots of the World: ${civ.id}'s Druid blinked to (${landing.x},${landing.y}), exhausted until fully healed`);
+    if (targetUnit !== druid) targetUnit.usedThisTurn = true;
+    if (targetUnit === druid) {
+      druid.currentMission = "Blinked into the roots of the world (exhausted, must rest)";
+      log.push(`Roots of the World: ${civ.id}'s Druid blinked to (${landing.x},${landing.y}), exhausted until fully healed`);
+    } else {
+      druid.currentMission = `Teleported a ${describeUnit(targetUnit)} to (${landing.x},${landing.y}) (exhausted, must rest)`;
+      log.push(`Roots of the World: ${civ.id}'s Druid teleported a ${describeUnit(targetUnit)} to (${landing.x},${landing.y}), Druid exhausted until fully healed`);
+    }
     return true;
   }
 
-  /** Defensive trigger: a badly hurt Druid blinks to the safest remembered
-   *  tile, mirrors attemptWizardTeleport exactly. */
-  function attemptDruidTeleport(civ, unit, gameState, log) {
+  /** Defensive trigger: blinks `targetUnit` to the safest remembered tile,
+   *  mirrors attemptWizardTeleport exactly. `targetUnit` is `druid` itself
+   *  for the self-flee case (see the main HP-threshold check further up the
+   *  cascade), or a badly hurt adjacent ally for the rescue case -- see
+   *  findAdjacentHurtAlly/maybeElfDruidPlay's caller. */
+  function attemptDruidTeleport(civ, druid, targetUnit, gameState, log) {
     const { map, civs } = gameState;
     const explored = gameState.explored[civ.id] || new Set();
     const enemyPositions = [];
@@ -4359,13 +5396,23 @@ window.GameEngine = window.GameEngine || {};
     let best = null, bestDist = -1;
     for (const idx of explored) {
       const x = idx % map.width, y = Math.floor(idx / map.width);
-      if (!isValidTeleportTile(gameState, x, y, unit)) continue;
+      if (!isValidTeleportTile(gameState, x, y, targetUnit)) continue;
       const nearestEnemyDist = enemyPositions.reduce((min, eu) =>
         Math.min(min, window.GameEngine.influence.chebyshev(x, y, eu.x, eu.y)), Infinity);
       if (nearestEnemyDist > bestDist) { bestDist = nearestEnemyDist; best = { x, y }; }
     }
     if (!best) return false;
-    return performDruidTeleport(civ, unit, best.x, best.y, gameState, log);
+    return performDruidTeleport(civ, druid, targetUnit, best.x, best.y, gameState, log);
+  }
+
+  /** Finds a badly hurt (<40% HP), adjacent, uncarried ally for Roots of the
+   *  World's rescue play (see attemptDruidTeleport) -- never the Druid
+   *  itself, and never a unit already exhausted from its own teleport. */
+  function findAdjacentHurtAlly(civ, druid) {
+    return civ.units.find((u) =>
+      u !== druid && !u.carriedBy && !u.conditions?.exhausted
+      && u.hp < u.maxHp * 0.4
+      && window.GameEngine.influence.chebyshev(druid.x, druid.y, u.x, u.y) <= 1) || null;
   }
 
   // How far (in explored tiles, not a search radius -- see maybeRootsExpansion)
@@ -4405,7 +5452,7 @@ window.GameEngine = window.GameEngine || {};
       if (score > bestScore) { bestScore = score; best = { x, y }; }
     }
     if (!best || bestScore < 5) return false;
-    if (!performDruidTeleport(civ, unit, best.x, best.y, gameState, log)) return false;
+    if (!performDruidTeleport(civ, unit, unit, best.x, best.y, gameState, log)) return false;
     unit._wantsFoundCityAt = { x: best.x, y: best.y };
     log.push(`Roots of the World: ${civ.id}'s Druid teleported to (${best.x},${best.y}), will found a city once rested`);
     return true;
@@ -4434,12 +5481,238 @@ window.GameEngine = window.GameEngine || {};
       log.push(`Roots of the World: ${civ.id}'s Druid found (${target.x},${target.y}) no longer worth settling, abandoning the claim`);
       return false;
     }
-    const city = window.GameEngine.cities.foundCity(civ, map, target.x, target.y);
+    const city = window.GameEngine.cities.foundCity(civ, gameState, target.x, target.y);
     if (!city) return false;
     civ.hasFoundedCity = true;
     unit.usedThisTurn = true;
     unit.currentMission = `Founded ${city.name} (Roots of the World)`;
     log.push(`Roots of the World: ${civ.id}'s Druid founded ${city.name} at (${target.x},${target.y})`);
+    return true;
+  }
+
+  // Elf "Roots of the World" overseas invasion ferry (2026-07-21,
+  // user-directed): once the civ KNOWS of an enemy city/wall/building on a
+  // landmass other than the Druid's own (seen at least once --
+  // gameState.tileMemory, the same remembered-not-just-currently-visible
+  // convention assessInvasionTarget uses), Druids should get much more
+  // focused on teleporting combat units across the water at it -- Elf's
+  // answer to the galley bottleneck, the same role Deep Gates fill for
+  // Dwarves. Only these three unit types are ever ferried: the army's
+  // actual fighters, per the composition ratio (see ELF_UNIT_RATIO).
+  // Ferrying an Awakened Oak (movement 1, could never march there) is the
+  // headline play. Scouts/Pioneers/summons are never ferried.
+  const ROOTS_FERRY_PASSENGERS = new Set(["ranger", "blade_dancer", "awakened_oak"]);
+  // Same order of magnitude as SHADOWSTEED_SEEK_RADIUS -- how far a Druid
+  // will walk to pick up a passenger for the ferry play.
+  const ROOTS_FERRY_SEEK_RADIUS = 8;
+
+  /** Best remembered enemy city/structure tile on a landmass OTHER than the
+   *  Druid's own, or null. Prefers a city over a lone structure, then
+   *  nearer over farther. Reads tileMemory records (city/structure
+   *  snapshots keyed by raceId -- races are 1:1 with civs in this game,
+   *  same convention as assessInvasionTarget). */
+  function findOverseasInvasionTeleportTarget(civ, druid, gameState) {
+    const { map } = gameState;
+    const memory = (gameState.tileMemory && gameState.tileMemory[civ.id]) || {};
+    const druidTile = map.tiles[druid.y * map.width + druid.x];
+    const druidLandmassId = druidTile ? druidTile.landmassId : -1;
+    if (druidLandmassId < 0) return null;
+    let best = null, bestScore = -Infinity;
+    for (const idxStr of Object.keys(memory)) {
+      const rec = memory[idxStr];
+      const isEnemyCity = !!(rec.city && rec.city.raceId !== civ.raceId);
+      const isEnemyStructure = !!(rec.structure && rec.structure.raceId !== civ.raceId);
+      if (!isEnemyCity && !isEnemyStructure) continue;
+      const idx = Number(idxStr);
+      const tile = map.tiles[idx];
+      if (!tile || tile.landmassId < 0 || tile.landmassId === druidLandmassId) continue;
+      const x = idx % map.width, y = Math.floor(idx / map.width);
+      const score = (isEnemyCity ? 100 : 0) - window.GameEngine.influence.chebyshev(druid.x, druid.y, x, y);
+      if (score > bestScore) { bestScore = score; best = { x, y, isCity: isEnemyCity }; }
+    }
+    return best;
+  }
+
+  // Ambush staging (2026-07-21, user-directed redesign): ferried units were
+  // arriving right beside the enemy city one at a time and getting killed
+  // before doing anything substantial. Now they land AMBUSH_STAGING_MIN..
+  // MAX tiles out, go Hidden (if researched), and WAIT -- accumulating into
+  // an invasion force that only springs its attack once its combined power
+  // can actually overcome the defenders. See findInvasionStagingTile /
+  // maybeInvasionAmbushWait below.
+  const AMBUSH_STAGING_MIN = 3;
+  const AMBUSH_STAGING_MAX = 4;
+  // How far around the ambush target enemy units count as "defenders" for
+  // the launch-power comparison -- covers the city radius plus environs.
+  const AMBUSH_ENEMY_SCAN_RADIUS = 5;
+  // The gathered force launches once its power exceeds the visible
+  // defenders' by this ratio -- "enough power to overcome the enemy", with
+  // margin so the ambush actually wins rather than trades evenly.
+  const AMBUSH_LAUNCH_POWER_RATIO = 1.25;
+  // Safety valve: never wait forever (ferry Druid died, defenders keep
+  // growing) -- after this many waiting turns the force attacks anyway.
+  const AMBUSH_MAX_WAIT_TURNS = 12;
+
+  /** Picks the landing tile for a ferried passenger: ring
+   *  AMBUSH_STAGING_MIN..MAX around the target, on the target's own
+   *  landmass, legal to teleport onto -- preferring Forest (Elf defense
+   *  bonus + ambush concealment) and tiles near allies already staged on
+   *  the same target, so the force clusters instead of scattering around
+   *  the whole ring. Returns {x,y} or null if the entire ring is blocked. */
+  function findInvasionStagingTile(civ, passenger, target, gameState) {
+    const { map } = gameState;
+    const targetTile = map.tiles[target.y * map.width + target.x];
+    const targetLm = targetTile ? targetTile.landmassId : -1;
+    const staged = civ.units.filter((u) => !u.carriedBy && u._ambushTarget
+      && u._ambushTarget.x === target.x && u._ambushTarget.y === target.y);
+    let best = null, bestScore = -Infinity;
+    for (let dy = -AMBUSH_STAGING_MAX; dy <= AMBUSH_STAGING_MAX; dy++) {
+      for (let dx = -AMBUSH_STAGING_MAX; dx <= AMBUSH_STAGING_MAX; dx++) {
+        const ring = Math.max(Math.abs(dx), Math.abs(dy));
+        if (ring < AMBUSH_STAGING_MIN || ring > AMBUSH_STAGING_MAX) continue;
+        const x = target.x + dx, y = target.y + dy;
+        if (x < 0 || x >= map.width || y < 0 || y >= map.height) continue;
+        const tile = map.tiles[y * map.width + x];
+        if (targetLm >= 0 && tile.landmassId !== targetLm) continue;
+        if (!isValidTeleportTile(gameState, x, y, passenger)) continue;
+        let score = 0;
+        if (tile.terrain === "forest") score += 2;
+        for (const ally of staged) {
+          if (window.GameEngine.influence.chebyshev(x, y, ally.x, ally.y) <= 2) score += 3;
+        }
+        if (score > bestScore) { bestScore = score; best = { x, y }; }
+      }
+    }
+    return best;
+  }
+
+  /** The ferry play itself: an adjacent, healthy, eligible passenger gets
+   *  teleported to a STAGING tile 3-4 tiles out from the overseas target
+   *  (see findInvasionStagingTile -- not dropped right beside the enemy
+   *  city, where lone arrivals were getting picked off one by one) and
+   *  tagged with `_ambushTarget`, joining the gathering invasion force
+   *  maybeInvasionAmbushWait manages from there. Otherwise the Druid spends
+   *  the turn closing distance to the nearest eligible passenger within
+   *  ROOTS_FERRY_SEEK_RADIUS. Checked FIRST among the Druid's proactive
+   *  plays (see maybeElfDruidPlay) -- "much more focused" per the user's
+   *  own wording -- so while a known overseas target exists, ferrying the
+   *  army across outranks healing, summoning, and expansion. Each ferry
+   *  exhausts the Druid (performDruidTeleport's own aftermath), naturally
+   *  pacing the airlift to roughly every other turn per Druid. Returns
+   *  true if it consumed the Druid's turn. */
+  function maybeRootsInvasionFerry(civ, unit, gameState, log) {
+    const target = findOverseasInvasionTeleportTarget(civ, unit, gameState);
+    if (!target) return false;
+    const { map, civs } = gameState;
+    const canFerry = (u) =>
+      u !== unit && ROOTS_FERRY_PASSENGERS.has(u.typeId)
+      && !u.carriedBy && !u.carries && !u.usedThisTurn && !u.conditions?.exhausted
+      && u.hp >= u.maxHp * 0.7;
+    const adjacent = civ.units.find((u) => canFerry(u)
+      && window.GameEngine.influence.chebyshev(unit.x, unit.y, u.x, u.y) <= 1);
+    if (adjacent) {
+      const staging = findInvasionStagingTile(civ, adjacent, target, gameState);
+      if (!staging) return false; // whole staging ring blocked -- don't ferry into a death trap
+      if (!performDruidTeleport(civ, unit, adjacent, staging.x, staging.y, gameState, log)) return false;
+      const targetTile = map.tiles[target.y * map.width + target.x];
+      adjacent._ambushTarget = { x: target.x, y: target.y, landmassId: targetTile ? targetTile.landmassId : -1 };
+      delete adjacent._ambushWaitTurns;
+      unit.currentMission = `Ferried a ${describeUnit(adjacent)} to the overseas staging ground at (${adjacent.x},${adjacent.y}) (exhausted, must rest)`;
+      log.push(`Roots of the World: ${civ.id}'s Druid ferried a ${describeUnit(adjacent)} to stage against the enemy ${target.isCity ? "city" : "structure"} at (${target.x},${target.y})`);
+      return true;
+    }
+    let nearest = null, nearestDist = Infinity;
+    for (const u of civ.units) {
+      if (!canFerry(u)) continue;
+      const d = window.GameEngine.influence.chebyshev(unit.x, unit.y, u.x, u.y);
+      if (d < nearestDist) { nearestDist = d; nearest = u; }
+    }
+    if (!nearest || nearestDist > ROOTS_FERRY_SEEK_RADIUS) return false;
+    moveUnitToward(unit, nearest.x, nearest.y, map, civs);
+    unit.usedThisTurn = true;
+    unit.currentMission = `Moving to ferry a ${describeUnit(nearest)} overseas (Roots of the World)`;
+    log.push(`Roots of the World: ${civ.id}'s Druid moves to ferry a ${describeUnit(nearest)} overseas`);
+    return true;
+  }
+
+  /**
+   * Staged-invasion wait/launch logic (2026-07-21, user-directed) -- runs
+   * early in every unit's dispatch (see runUnitTurn) but only ever applies
+   * to a unit carrying `_ambushTarget` (stamped by maybeRootsInvasionFerry
+   * when it lands the unit at the staging ground). Behavior:
+   *
+   *   GATHERING (visible defenders still stronger than the staged force):
+   *   hold position and go Hidden if researched/possible (Elf's Shadowed
+   *   Hush -- canGoHidden/enterHidden), else quietly Rest in place. An
+   *   ADJACENT enemy is a fight, not a wait -- falls through to the normal
+   *   attack dispatch, same carve-out prospecting/delving use.
+   *
+   *   LAUNCH (no visible defenders, force power >= defenders *
+   *   AMBUSH_LAUNCH_POWER_RATIO, or AMBUSH_MAX_WAIT_TURNS exceeded):
+   *   clears `_ambushTarget` on EVERY unit staged on this target at once --
+   *   the whole force springs the same civ-turn, each member falling
+   *   through to the ordinary combat cascade (attack, hunt, siege), with
+   *   any still-Hidden member attacking out of stealth for Strike from the
+   *   Shadows' full ambush bonus via the existing combat pipeline.
+   *
+   * Returns true if it consumed the unit's turn (only ever while waiting).
+   */
+  function maybeInvasionAmbushWait(civ, unit, gameState, log) {
+    const t = unit._ambushTarget;
+    if (!t) return false;
+    const { map, civs } = gameState;
+    const here = map.tiles[unit.y * map.width + unit.x];
+    // The marker only means something on the target's own landmass --
+    // anywhere else it's stale (unit somehow displaced); drop it.
+    if (!here || (t.landmassId >= 0 && here.landmassId !== t.landmassId)) {
+      delete unit._ambushTarget; delete unit._ambushWaitTurns;
+      return false;
+    }
+
+    const staged = civ.units.filter((u) => !u.carriedBy && u._ambushTarget
+      && u._ambushTarget.x === t.x && u._ambushTarget.y === t.y);
+    const allyPower = staged.reduce((s, u) => s + unitCombatPower(u, civ), 0);
+    const visible = gameState.visibility[civ.id] || new Set();
+    let enemyPower = 0;
+    for (const oc of Object.values(civs)) {
+      if (oc.id === civ.id || oc.eliminated) continue;
+      for (const eu of oc.units) {
+        if (eu.carriedBy || eu.conditions?.hidden) continue;
+        if (!visible.has(eu.y * map.width + eu.x)) continue;
+        if (window.GameEngine.influence.chebyshev(eu.x, eu.y, t.x, t.y) > AMBUSH_ENEMY_SCAN_RADIUS) continue;
+        enemyPower += unitCombatPower(eu, oc);
+      }
+    }
+
+    const waited = unit._ambushWaitTurns || 0;
+    const strongEnough = enemyPower <= 0 || allyPower >= enemyPower * AMBUSH_LAUNCH_POWER_RATIO;
+    if (strongEnough || waited >= AMBUSH_MAX_WAIT_TURNS) {
+      for (const u of staged) { delete u._ambushTarget; delete u._ambushWaitTurns; }
+      log.push(`Ambush: ${civ.id}'s ${staged.length}-unit invasion force springs its attack on (${t.x},${t.y})`
+        + (!strongEnough ? " (waited long enough -- attacking anyway)" : ""));
+      return false; // fall through to the normal combat cascade this same turn
+    }
+
+    // Still gathering. An adjacent enemy is a fight, not a wait -- let the
+    // normal attack dispatch handle it further down the cascade.
+    for (const oc of Object.values(civs)) {
+      if (oc.id === civ.id || oc.eliminated) continue;
+      for (const eu of oc.units) {
+        if (eu.conditions?.hidden) continue;
+        if (window.GameEngine.influence.chebyshev(eu.x, eu.y, unit.x, unit.y) <= 1) return false;
+      }
+    }
+    unit._ambushWaitTurns = waited + 1;
+    if (!unit.conditions?.hidden && window.GameEngine.combat.canGoHidden(unit, civ, civs)) {
+      window.GameEngine.combat.enterHidden(unit, currentTurnNumber);
+      unit.usedThisTurn = true;
+      unit.currentMission = `Hiding in ambush near (${t.x},${t.y}) (${staged.length} gathered, awaiting reinforcements)`;
+      log.push(`Ambush: ${civ.id}'s ${describeUnit(unit)} goes hidden near (${t.x},${t.y}), waiting for the invasion force to gather`);
+      return true;
+    }
+    unit.resting = true;
+    unit.usedThisTurn = true;
+    unit.currentMission = `Waiting in ambush near (${t.x},${t.y}) (${staged.length} gathered, awaiting reinforcements)`;
     return true;
   }
 
@@ -4533,14 +5806,19 @@ window.GameEngine = window.GameEngine || {};
    * Elf Druid AI: proactively considers its full kit on top of the purely
    * defensive flee trigger (attemptDruidTeleport, checked earlier in
    * maybeMoveUnits, same placement as Human's Wizard). Priority order:
-   *   1. Nature's Grace -- opportunistic heal, cheapest and most frequently
+   *   1. Roots of the World overseas invasion ferry -- teleport Ranger/
+   *      Blade Dancer/Awakened Oak at a known enemy city/structure on
+   *      another landmass (2026-07-21, user-directed: "much more focused"
+   *      on this whenever such a target is known). See
+   *      maybeRootsInvasionFerry.
+   *   2. Nature's Grace -- opportunistic heal, cheapest and most frequently
    *      usable. See maybeNaturesGrace.
-   *   2. Start a Raptor summon, if THIS Druid doesn't already have a live
+   *   3. Start a Raptor summon, if THIS Druid doesn't already have a live
    *      one (or one mid-summon) -- see druidHasLiveSummon/startDruidSummon.
    *      One per Druid, not a civ-wide cap (2026-07-18, user-directed).
-   *   3. Start a Shadowsteed summon, same one-per-Druid shape.
-   *   4. Roots of the World expansion play -- see maybeRootsExpansion.
-   * All four are gated on the relevant tech actually being researched.
+   *   4. Start a Shadowsteed summon, same one-per-Druid shape.
+   *   5. Roots of the World expansion play -- see maybeRootsExpansion.
+   * All are gated on the relevant tech actually being researched.
    * Returns true if it consumed the Druid's turn.
    */
   function maybeElfDruidPlay(civ, unit, gameState, weights, difficulty, log) {
@@ -4551,6 +5829,9 @@ window.GameEngine = window.GameEngine || {};
     // something new -- it's the second half of a play already in motion,
     // checked before every fresh decision below.
     if (unit._wantsFoundCityAt && maybeCompleteRootsExpansion(civ, unit, gameState, log)) return true;
+
+    if (civ.unlockedMechanics.has("roots_of_the_world") && !unit.conditions?.exhausted
+        && maybeRootsInvasionFerry(civ, unit, gameState, log)) return true;
 
     if (civ.unlockedMechanics.has("natures_grace")
         && maybeNaturesGrace(civ, unit, gameState, log)) return true;
@@ -4585,25 +5866,41 @@ window.GameEngine = window.GameEngine || {};
    *  unconditional otherwise (unlike Devoted Companions' injury threshold),
    *  since a riderless Shadowsteed is nearly worthless in combat (Atk1/Def1)
    *  while a mounted one fights with its rider's full kit (see combat.js's
-   *  shadowsteedMount). An adjacent Ranger is always taken over an adjacent
-   *  Druid/Blade Dancer -- "quickly available" here just means "already
-   *  standing right next to me this turn." Mirrors operateDragonCarry's
-   *  shape/return convention. */
+   *  shadowsteedMount). An adjacent Ranger is always taken immediately.
+   *  Absent one, though (2026-07-22, user-directed: "prefer to carry
+   *  Ranger units" -- a Druid should only ever be settled for when a
+   *  Ranger truly isn't available, not just "not standing adjacent THIS
+   *  exact turn"), it does NOT immediately settle for an adjacent Druid/
+   *  Blade Dancer if a still-uncarried Ranger exists ANYWHERE within
+   *  SHADOWSTEED_SEEK_RADIUS -- this is most visible right after a Druid
+   *  finishes summoning: the fresh Shadowsteed spawns adjacent to its own
+   *  summoner, and without this check would reflexively mount the Druid
+   *  that just made it instead of holding out for a Ranger nearby. Holding
+   *  out returns false here, letting maybeSeekShadowsteedRider (checked
+   *  right after, same turn) go chase that Ranger instead. Only when NO
+   *  Ranger is anywhere within reach does an adjacent Druid/Blade Dancer
+   *  get taken. Mirrors operateDragonCarry's shape/return convention. */
   function operateShadowsteedCarry(civ, unit, gameState, log) {
     if (unit.carries) return false; // already mounted -- nothing to decide here
     const canMount = (u) =>
       u !== unit && !u.carriedBy && !u.carries && !u.usedThisTurn
       && window.GameEngine.influence.chebyshev(unit.x, unit.y, u.x, u.y) <= 1
       && (u.typeId === SHADOWSTEED_PREFERRED_RIDER || SHADOWSTEED_FALLBACK_RIDERS.has(u.typeId));
-    const passenger = civ.units.find((u) => canMount(u) && u.typeId === SHADOWSTEED_PREFERRED_RIDER)
-      || civ.units.find((u) => canMount(u));
+    const adjacentRanger = civ.units.find((u) => canMount(u) && u.typeId === SHADOWSTEED_PREFERRED_RIDER);
+    let passenger = adjacentRanger;
+    if (!passenger) {
+      const rangerWithinReach = civ.units.some((u) =>
+        u.typeId === SHADOWSTEED_PREFERRED_RIDER && !u.carriedBy && !u.carries && !u.usedThisTurn
+        && window.GameEngine.influence.chebyshev(unit.x, unit.y, u.x, u.y) <= SHADOWSTEED_SEEK_RADIUS);
+      if (!rangerWithinReach) passenger = civ.units.find((u) => canMount(u));
+    }
     if (!passenger) return false;
     unit.carries = passenger;
     passenger.carriedBy = unit;
     passenger.usedThisTurn = true;
     unit.usedThisTurn = true;
-    unit.currentMission = `Carrying a ${passenger.typeId} as a rider`;
-    log.push(`Shadowsteed: ${civ.id}'s Shadowsteed picked up ${passenger.typeId} as a rider`);
+    unit.currentMission = `Carrying a ${describeUnit(passenger)} as a rider`;
+    log.push(`Shadowsteed: ${civ.id}'s Shadowsteed picked up ${describeUnit(passenger)} as a rider`);
     return true;
   }
 
@@ -4648,8 +5945,35 @@ window.GameEngine = window.GameEngine || {};
     if (!target || dist <= 1) return false;
     moveUnitToward(unit, target.x, target.y, map, civs);
     unit.usedThisTurn = true;
-    unit.currentMission = `Seeking a rider -- heading for ${target.typeId} at (${target.x},${target.y})`;
+    unit.currentMission = `Seeking a rider -- heading for ${describeUnit(target)} at (${target.x},${target.y})`;
     log.push(`Shadowsteed: ${civ.id}'s Shadowsteed moves to find a rider near (${target.x},${target.y})`);
+    return true;
+  }
+
+  /** Reverse half of the Shadowsteed/rider pairing (2026-07-21, user-
+   *  directed): a riderless Ranger actively closes distance on a nearby
+   *  riderless Shadowsteed instead of only ever waiting to be found -- see
+   *  maybeSeekShadowsteedRider just above for the Shadowsteed's own half.
+   *  Doesn't mount itself -- that still only happens via the Shadowsteed's
+   *  own operateShadowsteedCarry once adjacency lines up on either side's
+   *  turn, so this just closes the distance (or no-ops if already
+   *  adjacent, leaving the pickup to the Shadowsteed's own turn). Returns
+   *  true if it moved (consuming the turn). */
+  function maybeSeekRiderlessShadowsteed(civ, unit, gameState, log) {
+    if (unit.carriedBy || unit.carries) return false;
+    const { map, civs } = gameState;
+    let nearest = null, nearestDist = Infinity;
+    for (const u of civ.units) {
+      if (u.typeId !== "shadowsteed" || u.carries || u.usedThisTurn) continue;
+      const d = window.GameEngine.influence.chebyshev(unit.x, unit.y, u.x, u.y);
+      if (d > SHADOWSTEED_SEEK_RADIUS || d >= nearestDist) continue;
+      nearestDist = d; nearest = u;
+    }
+    if (!nearest || nearestDist <= 1) return false;
+    moveUnitToward(unit, nearest.x, nearest.y, map, civs);
+    unit.usedThisTurn = true;
+    unit.currentMission = `Moving to mount a Shadowsteed at (${nearest.x},${nearest.y})`;
+    log.push(`Shadowsteed: ${civ.id}'s Ranger moves to mount a nearby Shadowsteed`);
     return true;
   }
 
@@ -4728,7 +6052,7 @@ window.GameEngine = window.GameEngine || {};
     moveUnitToward(unit, nearest.x, nearest.y, map, civs);
     unit.usedThisTurn = true;
     unit.currentMission = `Rallying with the army near (${nearest.x},${nearest.y})`;
-    log.push(`Heavy Metal: ${civ.id}'s Troubadour marches to rejoin its nearest ally`);
+    log.push(`Heavy Metal: ${civ.id}'s Metal Singer marches to rejoin its nearest ally`);
     return true;
   }
 
@@ -4833,7 +6157,7 @@ window.GameEngine = window.GameEngine || {};
     unit.usedThisTurn = true;
     const label = desired === "power_metal" ? "Power Metal" : "Heavy Metal";
     unit.currentMission = `Switched aura to ${label}`;
-    log.push(`${civ.id}'s Troubadour switches its aura to ${label}`);
+    log.push(`${civ.id}'s Metal Singer switches its aura to ${label}`);
     // Same floating-text feedback as XP/level-up/resource gains (see
     // floatingtext.js) -- announces which aura just became active.
     window.GameEngine.floatingText.spawnFloatingText(unit, label, "aura");
@@ -4871,7 +6195,7 @@ window.GameEngine = window.GameEngine || {};
     moveUnitToward(unit, nearest.x, nearest.y, gameState.map, gameState.civs);
     unit.usedThisTurn = true;
     unit.currentMission = `Forming a shield wall near (${nearest.x},${nearest.y})`;
-    log.push(`Shield Wall: ${civ.id}'s ${unit.typeId} closes ranks with an ally`);
+    log.push(`Shield Wall: ${civ.id}'s ${describeUnit(unit)} closes ranks with an ally`);
     return true;
   }
 
@@ -4981,7 +6305,7 @@ window.GameEngine = window.GameEngine || {};
     unit.currentMission = usedGate
       ? "Used a Deep Gate to catch up with the Runeforged Titan"
       : `Escorting the Runeforged Titan toward (${nearest.x},${nearest.y})`;
-    log.push(`Escort: ${civ.id}'s ${unit.typeId} rallies to escort the Runeforged Titan`);
+    log.push(`Escort: ${civ.id}'s ${describeUnit(unit)} rallies to escort the Runeforged Titan`);
     return true;
   }
 
@@ -5014,7 +6338,7 @@ window.GameEngine = window.GameEngine || {};
     moveUnitToward(unit, nearest.x, nearest.y, map, civs);
     unit.usedThisTurn = true;
     unit.currentMission = `Grouping up with allies near (${nearest.x},${nearest.y})`;
-    log.push(`Halfellow teamwork: ${civ.id}'s ${unit.typeId} moves to regroup with an ally`);
+    log.push(`Halfellow teamwork: ${civ.id}'s ${describeUnit(unit)} moves to regroup with an ally`);
     return true;
   }
 
@@ -5139,10 +6463,10 @@ window.GameEngine = window.GameEngine || {};
     unit.usedThisTurn = true;
     if (dist > 1) {
       unit.currentMission = `Swarming toward contact at (${signal.x},${signal.y})`;
-      log.push(`Orc swarm: ${civ.id}'s ${unit.typeId} converges on contact at (${signal.x},${signal.y})`);
+      log.push(`Orc swarm: ${civ.id}'s ${describeUnit(unit)} converges on contact at (${signal.x},${signal.y})`);
     } else {
       unit.currentMission = `Pushing past last contact toward (${target.x},${target.y})`;
-      log.push(`Orc swarm: ${civ.id}'s ${unit.typeId} pushes past (${signal.x},${signal.y}) hunting for more`);
+      log.push(`Orc swarm: ${civ.id}'s ${describeUnit(unit)} pushes past (${signal.x},${signal.y}) hunting for more`);
     }
     return true;
   }
@@ -5187,7 +6511,7 @@ window.GameEngine = window.GameEngine || {};
     if (!nearest) return false;
     moveTowardWithStandoff(civ, unit, nearest.x, nearest.y, map, civs);
     unit.usedThisTurn = true;
-    unit.currentMission = `Chasing an enemy ${nearest.typeId} near (${nearest.x},${nearest.y})`;
+    unit.currentMission = `Chasing an enemy ${describeUnit(nearest)} near (${nearest.x},${nearest.y})`;
     return true;
   }
 
@@ -5225,8 +6549,8 @@ window.GameEngine = window.GameEngine || {};
     if (!nearest) return false;
     moveTowardWithStandoff(civ, unit, nearest.x, nearest.y, map, civs);
     unit.usedThisTurn = true;
-    unit.currentMission = `Hunting an enemy ${nearest.typeId} near (${nearest.x},${nearest.y})`;
-    log.push(`Dire Wolf: ${civ.id}'s Dire Wolf tracks an enemy ${nearest.typeId} toward (${nearest.x},${nearest.y})`);
+    unit.currentMission = `Hunting an enemy ${describeUnit(nearest)} near (${nearest.x},${nearest.y})`;
+    log.push(`Dire Wolf: ${civ.id}'s Dire Wolf tracks an enemy ${describeUnit(nearest)} toward (${nearest.x},${nearest.y})`);
     return true;
   }
 
@@ -5376,7 +6700,7 @@ window.GameEngine = window.GameEngine || {};
     if (unit._pillageHoldTurns > PILLAGE_HOLD_LIMIT) {
       if (huntEnemyInfrastructure(civ, unit, gameState)) {
         unit._pillageHoldTurns = 0;
-        log.push(`${civ.id}'s ${unit.typeId} breaks off pillaging after ${PILLAGE_HOLD_LIMIT} turns to press the attack`);
+        log.push(`${civ.id}'s ${describeUnit(unit)} breaks off pillaging after ${PILLAGE_HOLD_LIMIT} turns to press the attack`);
         return true;
       }
       // No visible enemy city to march on yet -- fall through to the rest
@@ -5390,7 +6714,7 @@ window.GameEngine = window.GameEngine || {};
     unit.usedThisTurn = true;
     const n = unit._pillageTilesSuppressed;
     unit.currentMission = `Pillaging (${n} tile${n === 1 ? "" : "s"} suppressed)`;
-    log.push(`${civ.id}'s ${unit.typeId} holds position, pillaging ${n} tile(s)`);
+    log.push(`${civ.id}'s ${describeUnit(unit)} holds position, pillaging ${n} tile(s)`);
     return true;
   }
 
@@ -5472,7 +6796,7 @@ window.GameEngine = window.GameEngine || {};
     unit.currentMission = usedGate
       ? `Used a Deep Gate en route to last-known enemy territory near ${nearest.name} (${nearest.x},${nearest.y})`
       : `Marching toward last-known enemy territory near ${nearest.name} (${nearest.x},${nearest.y})`;
-    log.push(`Hunt: ${civ.id}'s ${unit.typeId} marches toward last-known enemy territory near ${nearest.name} (${nearest.x},${nearest.y})`);
+    log.push(`Hunt: ${civ.id}'s ${describeUnit(unit)} marches toward last-known enemy territory near ${nearest.name} (${nearest.x},${nearest.y})`);
     return true;
   }
 
@@ -5554,12 +6878,32 @@ window.GameEngine = window.GameEngine || {};
 
     const baseUnit = window.GameData.getUnit(unit.typeId);
     const movement = Math.max(1, baseUnit.movement + (unit._moveMods?.unitOverrides?.[unit.typeId]?.movement || 0));
+    // 2026-07-21, user-directed fix (seed 162223683): a gate detour is only
+    // actually useful if the EXIT side can genuinely walk to the target by
+    // land. Without this, the raw-distance-only estimate below could pick
+    // an exit gate that LOOKS closer as the crow flies but is separated
+    // from the target by the same water blocking the direct route --
+    // stranding the unit there with no way to finish the trip. Units then
+    // bounced between gates forever: each turn's naive estimate kept
+    // "finding" a shorter-looking hop in one direction or the other, never
+    // settling on the correct (if long and circuitous) walking route a
+    // plain moveUnitToward call would have found via real A* pathfinding.
+    // Checked once per exit (not per entry/exit pair -- reachability only
+    // depends on the exit) and cached, since canReachByLand's BFS is real
+    // work; maxSearch matches findPath's own budget (see pathfinding.js)
+    // rather than canReachByLand's smaller 150-tile default, so this can't
+    // reject a route real movement would actually be able to walk.
+    const exitReachable = new Map();
+    const canExitReach = (g) => {
+      if (!exitReachable.has(g)) exitReachable.set(g, canReachByLand(g.x, g.y, targetX, targetY, map, 4000, unit));
+      return exitReachable.get(g);
+    };
     let bestEntry = null, bestExit = null;
     let bestTurns = estimateMarchTurns(unit.x, unit.y, targetX, targetY, movement);
     for (const entry of gates) {
       const inTurns = estimateMarchTurns(unit.x, unit.y, entry.x, entry.y, movement);
       for (const exit of gates) {
-        if (exit === entry) continue;
+        if (exit === entry || !canExitReach(exit)) continue;
         const outTurns = estimateMarchTurns(exit.x, exit.y, targetX, targetY, movement);
         const total = inTurns + 1 + outTurns; // +1: the relocate itself spends a whole turn
         if (total < bestTurns) { bestTurns = total; bestEntry = entry; bestExit = exit; }
@@ -5710,13 +7054,13 @@ window.GameEngine = window.GameEngine || {};
       unit.y = exit.y;
       unit.usedThisTurn = true;
       unit.currentMission = `Used a Deep Gate to ${label} at (${exit.x},${exit.y})`;
-      log.push(`Deep Roads: ${civ.id}'s ${unit.typeId} used a Deep Gate to ${label}`);
+      log.push(`Deep Roads: ${civ.id}'s ${describeUnit(unit)} used a Deep Gate to ${label}`);
       return true;
     }
     moveUnitToward(unit, entry.x, entry.y, map, civs);
     unit.usedThisTurn = true;
     unit.currentMission = `Heading to a Deep Gate at (${entry.x},${entry.y}) to ${label}`;
-    log.push(`Deep Roads: ${civ.id}'s ${unit.typeId} heading to a Deep Gate to ${label}`);
+    log.push(`Deep Roads: ${civ.id}'s ${describeUnit(unit)} heading to a Deep Gate to ${label}`);
     return true;
   }
 
@@ -5759,13 +7103,13 @@ window.GameEngine = window.GameEngine || {};
       // Already adjacent -- leave usedThisTurn unset so operateGalley's boarding
       // scan (runs later this turn) can actually pick this unit up.
       unit.currentMission = `Waiting to board a galley at (${emptyGalley.g.x},${emptyGalley.g.y}) for overseas invasion`;
-      log.push(`Invasion: ${civ.id}'s ${unit.typeId} waiting to board galley at (${emptyGalley.g.x},${emptyGalley.g.y})`);
+      log.push(`Invasion: ${civ.id}'s ${describeUnit(unit)} waiting to board galley at (${emptyGalley.g.x},${emptyGalley.g.y})`);
       return true;
     }
     moveUnitToward(unit, emptyGalley.g.x, emptyGalley.g.y, map, civs);
     unit.usedThisTurn = true;
     unit.currentMission = `Marching to a galley at (${emptyGalley.g.x},${emptyGalley.g.y}) to invade overseas`;
-    log.push(`Invasion: ${civ.id}'s ${unit.typeId} heading overseas via galley at (${emptyGalley.g.x},${emptyGalley.g.y})`);
+    log.push(`Invasion: ${civ.id}'s ${describeUnit(unit)} heading overseas via galley at (${emptyGalley.g.x},${emptyGalley.g.y})`);
     return true;
   }
 
@@ -5807,13 +7151,13 @@ window.GameEngine = window.GameEngine || {};
       // Already adjacent -- leave usedThisTurn unset so operateGalley's
       // boarding scan (runs later this turn) can actually pick this unit up.
       unit.currentMission = `Waiting to board a galley at (${emptyGalley.g.x},${emptyGalley.g.y}) to reach a ${label}`;
-      log.push(`${label}: ${civ.id}'s ${unit.typeId} waiting to board a galley for an overseas ${label}`);
+      log.push(`${label}: ${civ.id}'s ${describeUnit(unit)} waiting to board a galley for an overseas ${label}`);
       return true;
     }
     moveUnitToward(unit, emptyGalley.g.x, emptyGalley.g.y, map, civs);
     unit.usedThisTurn = true;
     unit.currentMission = `Marching to a galley at (${emptyGalley.g.x},${emptyGalley.g.y}) to reach an overseas ${label}`;
-    log.push(`${label}: ${civ.id}'s ${unit.typeId} heading to a galley to reach an overseas ${label} at (${spot.x},${spot.y})`);
+    log.push(`${label}: ${civ.id}'s ${describeUnit(unit)} heading to a galley to reach an overseas ${label} at (${spot.x},${spot.y})`);
     return true;
   }
 
@@ -6034,7 +7378,7 @@ window.GameEngine = window.GameEngine || {};
           cargo.x = nx; cargo.y = ny;
           snapVisualPos(cargo, nx, ny);
           unit.carries = null;
-          log.push(`Dragon Riders: ${civ.id} dropped off ${cargo.typeId} at (${nx},${ny})`);
+          log.push(`Dragon Riders: ${civ.id} dropped off ${describeUnit(cargo)} at (${nx},${ny})`);
           return false; // Dragon itself hasn't acted yet -- let it continue this turn
         }
       }
@@ -6051,8 +7395,8 @@ window.GameEngine = window.GameEngine || {};
     passenger.carriedBy = unit;
     passenger.usedThisTurn = true;
     unit.usedThisTurn = true;
-    unit.currentMission = `Carrying a ${passenger.typeId} as a rider`;
-    log.push(`Dragon Riders: ${civ.id} dragon picked up ${passenger.typeId}`);
+    unit.currentMission = `Carrying a ${describeUnit(passenger)} as a rider`;
+    log.push(`Dragon Riders: ${civ.id} dragon picked up ${describeUnit(passenger)}`);
     return true;
   }
 
@@ -6091,7 +7435,7 @@ window.GameEngine = window.GameEngine || {};
             cargo.x = nx; cargo.y = ny;
             snapVisualPos(cargo, nx, ny);
             unit.carries = null;
-            log.push(`Devoted Companions: ${civ.id}'s ${unit.typeId} set down a fully healed ${cargo.typeId} at (${nx},${ny})`);
+            log.push(`Devoted Companions: ${civ.id}'s ${describeUnit(unit)} set down a fully healed ${describeUnit(cargo)} at (${nx},${ny})`);
             return false; // carrier hasn't acted yet -- let it continue this turn
           }
         }
@@ -6106,9 +7450,13 @@ window.GameEngine = window.GameEngine || {};
     unit.carries = candidate;
     candidate.carriedBy = unit;
     candidate.usedThisTurn = true;
+    // Reservation (see maybeSeekInjuredCompanion/maybeWaitForCompanionCarry)
+    // is done its job the instant the pickup actually happens.
+    delete candidate._awaitedByCarrier;
+    delete unit._seekingCompanion;
     unit.usedThisTurn = true;
-    unit.currentMission = `Carrying an injured ${candidate.typeId} to help it heal`;
-    log.push(`Devoted Companions: ${civ.id}'s ${unit.typeId} picked up injured ${candidate.typeId} at (${unit.x},${unit.y})`);
+    unit.currentMission = `Carrying an injured ${describeUnit(candidate)} to help it heal`;
+    log.push(`Devoted Companions: ${civ.id}'s ${describeUnit(unit)} picked up injured ${describeUnit(candidate)} at (${unit.x},${unit.y})`);
     return true;
   }
 
@@ -6131,6 +7479,18 @@ window.GameEngine = window.GameEngine || {};
    * operateCompanionCarry once this unit arrives) -- purely closes the
    * distance. Returns true if it moved (consuming the turn).
    */
+  /** Releases whichever ally `carrier` was previously reserving via
+   *  `_awaitedByCarrier` (see maybeSeekInjuredCompanion/
+   *  maybeWaitForCompanionCarry below), if any -- only clears it when this
+   *  carrier is still the one that set it (never steps on a DIFFERENT
+   *  carrier's reservation of the same ally). */
+  function releaseCompanionReservation(carrier) {
+    if (carrier._seekingCompanion && carrier._seekingCompanion._awaitedByCarrier === carrier) {
+      delete carrier._seekingCompanion._awaitedByCarrier;
+    }
+    delete carrier._seekingCompanion;
+  }
+
   function maybeSeekInjuredCompanion(civ, unit, gameState, log) {
     if (!civ.unlockedMechanics || !civ.unlockedMechanics.has("devoted_companions")) return false;
     if (unit.carries || unit.carriedBy) return false;
@@ -6139,14 +7499,62 @@ window.GameEngine = window.GameEngine || {};
     for (const u of civ.units) {
       if (u === unit || u.carriedBy || u.carries || u.usedThisTurn) continue;
       if (u.hp >= u.maxHp * COMPANION_INJURY_THRESHOLD) continue;
+      // Already reserved by a DIFFERENT live carrier -- don't pile on, let
+      // that carrier finish the job (see maybeWaitForCompanionCarry).
+      if (u._awaitedByCarrier && u._awaitedByCarrier !== unit && civ.units.includes(u._awaitedByCarrier)) continue;
       const d = window.GameEngine.influence.chebyshev(unit.x, unit.y, u.x, u.y);
       if (d < nearestDist) { nearestDist = d; nearest = u; }
     }
-    if (!nearest || nearestDist <= 1 || nearestDist > COMPANION_SEEK_RADIUS) return false;
+    if (!nearest || nearestDist <= 1 || nearestDist > COMPANION_SEEK_RADIUS) {
+      releaseCompanionReservation(unit); // no longer seeking -- free up whoever we had reserved
+      return false;
+    }
+    // Reserve `nearest` (2026-07-22, user-directed: the injured ally should
+    // stop and wait for its rescuer instead of wandering off mid-approach)
+    // -- release a previous, different reservation first.
+    if (unit._seekingCompanion !== nearest) releaseCompanionReservation(unit);
+    nearest._awaitedByCarrier = unit;
+    unit._seekingCompanion = nearest;
     moveUnitToward(unit, nearest.x, nearest.y, map, civs);
     unit.usedThisTurn = true;
-    unit.currentMission = `Rushing to carry injured ${nearest.typeId} at (${nearest.x},${nearest.y})`;
-    log.push(`Devoted Companions: ${civ.id}'s ${unit.typeId} moves to reach injured ${nearest.typeId}`);
+    unit.currentMission = `Rushing to carry injured ${describeUnit(nearest)} at (${nearest.x},${nearest.y})`;
+    log.push(`Devoted Companions: ${civ.id}'s ${describeUnit(unit)} moves to reach injured ${describeUnit(nearest)}`);
+    return true;
+  }
+
+  /** Halfellow "Devoted Companions" -- an injured ally a carrier has
+   *  committed to fetching (see maybeSeekInjuredCompanion's
+   *  `_awaitedByCarrier` reservation) holds position and waits to be
+   *  carried instead of acting normally this turn (2026-07-22, user-
+   *  directed: "the target unit should stop and wait, and accept the carry
+   *  until healed" -- wandering off mid-rescue just strands the carrier
+   *  chasing a moving target). Checked ahead of every other dispatch
+   *  branch. An adjacent enemy is a fight, not a wait -- falls through to
+   *  the normal attack dispatch, same carve-out every other "hold position
+   *  and wait" play in this file uses (see maybeInvasionAmbushWait/
+   *  maybeProspectorsClaimPlay). Clears the reservation (and resumes normal
+   *  behavior) the instant it's stale: the carrier died, got reassigned to
+   *  someone else, picked up a different passenger, or this unit healed
+   *  back above the injury threshold on its own. Returns true if it
+   *  consumed the unit's turn. */
+  function maybeWaitForCompanionCarry(civ, unit, gameState, log) {
+    const carrier = unit._awaitedByCarrier;
+    if (!carrier) return false;
+    const stillValid = civ.units.includes(carrier) && carrier.hp > 0 && !carrier.carries
+      && carrier._seekingCompanion === unit && unit.hp < unit.maxHp * COMPANION_INJURY_THRESHOLD;
+    if (!stillValid) { delete unit._awaitedByCarrier; return false; }
+
+    const { civs } = gameState;
+    for (const oc of Object.values(civs)) {
+      if (oc.id === civ.id || oc.eliminated) continue;
+      for (const eu of oc.units) {
+        if (eu.conditions?.hidden) continue;
+        if (window.GameEngine.influence.chebyshev(eu.x, eu.y, unit.x, unit.y) <= 1) return false;
+      }
+    }
+    unit.resting = true;
+    unit.usedThisTurn = true;
+    unit.currentMission = `Waiting for ${describeUnit(carrier)} to arrive and carry it`;
     return true;
   }
 
@@ -6183,7 +7591,7 @@ window.GameEngine = window.GameEngine || {};
         carrier.carries = null;
         unit.x = nx; unit.y = ny;
         snapVisualPos(unit, nx, ny);
-        log.push(`Devoted Companions: ${civ.id}'s ${unit.typeId} disembarks to join the fight at (${nx},${ny})`);
+        log.push(`Devoted Companions: ${civ.id}'s ${describeUnit(unit)} disembarks to join the fight at (${nx},${ny})`);
         return true;
       }
     }
@@ -6236,8 +7644,8 @@ window.GameEngine = window.GameEngine || {};
             cargo.carriedBy = null; unit.carries = null;
             snapVisualPos(cargo, nx, ny);
             unit.turnsNearLand = 0;
-            unit.currentMission = `Force-disembarked ${cargo.typeId} at (${nx},${ny})`;
-            log.push(`Naval: ${civ.id} galley force-disembarked ${cargo.typeId} at (${nx},${ny}) after 3 turns near shore`);
+            unit.currentMission = `Force-disembarked ${describeUnit(cargo)} at (${nx},${ny})`;
+            log.push(`Naval: ${civ.id} galley force-disembarked ${describeUnit(cargo)} at (${nx},${ny}) after 3 turns near shore`);
             unit.usedThisTurn = true;
             return;
           }
@@ -6269,19 +7677,19 @@ window.GameEngine = window.GameEngine || {};
           snapVisualPos(cargo, landTarget.landX, landTarget.landY);
           unit.carries = null;
           unit.turnsNearLand = 0;
-          unit.currentMission = `Disembarked ${cargo.typeId} at (${landTarget.landX},${landTarget.landY})`;
-          log.push(`Naval: ${civ.id} galley disembarked ${cargo.typeId} at (${landTarget.landX},${landTarget.landY})`);
+          unit.currentMission = `Disembarked ${describeUnit(cargo)} at (${landTarget.landX},${landTarget.landY})`;
+          log.push(`Naval: ${civ.id} galley disembarked ${describeUnit(cargo)} at (${landTarget.landX},${landTarget.landY})`);
         } else {
-          unit.currentMission = `Ferrying ${cargo.typeId} to land at (${landTarget.landX},${landTarget.landY})`;
+          unit.currentMission = `Ferrying ${describeUnit(cargo)} to land at (${landTarget.landX},${landTarget.landY})`;
         }
       } else {
         const foreignShore = findForeignShore(civ, unit, map, invasionLandmassId);
         if (foreignShore) {
           moveUnitToward(unit, foreignShore.x, foreignShore.y, map, civs);
-          unit.currentMission = `Ferrying ${cargo.typeId} toward a foreign shore`;
+          unit.currentMission = `Ferrying ${describeUnit(cargo)} toward a foreign shore`;
         } else {
           exploreWater(unit, gameState, log);
-          unit.currentMission = `Ferrying ${cargo.typeId}, searching for land`;
+          unit.currentMission = `Ferrying ${describeUnit(cargo)}, searching for land`;
         }
       }
       unit.usedThisTurn = true;
@@ -6361,8 +7769,8 @@ window.GameEngine = window.GameEngine || {};
             boarder.carriedBy = unit;
             boarder.usedThisTurn = true;
             unit.turnsEmptyNearShore = 0;
-            unit.currentMission = `Carrying a ${boarder.typeId}`;
-            log.push(`Naval: ${civ.id} ${boarder.typeId} boarded galley at (${unit.x},${unit.y})`);
+            unit.currentMission = `Carrying a ${describeUnit(boarder)}`;
+            log.push(`Naval: ${civ.id} ${describeUnit(boarder)} boarded galley at (${unit.x},${unit.y})`);
             unit.usedThisTurn = true;
             return;
           }
@@ -6420,7 +7828,7 @@ window.GameEngine = window.GameEngine || {};
         // exploreWater fallback called in the same turn just below.
         if (pickupWater && !isUnitStalled(unit, "galley_pickup", GALLEY_PICKUP_STALL_THRESHOLD)) {
           moveUnitToward(unit, pickupWater.x, pickupWater.y, map, civs);
-          unit.currentMission = `Sailing to pick up a stranded ${strandedUnit.typeId} at (${strandedUnit.x},${strandedUnit.y})`;
+          unit.currentMission = `Sailing to pick up a stranded ${describeUnit(strandedUnit)} at (${strandedUnit.x},${strandedUnit.y})`;
         } else {
           exploreWater(unit, gameState, log);
           unit.currentMission = "Searching for a way to reach a stranded unit";
@@ -6793,7 +8201,7 @@ window.GameEngine = window.GameEngine || {};
         unit._exploreAnchorX = null; // re-anchor fresh once the commitment ends
         moveUnitToward(unit, farTarget.x, farTarget.y, map, civs);
         unit.currentMission = `Giving up on this dead end -- heading to unexplored land near (${farTarget.x},${farTarget.y})`;
-        log.push(`${civ ? civ.id : unit.civId}'s ${unit.typeId} gives up exploring a local dead end, heads for (${farTarget.x},${farTarget.y})`);
+        log.push(`${civ ? civ.id : unit.civId}'s ${describeUnit(unit)} gives up exploring a local dead end, heads for (${farTarget.x},${farTarget.y})`);
         return;
       }
       // No far candidate either (e.g. the whole reachable landmass is
@@ -7047,6 +8455,120 @@ window.GameEngine = window.GameEngine || {};
    *
    * Returns true if it consumed the unit's turn (it went Hidden this turn).
    */
+  /**
+   * Halfellow "Keep an Eye Out" (2026-07-24, user-directed): civ-wide (any
+   * unit, not just Trouble Maker) lookout post -- go Hidden and hold
+   * position for +3 vision radius (see combat.js's canGoHidden and
+   * turns.js's visionRadius computation). Deliberately checked only as a
+   * LAST-resort fallback (see its call site in runUnitTurn's terminal
+   * exploreWith fallback) rather than competing with real exploring/combat/
+   * economy priorities -- this is specifically for the "genuinely nothing
+   * left to do" case the 2026-07-23 stuck-unit fix identified, turning
+   * "does nothing at all" into "productively watches the border" instead.
+   * `hidden` and `keepingWatch` share the same 3-turn expiry, so both clear
+   * together and the unit is forced visible for 1 turn before it can
+   * re-enter -- same natural cycle Hidden already has, no extra bookkeeping
+   * needed. Returns true if it consumed the turn. */
+  function maybeKeepAnEyeOutPlay(civ, unit, gameState, log) {
+    if (civ.raceId !== "halfellow" || !civ.unlockedMechanics || !civ.unlockedMechanics.has("keep_an_eye_out")) return false;
+    if (unit.conditions?.keepingWatch) {
+      // Already watching (mid-cycle) -- just hold position.
+      unit.resting = true;
+      unit.usedThisTurn = true;
+      unit.currentMission = "Keeping an eye out (holding position)";
+      return true;
+    }
+    if (!window.GameEngine.combat.canGoHidden(unit, civ, gameState.civs)) return false;
+    const expiresAtTurn = currentTurnNumber + 3;
+    window.GameEngine.combat.enterHidden(unit, currentTurnNumber);
+    window.GameEngine.combat.setCondition(unit, "keepingWatch", { expiresAtTurn, visionBonus: 3 });
+    unit.resting = true;
+    unit.usedThisTurn = true;
+    unit.currentMission = "Settling in to keep an eye out";
+    log.push(`Keep an Eye Out: ${civ.id}'s ${describeUnit(unit)} takes up a lookout post at (${unit.x},${unit.y})`);
+    return true;
+  }
+
+  /** Nearest currently-unclaimed (not yet in city.filledOffsets), in-radius
+   *  tile across all of `civ`'s own cities -- the pool Envoy (and organic
+   *  growth/Cultural Influence) draws from. Returns { x, y, city, key } or
+   *  null if every city's radius is already fully filled. */
+  function findEnvoyTarget(civ, unit, gameState) {
+    const { map } = gameState;
+    let best = null, bestDist = Infinity;
+    for (const city of civ.cities) {
+      const radius = city.influenceRadius;
+      for (let dy = -radius; dy <= radius; dy++) {
+        for (let dx = -radius; dx <= radius; dx++) {
+          const key = `${dx},${dy}`;
+          if (city.filledOffsets.has(key)) continue;
+          const tx = city.x + dx, ty = city.y + dy;
+          if (tx < 0 || tx >= map.width || ty < 0 || ty >= map.height) continue;
+          if (window.GameData.TERRAIN[map.tiles[ty * map.width + tx].terrain].isWater) continue;
+          const dist = window.GameEngine.influence.chebyshev(unit.x, unit.y, tx, ty);
+          if (dist < bestDist) { bestDist = dist; best = { x: tx, y: ty, city, key }; }
+        }
+      }
+    }
+    return best;
+  }
+
+  /**
+   * Halfellow "Envoy" (2026-07-24, user-directed): Pioneer or Wanderer may
+   * channel for a flat 2 turns on an already-in-radius, unclaimed tile to
+   * claim it outright (city.filledOffsets.add, same underlying claim
+   * mechanism organic growth and Cultural Influence both use -- see
+   * performClaimInfluenceTile) -- independent of the normal gradual
+   * fill-in rate, and lets the AI CHOOSE which tile gets priority instead
+   * of waiting on the passive fill order. Checked as a low priority
+   * (secondary to settling/fighting) opportunistic action for an otherwise
+   * idle Pioneer/Wanderer -- see its call sites in maybeFoundCity (Pioneer)
+   * and runUnitTurn (Wanderer). Returns true if it consumed the turn. */
+  function maybeEnvoyPlay(civ, unit, gameState, log) {
+    if (civ.raceId !== "halfellow" || !civ.unlockedMechanics || !civ.unlockedMechanics.has("envoy")) return false;
+    if (unit.typeId !== "pioneer" && unit.typeId !== "wanderer") return false;
+
+    if (unit.channeling === "envoy") {
+      const stayedPut = unit.x === unit._envoyX && unit.y === unit._envoyY;
+      if (!stayedPut) { unit.channeling = null; unit._envoyTurns = 0; return false; }
+      unit._envoyTurns = (unit._envoyTurns || 0) + 1;
+      if (unit._envoyTurns >= 2) {
+        const city = unit._envoyCity;
+        if (city && civ.cities.includes(city)) {
+          city.filledOffsets.add(unit._envoyKey);
+          log.push(`Envoy: ${civ.id}'s ${describeUnit(unit)} claims (${unit.x},${unit.y}) for ${city.name}`);
+        }
+        unit.channeling = null;
+        unit._envoyTurns = 0;
+        unit._envoyCity = null;
+      } else {
+        unit.currentMission = `Acting as Envoy, claiming this tile (${unit._envoyTurns}/2 turns)`;
+      }
+      unit.resting = true;
+      unit.usedThisTurn = true;
+      return true;
+    }
+
+    const target = findEnvoyTarget(civ, unit, gameState);
+    if (!target) return false;
+    if (unit.x !== target.x || unit.y !== target.y) {
+      moveUnitToward(unit, target.x, target.y, gameState.map, gameState.civs);
+      unit.usedThisTurn = true;
+      unit.currentMission = `Heading to act as Envoy at (${target.x},${target.y})`;
+      return true;
+    }
+    unit.channeling = "envoy";
+    unit._envoyTurns = 0;
+    unit._envoyX = unit.x;
+    unit._envoyY = unit.y;
+    unit._envoyCity = target.city;
+    unit._envoyKey = target.key;
+    unit.resting = true;
+    unit.usedThisTurn = true;
+    unit.currentMission = "Settling in to act as Envoy";
+    return true;
+  }
+
   function maybeHalfellowStealthPlay(civ, unit, gameState, weights, difficulty, log) {
     if (civ.raceId !== "halfellow") return false;
     if (!civ.unlockedMechanics || !civ.unlockedMechanics.has("sneaking_around")) return false;
@@ -7077,8 +8599,8 @@ window.GameEngine = window.GameEngine || {};
     if (nearestDist === 2 && winProb < threshold * (1 - militarism * 0.5)) {
       window.GameEngine.combat.enterHidden(unit, currentTurnNumber);
       unit.usedThisTurn = true;
-      unit.currentMission = `Going hidden — outmatched by ${enemyCiv.id}'s ${nearest.typeId} nearby`;
-      log.push(`Stealth: ${civ.id}'s ${unit.typeId} goes hidden defensively at (${unit.x},${unit.y})`);
+      unit.currentMission = `Going hidden — outmatched by ${enemyCiv.id}'s ${describeUnit(nearest)} nearby`;
+      log.push(`Stealth: ${civ.id}'s ${describeUnit(unit)} goes hidden defensively at (${unit.x},${unit.y})`);
       return true;
     }
 
@@ -7089,14 +8611,14 @@ window.GameEngine = window.GameEngine || {};
       const myPower = unitCombatPower(unit, civ);
       const isStrongestNearby = alliesNearby.every((u) => unitCombatPower(u, civ) <= myPower);
       if (alliesNearby.length > 0 && isStrongestNearby) {
-        unit.currentMission = `Holding as bait near ${enemyCiv.id}'s ${nearest.typeId} at (${nearest.x},${nearest.y})`;
+        unit.currentMission = `Holding as bait near ${enemyCiv.id}'s ${describeUnit(nearest)} at (${nearest.x},${nearest.y})`;
         return false;
       }
 
       window.GameEngine.combat.enterHidden(unit, currentTurnNumber);
       unit.usedThisTurn = true;
-      unit.currentMission = `Going hidden — setting up an ambush on ${enemyCiv.id}'s ${nearest.typeId}`;
-      log.push(`Stealth: ${civ.id}'s ${unit.typeId} goes hidden to ambush ${enemyCiv.id}'s ${nearest.typeId} near (${unit.x},${unit.y})`);
+      unit.currentMission = `Going hidden — setting up an ambush on ${enemyCiv.id}'s ${describeUnit(nearest)}`;
+      log.push(`Stealth: ${civ.id}'s ${describeUnit(unit)} goes hidden to ambush ${enemyCiv.id}'s ${describeUnit(nearest)} near (${unit.x},${unit.y})`);
       return true;
     }
 
@@ -7283,14 +8805,31 @@ window.GameEngine = window.GameEngine || {};
         defenderInForest: map.tiles[bestTarget.y * map.width + bestTarget.x].terrain === "forest",
       };
       window.GameEngine.quips.maybeQuip(unit, civ, "attack", gameState);
+    window.SfxSystem.playAction(civ.raceId, unit.typeId, "attack", unit.x, unit.y);
       const result = window.GameEngine.combat.resolveRound(unit, bestTarget, civs, combatContext);
       window.GameEngine.combat.recordCombatEvent({
         ax: unit.x, ay: unit.y, atkUnit: unit,
         dx: bestTarget.x, dy: bestTarget.y, defUnit: bestTarget,
       });
+      markCombatEngaged(civ);
+      markCombatEngaged(defenderCiv);
       // Hidden: attacking reveals the attacker, regardless of target type.
+      // "Ambush!" floating text (2026-07-22, user-directed): checked before
+      // the reveal clears the condition.
+      const wasHiddenForAttack = !!unit.conditions?.hidden;
       window.GameEngine.combat.revealHidden(unit, currentTurnNumber);
-      log.push(`Attack: ${civ.id}'s ${unit.typeId} vs ${bestTarget.civId}'s ${bestTarget.typeId} -> ` +
+      if (wasHiddenForAttack) {
+        window.GameEngine.floatingText.spawnFloatingText(unit, "Ambush!", "warning");
+        // Elf ambush follow-through (2026-07-22, user-directed): don't let
+        // maybeElfStealthPlay re-hide this unit until the target it just
+        // sprang the ambush on is actually dead -- see stillEngagedInAmbush,
+        // checked at the top of that function. Only meaningful while the
+        // target survives; if it died this exact hit, there's nothing left
+        // to "finish," so the very next stillEngagedInAmbush check already
+        // clears it.
+        unit._meleeAmbushVictim = bestTarget;
+      }
+      log.push(`Attack: ${civ.id}'s ${describeUnit(unit)} vs ${bestTarget.civId}'s ${describeUnit(bestTarget)} -> ` +
         `${result.returnSkipped ? "first strike" : result.fullNegated ? "negated" : result.fullMissed ? "missed (flying)" : result.fullDamage + " dmg"}` +
         (result.forwardSkipped ? ", attacker killed before landing a hit"
           : result.counterOutOfRange ? ", ranged (defender out of counter range)"
@@ -7301,10 +8840,40 @@ window.GameEngine = window.GameEngine || {};
           ? ` [odds ${Math.round(bestWinProb * 100)}%, ${bestCoalitionShift > 0 ? "emboldened" : "wary"} by allies]`
           : ""));
 
-      // Human "Fireball!": Wizard splash damage to everything adjacent to the target
+      // Orc "Burn It All Down": a Scout or Dragon's RANGED hit (dist > 1 --
+      // adjacent melee doesn't count, per the tech's own wording) sets the
+      // target ablaze. Goblin Miscreant is a deliberate exception
+      // (2026-07-22, user-directed): its MELEE attacks also ignite the
+      // target, adjacent or not -- it has no ranged option at all, so the
+      // ranged-only restriction would otherwise just exclude it entirely.
+      // Same landed-hit guard First Frost of Autumn uses just below --
+      // nothing to ignite if the attack never connected.
+      const isRangedFirebrand = (unit.typeId === "scout" || unit.typeId === "dragon")
+        && window.GameEngine.influence.chebyshev(unit.x, unit.y, bestTarget.x, bestTarget.y) > 1;
+      const isMeleeGoblinFirebrand = unit.typeId === "goblin_miscreant";
+      if ((isRangedFirebrand || isMeleeGoblinFirebrand)
+          && civ.unlockedMechanics && civ.unlockedMechanics.has("burn_it_all_down")
+          && !result.fullNegated && !result.fullMissed) {
+        applyBurning(bestTarget, "unit", gameState);
+        log.push(`Burn It All Down: ${civ.id}'s ${describeUnit(unit)} sets ${bestTarget.civId}'s ${describeUnit(bestTarget)} ablaze`);
+      }
+
+      // Human "Fireball!": Wizard splash damage to everything adjacent to the
+      // target, PLUS Burning (2026-07-22, user-directed) on the primary
+      // target and every splash victim -- units and buildings/walls, but
+      // NOT cities themselves (2026-07-22, user-directed removal).
       if (unit.typeId === "wizard" && civ.unlockedMechanics && civ.unlockedMechanics.has("fireball_splash")) {
+        if (!result.fullNegated && !result.fullMissed) applyBurning(bestTarget, "unit", gameState);
         const hits = window.GameEngine.combat.applySplashDamage(unit, civ, bestTarget.x, bestTarget.y, gameState);
-        if (hits.length) log.push(`Fireball splash: ${hits.length} additional target(s) hit`);
+        for (const hit of hits) {
+          if (hit.kind === "unit") applyBurning(hit.unit, "unit", gameState);
+          else if (hit.kind === "structure") applyBurning(hit.record, "structure", gameState);
+        }
+        if (hits.length) log.push(`Fireball splash: ${hits.length} additional target(s) hit and set ablaze`);
+        // Highlights the splash radius for a moment (2026-07-22, user-directed)
+        // -- applySplashDamage's own radius is a fixed 1-tile adjacency (see
+        // combat.js), centered on the primary target, same as the damage itself.
+        window.GameEngine.combat.spawnAreaEffect(bestTarget.x, bestTarget.y, 1, "fireball");
       }
 
       // Orc curse abilities: Bog Witch's death-curse and Malefic Malediction's
@@ -7315,38 +8884,48 @@ window.GameEngine = window.GameEngine || {};
       applyElfCombatMechanics(unit, civ, bestTarget, defenderCiv, result, gameState);
 
       if (bestTarget.hp <= 0) {
-        otherCivRemoveDeadUnit(civs, bestTarget);
-        maybeRaiseDead(civ, unit, bestTarget, civs);
-        // Orc "Hound and Hunter": a defending Wolf Rider's death may spawn
-        // its replacement on its own now-vacated tile.
-        if (bestTarget.typeId === "wolf_rider" && defenderCiv.unlockedMechanics
-            && defenderCiv.unlockedMechanics.has("hound_and_hunter")) {
-          const replacement = window.GameEngine.combat.maybeSpawnHoundAndHunter(defenderCiv, bestTarget.x, bestTarget.y, map);
-          if (replacement) log.push(`Hound and Hunter: ${defenderCiv.id}'s fallen Wolf Rider is replaced by a ${replacement.typeId} at (${replacement.x},${replacement.y})`);
+        // Undead "Zombie": tried BEFORE any of the usual "this unit really
+        // died" bookkeeping below, since a successful zombie application
+        // means bestTarget is still standing on its own tile, alive, just
+        // transferred to civ's control -- none of the corpse-handling logic
+        // (roster removal, replacement spawns, cargo drop) applies to it.
+        const zombified = maybeApplyZombie(civ, unit, bestTarget, civs);
+        if (zombified) {
+          log.push(`Zombie: ${civ.id}'s ${describeUnit(unit)} raises ${defenderCiv.id}'s fallen ${describeUnit(bestTarget)} as a zombie under ${civ.id}'s control`);
+        } else {
+          otherCivRemoveDeadUnit(civs, bestTarget);
+          // Orc "Hound and Hunter": a defending Wolf Rider's death may spawn
+          // its replacement on its own now-vacated tile.
+          if (bestTarget.typeId === "wolf_rider" && defenderCiv.unlockedMechanics
+              && defenderCiv.unlockedMechanics.has("hound_and_hunter")) {
+            const replacement = window.GameEngine.combat.maybeSpawnHoundAndHunter(defenderCiv, bestTarget.x, bestTarget.y, map);
+            if (replacement) log.push(`Hound and Hunter: ${defenderCiv.id}'s fallen Wolf Rider is replaced by a ${describeUnit(replacement)} at (${replacement.x},${replacement.y})`);
+          }
+          // Halfellow "Undaunted" (2026-07-20, user-directed): same shape as
+          // Hound and Hunter above, this time for a defending Pony Patrol's death.
+          if (bestTarget.typeId === "pony_patrol" && defenderCiv.unlockedMechanics
+              && defenderCiv.unlockedMechanics.has("undaunted")) {
+            const replacement = window.GameEngine.combat.maybeSpawnPonyReplacement(defenderCiv, bestTarget.x, bestTarget.y, map);
+            if (replacement) log.push(`Undaunted: ${defenderCiv.id}'s fallen Pony Patrol is replaced by a ${describeUnit(replacement)} at (${replacement.x},${replacement.y})`);
+          }
+          // Orc Dragon Riders (and any other carrier): a defeated carrier
+          // drops its passenger onto its own tile instead of taking it down
+          // with it -- unless that tile is impassable for the passenger
+          // (e.g. a sunk Galley's open-ocean tile), in which case the
+          // passenger dies too rather than being stranded there forever.
+          if (bestTarget.carries) {
+            dropCargoOrKill(bestTarget.carries, bestTarget.x, bestTarget.y, gameState, log);
+            bestTarget.carries = null;
+          }
         }
-        // Halfellow "Undaunted" (2026-07-20, user-directed): same shape as
-        // Hound and Hunter above, this time for a defending Pony Patrol's death.
-        if (bestTarget.typeId === "pony_patrol" && defenderCiv.unlockedMechanics
-            && defenderCiv.unlockedMechanics.has("undaunted")) {
-          const replacement = window.GameEngine.combat.maybeSpawnPonyReplacement(defenderCiv, bestTarget.x, bestTarget.y, map);
-          if (replacement) log.push(`Undaunted: ${defenderCiv.id}'s fallen Pony Patrol is replaced by a ${replacement.typeId} at (${replacement.x},${replacement.y})`);
-        }
-        // Anti-Titan learning: the defeated civ just lost a unit TO a Titan.
+        // Anti-Titan learning: the defeated civ just lost a unit TO a Titan
+        // (fires regardless of whether it was then raised as a zombie).
         if (unit.typeId === "runeforged_titan") maybeLearnAntiTitanLesson(defenderCiv);
         // Orc "Honor the Dead": the defeated civ's OWN loss grants them lore,
-        // regardless of who defeated them.
+        // regardless of who defeated them (or what became of the body after).
         if (defenderCiv.deathLoreBonus) {
           defenderCiv.stockpile = defenderCiv.stockpile || { harvest: 0, coin: 0, lore: 0 };
           defenderCiv.stockpile.lore = (defenderCiv.stockpile.lore || 0) + defenderCiv.deathLoreBonus;
-        }
-        // Orc Dragon Riders (and any other carrier): a defeated carrier
-        // drops its passenger onto its own tile instead of taking it down
-        // with it -- unless that tile is impassable for the passenger
-        // (e.g. a sunk Galley's open-ocean tile), in which case the
-        // passenger dies too rather than being stranded there forever.
-        if (bestTarget.carries) {
-          dropCargoOrKill(bestTarget.carries, bestTarget.x, bestTarget.y, gameState, log);
-          bestTarget.carries = null;
         }
         const attackerRace = window.GameData.getRace(civ.raceId);
         // Undead heal on kill
@@ -7381,13 +8960,13 @@ window.GameEngine = window.GameEngine || {};
         // attacker's own Wolf Rider dying to a counter.
         if (unit.typeId === "wolf_rider" && civ.unlockedMechanics && civ.unlockedMechanics.has("hound_and_hunter")) {
           const replacement = window.GameEngine.combat.maybeSpawnHoundAndHunter(civ, unit.x, unit.y, map);
-          if (replacement) log.push(`Hound and Hunter: ${civ.id}'s fallen Wolf Rider is replaced by a ${replacement.typeId} at (${replacement.x},${replacement.y})`);
+          if (replacement) log.push(`Hound and Hunter: ${civ.id}'s fallen Wolf Rider is replaced by a ${describeUnit(replacement)} at (${replacement.x},${replacement.y})`);
         }
         // Halfellow "Undaunted": same shape, this time for the attacker's
         // own Pony Patrol dying to a counter.
         if (unit.typeId === "pony_patrol" && civ.unlockedMechanics && civ.unlockedMechanics.has("undaunted")) {
           const replacement = window.GameEngine.combat.maybeSpawnPonyReplacement(civ, unit.x, unit.y, map);
-          if (replacement) log.push(`Undaunted: ${civ.id}'s fallen Pony Patrol is replaced by a ${replacement.typeId} at (${replacement.x},${replacement.y})`);
+          if (replacement) log.push(`Undaunted: ${civ.id}'s fallen Pony Patrol is replaced by a ${describeUnit(replacement)} at (${replacement.x},${replacement.y})`);
         }
         otherCivRemoveDeadUnit(civs, unit);
       }
@@ -7406,7 +8985,7 @@ window.GameEngine = window.GameEngine || {};
 
       unit.usedThisTurn = true;
       unit.currentMission = unit.hp > 0
-        ? `Attacking an enemy ${bestTarget.typeId} at (${bestTarget.x},${bestTarget.y})`
+        ? `Attacking an enemy ${describeUnit(bestTarget)} at (${bestTarget.x},${bestTarget.y})`
         : "Fallen in battle";
       return true;
     }
@@ -7480,15 +9059,21 @@ window.GameEngine = window.GameEngine || {};
 
     if (bestCity && bestCityScore >= bestStructScore) {
       window.GameEngine.quips.maybeQuip(unit, civ, "attack", gameState);
+    window.SfxSystem.playAction(civ.raceId, unit.typeId, "attack", unit.x, unit.y);
       const result = window.GameEngine.combat.attackCity(unit, bestCity.city, civ, bestCity.civ, gameState);
       window.GameEngine.combat.recordCombatEvent({
         ax: unit.x, ay: unit.y, atkUnit: unit,
         dx: bestCity.city.x, dy: bestCity.city.y, defUnit: null,
       });
+      markCombatEngaged(civ); // attacker only -- no defending unit is engaged here
       // Hidden: attacking reveals the attacker, regardless of target type.
+      // "Ambush!" floating text (2026-07-22, user-directed): checked before
+      // the reveal clears the condition.
+      const wasHiddenForCityAttack = !!unit.conditions?.hidden;
       window.GameEngine.combat.revealHidden(unit, currentTurnNumber);
+      if (wasHiddenForCityAttack) window.GameEngine.floatingText.spawnFloatingText(unit, "Ambush!", "warning");
       if (result.counterDamage) {
-        log.push(`Rouse the People: ${bestCity.civ.id}'s city struck back at ${civ.id}'s ${unit.typeId} for ${result.counterDamage}`);
+        log.push(`Rouse the People: ${bestCity.civ.id}'s city struck back at ${civ.id}'s ${describeUnit(unit)} for ${result.counterDamage}`);
       }
       if (result.militiaSpawned) {
         log.push(`Rouse the People: ${bestCity.civ.id} raised a Militia to defend at (${result.militiaSpawned.x},${result.militiaSpawned.y})`);
@@ -7508,17 +9093,17 @@ window.GameEngine = window.GameEngine || {};
           if (razeSpawn) log.push(`Rouse the People: ${bestCity.civ.id} raised a Militia from the ashes at (${razeSpawn.x},${razeSpawn.y})`);
         }
         window.GameEngine.cities.destroyCity(gameState, bestCity.civ, bestCity.city);
-        log.push(`Siege: ${civ.id}'s ${unit.typeId} razed ${bestCity.civ.id}'s city to the ground!`);
+        log.push(`Siege: ${civ.id}'s ${describeUnit(unit)} razed ${bestCity.civ.id}'s city to the ground!`);
         if (bestCity.civ.hasFoundedCity && bestCity.civ.cities.length === 0 && !bestCity.civ.eliminated) {
           window.GameEngine.turns.eliminateCiv(gameState, bestCity.civ);
           log.push(`${bestCity.civ.id} has been eliminated!`);
         }
         unit.currentMission = `Razed ${bestCity.civ.id}'s city to the ground`;
       } else if (result.won) {
-        log.push(`Siege: ${civ.id}'s ${unit.typeId} breached ${bestCity.civ.id}'s city, knocking it to level ${Math.floor(bestCity.city.population)}`);
+        log.push(`Siege: ${civ.id}'s ${describeUnit(unit)} breached ${bestCity.civ.id}'s city, knocking it to level ${Math.floor(bestCity.city.population)}`);
         unit.currentMission = `Besieging ${bestCity.civ.id}'s city at (${bestCity.city.x},${bestCity.city.y})`;
       } else {
-        log.push(`Siege: ${civ.id}'s ${unit.typeId} failed to breach ${bestCity.civ.id}'s city (${Math.round(bestCityWinProb * 100)}% odds)`);
+        log.push(`Siege: ${civ.id}'s ${describeUnit(unit)} failed to breach ${bestCity.civ.id}'s city (${Math.round(bestCityWinProb * 100)}% odds)`);
         unit.currentMission = `Besieging ${bestCity.civ.id}'s city at (${bestCity.city.x},${bestCity.city.y})`;
       }
       unit.usedThisTurn = true;
@@ -7539,30 +9124,36 @@ window.GameEngine = window.GameEngine || {};
         // Wolf Rider death, this time slain by a city's own counterattack.
         if (unit.typeId === "wolf_rider" && civ.unlockedMechanics && civ.unlockedMechanics.has("hound_and_hunter")) {
           const replacement = window.GameEngine.combat.maybeSpawnHoundAndHunter(civ, unit.x, unit.y, map);
-          if (replacement) log.push(`Hound and Hunter: ${civ.id}'s fallen Wolf Rider is replaced by a ${replacement.typeId} at (${replacement.x},${replacement.y})`);
+          if (replacement) log.push(`Hound and Hunter: ${civ.id}'s fallen Wolf Rider is replaced by a ${describeUnit(replacement)} at (${replacement.x},${replacement.y})`);
         }
         // Halfellow "Undaunted": same replacement chance as any other Pony
         // Patrol death, this time slain by a city's own counterattack.
         if (unit.typeId === "pony_patrol" && civ.unlockedMechanics && civ.unlockedMechanics.has("undaunted")) {
           const replacement = window.GameEngine.combat.maybeSpawnPonyReplacement(civ, unit.x, unit.y, map);
-          if (replacement) log.push(`Undaunted: ${civ.id}'s fallen Pony Patrol is replaced by a ${replacement.typeId} at (${replacement.x},${replacement.y})`);
+          if (replacement) log.push(`Undaunted: ${civ.id}'s fallen Pony Patrol is replaced by a ${describeUnit(replacement)} at (${replacement.x},${replacement.y})`);
         }
         civ.units = civ.units.filter((u) => u !== unit);
-        log.push(`Rouse the People: ${civ.id}'s ${unit.typeId} was slain by ${bestCity.civ.id}'s city`);
+        log.push(`Rouse the People: ${civ.id}'s ${describeUnit(unit)} was slain by ${bestCity.civ.id}'s city`);
       }
       return true;
     }
     if (bestStruct) {
       window.GameEngine.quips.maybeQuip(unit, civ, "attack", gameState);
+    window.SfxSystem.playAction(civ.raceId, unit.typeId, "attack", unit.x, unit.y);
       const res = window.GameEngine.combat.attackStructure(unit, bestStruct.s.record, civ, bestStruct.s.civ, gameState);
       window.GameEngine.combat.recordCombatEvent({
         ax: unit.x, ay: unit.y, atkUnit: unit,
         dx: bestStruct.x, dy: bestStruct.y, defUnit: null,
       });
+      markCombatEngaged(civ); // attacker only -- no defending unit is engaged here
       // Hidden: attacking reveals the attacker, regardless of target type.
+      // "Ambush!" floating text (2026-07-22, user-directed): checked before
+      // the reveal clears the condition.
+      const wasHiddenForStructAttack = !!unit.conditions?.hidden;
       window.GameEngine.combat.revealHidden(unit, currentTurnNumber);
+      if (wasHiddenForStructAttack) window.GameEngine.floatingText.spawnFloatingText(unit, "Ambush!", "warning");
       if (res.counterDamage) {
-        log.push(`Structure counter: ${bestStruct.s.civ.id}'s ${bestStruct.s.record.id} struck back at ${civ.id}'s ${unit.typeId} for ${res.counterDamage}`);
+        log.push(`Structure counter: ${bestStruct.s.civ.id}'s ${bestStruct.s.record.id} struck back at ${civ.id}'s ${describeUnit(unit)} for ${res.counterDamage}`);
       }
       if (res.militiaSpawned) {
         log.push(`Rouse the People: ${bestStruct.s.civ.id} raised a Militia to defend at (${res.militiaSpawned.x},${res.militiaSpawned.y})`);
@@ -7584,10 +9175,10 @@ window.GameEngine = window.GameEngine || {};
           if (razeSpawn) log.push(`Rouse the People: ${bestStruct.s.civ.id} raised a Militia from the wreckage at (${razeSpawn.x},${razeSpawn.y})`);
         }
         window.GameEngine.cities.destroyStructure(gameState, bestStruct.x, bestStruct.y);
-        log.push(`Raze: ${civ.id}'s ${unit.typeId} destroyed ${bestStruct.s.civ.id}'s ${bestStruct.s.record.id}`);
+        log.push(`Raze: ${civ.id}'s ${describeUnit(unit)} destroyed ${bestStruct.s.civ.id}'s ${bestStruct.s.record.id}`);
         unit.currentMission = `Destroyed ${bestStruct.s.civ.id}'s ${bestStruct.s.record.id}`;
       } else {
-        log.push(`Raid: ${civ.id}'s ${unit.typeId} damaged ${bestStruct.s.record.id} (${Math.max(0, bestStruct.s.record.hp)}/${bestStruct.s.record.maxHp})`);
+        log.push(`Raid: ${civ.id}'s ${describeUnit(unit)} damaged ${bestStruct.s.record.id} (${Math.max(0, bestStruct.s.record.hp)}/${bestStruct.s.record.maxHp})`);
         unit.currentMission = `Raiding ${bestStruct.s.civ.id}'s ${bestStruct.s.record.id} at (${bestStruct.x},${bestStruct.y})`;
       }
       unit.usedThisTurn = true;
@@ -7604,45 +9195,22 @@ window.GameEngine = window.GameEngine || {};
         // by a structure's own counterattack.
         if (unit.typeId === "wolf_rider" && civ.unlockedMechanics && civ.unlockedMechanics.has("hound_and_hunter")) {
           const replacement = window.GameEngine.combat.maybeSpawnHoundAndHunter(civ, unit.x, unit.y, map);
-          if (replacement) log.push(`Hound and Hunter: ${civ.id}'s fallen Wolf Rider is replaced by a ${replacement.typeId} at (${replacement.x},${replacement.y})`);
+          if (replacement) log.push(`Hound and Hunter: ${civ.id}'s fallen Wolf Rider is replaced by a ${describeUnit(replacement)} at (${replacement.x},${replacement.y})`);
         }
         // Halfellow "Undaunted": same replacement chance, this time slain
         // by a structure's own counterattack.
         if (unit.typeId === "pony_patrol" && civ.unlockedMechanics && civ.unlockedMechanics.has("undaunted")) {
           const replacement = window.GameEngine.combat.maybeSpawnPonyReplacement(civ, unit.x, unit.y, map);
-          if (replacement) log.push(`Undaunted: ${civ.id}'s fallen Pony Patrol is replaced by a ${replacement.typeId} at (${replacement.x},${replacement.y})`);
+          if (replacement) log.push(`Undaunted: ${civ.id}'s fallen Pony Patrol is replaced by a ${describeUnit(replacement)} at (${replacement.x},${replacement.y})`);
         }
         civ.units = civ.units.filter((u) => u !== unit);
-        log.push(`Structure counter: ${civ.id}'s ${unit.typeId} was slain by ${bestStruct.s.civ.id}'s ${bestStruct.s.record.id}`);
+        log.push(`Structure counter: ${civ.id}'s ${describeUnit(unit)} was slain by ${bestStruct.s.civ.id}'s ${bestStruct.s.record.id}`);
       }
       return true;
     }
     return false;
   }
 
-  /**
-   * Veteran leveling (see combat.js's LEVELING section): which of the 4
-   * stat-bonus paths an AI-controlled unit spends a pending level-up on.
-   * There's no per-controller UI to hang a human choice off yet -- see
-   * project design notes -- so every unit currently resolves this the same
-   * way, immediately, regardless of which civ owns it.
-   *
-   * Heuristic: proportional growth, not absolute value. Every LEVEL_BONUS_
-   * VALUES entry is a small FIXED constant, so scoring by raw value alone
-   * would always crown Attack/Defense (1 point each) over Siege/First
-   * Strike (0.6-equivalent at militaryValue's own weighting) for every
-   * single unit, forever -- deterministic and uninteresting. Instead this
-   * scores each candidate as bonus/currentEffectiveValue: whichever stat is
-   * currently SMALLEST for this unit gets the biggest proportional lift,
-   * so a lopsided unit (e.g. a glass-cannon high-attack/low-defense
-   * skirmisher) tends to round out its weaker side as it levels, rather
-   * than snowballing an already-dominant stat. Siege/First Strike are only
-   * ever candidates if the unit already has some of that property (>0) --
-   * leveling refines an existing combat identity, it doesn't invent a new
-   * one from nothing (a plain melee unit investing in Siege would gain
-   * nothing until it happens to attack a structure, an unreliable payoff
-   * compared to guaranteed Attack/Defense).
-   */
   // Cold-start floors for Siege/First Strike's proportional-growth score
   // below -- NOT an eligibility gate (every unit can pick up either from
   // zero; see chooseLevelUpStat's doc comment). Chosen so a unit with NONE
@@ -7730,15 +9298,15 @@ window.GameEngine = window.GameEngine || {};
    *  is checked BEFORE granting so a unit already at MAX_UNIT_LEVEL (whose
    *  XP grant is a silent no-op, see combat.js's grantXP) doesn't get a
    *  misleading "+N XP" popup for XP it never actually received. */
-  function grantXPAndAutoLevel(unit, civ, xpAmount) {
+  /** Shared tail-end of an XP grant: applies an already-fully-computed
+   *  xpAmount (every multiplier already folded in) to `unit`, plus the
+   *  "+N XP"/"Level Up!" floating-text feedback. Split out from
+   *  grantXPAndAutoLevel so a Shadowsteed's carried rider (see below) can
+   *  receive the exact same final amount without re-running the bonus
+   *  computation a second time. */
+  function applyComputedXP(unit, civ, xpAmount) {
     const combat = window.GameEngine.combat;
     const wasMaxed = (unit.level || 0) >= combat.MAX_UNIT_LEVEL;
-    // Elf "Altar of Ages": +25% XP for a unit whose home city has the
-    // building -- see combat.js's hasAltarOfAgesBonus.
-    if (combat.hasAltarOfAgesBonus(unit, civ)) {
-      const bonus = (civ.mechanicValues && civ.mechanicValues.altar_of_ages) || 0.25;
-      xpAmount *= (1 + bonus);
-    }
     combat.grantXP(unit, xpAmount);
     if (!wasMaxed && xpAmount > 0) {
       window.GameEngine.floatingText.spawnFloatingText(unit, `+${Math.round(xpAmount)} XP`, "xp");
@@ -7749,6 +9317,98 @@ window.GameEngine = window.GameEngine || {};
       window.GameEngine.floatingText.spawnFloatingText(unit, "Level Up!", "levelup");
       pending--;
     }
+  }
+
+  function grantXPAndAutoLevel(unit, civ, xpAmount) {
+    const combat = window.GameEngine.combat;
+    // Elf "Altar of Ages": +25% XP for a unit whose home city has the
+    // building -- see combat.js's hasAltarOfAgesBonus.
+    if (combat.hasAltarOfAgesBonus(unit, civ)) {
+      const bonus = (civ.mechanicValues && civ.mechanicValues.altar_of_ages) || 0.25;
+      xpAmount *= (1 + bonus);
+    }
+    // Halfellow "It's Like the Great Stories": +50% XP, civ-wide -- every
+    // unit, not gated to a specific city/building like Altar of Ages above.
+    if (civ.unlockedMechanics && civ.unlockedMechanics.has("great_stories")) {
+      const bonus = (civ.mechanicValues && civ.mechanicValues.great_stories) || 0.5;
+      xpAmount *= (1 + bonus);
+    }
+    // Dwarf "Runeforged Tools" (2026-07-22, user-directed, replacing its old
+    // build_speed_mult effect): +25% XP, civ-wide -- same shape as Great
+    // Stories above.
+    if (civ.unlockedMechanics && civ.unlockedMechanics.has("runeforged_tools")) {
+      const bonus = (civ.mechanicValues && civ.mechanicValues.runeforged_tools) || 0.25;
+      xpAmount *= (1 + bonus);
+    }
+    applyComputedXP(unit, civ, xpAmount);
+    // Elf "Shadowsteed" + rider (2026-07-22, user-directed): a carried
+    // passenger earns the exact same XP the Shadowsteed itself just did --
+    // literally the same already-bonus-adjusted amount (the user's own
+    // wording is "the same amount"), not independently recomputed through
+    // the bonus pipeline a second time.
+    if (unit.typeId === "shadowsteed" && unit.carries) {
+      applyComputedXP(unit.carries, civ, xpAmount);
+    }
+  }
+
+  // Elf "Treetop Snipers": a wall's own attack profile, separate from any
+  // real unit's stats. Kept local to this mechanic rather than added to the
+  // shared wall_section building data (js/data/buildings.js), since every
+  // race's wall uses that same universal definition but only an Elf civ
+  // with this tech can ever make one actually fire.
+  const TREETOP_SNIPER_RANGE = 2;
+  const TREETOP_SNIPER_ATTACK = 1;
+  const TREETOP_SNIPER_FIRE_CHANCE = 0.5;
+  const TREETOP_SNIPER_ATTACK_CHARS = ["➵", "➳"];
+
+  /** Elf "Treetop Snipers" (2026-07-22, user-directed): each of this civ's
+   *  wall segments independently rolls a 50% chance, once per civ-turn, to
+   *  take a single potshot at the nearest enemy unit within range 2 -- a
+   *  passive structure ability with no unit or turn-order of its own, so
+   *  it's ticked here directly from turns.js's beginCivTurn (see the call
+   *  site there) rather than through the normal per-unit dispatch cascade.
+   *  Damage uses the same mitigatedDamage formula (and the target's full
+   *  effective defense, conditions included) every other attack in the game
+   *  uses -- only the attacker's own flat "attack 1" is special-cased here,
+   *  since a wall has no unit object of its own to read a real attack stat
+   *  from. */
+  function tickTreetopSnipers(gameState, civ) {
+    if (!civ.unlockedMechanics || !civ.unlockedMechanics.has("treetop_snipers")) return;
+    const { civs } = gameState;
+    const log = [];
+    for (const city of civ.cities) {
+      for (const s of city.structures) {
+        if (!window.GameData.getBuilding(s.id).isWall) continue;
+        // Halfellow "Unlock the Gate": suppressed the same as every other
+        // special wall defense while active.
+        if (window.GameEngine.combat.isWallDefenseSuppressed(s, gameState.turnNumber)) continue;
+        if (Math.random() >= TREETOP_SNIPER_FIRE_CHANCE) continue;
+        let target = null, targetCiv = null, bestDist = Infinity;
+        for (const otherCiv of Object.values(civs)) {
+          if (otherCiv.id === civ.id || otherCiv.eliminated) continue;
+          for (const eu of otherCiv.units) {
+            if (eu.conditions?.hidden) continue;
+            const dist = window.GameEngine.influence.chebyshev(s.x, s.y, eu.x, eu.y);
+            if (dist > TREETOP_SNIPER_RANGE) continue;
+            if (dist < bestDist) { bestDist = dist; target = eu; targetCiv = otherCiv; }
+          }
+        }
+        if (!target) continue;
+        const dmg = window.GameEngine.combat.mitigatedDamage(
+          TREETOP_SNIPER_ATTACK, window.GameEngine.combat.effectiveDefense(target, targetCiv, {}));
+        target.hp = Math.max(0, target.hp - dmg);
+        window.GameEngine.combat.recordCombatEvent({
+          ax: s.x, ay: s.y, atkUnit: { typeId: "wall_section" }, dx: target.x, dy: target.y, defUnit: target,
+          attackChars: TREETOP_SNIPER_ATTACK_CHARS,
+        });
+        log.push(`Treetop Snipers: ${civ.id}'s wall at (${s.x},${s.y}) shoots ${targetCiv.id}'s ${describeUnit(target)} for ${dmg}`);
+        if (target.hp <= 0) {
+          log.push(`Treetop Snipers: ${targetCiv.id}'s ${describeUnit(target)} is slain by ${civ.id}'s wall at (${s.x},${s.y})`);
+          otherCivRemoveDeadUnit(civs, target);
+        }
+      }
+    }
+    if (log.length) appendAIActionLog(gameState, civ.id, log);
   }
 
   function otherCivRemoveDeadUnit(civs, deadUnit) {
@@ -7780,7 +9440,7 @@ window.GameEngine = window.GameEngine || {};
     cargo.carriedBy = null;
     const terrain = window.GameData.TERRAIN[gameState.map.tiles[y * gameState.map.width + x].terrain];
     if (terrain.isWater || terrain.moveCostLand === window.GameData.IMPASSABLE) {
-      log.push(`Carry: ${cargo.civId}'s ${cargo.typeId} had nowhere to land and was lost along with its carrier`);
+      log.push(`Carry: ${cargo.civId}'s ${describeUnit(cargo)} had nowhere to land and was lost along with its carrier`);
       otherCivRemoveDeadUnit(gameState.civs, cargo);
     } else {
       cargo.x = x;
@@ -7889,40 +9549,61 @@ window.GameEngine = window.GameEngine || {};
     if (Math.random() < curiosity) civ.learnedAntiTitanTactics = true;
   }
 
-  function maybeRaiseDead(victorCiv, victorUnit, defeatedUnit, civs) {
+  // Siege engines have no body worth reanimating, and Shadowsteed/Runeforged
+  // Titan are both too mechanically/thematically broken to hand over intact
+  // (2026-07-22, user-directed exclusion list).
+  const ZOMBIE_EXEMPT_TYPES = new Set(["catapult", "trebuchet", "battering_ram", "shadowsteed", "runeforged_titan"]);
+
+  /** Undead "Raise Dead" (2026-07-22 rework): instead of removing the fallen
+   *  unit and spawning a brand-new one, the SAME unit object is dragged back
+   *  up, transferred wholesale from defeatedCiv's roster to victorCiv's, and
+   *  left permanently weakened via a persistent "zombie" condition (see
+   *  combat.js's effectiveAttack/effectiveDefense/effectiveFirstStrikePct/
+   *  grantXP for the -50% stats / 0% First Strike / no-more-XP effects).
+   *  Level and XP are reset to a fresh recruit's baseline since the debuffed
+   *  unit no longer earns any more anyway. Returns true if the zombie was
+   *  successfully applied -- the caller must then skip its own "this unit
+   *  really died" bookkeeping (cargo drop, Hound and Hunter/Undaunted
+   *  replacement, roster removal) since the unit is still standing on its
+   *  own tile, just under new management. */
+  function maybeApplyZombie(victorCiv, victorUnit, defeatedUnit, civs) {
     const race = window.GameData.getRace(victorCiv.raceId);
-    if (!race.raiseDeadChance) return;
-    if (defeatedUnit.wasRaised) return; // no re-raising chains
-    if (Math.random() > race.raiseDeadChance) return;
+    if (!race.raiseDeadChance) return false;
+    if (ZOMBIE_EXEMPT_TYPES.has(defeatedUnit.typeId)) return false;
+    if (window.GameEngine.combat.hasCondition(defeatedUnit, "zombie")) return false; // no re-raising chains
+    if (Math.random() > race.raiseDeadChance) return false;
     // Orc "Honor the Dead": the defeated unit's own civ may resist being raised
-    // (flavor: their ancestral rites hold the body). Independent roll on top of
-    // the victor's raise chance -- e.g. 50% resistance halves the effective rate.
+    // (flavor: their ancestral rites hold the body) -- any existing ability
+    // that raises dead instead resists application of this condition, per
+    // user's own framing. Independent roll on top of the victor's raise
+    // chance -- e.g. 50% resistance halves the effective rate.
     const defeatedCiv = civs[defeatedUnit.civId];
-    if (defeatedCiv && defeatedCiv.raiseDeadResistance && Math.random() < defeatedCiv.raiseDeadResistance) return;
-    // Necropolis (undead wonder) raises stronger dead
-    let powerRatio = race.raiseDeadPowerRatio;
+    if (defeatedCiv && defeatedCiv.raiseDeadResistance && Math.random() < defeatedCiv.raiseDeadResistance) return false;
+
+    // Necropolis (undead wonder) raises stronger dead -- same bonus as the
+    // old mechanic, now applied as the zombie condition's stat multiplier.
+    let statMult = race.raiseDeadPowerRatio;
     if (victorCiv.cities.some((c) => window.GameEngine.cities.cityHasStructure(c, "necropolis"))) {
-      powerRatio += window.GameData.getBuilding("necropolis").raiseDeadPowerBonus || 0;
+      statMult += window.GameData.getBuilding("necropolis").raiseDeadPowerBonus || 0;
     }
-    const defeatedBaseUnit = window.GameData.getUnit(defeatedUnit.typeId);
-    const raisedAttack = Math.max(1, Math.round(defeatedBaseUnit.attack * powerRatio));
-    const raised = { typeId: defeatedUnit.typeId, civId: victorCiv.id, x: defeatedUnit.x, y: defeatedUnit.y, wasRaised: true, isCivilian: false };
-    // HP uses the raised unit's actual fighting stats: boosted attack (above)
-    // plus its unmodified base defense -- defense isn't scaled by powerRatio
-    // (only attackOverride is), so HP shouldn't pretend it is either.
-    raised.maxHp = window.GameData.unitMaxHP(raisedAttack, defeatedBaseUnit.defense || 0);
-    raised.hp = raised.maxHp;
-    raised.attackOverride = raisedAttack;
-    // Bypasses initUnitHP (raised units get a custom power-ratio HP/attack
-    // calc above, not the normal formula), so gender/name are stamped here
-    // directly -- same convention, keyed to victorCiv's race since that's
-    // whose sprite art the unit renders with once raised. nameSpecial types
-    // (e.g. a raised Battering Ram or Galley -- edge case, but possible if
-    // one dies in combat) get a proper-noun designation and no gender, same
-    // as initUnitHP -- see units.js's doc comment on that flag.
-    raised.gender = defeatedBaseUnit.nameSpecial ? null : (Math.random() < 0.5 ? "male" : "female");
-    raised.name = window.GameData.getRandomUnitName(victorCiv.raceId, raised.typeId, raised.gender);
-    victorCiv.units.push(raised);
+
+    if (defeatedCiv) defeatedCiv.units = defeatedCiv.units.filter((u) => u !== defeatedUnit);
+    defeatedUnit.civId = victorCiv.id;
+    defeatedUnit.isCivilian = false;
+    window.GameEngine.combat.setCondition(defeatedUnit, "zombie", { statMult });
+    defeatedUnit.level = 1;
+    defeatedUnit.xp = 0;
+    defeatedUnit.levelBonuses = {};
+    // HP: a fresh corpse rises at full (reduced) health -- unitMaxHP takes
+    // the same reduced attack/defense the condition applies in combat, so a
+    // weaker body has less HP too, not just less bite.
+    const baseUnit = window.GameData.getUnit(defeatedUnit.typeId);
+    const zAttack = Math.max(1, Math.round(baseUnit.attack * statMult));
+    const zDefense = Math.max(0, Math.round((baseUnit.defense || 0) * statMult));
+    defeatedUnit.maxHp = window.GameData.unitMaxHP(zAttack, zDefense, defeatedUnit.typeId);
+    defeatedUnit.hp = defeatedUnit.maxHp;
+    victorCiv.units.push(defeatedUnit);
+    return true;
   }
 
   window.GameEngine.ai = {
@@ -7961,6 +9642,7 @@ window.GameEngine = window.GameEngine || {};
     unitBuildTurns,
     maybeHalfellowRegroup,
     maybeSeekInjuredCompanion,
+    maybeWaitForCompanionCarry,
     operateCompanionCarry,
     maybeHalfellowStealthPlay,
     maybeHoldPillagePosition,
@@ -7978,12 +9660,18 @@ window.GameEngine = window.GameEngine || {};
     seekOverseasResource,
     seekOverseasInvasion,
     tryDeepGateOverseas,
+    findOverseasInvasionTeleportTarget,
+    maybeRootsInvasionFerry,
+    findInvasionStagingTile,
+    maybeInvasionAmbushWait,
     appendAIActionLog,
+    tickTreetopSnipers,
     operateGalley,
     exploreWater,
     exploreWith,
     findFarUnseenTile,
     findNearestUnseenTile,
     civNeedsTitanScouting,
+    recentCityDelta,
   };
 })();

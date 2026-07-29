@@ -2,9 +2,7 @@
  * TECH TREE DATA
  * --------------
  * Shared shape: every race's tree is 5 LAYERS deep across 3 columns —
- * Civic, Building, Military (the former 4th "Mechanics" column has been
- * folded into Civic across every race -- ability/terrain-flavor nodes now
- * just carry category: "civic"). Layers are the unit of "power": cost
+ * Civic, Building, Military. Layers are the unit of "power": cost
  * scales ~1.4x per layer, and a layer can hold more than one node (a
  * Building and a Civic tech may share a layer; Military may fork into two
  * choices at a layer). The one hard rule: a race's 4 buildings never share
@@ -48,10 +46,6 @@
  *   fill_rate_mult          { value }        multiplies a city's per-turn tile fill-in rate (civ-wide)
  *   universal_range_grant   { value }        floor on every unit's effective Ranged value (civ-wide,
  *                                            Math.max against the unit's own range -- never lowers it)
- *   build_speed_mult        { value }        multiplies civ.buildSpeedMult (default 1) -- divides
- *                                            unitBuildTurns's result and speeds up progressBuildQueue's
- *                                            per-turn progress, for BOTH units and buildings (e.g. Dwarf
- *                                            "Runeforged Tools")
  *
  * `costBreakdown` on race-tree nodes is a PROPOSED multi-resource cost
  * (lore/coin/harvest) for review. The research engine currently only
@@ -132,9 +126,9 @@ window.GameData.TECHS = {
   homestead: {
     id: "homestead", label: "Homestead", category: "civic", layer: 1, cost: 20,
     prereqs: [], raceOnly: "human",
-    description: "+1 harvest from Plains.",
+    description: "+0.5 harvest from Plains.",
     costBreakdown: { lore: 14, coin: 6 },
-    effects: [{ type: "unlock_tile_bonus", terrain: "plains", bonus: { harvest: 1 } }],
+    effects: [{ type: "unlock_tile_bonus", terrain: "plains", bonus: { harvest: 0.5 } }],
   },
   // --- Layer 2 ---
   marketcraft: {
@@ -277,7 +271,7 @@ window.GameData.TECHS = {
   dungeon_delve: {
     id: "dungeon_delve", label: "Dungeon Delve", category: "civic", layer: 4, cost: 40,
     prereqs: ["wizardry"], raceOnly: "human",
-    description: "A Wizard stationed 2+ turns on a Ruin gradually claims the 1-tile radius around itself, exactly like a city fills in its own tiles (counts toward territorial victory like any owned tile), and yields +3 lore/+3 coin per turn. Instantly loses everything it was claiming/generating if the Wizard moves off the Ruin or dies.",
+    description: "A Wizard on a Ruin may start Delving it: a full-turn action that continues automatically (no move/attack) until cancelled, gradually claiming the 1-tile radius around itself just like a city fills in its own tiles (counts toward territorial victory like any owned tile), and yielding +3 lore/+3 coin per turn. Instantly loses everything it was claiming/generating if cancelled, the Wizard moves off the Ruin, or it dies.",
     costBreakdown: { lore: 26, coin: 14 },
     effects: [{ type: "unlock_mechanic", mechanic: "dungeon_delve" }],
   },
@@ -341,7 +335,7 @@ window.GameData.TECHS = {
   fireball: {
     id: "fireball", label: "Fireball!", category: "military", layer: 5, cost: 65,
     prereqs: ["battle_mage"], raceOnly: "human",
-    description: "Wizard gains Siege 75% and higher attack; damage also splashes to every enemy unit and structure adjacent to the target.",
+    description: "Wizard gains Siege 75% and higher attack; damage also splashes to every enemy unit and structure adjacent to the target. Every hit -- the primary target and every splash victim, including units, buildings, and walls (not cities themselves) -- also catches fire: the Burning condition deals 1 damage at the start of the burning unit's turn for 3 turns, unless it's currently on Coast, Ocean, or a river tile.",
     costBreakdown: { lore: 65, coin: 30 },
     effects: [
       { type: "unit_stat_upgrade", unit: "wizard", changes: { siegePct: 0.75, attack: 3 } },
@@ -394,16 +388,16 @@ window.GameData.TECHS = {
   elf_nature_provides: {
     id: "elf_nature_provides", label: "Nature Provides", category: "civic", layer: 1, cost: 18,
     prereqs: [], raceOnly: "elf",
-    description: "+1 harvest from Forest.",
+    description: "+0.5 harvest from Forest.",
     costBreakdown: { lore: 12, coin: 6 },
-    effects: [{ type: "unlock_tile_bonus", terrain: "forest", bonus: { harvest: 1 } }],
+    effects: [{ type: "unlock_tile_bonus", terrain: "forest", bonus: { harvest: 0.5 } }],
   },
   elf_murmuring_of_leaves: {
     id: "elf_murmuring_of_leaves", label: "The Murmuring of Leaves", category: "civic", layer: 1, cost: 16,
     prereqs: [], raceOnly: "elf",
-    description: "+1 lore from Forest.",
+    description: "+0.5 lore from Forest.",
     costBreakdown: { lore: 16 },
-    effects: [{ type: "unlock_tile_bonus", terrain: "forest", bonus: { lore: 1 } }],
+    effects: [{ type: "unlock_tile_bonus", terrain: "forest", bonus: { lore: 0.5 } }],
   },
   elf_architecture_of_light_and_air: {
     id: "elf_architecture_of_light_and_air", label: "Architecture of Light and Air", category: "civic", layer: 1, cost: 20,
@@ -415,9 +409,9 @@ window.GameData.TECHS = {
   elf_whispering_waters: {
     id: "elf_whispering_waters", label: "Whispering Waters", category: "civic", layer: 2, cost: 20,
     prereqs: [], raceOnly: "elf",
-    description: "+1 lore from river.",
+    description: "+0.75 lore from river.",
     costBreakdown: { lore: 14, coin: 6 },
-    effects: [{ type: "unlock_feature_bonus", feature: "river", bonus: { lore: 1 } }],
+    effects: [{ type: "unlock_feature_bonus", feature: "river", bonus: { lore: 0.75 } }],
   },
   elf_reverie_of_sunset: {
     id: "elf_reverie_of_sunset", label: "Reverie of Sunset", category: "civic", layer: 2, cost: 28,
@@ -443,9 +437,9 @@ window.GameData.TECHS = {
   elf_gems_of_starlight: {
     id: "elf_gems_of_starlight", label: "Gems of Starlight", category: "civic", layer: 3, cost: 30,
     prereqs: [], raceOnly: "elf",
-    description: "+1 coin from Mountains.",
+    description: "+0.75 coin from Mountains.",
     costBreakdown: { coin: 20, lore: 10 },
-    effects: [{ type: "unlock_tile_bonus", terrain: "mountains", bonus: { coin: 1 } }],
+    effects: [{ type: "unlock_tile_bonus", terrain: "mountains", bonus: { coin: 0.75 } }],
   },
   elf_wind_from_distant_treetops: {
     id: "elf_wind_from_distant_treetops", label: "Wind From Distant Treetops", category: "civic", layer: 4, cost: 50,
@@ -476,6 +470,13 @@ window.GameData.TECHS = {
     description: "Unlocks the Treetop Watch. The city this building is adjacent to gains +2 vision radius.",
     costBreakdown: { coin: 12, lore: 8 },
     effects: [{ type: "unlock_building", building: "treetop_watch" }],
+  },
+  elf_treetop_snipers: {
+    id: "elf_treetop_snipers", label: "Treetop Snipers", category: "building", layer: 2, cost: 40,
+    prereqs: ["elf_aelderwatch", "elf_hunters_soul"], raceOnly: "elf",
+    description: "If an enemy unit is within range, there is a 50% chance each turn that an elf wall will attack that enemy unit (range 2, attack 1).",
+    costBreakdown: { coin: 24, lore: 16 },
+    effects: [{ type: "unlock_mechanic", mechanic: "treetop_snipers" }],
   },
   elf_silverleaf_atelier: {
     id: "elf_silverleaf_atelier", label: "Silverleaf Atelier", category: "building", layer: 3, cost: 35,
@@ -528,7 +529,7 @@ window.GameData.TECHS = {
   elf_whirlwind_strike: {
     id: "elf_whirlwind_strike", label: "Whirlwind Strike", category: "military", layer: 2, cost: 45,
     prereqs: ["elf_wind_and_flashing_steel"], raceOnly: "elf",
-    description: "As a normal action, the Blade Dancer attacks every enemy unit within 1 tile of itself, each hit dealing 50% damage (as if attacking normally). Each target may counterattack, at 25% effectiveness.",
+    description: "As a normal action, the Blade Dancer attacks every enemy unit within 1 tile of itself, each hit dealing 75% damage (as if attacking normally). Each target may counterattack, at 37.5% effectiveness.",
     costBreakdown: { lore: 30, coin: 15 },
     effects: [{ type: "unlock_mechanic", mechanic: "whirlwind_strike" }],
   },
@@ -538,7 +539,7 @@ window.GameData.TECHS = {
   elf_blade_storm: {
     id: "elf_blade_storm", label: "Blade Storm", category: "military", layer: 3, cost: 55,
     prereqs: ["elf_whirlwind_strike"], raceOnly: "elf",
-    description: "Does not replace Whirlwind Strike. As a normal action, the Blade Dancer attacks every enemy unit within 2 tiles of itself, each hit dealing 33% damage (as if attacking normally). Only targets adjacent to the Blade Dancer may counterattack, at 16% effectiveness.",
+    description: "Does not replace Whirlwind Strike. As a normal action, the Blade Dancer attacks every enemy unit within 2 tiles of itself, each hit dealing 50% damage (as if attacking normally). Only targets adjacent to the Blade Dancer may counterattack, at 25% effectiveness.",
     costBreakdown: { lore: 35, coin: 20 },
     effects: [{ type: "unlock_mechanic", mechanic: "blade_storm" }],
   },
@@ -600,7 +601,7 @@ window.GameData.TECHS = {
   elf_natures_grace: {
     id: "elf_natures_grace", label: "Nature's Grace", category: "military", layer: 3, cost: 36,
     prereqs: ["elf_druidism", "elf_nature_provides"], raceOnly: "elf",
-    description: "The Druid may use this action (costs its whole turn, no exhaustion afterward) to restore between 10% and 30% (random) health to an adjacent ally unit.",
+    description: "The Druid may use this action (costs its whole turn, no exhaustion afterward) to restore between 10% and 30% (random) health to an ally unit within its own range (not just adjacent).",
     costBreakdown: { lore: 24, harvest: 12 },
     effects: [{ type: "unlock_mechanic", mechanic: "natures_grace" }],
   },
@@ -635,7 +636,7 @@ window.GameData.TECHS = {
   elf_roots_of_the_world: {
     id: "elf_roots_of_the_world", label: "Roots of the World", category: "military", layer: 3, cost: 45,
     prereqs: ["elf_druidism"], raceOnly: "elf",
-    description: "A Druid may instantly move to any unoccupied tile the civ has ever explored (not just currently visible). This costs the Druid's entire turn (no move/attack after), and it cannot act again until healed to 100% HP.",
+    description: "A Druid may instantly move itself, or an adjacent ally, to any unoccupied tile the civ has ever explored (not just currently visible). This costs the Druid's entire turn (no move/attack after), and it cannot act again until healed to 100% HP.",
     costBreakdown: { lore: 45 },
     effects: [{ type: "unlock_mechanic", mechanic: "roots_of_the_world" }],
   },
@@ -656,7 +657,7 @@ window.GameData.TECHS = {
   elf_shadowsteed: {
     id: "elf_shadowsteed", label: "Shadowsteed", category: "military", layer: 5, cost: 95,
     prereqs: ["elf_air_beneath_eyes_above", "elf_quick_as_a_shadow"], raceOnly: "elf",
-    description: "The Druid may summon a Shadowsteed, a flying horse made of shadow, the same way it summons a Raptor (spends resources and several turns \"building\" it, immobile meanwhile). The Shadowsteed has Flying, Carry, First Strike 5%, Atk 1/Def 1. It cannot carry an Awakened Oak or a Raptor. While carrying another unit, it takes on that unit's range, attack, defense, siege, and First Strike (keeping its own First Strike if higher), then adds +2 attack and +1 defense of its own on top. Cities cannot build Shadowsteed units.",
+    description: "The Druid may summon a Shadowsteed, a flying horse made of shadow, the same way it summons a Raptor (spends resources and several turns \"building\" it, immobile meanwhile). The Shadowsteed has Flying, Carry, First Strike 5%, Atk 1/Def 1. It cannot carry an Awakened Oak, a Raptor, or a Galley. While carrying another unit, it takes on that unit's range, attack, defense, siege, and First Strike (keeping its own First Strike if higher), then adds +3 attack, +2 defense, and +2% First Strike of its own on top. Cities cannot build Shadowsteed units.",
     costBreakdown: { lore: 55, coin: 25, harvest: 15 },
     effects: [
       { type: "unlock_unit", unit: "shadowsteed" },
@@ -669,6 +670,17 @@ window.GameData.TECHS = {
     description: "Unlocks the Awakened Oak, a living, walking tree -- massive, rare, very tough, high attack and defense, high siege. The elves' own siege unit: less singular and less rare than a Dwarf Titan, meant to be fielded in numbers.",
     costBreakdown: { harvest: 30, lore: 40, coin: 20 },
     effects: [{ type: "unlock_unit", unit: "awakened_oak" }],
+  },
+  elf_upon_the_wind: {
+    id: "elf_upon_the_wind", label: "Upon the Wind", category: "military", layer: 5, cost: 90,
+    prereqs: ["elf_hunters_soul", "elf_vision_beyond_sight"], raceOnly: "elf",
+    description: "All Ranger and Blade Dancer units gain +2 attack. Ranger units gain +1 range while being carried (by a Shadowsteed).",
+    costBreakdown: { lore: 55, coin: 20, harvest: 15 },
+    effects: [
+      { type: "unit_stat_upgrade", unit: "ranger", changes: { attack: 2 } },
+      { type: "unit_stat_upgrade", unit: "blade_dancer", changes: { attack: 2 } },
+      { type: "unlock_mechanic", mechanic: "upon_the_wind" },
+    ],
   },
 
   // =========================================================================
@@ -694,9 +706,9 @@ window.GameData.TECHS = {
   dwarf_wealth_of_the_earth: {
     id: "dwarf_wealth_of_the_earth", label: "Wealth of the Earth", category: "civic", layer: 1, cost: 16,
     prereqs: [], raceOnly: "dwarf",
-    description: "+1 coin from Mountains.",
+    description: "+0.75 coin from Mountains.",
     costBreakdown: { coin: 10, lore: 6 },
-    effects: [{ type: "unlock_tile_bonus", terrain: "mountains", bonus: { coin: 1 } }],
+    effects: [{ type: "unlock_tile_bonus", terrain: "mountains", bonus: { coin: 0.75 } }],
   },
   dwarf_imported_goods: {
     id: "dwarf_imported_goods", label: "Imported Goods", category: "civic", layer: 1, cost: 28,
@@ -708,16 +720,16 @@ window.GameData.TECHS = {
   dwarf_quarry: {
     id: "dwarf_quarry", label: "Quarry", category: "civic", layer: 2, cost: 20,
     prereqs: ["dwarf_stonecunning"], raceOnly: "dwarf",
-    description: "+1 coin from Hills.",
+    description: "+0.75 coin from Hills.",
     costBreakdown: { coin: 13, lore: 7 },
-    effects: [{ type: "unlock_tile_bonus", terrain: "hills", bonus: { coin: 1 } }],
+    effects: [{ type: "unlock_tile_bonus", terrain: "hills", bonus: { coin: 0.75 } }],
   },
   dwarf_deep_lore: {
     id: "dwarf_deep_lore", label: "Deep Lore", category: "civic", layer: 2, cost: 20,
     prereqs: ["dwarf_stonecunning"], raceOnly: "dwarf",
-    description: "+1 lore from Mountains.",
+    description: "+0.75 lore from Mountains.",
     costBreakdown: { lore: 12, coin: 8 },
-    effects: [{ type: "unlock_tile_bonus", terrain: "mountains", bonus: { lore: 1 } }],
+    effects: [{ type: "unlock_tile_bonus", terrain: "mountains", bonus: { lore: 0.75 } }],
   },
   dwarf_mountains_on_the_horizon: {
     id: "dwarf_mountains_on_the_horizon", label: "Mountains on the Horizon", category: "civic", layer: 2, cost: 20,
@@ -729,7 +741,7 @@ window.GameData.TECHS = {
   dwarf_prospectors_claim: {
     id: "dwarf_prospectors_claim", label: "Prospector's Claim", category: "civic", layer: 3, cost: 38,
     prereqs: [], raceOnly: "dwarf",
-    description: "Any dwarven unit stationed 2+ turns on a Gold Vein gradually claims the 1-tile radius around itself, exactly like a city fills in its own tiles (counts toward territorial victory like any owned tile), yields +3 coin/+1 lore per turn, and harvests the terrain/resource yield of every claimed tile in that radius. Instantly loses everything it was claiming/generating if the unit moves off the vein or dies.",
+    description: "Any dwarven unit on a Gold Vein or Iron Vein may start Prospecting it: a full-turn action that continues automatically (no move/attack) until cancelled, gradually claiming the 1-tile radius around itself just like a city fills in its own tiles (counts toward territorial victory like any owned tile), and harvesting the terrain/resource yield of every claimed tile in that radius. Yields +3 coin/+1 lore per turn on a Gold Vein, or +1 harvest/+3 coin/+1 lore per turn on an Iron Vein. Instantly loses everything it was claiming/generating if cancelled, the unit moves off the vein, or it dies.",
     costBreakdown: { coin: 24, lore: 14 },
     effects: [{ type: "unlock_mechanic", mechanic: "prospectors_claim" }],
   },
@@ -750,14 +762,14 @@ window.GameData.TECHS = {
   dwarf_runeforged_tools: {
     id: "dwarf_runeforged_tools", label: "Runeforged Tools", category: "civic", layer: 4, cost: 50,
     prereqs: ["dwarf_runecraft"], raceOnly: "dwarf",
-    description: "Units finish training 20% faster; buildings accumulate construction progress 20% faster.",
+    description: "Dwarf units gain an extra +25% XP whenever they earn XP.",
     costBreakdown: { coin: 32, lore: 18 },
-    effects: [{ type: "build_speed_mult", value: 1.20 }],
+    effects: [{ type: "unlock_mechanic", mechanic: "runeforged_tools", value: 0.25 }],
   },
   dwarf_the_deep_mines: {
     id: "dwarf_the_deep_mines", label: "The Deep Mines", category: "civic", layer: 5, cost: 70,
     prereqs: ["dwarf_prospectors_claim"], raceOnly: "dwarf",
-    description: "Any dwarven unit stationed 6+ turns on a Gold Vein (i.e. it already triggered Prospector's Claim at 2+ turns and stayed) increases the resources earned to +5 coin/+4 lore per turn (replacing Prospector's Claim's yield), and gains +2 defense while it remains on the Gold Vein.",
+    description: "Any dwarven unit stationed 6+ turns on a Gold Vein or Iron Vein (i.e. it already triggered Prospector's Claim at 2+ turns and stayed) increases the resources earned to +5 coin/+4 lore per turn on a Gold Vein, or +1 harvest/+6 coin/+2 lore per turn on an Iron Vein (replacing Prospector's Claim's yield either way), and gains +2 defense while it remains there.",
     costBreakdown: { coin: 44, lore: 26 },
     effects: [{ type: "unlock_mechanic", mechanic: "deep_mines" }],
   },
@@ -823,7 +835,7 @@ window.GameData.TECHS = {
   dwarf_warrior_poets: {
     id: "dwarf_warrior_poets", label: "Warrior Poets", category: "military", layer: 2, cost: 26,
     prereqs: ["dwarf_deep_lore"], raceOnly: "dwarf",
-    description: "Unlocks the Troubadour (Ranged 2, utility/caster/buff). Heavy metal / Norwegian black metal inspired appearance: has an axe that is also an electric guitar.",
+    description: "Unlocks the Metal Singer (Ranged 2, utility/caster/buff). Heavy metal / Norwegian black metal inspired appearance: has an axe that is also an electric guitar.",
     costBreakdown: { coin: 17, lore: 9 },
     effects: [{ type: "unlock_unit", unit: "troubadour" }],
   },
@@ -837,7 +849,7 @@ window.GameData.TECHS = {
   dwarf_heavy_metal: {
     id: "dwarf_heavy_metal", label: "Heavy Metal", category: "military", layer: 3, cost: 58,
     prereqs: ["dwarf_warrior_poets"], raceOnly: "dwarf",
-    description: "The Troubadour exudes an aura in a 1-tile radius around itself (including itself): allied units heal 5% of their HP per turn (minimum 1), regardless of whether they're resting, and gain +1 defense and +25% siege. If the Troubadour also has Power Metal, it can switch between the two auras as an action (never both active at once).",
+    description: "The Metal Singer exudes an aura in a 1-tile radius around itself (including itself): allied units heal 5% of their HP per turn (minimum 1), regardless of whether they're resting, and gain +1 defense and +25% siege. If the Metal Singer also has Power Metal, it can switch between the two auras as an action (never both active at once).",
     costBreakdown: { coin: 34, lore: 24 },
     effects: [
       { type: "unlock_mechanic", mechanic: "heavy_metal" },
@@ -846,7 +858,7 @@ window.GameData.TECHS = {
   dwarf_power_metal: {
     id: "dwarf_power_metal", label: "Power Metal", category: "military", layer: 3, cost: 58,
     prereqs: ["dwarf_warrior_poets"], raceOnly: "dwarf",
-    description: "The Troubadour exudes an aura in a 1-tile radius around itself (including itself): allied units gain +2 attack and +5% First Strike. If the Troubadour also has Heavy Metal, it can switch between the two auras as an action (never both active at once).",
+    description: "The Metal Singer exudes an aura in a 1-tile radius around itself (including itself): allied units gain +2 attack and +5% First Strike. If the Metal Singer also has Heavy Metal, it can switch between the two auras as an action (never both active at once).",
     costBreakdown: { coin: 34, lore: 24 },
     effects: [
       { type: "unlock_mechanic", mechanic: "power_metal" },
@@ -855,7 +867,7 @@ window.GameData.TECHS = {
   dwarf_epic_metal: {
     id: "dwarf_epic_metal", label: "Epic Metal", category: "military", layer: 4, cost: 50,
     prereqs: ["dwarf_heavy_metal"], raceOnly: "dwarf",
-    description: "The Troubadour's active aura (Heavy Metal or Power Metal, whichever is currently active) extends to a 2-tile radius.",
+    description: "The Metal Singer's active aura (Heavy Metal or Power Metal, whichever is currently active) extends to a 2-tile radius.",
     costBreakdown: { coin: 32, lore: 18 },
     effects: [{ type: "unlock_mechanic", mechanic: "epic_metal" }],
   },
@@ -965,9 +977,9 @@ window.GameData.TECHS = {
   orc_bog_harvest: {
     id: "orc_bog_harvest", label: "Wetland Harvest", category: "civic", layer: 2, cost: 20,
     prereqs: [], raceOnly: "orc",
-    description: "+1 Harvest from Swamp.",
+    description: "+0.5 Harvest from Swamp.",
     costBreakdown: { lore: 14, harvest: 6 },
-    effects: [{ type: "unlock_tile_bonus", terrain: "swamp", bonus: { harvest: 1 } }],
+    effects: [{ type: "unlock_tile_bonus", terrain: "swamp", bonus: { harvest: 0.5 } }],
   },
   orc_warcraft: {
     id: "orc_warcraft", label: "War Camp", category: "building", layer: 2, cost: 22,
@@ -1074,6 +1086,13 @@ window.GameData.TECHS = {
     costBreakdown: { lore: 38 },
     effects: [{ type: "unlock_mechanic", mechanic: "malefic_malediction" }],
   },
+  orc_burn_it_all_down: {
+    id: "orc_burn_it_all_down", label: "Burn It All Down", category: "military", layer: 3, cost: 35,
+    prereqs: [], raceOnly: "orc",
+    description: "Ranged attacks (not adjacent melee) from a Scout or a Dragon set their target ablaze: the Burning condition deals 1 damage at the start of the burning unit's turn for 3 turns, unless it's currently on Coast, Ocean, or a river tile.",
+    costBreakdown: { lore: 22, coin: 13 },
+    effects: [{ type: "unlock_mechanic", mechanic: "burn_it_all_down" }],
+  },
   orc_wasteland_riders: {
     id: "orc_wasteland_riders", label: "Wasteland Riders", category: "military", layer: 3, cost: 24,
     prereqs: ["orc_forced_march"], raceOnly: "orc",
@@ -1104,14 +1123,14 @@ window.GameData.TECHS = {
   orc_the_old_ways: {
     id: "orc_the_old_ways", label: "The Old Ways", category: "civic", layer: 4, cost: 50,
     prereqs: [], raceOnly: "orc",
-    description: "+1 Lore from Swamp.",
+    description: "+0.5 Lore from Swamp.",
     costBreakdown: { lore: 50 },
-    effects: [{ type: "unlock_tile_bonus", terrain: "swamp", bonus: { lore: 1 } }],
+    effects: [{ type: "unlock_tile_bonus", terrain: "swamp", bonus: { lore: 0.5 } }],
   },
   orc_honor_the_dead: {
     id: "orc_honor_the_dead", label: "Honor the Dead", category: "civic", layer: 4, cost: 55,
     prereqs: [], raceOnly: "orc",
-    description: "When an Orc unit dies, gain +5 lore. Orc units have a 50% chance to resist being raised from the dead (if an Orc unit is slain by an Undead unit, only a 50% chance the Undead civ raises a new unit from it).",
+    description: "When an Orc unit dies, gain +5 lore. Orc units have a 50% chance to resist being raised from the dead (if an Orc unit is slain by an Undead unit, only a 50% chance the Undead civ turns it into a zombie under its control).",
     costBreakdown: { lore: 45, harvest: 10 },
     effects: [
       { type: "death_lore_bonus", value: 5 },
@@ -1296,14 +1315,27 @@ window.GameData.TECHS = {
     costBreakdown: { harvest: 15, lore: 10 },
     effects: [{ type: "unlock_mechanic", mechanic: "sneaking_around" }],
   },
+  // 2026-07-24, user-directed: civ-wide (every Halfellow unit, not just
+  // Trouble Maker -- same "grants an action race-wide" shape as Sneaking
+  // Around above), a lookout post rather than a combat/economy tool. Full
+  // turn action: go Hidden and hold position (see ai.js's
+  // maybeHalfellowKeepAnEyeOut) with a flat +3 vision radius for the
+  // duration -- see combat.js/sidebar.js wherever visionRadius is read.
+  halfellow_keep_an_eye_out: {
+    id: "halfellow_keep_an_eye_out", label: "Keep an Eye Out", category: "military", layer: 1, cost: 22,
+    prereqs: [], raceOnly: "halfellow",
+    description: "Any Halfellow unit may spend its whole turn to go Hidden and hold position, gaining +3 vision radius for as long as it stays there. Ends the same way Hidden normally ends (moving, an enemy walking onto its tile, attacking, ...).",
+    costBreakdown: { harvest: 12, lore: 10 },
+    effects: [{ type: "unlock_mechanic", mechanic: "keep_an_eye_out", value: 3 }],
+  },
 
   // --- Layer 2 ---
   halfellow_hillside_harvest: {
     id: "halfellow_hillside_harvest", label: "Hillside Harvest", category: "civic", layer: 2, cost: 20,
     prereqs: ["halfellow_singing_hills"], raceOnly: "halfellow",
-    description: "+1 harvest from Hills.",
+    description: "+0.5 harvest from Hills.",
     costBreakdown: { lore: 13, coin: 7 },
-    effects: [{ type: "unlock_tile_bonus", terrain: "hills", bonus: { harvest: 1 } }],
+    effects: [{ type: "unlock_tile_bonus", terrain: "hills", bonus: { harvest: 0.5 } }],
   },
   halfellow_road_goes_ever_on: {
     id: "halfellow_road_goes_ever_on", label: "The Road Goes Ever On", category: "civic", layer: 2, cost: 22,
@@ -1379,23 +1411,23 @@ window.GameData.TECHS = {
   halfellow_riverboat_trade: {
     id: "halfellow_riverboat_trade", label: "Riverboat Trade", category: "civic", layer: 3, cost: 38,
     prereqs: ["halfellow_riverfolk"], raceOnly: "halfellow",
-    description: "+1 coin per river tile within a city's radius.",
+    description: "+0.75 coin per river tile within a city's radius.",
     costBreakdown: { coin: 22, harvest: 16 },
-    effects: [{ type: "unlock_feature_bonus", feature: "river", bonus: { coin: 1 } }],
+    effects: [{ type: "unlock_feature_bonus", feature: "river", bonus: { coin: 0.75 } }],
   },
   halfellow_nice_day_fishing: {
     id: "halfellow_nice_day_fishing", label: "Nice Day for Fishing", category: "civic", layer: 3, cost: 38,
     prereqs: ["halfellow_riverfolk"], raceOnly: "halfellow",
-    description: "+1 harvest from Rivers.",
+    description: "+0.5 harvest from Rivers.",
     costBreakdown: { lore: 22, coin: 16 },
-    effects: [{ type: "unlock_feature_bonus", feature: "river", bonus: { harvest: 1 } }],
+    effects: [{ type: "unlock_feature_bonus", feature: "river", bonus: { harvest: 0.5 } }],
   },
   halfellow_ice_fishing: {
     id: "halfellow_ice_fishing", label: "Ice Fishing", category: "civic", layer: 3, cost: 40,
     prereqs: ["halfellow_riverfolk"], raceOnly: "halfellow",
-    description: "+1 harvest from Tundra.",
+    description: "+0.35 harvest from Tundra.",
     costBreakdown: { lore: 16, coin: 12, harvest: 12 },
-    effects: [{ type: "unlock_tile_bonus", terrain: "tundra", bonus: { harvest: 1 } }],
+    effects: [{ type: "unlock_tile_bonus", terrain: "tundra", bonus: { harvest: 0.35 } }],
   },
   halfellow_neighborhood_pub: {
     id: "halfellow_neighborhood_pub", label: "Neighborhood Pub", category: "building", layer: 3, cost: 35,
@@ -1410,6 +1442,31 @@ window.GameData.TECHS = {
     description: "+1 coin per building constructed in a city (walls don't count).",
     costBreakdown: { lore: 16, coin: 12, harvest: 12 },
     effects: [{ type: "building_count_bonus", bonus: { coin: 1 } }],
+  },
+  // 2026-07-24, user-directed: unlocks the Trouble Maker unit, WITH Resource
+  // Heist and Unlock the Gate already built in (no separate tech needed for
+  // either -- see ai.js's maybeResourceHeistPlay/maybeUnlockTheGatePlay).
+  // Riddle is the one ability that needs its own further tech (The Riddle
+  // Game, below) -- same staged shape Human's Wizard uses (unit unlocked
+  // first, each spell behind its own tech). Rumors of a tavern-born rascal
+  // makes for a fitting requirement on Pub Crawl.
+  halfellow_making_trouble: {
+    id: "halfellow_making_trouble", label: "Making Trouble", category: "military", layer: 3, cost: 45,
+    prereqs: ["halfellow_pub_crawl"], raceOnly: "halfellow",
+    description: "Unlocks the Trouble Maker, a stealthy rogue with two built-in tricks: Resource Heist (steal a targeted enemy unit's accumulated prospecting/delving/fishing stash, resetting their claim to zero, and leaves the victim Befuddled) and Unlock the Gate (disables a targeted wall and every wall adjacent to it -- zeroing their defense and suppressing any special wall defenses -- for 3 rounds).",
+    costBreakdown: { harvest: 22, lore: 23 },
+    effects: [
+      { type: "unlock_unit", unit: "trouble_maker" },
+      { type: "unlock_mechanic", mechanic: "resource_heist" },
+      { type: "unlock_mechanic", mechanic: "unlock_the_gate" },
+      // Bug fix (2026-07-24, found live): combat.js's canGoHidden checks
+      // for this exact mechanic id to grant Trouble Maker its own innate
+      // stealth -- without this effect the check could never pass, since
+      // "making_trouble" was never actually added to
+      // civ.unlockedMechanics. Confirmed dead via live testing: 0 Hidden
+      // entries for any Trouble Maker across 32 games before this fix.
+      { type: "unlock_mechanic", mechanic: "making_trouble" },
+    ],
   },
   halfellow_high_ground: {
     id: "halfellow_high_ground", label: "High Ground", category: "military", layer: 3, cost: 40,
@@ -1440,11 +1497,31 @@ window.GameData.TECHS = {
     // increase and an Orc attack buff -- the combined pass made Orc's win
     // rate WORSE in both Halfellow and Human matchups and lengthened games,
     // so reverted back to 2.50. See project_pairwise_balance_human_orc_halfellow
-    // memory. Current focus is a War Camp upkeep discount instead, which
-    // doesn't touch this tech at all.
-    description: "Gain influence in tiles 150% faster.",
+    // memory.
+    // Cut back to 2.00 again (2026-07-24, user-directed), this time paired
+    // with a brand-new tool for the same job -- Envoy (below) lets a
+    // Pioneer/Wanderer claim a specific in-radius tile outright in a flat
+    // 2 turns, independent of this multiplier. Dropping this back to 2.00
+    // keeps Envoy meaningfully useful for longer instead of being
+    // immediately dwarfed by a maxed-out passive rate once this tech is
+    // researched.
+    description: "Gain influence in tiles 100% faster.",
     costBreakdown: { harvest: 20, coin: 18, lore: 17 },
-    effects: [{ type: "fill_rate_mult", value: 2.50 }],
+    effects: [{ type: "fill_rate_mult", value: 2.00 }],
+  },
+  // 2026-07-24, user-directed: a channeled action for Pioneer/Wanderer --
+  // stand on (or adjacent to, see ai.js's maybeEnvoyPlay) an already-in-
+  // radius, not-yet-owned tile and channel for a flat 2 turns to claim it
+  // outright, independent of the normal fill-rate math -- guaranteed speed
+  // and, critically, lets the player/AI CHOOSE which tile gets priority
+  // instead of waiting on the passive fill order. Small cost so it isn't
+  // spammed for free; deliberately not a big enough cost to matter early.
+  halfellow_envoy: {
+    id: "halfellow_envoy", label: "Envoy", category: "civic", layer: 4, cost: 30,
+    prereqs: [], raceOnly: "halfellow",
+    description: "Pioneer and Wanderer may channel for 2 turns on an already-in-radius, unclaimed tile to claim it outright, independent of the normal gradual fill-in rate.",
+    costBreakdown: { coin: 10, harvest: 8, lore: 6 },
+    effects: [{ type: "unlock_mechanic", mechanic: "envoy" }],
   },
   halfellow_hearth_and_homeland: {
     id: "halfellow_hearth_and_homeland", label: "Hearth and Homeland", category: "civic", layer: 4, cost: 50,
@@ -1474,6 +1551,26 @@ window.GameData.TECHS = {
     costBreakdown: { lore: 30, harvest: 25 },
     effects: [{ type: "unlock_mechanic", mechanic: "devoted_companions" }],
   },
+  halfellow_great_stories: {
+    id: "halfellow_great_stories", label: "It's Like the Great Stories", category: "military", layer: 4, cost: 50,
+    prereqs: ["halfellow_historical_society"], raceOnly: "halfellow",
+    description: "All Halfellow units gain an extra +50% XP whenever they earn XP.",
+    costBreakdown: { lore: 28, harvest: 22 },
+    effects: [{ type: "unlock_mechanic", mechanic: "great_stories", value: 0.5 }],
+  },
+  // 2026-07-24, user-directed: Trouble Maker's third trick, plus Wanderer
+  // (not civ-wide -- only these two unit types). Ranged debuff: target
+  // resists at (their race's curiosity * 0.75), so even a maximally curious
+  // race (1.0) still fails a quarter of the time. On a failed resist,
+  // applies Befuddled (see combat.js's applyBefuddled) -- -50% attack, 75%
+  // defense, movement capped at 1, 0% First Strike, for 2 turns.
+  halfellow_riddle_game: {
+    id: "halfellow_riddle_game", label: "The Riddle Game", category: "military", layer: 4, cost: 48,
+    prereqs: ["halfellow_making_trouble"], raceOnly: "halfellow",
+    description: "Trouble Maker and Wanderer may pose a riddle to an enemy unit at range. The target resists (nothing happens) with a chance equal to its race's curiosity x 0.75 -- otherwise it becomes Befuddled for 2 turns: -50% attack, 75% defense, movement capped at 1, 0% First Strike.",
+    costBreakdown: { lore: 26, harvest: 22 },
+    effects: [{ type: "unlock_mechanic", mechanic: "riddle" }],
+  },
 
   // --- Layer 5 ---
   halfellow_family_and_friendship: {
@@ -1496,7 +1593,7 @@ window.GameData.TECHS = {
   halfellow_resilient_spirit: {
     id: "halfellow_resilient_spirit", label: "Resilient Spirit", category: "military", layer: 5, cost: 90,
     prereqs: ["halfellow_family_and_friendship"], raceOnly: "halfellow",
-    description: "If the next hit against a Halfellow unit (forward or counter) would kill it, 25% chance to negate all of that damage instead. Triggering forces the unit to Rest next turn, and permanently reduces that same unit's own trigger chance by 15 percentage points (floored at 0%) -- diminishing returns per unit, never resets. Additionally, Halfellow units have a 50% chance to resist being raised from the dead (if killed by an undead unit, only a 50% chance that the undead will raise a new unit).",
+    description: "If the next hit against a Halfellow unit (forward or counter) would kill it, 25% chance to negate all of that damage instead. Triggering forces the unit to Rest next turn, and permanently reduces that same unit's own trigger chance by 15 percentage points (floored at 0%) -- diminishing returns per unit, never resets. Additionally, Halfellow units have a 50% chance to resist being raised from the dead (if killed by an undead unit, only a 50% chance the undead turns it into a zombie under its control).",
     costBreakdown: { lore: 55, harvest: 35 },
     effects: [
       { type: "unlock_mechanic", mechanic: "resilient_spirit", value: 0.25 },
@@ -1510,9 +1607,71 @@ window.GameData.TECHS = {
     costBreakdown: { lore: 55, harvest: 40 },
     effects: [{ type: "unlock_mechanic", mechanic: "rouse_the_people" }],
   },
+
+  // --- "Cultural Influence" -- one per race, the tech-tree capstone
+  // (2026-07-21, user-directed): a true late-game resource sink, only
+  // researchable once EVERY other tech in that race's own tree is already
+  // complete. `prereqs` is intentionally left empty here and filled in
+  // programmatically right below (see the IIFE after TECH_LIST is computed)
+  // with every other tech id belonging to that race -- hand-listing ~30
+  // ids per race would silently drift out of date the moment the tree
+  // changes, where a generated list can't. See chooseBuildAction/
+  // progressBuildQueue/performClaimInfluenceTile in ai.js for what the
+  // mechanic actually does turn to turn.
+  cultural_influence_human: {
+    id: "cultural_influence_human", label: "Cultural Influence", category: "civic", layer: 5, cost: 120,
+    prereqs: [], raceOnly: "human",
+    description: "Requires every other Human tech already researched. A city may spend several turns and a steep harvest/coin/lore cost to claim influence over one additional tile within its own radius, immediately (skipping the normal gradual fill-in wait). Repeatable until every tile in the city's radius is already its own.",
+    costBreakdown: { harvest: 40, coin: 40, lore: 40 },
+    effects: [{ type: "unlock_mechanic", mechanic: "cultural_influence" }],
+  },
+  cultural_influence_elf: {
+    id: "cultural_influence_elf", label: "Cultural Influence", category: "civic", layer: 5, cost: 120,
+    prereqs: [], raceOnly: "elf",
+    description: "Requires every other Elf tech already researched. A city may spend several turns and a steep harvest/coin/lore cost to claim influence over one additional tile within its own radius, immediately (skipping the normal gradual fill-in wait). Repeatable until every tile in the city's radius is already its own.",
+    costBreakdown: { harvest: 40, coin: 40, lore: 40 },
+    effects: [{ type: "unlock_mechanic", mechanic: "cultural_influence" }],
+  },
+  cultural_influence_dwarf: {
+    id: "cultural_influence_dwarf", label: "Cultural Influence", category: "civic", layer: 5, cost: 120,
+    prereqs: [], raceOnly: "dwarf",
+    description: "Requires every other Dwarf tech already researched. A city may spend several turns and a steep harvest/coin/lore cost to claim influence over one additional tile within its own radius, immediately (skipping the normal gradual fill-in wait). Repeatable until every tile in the city's radius is already its own.",
+    costBreakdown: { harvest: 40, coin: 40, lore: 40 },
+    effects: [{ type: "unlock_mechanic", mechanic: "cultural_influence" }],
+  },
+  cultural_influence_orc: {
+    id: "cultural_influence_orc", label: "Cultural Influence", category: "civic", layer: 5, cost: 120,
+    prereqs: [], raceOnly: "orc",
+    description: "Requires every other Orc tech already researched. A city may spend several turns and a steep harvest/coin/lore cost to claim influence over one additional tile within its own radius, immediately (skipping the normal gradual fill-in wait). Repeatable until every tile in the city's radius is already its own.",
+    costBreakdown: { harvest: 40, coin: 40, lore: 40 },
+    effects: [{ type: "unlock_mechanic", mechanic: "cultural_influence" }],
+  },
+  cultural_influence_undead: {
+    id: "cultural_influence_undead", label: "Cultural Influence", category: "civic", layer: 5, cost: 120,
+    prereqs: [], raceOnly: "undead",
+    description: "Requires every other Undead tech already researched. A city may spend several turns and a steep harvest/coin/lore cost to claim influence over one additional tile within its own radius, immediately (skipping the normal gradual fill-in wait). Repeatable until every tile in the city's radius is already its own.",
+    costBreakdown: { harvest: 40, coin: 40, lore: 40 },
+    effects: [{ type: "unlock_mechanic", mechanic: "cultural_influence" }],
+  },
+  cultural_influence_halfellow: {
+    id: "cultural_influence_halfellow", label: "Cultural Influence", category: "civic", layer: 5, cost: 120,
+    prereqs: [], raceOnly: "halfellow",
+    description: "Requires every other Halfellow tech already researched. A city may spend several turns and a steep harvest/coin/lore cost to claim influence over one additional tile within its own radius, immediately (skipping the normal gradual fill-in wait). Repeatable until every tile in the city's radius is already its own.",
+    costBreakdown: { harvest: 40, coin: 40, lore: 40 },
+    effects: [{ type: "unlock_mechanic", mechanic: "cultural_influence" }],
+  },
 };
 
 window.GameData.TECH_LIST = Object.keys(window.GameData.TECHS);
+
+// "Cultural Influence" capstone prereqs (see the tech entries above): every
+// OTHER tech belonging to that same race, computed here so the list can
+// never drift out of sync with the tree itself as techs are added/removed.
+for (const tech of Object.values(window.GameData.TECHS)) {
+  if (!tech.id.startsWith("cultural_influence_")) continue;
+  tech.prereqs = window.GameData.TECH_LIST.filter(
+    (id) => id !== tech.id && window.GameData.TECHS[id].raceOnly === tech.raceOnly);
+}
 
 window.GameData.getTech = function (techId) {
   const tech = window.GameData.TECHS[techId];
@@ -1531,7 +1690,7 @@ window.GameData.getTech = function (techId) {
 // unitUpkeepLayerPremium's shape (compounds per layer past 1) but is its own
 // independent rate -- tech research time and unit upkeep are tuned for
 // different goals and shouldn't be forced to move together.
-const TECH_LAYER_PREMIUM_RATE = 0.15;
+const TECH_LAYER_PREMIUM_RATE = 0.2;
 
 /** Multiplier on a tech's authored `cost`, purely from how deep its layer
  *  is -- L1 pays none, L5 pays roughly (1.15)^4 =~1.75x on top of whatever
@@ -1789,7 +1948,7 @@ window.GameData.unitUpkeep = function (unitId, civ, unit) {
   // rate/flag as buildUnitOption's cost/build-time discount (ai.js) --
   // applied unconditionally (not gated on `civ` below) since it's an
   // intrinsic property of the unit itself, not a civ-side structure bonus.
-  if (unitData.cheap) total *= 0.70;
+  if (unitData.cheap) total *= 0.50;
   if (civ) {
     if (unitData.category === "military") {
       total *= window.GameEngine.ai.upkeepStrainMultiplier(civ);

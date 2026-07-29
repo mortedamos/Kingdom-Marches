@@ -20,7 +20,11 @@
 
 window.MusicSystem = (function () {
   const RACES = ["human", "elf", "dwarf", "orc", "undead", "halfellow"];
-  const SITUATIONS = ["default", "combat", "discovery", "neutral"];
+  // "victory" (2026-07-22, user-directed): <race>_victory_#.mp3, scanned and
+  // resolved exactly like every other per-race situation below -- no special
+  // casing needed there, only in resolveCurrent's priority order (see
+  // notifyVictory/victoryRace).
+  const SITUATIONS = ["default", "combat", "discovery", "neutral", "victory"];
   const MAX_VARIANTS = 3;
   const LOOP_PAUSE_MS = 1500; // fixed ~1-2s pause between same-situation loops
   const FADE_MS = 2500; // "a few seconds" crossfade, each direction
@@ -44,6 +48,11 @@ window.MusicSystem = (function () {
   // (looping it directly, ignoring the automatic race/situation resolution)
   // until cleared back to null ("Auto"). See setManualTrack/resolveCurrent.
   let manualTrackKey = null;
+  // Set once a civ wins (2026-07-22, user-directed) -- see notifyVictory.
+  // Never cleared back to null within a session: once the game is over, the
+  // winning race's theme is what plays from then on (still overridable by a
+  // manual track pin, same precedence as everything else -- see resolveCurrent).
+  let victoryRace = null;
 
   function loadPersistedVolumes() {
     try {
@@ -99,38 +108,112 @@ window.MusicSystem = (function () {
     for (const cb of trackChangeListeners) cb(label);
   }
 
+  // Browsers cap simultaneous connections per origin (Chrome: 6) -- probing
+  // every race/situation/variant combo (90+ files) via one big Promise.all
+  // fires them all at once, so most just sit queued behind that cap until
+  // probeFile's own 3s safety timeout falsely resolves them "missing" (found
+  // 2026-07-22: real, on-disk files were reporting missing purely from this
+  // contention, not from actually failing to load -- see PROBE_CONCURRENCY).
+  const PROBE_CONCURRENCY = 4;
+
+  /** Runs `worker` over every item in `items`, at most `limit` in flight at
+   *  once, preserving each result's position in the returned array. Generic
+   *  concurrency-limited alternative to Promise.all for a batch large enough
+   *  to trip a per-origin connection cap (see PROBE_CONCURRENCY above). */
+  async function mapWithConcurrencyLimit(items, limit, worker) {
+    const results = new Array(items.length);
+    let nextIndex = 0;
+    async function runNext() {
+      const i = nextIndex++;
+      if (i >= items.length) return;
+      results[i] = await worker(items[i]);
+      await runNext();
+    }
+    await Promise.all(Array.from({ length: Math.min(limit, items.length) }, runNext));
+    return results;
+  }
+
+  // Bumped every scanAvailability() call, so a still-in-flight probe from a
+  // SUPERSEDED scan (e.g. init() somehow re-triggered mid-session) can tell
+  // its own results are stale and skip writing them into the current
+  // `availability` map -- without this, a late-arriving write from an old
+  // scan could land in the map a newer scan already replaced, since the
+  // probe closures below capture the OUTER `availability` binding, not a
+  // snapshot of it. Belt-and-suspenders: nothing in this codebase currently
+  // re-triggers MusicSystem.init() after the first page-load call, but nothing
+  // guarantees that stays true either.
+  let scanGeneration = 0;
+
   /** Scans which files actually exist. Called once at startup. Never throws. */
   async function scanAvailability() {
+    const myGeneration = ++scanGeneration;
     availability = new Map();
-    const checks = [];
+    const tasks = [];
     for (const race of RACES) {
       for (const situation of SITUATIONS) {
         if (situation === "neutral") continue; // neutral has no race, checked separately below
         for (let v = 1; v <= MAX_VARIANTS; v++) {
-          const key = `${race}_${situation}_${v}`;
-          checks.push(
-            probeFile(trackPath(race, situation, v)).then((exists) => {
-              availability.set(key, exists);
-              if (!exists) console.log(`[music] missing: ${key}.mp3 - skipping`);
-            })
-          );
+          tasks.push({ key: `${race}_${situation}_${v}`, path: trackPath(race, situation, v) });
         }
       }
     }
     // Spectator-mode neutral track(s) -- no race prefix
     for (let v = 1; v <= MAX_VARIANTS; v++) {
-      const key = `neutral_${v}`;
-      checks.push(
-        probeFile(`assets/music/neutral_${v}.mp3`).then((exists) => {
-          availability.set(key, exists);
-          if (!exists) console.log(`[music] missing: ${key}.mp3 - skipping`);
-        })
-      );
+      tasks.push({ key: `neutral_${v}`, path: `assets/music/neutral_${v}.mp3` });
     }
-    await Promise.all(checks);
+    await mapWithConcurrencyLimit(tasks, PROBE_CONCURRENCY, async ({ key, path }) => {
+      const exists = await probeFile(path);
+      if (myGeneration !== scanGeneration) return; // superseded -- see scanGeneration's doc comment
+      availability.set(key, exists);
+      if (!exists) console.log(`[music] missing: ${key}.mp3 - skipping`);
+    });
   }
 
-  function probeFile(path) {
+  /** Existence check via a plain GET + immediate body cancel (2026-07-22,
+   *  rewritten from an Audio-element "wait for loadedmetadata" probe, which
+   *  turned out unreliable against this project's dev static server: real,
+   *  on-disk files were intermittently reported missing because the server
+   *  doesn't support HEAD, and separately because loadedmetadata's timing
+   *  depends on codec/media-pipeline quirks this doesn't need to care about
+   *  at all -- an HTTP status code is a far more direct answer to "does this
+   *  file exist"). Cancelling the body right after the status arrives avoids
+   *  downloading the full mp3 just to probe it. `cache: "no-store"` guards
+   *  against a real failure mode: a browser that cached a 404 for this path
+   *  from BEFORE the file existed (e.g. probed once with an empty
+   *  assets/music/ folder, then a track was dropped in later) would
+   *  otherwise keep reporting it missing on a normal reload until a hard
+   *  refresh -- this makes every scan a true, current disk check.
+   *
+   *  BUT (2026-07-22, second fix, same day): fetch() to a file:// URL is
+   *  blocked outright by the browser's Same Origin Policy ("Cross-Origin
+   *  Request Blocked" in the console) when the game is opened directly as a
+   *  local file rather than served over http(s) -- unlike an <audio> tag's
+   *  src, which browsers DO allow to load local sibling files (that's the
+   *  whole reason the original implementation used one). A thrown fetch()
+   *  is ambiguous between "genuinely can't reach this" and "blocked before
+   *  it even tried" -- rather than assume the file is missing either way,
+   *  fall back to the old Audio-element probe, which works fine under
+   *  file://. Every environment gets a probe method that actually works in
+   *  it, instead of picking one at the cost of the other. */
+  async function probeFile(path) {
+    try {
+      const res = await fetch(path, { method: "GET", cache: "no-store" });
+      if (res.body && res.body.cancel) {
+        try { await res.body.cancel(); } catch (e) { /* already consumed/closed -- fine */ }
+      }
+      return res.ok;
+    } catch (e) {
+      return probeFileViaAudio(path);
+    }
+  }
+
+  /** Fallback existence probe for contexts fetch() can't reach (see
+   *  probeFile above) -- an Audio element's own load pipeline, which
+   *  browsers permit against local file:// resources. Kept as a fallback
+   *  rather than the default because it's the slower, less reliable path
+   *  (loadedmetadata's timing depends on codec/media-pipeline quirks, and
+   *  needs a safety timeout in case neither event ever fires). */
+  function probeFileViaAudio(path) {
     return new Promise((resolve) => {
       const audio = new Audio();
       const onError = () => { cleanup(); resolve(false); };
@@ -142,8 +225,6 @@ window.MusicSystem = (function () {
       audio.addEventListener("error", onError);
       audio.addEventListener("loadedmetadata", onCanPlay);
       audio.src = path;
-      // Safety timeout in case neither event fires for some reason --
-      // never let a probe hang forever and block startup.
       setTimeout(() => { cleanup(); resolve(false); }, 3000);
     });
   }
@@ -237,6 +318,13 @@ window.MusicSystem = (function () {
       console.log(`[music] manually-selected track ${manualTrackKey}.mp3 unavailable -- reverting to Auto`);
       manualTrackKey = null;
     }
+    // Victory (2026-07-22, user-directed): once a civ has won, its theme
+    // takes priority over the ordinary race/situation resolution below --
+    // reuses resolveTrack's existing fallback chain (victory -> that race's
+    // own default -> silence), so a race with no dedicated victory track yet
+    // (every race but Elf, currently) just keeps playing its normal theme
+    // instead of going silent at the exact moment the game ends.
+    if (victoryRace) return resolveTrack(victoryRace, "victory");
     return currentRace ? resolveTrack(currentRace, activeSituation) : resolveSpectatorTrack();
   }
 
@@ -327,6 +415,17 @@ window.MusicSystem = (function () {
     }
   }
 
+  /** Public: a civ has won -- switch to that race's victory theme (see
+   *  resolveCurrent's priority order). `raceId` is the winning civ's race
+   *  (e.g. "elf"), not its civId -- callers should pass
+   *  gameState.civs[victoryResult.winner].raceId. Permanent for the rest of
+   *  the session (see victoryRace's own doc comment above); calling it again
+   *  is harmless (refreshNowPlaying no-ops if nothing actually changed). */
+  function notifyVictory(raceId) {
+    victoryRace = raceId;
+    refreshNowPlaying();
+  }
+
   /** Discovery tracks play to their natural end unless combat interrupts (confirmed in addendum §7) */
   function notifyDiscoveryTrackEndedNaturally() {
     if (!combatActive) {
@@ -344,11 +443,6 @@ window.MusicSystem = (function () {
     playResolved(resolved);
   }
 
-  function setMasterVolume(v) {
-    masterVolume = Math.max(0, Math.min(1, v));
-    if (currentAudio) currentAudio.volume = effectiveVolume();
-    persistVolumes();
-  }
   function setMusicVolume(v) {
     musicVolume = Math.max(0, Math.min(1, v));
     if (currentAudio) currentAudio.volume = effectiveVolume();
@@ -414,10 +508,9 @@ window.MusicSystem = (function () {
     init,
     setRace,
     notifySituation,
+    notifyVictory,
     notifyDiscoveryTrackEndedNaturally,
-    setMasterVolume,
     setMusicVolume,
-    getMasterVolume: () => masterVolume,
     getMusicVolume: () => musicVolume,
     setMuted,
     isMuted,

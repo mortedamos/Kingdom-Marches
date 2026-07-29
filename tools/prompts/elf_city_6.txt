@@ -1,0 +1,61 @@
+Game asset: Elf City, tier 6 (race: Elf, category: city tier).
+
+A single game asset in a cel-shaded outline style: thick, clean black
+outlines around the silhouette and major interior linework, sharp
+details, cel-shaded flat colors with a limited palette (2-3 hard-edged
+tonal steps per surface -- base, shadow, occasional highlight -- no soft
+airbrushed gradients or blurry ambient occlusion). Clear legibility when
+zoomed out to a small size. Muted, desaturated, earthy fantasy palette
+(olive greens, weathered browns, stone grays, faded ochres) -- no
+saturated cartoon colors. Dark-fantasy mood, weathered and lived-in, not
+cute or whimsical. Single consistent light direction from the upper left,
+implied by the shadow/highlight color steps rather than rendered soft
+light.
+
+This asset must stay legible when shrunk down to a very small size, so:
+use strong contrast between neighboring color regions (a bright/light
+element against a dark one, not two similar mid-tones touching); hold
+identifying details out and away from each other rather than overlapping,
+so key shapes don't merge together; and keep ornamental detail minimal --
+favor a small number of bold, simple shapes over fine texture like
+carved knots or leaf clusters that won't survive downscaling anyway.
+
+Subject: a grand elven capital grown from a ring of ancient trees around
+one towering central great-tree -- dozens of platform-houses spiral up
+every trunk in tiers, linked by an intricate web of rope-and-plank
+bridges, with a wide root-stone plaza and low terraced walls at ground
+level (still secondary to the living wood, but clearly a fortified
+capital now). The central great-tree's crown has been shaped into one
+soaring living-wood spire, unmistakably the tallest and most commanding
+structure in the whole settlement, its upper boughs woven into an open
+lookout crown. Two or three green (#3f8f5c) banners fly from the spire
+and the plaza gate, the only accent-color elements.
+
+Framing: elevated isometric diorama angle (~30-40 degree downward tilt),
+the full settlement visible as a self-contained island silhouette (not a
+filled square background), portrait 1:2 (width:height) composition. This
+is the sixth and tallest tier in a 6-tier growth sequence -- the central
+spire's crown should reach all the way to the very top edge of the
+frame, using the full available height with no empty margin above it.
+Ground level sits at the very bottom edge of the frame. The ground
+itself (including the root-stone plaza and terraced walls) must read
+as an irregular, organic footprint -- uneven natural terrain, spreading
+roots, a rough-edged clearing -- NEVER a crisp geometric diamond,
+rhombus, or flat rotated square platform (that would read as a
+separate isometric tile, not an object sitting on the game's actual
+flat top-down square grid).
+
+Background: a single flat, solid, saturated magenta (#FF00FF) background,
+completely uniform, no gradient, no shadow cast onto it, no vignette --
+this will be chroma-keyed out, so nothing in the subject itself should be
+magenta or near-magenta.
+
+Race material language: living wood grown into architecture as the
+dominant material (the great central tree forms the capital's spine and
+crown), carved root-stone plaza and terraced walls as a secondary accent
+at ground level, full canopy integration throughout. The green (#3f8f5c)
+accent color may only appear as the small banners described above --
+never as the dominant hue of wood, stone, or foliage.
+
+Do not include any text, watermark, logo, UI elements, or border in the
+image.

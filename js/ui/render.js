@@ -17,6 +17,7 @@ window.UI = window.UI || {};
   const MOVE_ANIM_MS = 350; // purely visual glide duration for unit movement
   const ATTACK_ANIM_MS = 500; // total lifetime of a combat "wiggle" (attacker lunge / defender recoil)
   const SLASH_ANIM_MS = 260; // shorter-lived slash/swipe overlay drawn on top
+  const AREA_EFFECT_ANIM_MS = 700; // AoE radius highlight (Blade Dancer sweep, Fireball splash) -- quick flash, not a lingering overlay
   const QUIP_ANIM_MS = 2200; // total lifetime of a speech bubble (incl. fade in/out)
   const QUIP_FADE_MS = 250; // fade-in and fade-out duration at each end of QUIP_ANIM_MS
   // Raised from an initial 1400ms (user-directed, 2026-07-18) -- too short to
@@ -27,6 +28,43 @@ window.UI = window.UI || {};
   const FLOAT_TEXT_ANIM_MS = 3000; // total lifetime of a floating-text popup (incl. fade in/hold/fade out)
   const FLOAT_TEXT_FADE_IN_MS = 150; // quick pop-in at the start
   const FLOAT_TEXT_FADE_OUT_MS = 500; // quick fade-out at the very end; everything between is full opacity
+
+  // Condition badges (2026-07-22, user-directed): a small icon per active
+  // entry in unit.conditions (see combat.js's setCondition/tickConditions),
+  // drawn stacked in the tile's upper-right corner, above the unit sprite.
+  // Keyed by the exact condition key each mechanic sets -- anything not
+  // listed here (there is no catch-all) is silently skipped rather than
+  // drawing a generic placeholder, so an unmapped future condition doesn't
+  // need an emergency render fix, it just has no badge yet.
+  const CONDITION_ICONS = {
+    hidden: "🌙",
+    forcedVisible: "👁️",
+    frozen: "❄️",
+    curse: "🧿",
+    exhausted: "💤",
+    forcedRest: "💤",
+    defending: "🛡️",
+    killMomentum: "💢",
+    flying: "🪽️",
+    crusadeAura: "✨",
+    heavyMetalAura: "♫",
+    powerMetalAura: "🎸",
+    deepMinesGuard: "⛰️",
+    burning: "🔥",
+    zombie: "💀",
+    befuddled: "🌀",
+    // Not a unit.conditions entry -- resting is a plain top-level field
+    // (see drawConditionBadges own special-case handling below, same
+    // shape as carries/CARRYING_ICON). Kept in this lookup table purely
+    // so its emoji lives in one place with everything else.
+    resting: "⛺",
+  };
+  // Not a unit.conditions entry (see CONDITION_ICONS above) -- carries is
+  // its own top-level field (set alongside carriedBy on the passenger, see
+  // e.g. operateShadowsteedCarry/operateCompanionCarry/operateDragonCarry
+  // in ai.js), so drawConditionBadges below handles it as a special case
+  // rather than folding it into that map.
+  const CARRYING_ICON = "🫴";
 
   /**
    * Live combat attack/wiggle effects, drained each frame from
@@ -51,8 +89,11 @@ window.UI = window.UI || {};
       // it fights with its RIDER's kit (see combat.js's shadowsteedMount and
       // effectiveAttack/etc.), so its attack glyph should read as the
       // rider's weapon too, not the Shadowsteed's own bare hooves.
+      // evt.attackChars: an explicit override (e.g. Elf "Treetop Snipers" --
+      // a wall attacking on its own has no real unit/typeId to look up a
+      // set from) takes precedence over the normal per-unit-type lookup.
       const mount = window.GameEngine.combat.shadowsteedMount(evt.atkUnit);
-      const attackChars = window.GameData.getAttackChars(mount ? mount.typeId : evt.atkUnit.typeId);
+      const attackChars = evt.attackChars || window.GameData.getAttackChars(mount ? mount.typeId : evt.atkUnit.typeId);
       // Ranged (see combat.js's effectiveRange): the glyph travels attacker
       // -> defender instead of flashing at the midpoint -- see
       // drawCombatSlashes. Chebyshev, matching every other range check.
@@ -72,6 +113,62 @@ window.UI = window.UI || {};
     }
     if (activeCombatAnims.length) {
       activeCombatAnims = activeCombatAnims.filter((a) => now - a.start < ATTACK_ANIM_MS);
+    }
+  }
+
+  /** Same pull-based queue pattern as activeCombatAnims above, for the
+   *  momentary "this radius was just affected" highlight (2026-07-22,
+   *  user-directed) -- see combat.js's spawnAreaEffect. */
+  let activeAreaEffects = [];
+
+  function updateAreaEffects(now) {
+    const newEvents = window.GameEngine.combat.drainAreaEffectEvents();
+    for (const evt of newEvents) activeAreaEffects.push({ ...evt, start: now });
+    if (activeAreaEffects.length) {
+      activeAreaEffects = activeAreaEffects.filter((a) => now - a.start < AREA_EFFECT_ANIM_MS);
+    }
+  }
+
+  const AREA_EFFECT_COLORS = {
+    blade_sweep: "179,136,255", // matches FLOAT_TEXT_STYLES.aura's purple
+    fireball: "255,112,64", // matches FLOAT_TEXT_STYLES.warning's orange-red
+    default: "255,255,255",
+  };
+
+  /** Draws a fading colored highlight over every tile within `radius`
+   *  (Chebyshev, matching every in-game range/AoE check) of each active
+   *  area effect's center -- a quick flash-and-fade, not a lingering
+   *  overlay, so it reads as "this just happened here" rather than a
+   *  persistent zone. Drawn UNDER drawCombatSlashes (called right after
+   *  this) so the attack slashes/unit sprites still read clearly on top. */
+  function drawAreaEffects(ctx, offsetX, offsetY, ts, now) {
+    for (const a of activeAreaEffects) {
+      const elapsed = now - a.start;
+      if (elapsed > AREA_EFFECT_ANIM_MS) continue;
+      const t = elapsed / AREA_EFFECT_ANIM_MS;
+      // Quick pop-in, hold, then fade -- same 3-phase shape as floating text.
+      const alpha = t < 0.15 ? t / 0.15 : (t > 0.5 ? Math.max(0, 1 - (t - 0.5) / 0.5) : 1);
+      const color = AREA_EFFECT_COLORS[a.kind] || AREA_EFFECT_COLORS.default;
+      ctx.save();
+      ctx.globalAlpha = alpha * 0.35;
+      ctx.fillStyle = `rgb(${color})`;
+      ctx.strokeStyle = `rgb(${color})`;
+      ctx.lineWidth = Math.max(1, ts * 0.06);
+      for (let dy = -a.radius; dy <= a.radius; dy++) {
+        for (let dx = -a.radius; dx <= a.radius; dx++) {
+          const tx = a.x + dx, ty = a.y + dy;
+          const px = tx * ts + offsetX, py = ty * ts + offsetY;
+          ctx.fillRect(px, py, ts, ts);
+        }
+      }
+      ctx.globalAlpha = alpha * 0.8;
+      ctx.strokeRect(
+        (a.x - a.radius) * ts + offsetX + ctx.lineWidth / 2,
+        (a.y - a.radius) * ts + offsetY + ctx.lineWidth / 2,
+        (a.radius * 2 + 1) * ts - ctx.lineWidth,
+        (a.radius * 2 + 1) * ts - ctx.lineWidth,
+      );
+      ctx.restore();
     }
   }
 
@@ -442,6 +539,7 @@ window.UI = window.UI || {};
     const ts = Math.round(TILE_SIZE * (viewState.zoomLevel || 1));
     const now = performance.now();
     updateCombatAnims(now);
+    updateAreaEffects(now);
     updateQuipBubbles(now);
     updateFloatingTexts(now);
 
@@ -652,8 +750,17 @@ window.UI = window.UI || {};
         const citySprite = tieredSprite || window.UI.sprites.pick(`city/${civ.raceId}`, city);
         if (citySprite) {
           if (tieredSprite) {
+            // Draw height follows the image's own aspect ratio, anchored to
+            // the BOTTOM of the city's tile -- a square legacy image (e.g.
+            // Orc's existing tiers) draws exactly as before (drawHeight =
+            // ts), while a portrait image (e.g. Elf's taller tiers, see art
+            // style guide §12) bleeds upward into the tile north of the
+            // city instead of being squashed into one tile. No per-race
+            // format flag needed; the renderer just follows the art.
             const img = tieredSprite.image;
-            ctx.drawImage(img, 0, 0, img.naturalWidth, img.naturalHeight, screenX, screenY, ts, ts);
+            const drawHeight = ts * (img.naturalHeight / img.naturalWidth);
+            const drawY = screenY + ts - drawHeight;
+            ctx.drawImage(img, 0, 0, img.naturalWidth, img.naturalHeight, screenX, drawY, ts, drawHeight);
           } else {
             // Sprite frame = population tier (frame 0 = pop 1, frame 1 = pop 2, etc.)
             const tierAnim = citySprite.manifest.animations[`tier${pop}`] || citySprite.manifest.animations.idle;
@@ -720,6 +827,14 @@ window.UI = window.UI || {};
       }
     }
 
+    // Deferred-pass queues (2026-07-22, moved up from just before the Units
+    // loop below) -- floating text should never be occluded by a unit sprite
+    // drawn later in the position-sorted pass, and now also needs to be
+    // populated from the Structures loop just below (burning walls/
+    // buildings), which runs before that Units loop.
+    const quipBubbleQueue = [];
+    const floatingTextQueue = [];
+
     // Structures (buildings placed on any tile adjacent to their city)
     for (const civ of Object.values(civs)) {
       const race = window.GameData.getRace(civ.raceId);
@@ -730,27 +845,54 @@ window.UI = window.UI || {};
           const building = window.GameData.getBuilding(s.id);
           const screenX = s.x * ts + offsetX;
           const screenY = s.y * ts + offsetY;
-          const pad = ts * 0.2;
-          // Body: civ-colored rounded square
-          ctx.fillStyle = hexToRgba(race.color, 0.85);
-          ctx.fillRect(screenX + pad, screenY + pad, ts - pad * 2, ts - pad * 2);
-          ctx.strokeStyle = "rgba(0,0,0,0.5)";
-          ctx.lineWidth = 1;
-          ctx.strokeRect(screenX + pad, screenY + pad, ts - pad * 2, ts - pad * 2);
-          // Symbol
-          ctx.fillStyle = "#fff";
-          ctx.font = `bold ${Math.max(7, ts * 0.32)}px serif`;
-          ctx.textAlign = "center";
-          ctx.textBaseline = "middle";
-          ctx.fillText(building.symbol || "▪", screenX + ts / 2, screenY + ts / 2 - ts * 0.03);
-          // HP bar (only when damaged)
+          // Prefer real art (assets/buildings/{id}.png) if shipped; same
+          // aspect-ratio/bottom-anchor formula as city tiers (see art style
+          // guide §13) so a taller building (e.g. a watchtower) bleeds
+          // upward instead of being squashed into one tile -- capped by the
+          // art itself to stay shorter than any city tier, not by code here.
+          // Walls additionally vary by orientation (see wallOrientation()
+          // above) so a run of segments connects visually.
+          const sprite = building.isWall
+            ? window.UI.sprites.pickWallSegment(s.id, civ.raceId, wallOrientation(map, civ.id, s.x, s.y), s)
+            : window.UI.sprites.pickBuilding(s.id, civ.raceId, s);
+          if (sprite) {
+            const img = sprite.image;
+            const drawHeight = ts * (img.naturalHeight / img.naturalWidth);
+            const drawY = screenY + ts - drawHeight;
+            ctx.drawImage(img, 0, 0, img.naturalWidth, img.naturalHeight, screenX, drawY, ts, drawHeight);
+          } else {
+            const pad = ts * 0.2;
+            // Body: civ-colored rounded square
+            ctx.fillStyle = hexToRgba(race.color, 0.85);
+            ctx.fillRect(screenX + pad, screenY + pad, ts - pad * 2, ts - pad * 2);
+            ctx.strokeStyle = "rgba(0,0,0,0.5)";
+            ctx.lineWidth = 1;
+            ctx.strokeRect(screenX + pad, screenY + pad, ts - pad * 2, ts - pad * 2);
+            // Symbol
+            ctx.fillStyle = "#fff";
+            ctx.font = `bold ${Math.max(7, ts * 0.32)}px serif`;
+            ctx.textAlign = "center";
+            ctx.textBaseline = "middle";
+            ctx.fillText(building.symbol || "▪", screenX + ts / 2, screenY + ts / 2 - ts * 0.03);
+          }
+          // HP bar (only when damaged) -- always tile-relative, independent
+          // of whether a sprite or the placeholder was drawn above.
           if (s.hp < s.maxHp) {
-            const bw = ts - pad * 2, bh = Math.max(2, ts * 0.08);
-            const bx = screenX + pad, by = screenY + ts - pad - bh;
+            const barPad = ts * 0.1;
+            const bw = ts - barPad * 2, bh = Math.max(2, ts * 0.08);
+            const bx = screenX + barPad, by = screenY + ts - barPad - bh;
             ctx.fillStyle = "rgba(0,0,0,0.6)";
             ctx.fillRect(bx, by, bw, bh);
             ctx.fillStyle = "#5fbf5f";
             ctx.fillRect(bx, by, bw * Math.max(0, s.hp) / s.maxHp, bh);
+          }
+          // Floating text anchored to a STRUCTURE record rather than a unit
+          // (2026-07-22, user-directed: burning walls/buildings) -- matched
+          // by object identity against activeFloatingTexts, same convention
+          // as the per-unit queue below, just populated from this loop
+          // instead since a structure record never appears in civ.units.
+          if (activeFloatingTexts.some((f) => f.unit === s)) {
+            floatingTextQueue.push({ unit: s, screenX, screenY });
           }
         }
       }
@@ -806,15 +948,6 @@ window.UI = window.UI || {};
     }
     unitsToDraw.sort((a, b) => a.visualPos.y - b.visualPos.y || a.visualPos.x - b.visualPos.x);
 
-    // Deferred to a pass AFTER every unit is drawn (see below) so a quip
-    // bubble always renders on top of every unit sprite, never occluded by
-    // one drawn later in the position-sorted pass above.
-    const quipBubbleQueue = [];
-    // Same deferred-pass reasoning as quipBubbleQueue -- floating text
-    // should never be occluded by a unit sprite drawn later in the
-    // position-sorted pass above.
-    const floatingTextQueue = [];
-
     for (const { civ, unit, visualPos } of unitsToDraw) {
       const race = window.GameData.getRace(civ.raceId);
       const shake = getUnitShakeOffset(unit, ts, now);
@@ -834,6 +967,18 @@ window.UI = window.UI || {};
       const boxX = screenX + ts / 2 - boxSize / 2;
       const boxY = screenY + pad + normalSize - boxSize;
 
+      // Hidden transparency (2026-07-22, user-directed): a slight alpha
+      // reduction on OWN hidden units only (own units are always fully
+      // visible to their own civ regardless of Hidden -- this is a
+      // "notice at a glance which of my units are hidden" affordance, not
+      // a fog-of-war effect; an opponent's hidden unit is never drawn here
+      // at all, gated upstream by tile visibility). Applies uniformly in
+      // spectator mode (humanCivId null), where every civ's units are
+      // equally "own" to the viewer.
+      const isOwnHidden = !!unit.conditions?.hidden && (humanCivId == null || unit.civId === humanCivId);
+      const spriteAlpha = isOwnHidden ? 0.55 : 1;
+      ctx.save();
+      ctx.globalAlpha = spriteAlpha;
       if (unitSprite) {
         const f = window.UI.sprites.currentFrame(unitSprite.manifest, "idle", unit);
         drawUnitShadow(ctx, screenX, screenY, ts, race.color, scale);
@@ -851,6 +996,8 @@ window.UI = window.UI || {};
         ctx.strokeText(initial, boxX + boxSize / 2, boxY + boxSize / 2);
         ctx.fillText(initial, boxX + boxSize / 2, boxY + boxSize / 2);
       }
+      ctx.restore();
+      drawConditionVisualEffects(ctx, unit, unitSprite, boxX, boxY, boxSize, now);
 
       // HP bar
       if (unit.hp != null && unit.maxHp && unit.hp < unit.maxHp) {
@@ -866,6 +1013,8 @@ window.UI = window.UI || {};
         ctx.lineWidth = 2;
         ctx.strokeRect(boxX + 1, boxY + 1, boxSize - 2, boxSize - 2);
       }
+      drawConditionBadges(ctx, unit, boxX, boxY, boxSize, ts);
+      drawChannelStashLabel(ctx, unit, screenX, screenY, ts);
 
       if (activeQuips.some((q) => q.unit === unit)) {
         quipBubbleQueue.push({ unit, screenX, screenY });
@@ -875,6 +1024,7 @@ window.UI = window.UI || {};
       }
     }
 
+    drawAreaEffects(ctx, offsetX, offsetY, ts, now);
     drawCombatSlashes(ctx, offsetX, offsetY, ts, now);
     for (const { unit, screenX, screenY } of quipBubbleQueue) {
       drawQuipBubble(ctx, unit, screenX, screenY, ts, now);
@@ -902,6 +1052,195 @@ window.UI = window.UI || {};
     ctx.beginPath();
     ctx.ellipse(cx, cy, radiusX, radiusY, 0, 0, Math.PI * 2);
     ctx.fill();
+  }
+
+  /**
+   * Condition visual effects (2026-07-22, user-directed) -- on top of the
+   * small badge icons (see drawConditionBadges below), these treat the
+   * character's own drawn sprite/fallback icon directly:
+   *  - Burning: flickering orange/red flame tint.
+   *  - Frozen: flickering icy blue tint.
+   *  - Zombie: a static, washed-out grey fade -- no flicker, since it's a
+   *    PERMANENT condition (a perpetual flicker would get tiring over a
+   *    long game, unlike Burning/Frozen which are always short-lived).
+   *  - Hidden: handled separately (see the "own hidden units are slightly
+   *    transparent" alpha applied around the sprite draw call itself,
+   *    below) rather than as a tint here, since transparency has to affect
+   *    the base draw, not composite on top of it.
+   * All three tints stack independently (e.g. a burning zombie shows both).
+   */
+  const BURNING_TINT_COLOR = "255,87,34"; // orange-red, matches the Burning condition's warning-family color elsewhere
+  const FROZEN_TINT_COLOR = "129,212,250"; // icy blue
+  const ZOMBIE_TINT_COLOR = "120,120,120"; // washed-out grey
+
+  /** Stable per-unit random phase so multiple burning/frozen units on
+   *  screen at once don't flicker in perfect unison -- cached directly on
+   *  the unit object, same convention as this file's other render-only
+   *  per-unit fields (_lastLogicalX, etc. -- see getVisualPos above). */
+  function conditionEffectPhase(unit) {
+    if (unit._effectPhase == null) unit._effectPhase = Math.random() * Math.PI * 2;
+    return unit._effectPhase;
+  }
+
+  /** Tints whatever's already drawn within (boxX,boxY,boxSize) using
+   *  source-atop compositing directly on the MAIN canvas -- only correct
+   *  when nothing else opaque sits under that box (e.g. the AoE radius
+   *  highlight, drawn before terrain/units exist there yet this frame). For
+   *  a unit's own sprite, terrain is already opaque underneath by this
+   *  point, so this would tint the whole box, not just the character -- see
+   *  tintSprite below for that case. */
+  function tintDrawnArea(ctx, boxX, boxY, boxSize, color, alpha) {
+    if (alpha <= 0) return;
+    ctx.save();
+    ctx.globalCompositeOperation = "source-atop";
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = `rgb(${color})`;
+    ctx.fillRect(boxX, boxY, boxSize, boxSize);
+    ctx.restore();
+  }
+
+  // Reusable offscreen buffer for tintSprite below -- resized on demand
+  // rather than allocated fresh per call/per unit/per frame.
+  let effectMaskCanvas = null, effectMaskCtx = null;
+  function getEffectMaskCtx(size) {
+    if (!effectMaskCanvas) {
+      effectMaskCanvas = document.createElement("canvas");
+      effectMaskCtx = effectMaskCanvas.getContext("2d");
+    }
+    if (effectMaskCanvas.width !== size || effectMaskCanvas.height !== size) {
+      effectMaskCanvas.width = size;
+      effectMaskCanvas.height = size;
+    } else {
+      effectMaskCtx.clearRect(0, 0, size, size);
+    }
+    return effectMaskCtx;
+  }
+
+  /** Tints just the SPRITE's own opaque pixels (2026-07-22, user-directed
+   *  fix: tintDrawnArea's plain source-atop fill, applied directly on the
+   *  main canvas, also catches the opaque TERRAIN already drawn underneath
+   *  -- the tint showed as a solid block covering the whole tile instead of
+   *  following the character's actual silhouette). Redraws the same sprite
+   *  frame onto a small offscreen canvas (where nothing else has been
+   *  drawn), masks a solid fill to exactly that alpha shape via
+   *  source-atop THERE, then composites the masked result onto the main
+   *  canvas at the given alpha. `frame` is the {sx,sy,sw,sh} source rect
+   *  from sprites.currentFrame, or null to fall back to a plain box tint
+   *  (the no-shipped-art fallback icon case -- rare, and not worth a mask
+   *  for a single letter glyph). */
+  function tintSprite(ctx, image, frame, boxX, boxY, boxSize, color, alpha) {
+    if (alpha <= 0) return;
+    if (!image || !frame) { tintDrawnArea(ctx, boxX, boxY, boxSize, color, alpha); return; }
+    const size = Math.max(1, Math.round(boxSize));
+    const maskCtx = getEffectMaskCtx(size);
+    maskCtx.globalCompositeOperation = "source-over";
+    maskCtx.drawImage(image, frame.sx, frame.sy, frame.sw, frame.sh, 0, 0, size, size);
+    maskCtx.globalCompositeOperation = "source-atop";
+    maskCtx.fillStyle = `rgb(${color})`;
+    maskCtx.fillRect(0, 0, size, size);
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.drawImage(effectMaskCanvas, boxX, boxY, boxSize, boxSize);
+    ctx.restore();
+  }
+
+  function drawConditionVisualEffects(ctx, unit, unitSprite, boxX, boxY, boxSize, now) {
+    if (!unit.conditions) return;
+    const hasEffect = unit.conditions.zombie || unit.conditions.burning || unit.conditions.frozen;
+    if (!hasEffect) return;
+    const phase = conditionEffectPhase(unit);
+    const frame = unitSprite ? window.UI.sprites.currentFrame(unitSprite.manifest, "idle", unit) : null;
+    const image = unitSprite ? unitSprite.image : null;
+    if (unit.conditions.zombie) {
+      tintSprite(ctx, image, frame, boxX, boxY, boxSize, ZOMBIE_TINT_COLOR, 0.45);
+    }
+    if (unit.conditions.burning) {
+      const flicker = 0.35 + 0.25 * Math.sin(now / 90 + phase) + 0.15 * Math.sin(now / 37 + phase * 1.7);
+      tintSprite(ctx, image, frame, boxX, boxY, boxSize, BURNING_TINT_COLOR, Math.max(0.15, Math.min(0.7, flicker)));
+    }
+    if (unit.conditions.frozen) {
+      const flicker = 0.30 + 0.20 * Math.sin(now / 140 + phase * 1.3);
+      tintSprite(ctx, image, frame, boxX, boxY, boxSize, FROZEN_TINT_COLOR, Math.max(0.15, Math.min(0.55, flicker)));
+    }
+  }
+
+  /**
+   * Small status badges (2026-07-22, user-directed) -- one per active
+   * unit.conditions entry with a mapped icon (see CONDITION_ICONS), plus a
+   * "carrying a passenger" badge (see CARRYING_ICON) when unit.carries is
+   * set, stacked leftward from the tile's upper-right corner, sitting just
+   * above the unit's own sprite box. A dark translucent disc behind each
+   * glyph keeps it legible over any terrain/sprite color. Purely a
+   * rendering concern -- reads unit.conditions/unit.carries but never
+   * mutates them (see combat.js's setCondition/tickConditions for how
+   * conditions appear and expire).
+   */
+  function drawConditionBadges(ctx, unit, boxX, boxY, boxSize, ts) {
+    const icons = [];
+    if (unit.carries) icons.push(CARRYING_ICON);
+    // Not a unit.conditions entry either (2026-07-22, user-directed) --
+    // unit.resting is a plain top-level field, reset to false for every
+    // unit at the start of each civ-turn and set true whenever that turn's
+    // action was actually resting (see turns.js's per-civ-turn reset).
+    if (unit.resting) icons.push(CONDITION_ICONS.resting);
+    if (unit.conditions) {
+      for (const key of Object.keys(unit.conditions)) {
+        if (CONDITION_ICONS[key]) icons.push(CONDITION_ICONS[key]);
+      }
+    }
+    if (icons.length === 0) return;
+    const iconSize = Math.max(9, ts * 0.30);
+    const cy = boxY - iconSize * 0.15;
+    let cx = boxX + boxSize - iconSize * 0.5;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.font = `${iconSize}px sans-serif`;
+    for (const icon of icons) {
+      ctx.beginPath();
+      ctx.arc(cx, cy, iconSize * 0.58, 0, Math.PI * 2);
+      ctx.fillStyle = "rgba(0,0,0,0.4)";
+      ctx.fill();
+      ctx.fillText(icon, cx, cy);
+      cx -= iconSize * 0.95;
+    }
+  }
+
+  /**
+   * Persistent (non-fading) label showing a channeling unit's currently
+   * accumulated prospecting/delving/fishing stash (2026-07-24, user-
+   * directed -- see turns.js's accumulateChannelStash/bankChannelStash).
+   * Unlike drawFloatingTexts above, this reads LIVE state directly off the
+   * unit every frame rather than draining a one-shot animated event queue
+   * -- same "persistent per-unit UI driven by live state" shape as
+   * drawConditionBadges just above, since the value needs to visibly climb
+   * turn over turn while the channel stays active, and disappear the
+   * instant it doesn't (channel stopped, stolen, or the unit moved/died).
+   * No-op if there's nothing accumulated yet (channel just started, still
+   * under the 2-turn payout threshold).
+   */
+  function drawChannelStashLabel(ctx, unit, screenX, screenY, ts) {
+    if (!unit.channeling) return;
+    const stash = unit._channelStash;
+    if (!stash) return;
+    const parts = [];
+    if (stash.harvest) parts.push(`+${Math.round(stash.harvest)} Harvest`);
+    if (stash.coin) parts.push(`+${Math.round(stash.coin)} Coin`);
+    if (stash.lore) parts.push(`+${Math.round(stash.lore)} Lore`);
+    if (!parts.length) return;
+    const text = parts.join("  ");
+    const px = screenX + ts / 2;
+    const py = screenY - ts * 0.42;
+    ctx.save();
+    ctx.font = `${Math.max(9, ts * 0.19)}px sans-serif`;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    const padX = ts * 0.08, padY = ts * 0.05;
+    const w = ctx.measureText(text).width;
+    ctx.fillStyle = "rgba(0,0,0,0.55)";
+    ctx.fillRect(px - w / 2 - padX, py - ts * 0.11 - padY, w + padX * 2, ts * 0.22 + padY * 2);
+    ctx.fillStyle = "#ffd54f";
+    ctx.fillText(text, px, py);
+    ctx.restore();
   }
 
   // --- Road overlay: draw-time compositing of rotatable stubs -------------
@@ -963,6 +1302,36 @@ window.UI = window.UI || {};
       ne: hasRoadAt(x + 1, y - 1), se: hasRoadAt(x + 1, y + 1),
       sw: hasRoadAt(x - 1, y + 1), nw: hasRoadAt(x - 1, y - 1),
     };
+  }
+
+  /** Classifies a wall_section tile's ORIENTATION from its same-civ cardinal
+   *  wall neighbors (map.tiles[...].structure), so wall art can connect
+   *  visually with adjacent segments instead of every tile showing the same
+   *  fixed diorama regardless of layout (see art style guide §13). Unlike
+   *  the road/river overlays above, walls can't just rotate one stub at draw
+   *  time -- a wall's art (per the user's 2026-07-21 design) has an upright
+   *  tree growing through the stonework, and rotating the whole image 90°
+   *  would tip that tree onto its side. So this picks between a small set of
+   *  purpose-authored full-tile variants instead of compositing rotated
+   *  pieces:
+   *  - "horizontal": a same-civ wall neighbor to the east and/or west only.
+   *  - "vertical": a same-civ wall neighbor to the north and/or south only.
+   *  - "node": neighbors on BOTH axes (a corner or junction) OR no wall
+   *    neighbor at all (isolated) -- both read naturally as a reinforced
+   *    strongpoint/watchtower rather than a plain straight run, so they
+   *    deliberately share one variant instead of needing four more (true
+   *    NE/NW/SE/SW corners) or a separate lone-segment asset. */
+  function wallOrientation(map, civId, x, y) {
+    const isSameCivWall = (nx, ny) => {
+      if (nx < 0 || nx >= map.width || ny < 0 || ny >= map.height) return false;
+      const s = map.tiles[ny * map.width + nx].structure;
+      return !!s && s.id === "wall_section" && s.civId === civId;
+    };
+    const horiz = isSameCivWall(x + 1, y) || isSameCivWall(x - 1, y);
+    const vert = isSameCivWall(x, y - 1) || isSameCivWall(x, y + 1);
+    if (horiz && !vert) return "horizontal";
+    if (vert && !horiz) return "vertical";
+    return "node";
   }
 
   // --- River overlay: same draw-time compositing technique as roads, one
@@ -1270,8 +1639,26 @@ window.UI = window.UI || {};
     return { x, y };
   }
 
+  /** Whether tile (x,y) currently falls within the camera viewport -- the
+   *  exact same on-screen test the main draw loop (above) uses to skip
+   *  rendering off-screen tiles, factored out so other systems can ask "is
+   *  this actually visible right now" without duplicating the scroll/zoom/
+   *  clamp math (see main.js's sfx visibility gating, 2026-07-24,
+   *  user-directed: don't play a unit's sound if it's off-screen). A pure
+   *  query -- unlike render(), it does NOT clamp/mutate viewState.scrollX/Y. */
+  function isTileOnScreen(x, y, canvas, gameState, viewState) {
+    const { map } = gameState;
+    const ts = Math.round(TILE_SIZE * (viewState.zoomLevel || 1));
+    const clamped = clampOffset(viewState.scrollX || 0, viewState.scrollY || 0, canvas, map, ts);
+    const offsetX = -Math.round(clamped.x);
+    const offsetY = -Math.round(clamped.y);
+    const screenX = x * ts + offsetX;
+    const screenY = y * ts + offsetY;
+    return !(screenX < -ts || screenX > canvas.width || screenY < -ts || screenY > canvas.height);
+  }
+
   window.UI.render = {
-    render, screenToTile, fullVisibilitySet,
+    render, screenToTile, isTileOnScreen, fullVisibilitySet,
     get TILE_SIZE() { return TILE_SIZE; },
     MIN_ZOOM, MAX_ZOOM,
   };

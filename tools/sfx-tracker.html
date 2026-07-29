@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>SFX Coverage Tracker</title>
+<style>
+  :root {
+    color-scheme: dark;
+    --bg: #1a1c20;
+    --panel: #24272d;
+    --border: #383c44;
+    --text: #e4e6eb;
+    --dim: #8a8f98;
+    --ok: #2f9e5a;
+    --ok-bg: #16321f;
+    --missing: #d9534f;
+    --missing-bg: #331a19;
+    --accent: #5b8def;
+  }
+  * { box-sizing: border-box; }
+  body {
+    background: var(--bg); color: var(--text);
+    font: 14px/1.4 -apple-system, Segoe UI, Roboto, sans-serif;
+    margin: 0; padding: 20px;
+  }
+  h1 { font-size: 18px; margin: 0 0 4px; }
+  .sub { color: var(--dim); margin: 0 0 16px; font-size: 13px; }
+  #summary {
+    display: flex; gap: 20px; flex-wrap: wrap;
+    background: var(--panel); border: 1px solid var(--border); border-radius: 8px;
+    padding: 12px 16px; margin-bottom: 16px; font-size: 13px;
+  }
+  #summary b { color: var(--text); font-size: 15px; }
+  .controls {
+    display: flex; gap: 12px; align-items: center; margin-bottom: 12px; flex-wrap: wrap;
+  }
+  .controls label { color: var(--dim); font-size: 13px; }
+  select, input[type=text] {
+    background: var(--panel); color: var(--text); border: 1px solid var(--border);
+    border-radius: 6px; padding: 5px 8px; font-size: 13px;
+  }
+  table { border-collapse: collapse; width: 100%; background: var(--panel); border-radius: 8px; overflow: hidden; }
+  th, td { padding: 6px 10px; text-align: left; border-bottom: 1px solid var(--border); vertical-align: middle; }
+  th {
+    position: sticky; top: 0; background: #2c3038; color: var(--dim);
+    font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: .03em;
+  }
+  tr.row-missing { background: var(--missing-bg); }
+  tr.row-ok { background: var(--ok-bg); }
+  tr.hidden { display: none; }
+  td.race { color: var(--dim); }
+  td.unit { font-weight: 600; }
+  td.action { font-family: ui-monospace, Consolas, monospace; color: var(--accent); }
+  .variants { display: flex; gap: 4px; flex-wrap: wrap; align-items: center; }
+  button.play {
+    background: var(--accent); color: #fff; border: none; border-radius: 4px;
+    width: 22px; height: 22px; cursor: pointer; font-size: 11px; line-height: 1;
+  }
+  button.play:hover { filter: brightness(1.15); }
+  button.play:active { transform: scale(0.92); }
+  .placeholder { color: var(--dim); font-family: ui-monospace, Consolas, monospace; font-size: 12px; }
+  .status-ok { color: var(--ok); font-weight: 600; }
+  .status-missing { color: var(--missing); font-weight: 600; }
+  #loading { color: var(--dim); padding: 20px; }
+</style>
+</head>
+<body>
+<h1>SFX Coverage Tracker</h1>
+<p class="sub">Probes <code>assets/sfx/&lt;race&gt;_&lt;unit&gt;_&lt;action&gt;_&lt;n&gt;.wav</code> for every combo in the taxonomy (js/data/sfx-actions.js). Serve this over a local server for reliable results (file:// works too, via a slower fallback probe) -- see tools/split-sfx-silence.ps1's sibling notes if files were just moved.</p>
+
+<div id="loading">Scanning assets/sfx/ ...</div>
+<div id="summary" style="display:none"></div>
+
+<div class="controls" style="display:none" id="controlsBar">
+  <label>Race <select id="raceFilter"><option value="">All</option></select></label>
+  <label><input type="checkbox" id="missingOnly"> Missing only</label>
+  <label>Search <input type="text" id="search" placeholder="unit or action..."></label>
+</div>
+
+<table id="grid" style="display:none">
+  <thead>
+    <tr><th>Race</th><th>Unit</th><th>Action</th><th>Variants / expected file</th><th>Status</th></tr>
+  </thead>
+  <tbody id="gridBody"></tbody>
+</table>
+
+<!-- Pure data, no engine dependencies -->
+<script src="../js/data/races.js"></script>
+<script src="../js/data/units.js"></script>
+<script src="../js/data/sfx-actions.js"></script>
+
+<script>
+// Mirrors js/audio/music.js's / js/audio/sfx.js's probeFile: a plain GET +
+// immediate body cancel first (a direct existence check via HTTP status),
+// falling back to an <audio>-element load probe for file:// contexts where
+// fetch() is blocked by Same Origin Policy.
+async function probeFile(path) {
+  try {
+    const res = await fetch(path, { method: "GET", cache: "no-store" });
+    if (res.body && res.body.cancel) {
+      try { await res.body.cancel(); } catch (e) {}
+    }
+    return res.ok;
+  } catch (e) {
+    return probeFileViaAudio(path);
+  }
+}
+function probeFileViaAudio(path) {
+  return new Promise((resolve) => {
+    const audio = new Audio();
+    const cleanup = () => {
+      audio.removeEventListener("error", onError);
+      audio.removeEventListener("loadedmetadata", onCanPlay);
+    };
+    const onError = () => { cleanup(); resolve(false); };
+    const onCanPlay = () => { cleanup(); resolve(true); };
+    audio.addEventListener("error", onError);
+    audio.addEventListener("loadedmetadata", onCanPlay);
+    audio.src = path;
+    setTimeout(() => { cleanup(); resolve(false); }, 3000);
+  });
+}
+
+async function mapWithConcurrencyLimit(items, limit, worker) {
+  const results = new Array(items.length);
+  let nextIndex = 0;
+  async function runNext() {
+    const i = nextIndex++;
+    if (i >= items.length) return;
+    results[i] = await worker(items[i]);
+    await runNext();
+  }
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, runNext));
+  return results;
+}
+
+function clipPath(raceId, unitId, action, n) {
+  return `../assets/sfx/${window.GameData.sfxFileName(raceId, unitId, action, n)}`;
+}
+
+async function main() {
+  const combos = window.GameData.sfxAllCombos();
+  const maxVariants = window.GameData.SFX_MAX_VARIANTS;
+
+  const probeTasks = [];
+  for (const combo of combos) {
+    combo.variants = []; // filled in below, parallel to probe results
+    for (let n = 1; n <= maxVariants; n++) {
+      probeTasks.push({ combo, n, path: clipPath(combo.raceId, combo.unitId, combo.action, n) });
+    }
+  }
+
+  let probed = 0;
+  await mapWithConcurrencyLimit(probeTasks, 4, async (task) => {
+    const exists = await probeFile(task.path);
+    if (exists) task.combo.variants.push(task.n);
+    probed++;
+    if (probed % 40 === 0) {
+      document.getElementById("loading").textContent =
+        `Scanning assets/sfx/ ... ${probed}/${probeTasks.length}`;
+    }
+  });
+  combos.forEach((c) => c.variants.sort((a, b) => a - b));
+
+  render(combos);
+}
+
+function render(combos) {
+  const totalCombos = combos.length;
+  const coveredCombos = combos.filter((c) => c.variants.length > 0).length;
+  const totalClips = combos.reduce((sum, c) => sum + c.variants.length, 0);
+
+  document.getElementById("loading").style.display = "none";
+  const summary = document.getElementById("summary");
+  summary.style.display = "flex";
+  summary.innerHTML = `
+    <div><b>${coveredCombos}</b> / ${totalCombos} combos covered</div>
+    <div><b>${totalClips}</b> total clips found</div>
+    <div><b>${totalCombos - coveredCombos}</b> combos with zero clips</div>
+  `;
+
+  const raceFilter = document.getElementById("raceFilter");
+  window.GameData.RACE_LIST.forEach((r) => {
+    const opt = document.createElement("option");
+    opt.value = r; opt.textContent = r;
+    raceFilter.appendChild(opt);
+  });
+  document.getElementById("controlsBar").style.display = "flex";
+
+  const tbody = document.getElementById("gridBody");
+  const rows = [];
+  combos
+    .slice()
+    .sort((a, b) => a.raceId.localeCompare(b.raceId) || a.unitId.localeCompare(b.unitId) || a.action.localeCompare(b.action))
+    .forEach((combo) => {
+      const tr = document.createElement("tr");
+      const hasAny = combo.variants.length > 0;
+      tr.className = hasAny ? "row-ok" : "row-missing";
+      tr.dataset.race = combo.raceId;
+      tr.dataset.searchText = `${combo.unitId} ${combo.action}`.toLowerCase();
+      tr.dataset.missing = hasAny ? "0" : "1";
+
+      const unitLabel = window.GameData.getUnit(combo.unitId).label;
+
+      const variantsCell = document.createElement("td");
+      const variantsWrap = document.createElement("div");
+      variantsWrap.className = "variants";
+      if (hasAny) {
+        combo.variants.forEach((n) => {
+          const btn = document.createElement("button");
+          btn.className = "play";
+          btn.textContent = "▶" + n;
+          btn.title = window.GameData.sfxFileName(combo.raceId, combo.unitId, combo.action, n);
+          btn.addEventListener("click", () => {
+            new Audio(clipPath(combo.raceId, combo.unitId, combo.action, n)).play().catch(() => {});
+          });
+          variantsWrap.appendChild(btn);
+        });
+      } else {
+        const span = document.createElement("span");
+        span.className = "placeholder";
+        span.textContent = "expected: " + window.GameData.sfxFileName(combo.raceId, combo.unitId, combo.action, 1);
+        variantsWrap.appendChild(span);
+      }
+      variantsCell.appendChild(variantsWrap);
+
+      const statusCell = document.createElement("td");
+      const statusSpan = document.createElement("span");
+      statusSpan.className = hasAny ? "status-ok" : "status-missing";
+      statusSpan.textContent = hasAny ? `${combo.variants.length} found` : "missing";
+      statusCell.appendChild(statusSpan);
+
+      tr.innerHTML = `<td class="race">${combo.raceId}</td><td class="unit">${unitLabel}</td><td class="action">${combo.action}</td>`;
+      tr.appendChild(variantsCell);
+      tr.appendChild(statusCell);
+      tbody.appendChild(tr);
+      rows.push(tr);
+    });
+
+  document.getElementById("grid").style.display = "table";
+
+  function applyFilters() {
+    const race = raceFilter.value;
+    const missingOnly = document.getElementById("missingOnly").checked;
+    const search = document.getElementById("search").value.trim().toLowerCase();
+    rows.forEach((tr) => {
+      const raceOk = !race || tr.dataset.race === race;
+      const missingOk = !missingOnly || tr.dataset.missing === "1";
+      const searchOk = !search || tr.dataset.searchText.includes(search);
+      tr.classList.toggle("hidden", !(raceOk && missingOk && searchOk));
+    });
+  }
+  raceFilter.addEventListener("change", applyFilters);
+  document.getElementById("missingOnly").addEventListener("change", applyFilters);
+  document.getElementById("search").addEventListener("input", applyFilters);
+}
+
+main();
+</script>
+</body>
+</html>

@@ -1,0 +1,59 @@
+Game asset: Elf City, tier 4 (race: Elf, category: city tier).
+
+A single game asset in a cel-shaded outline style: thick, clean black
+outlines around the silhouette and major interior linework, sharp
+details, cel-shaded flat colors with a limited palette (2-3 hard-edged
+tonal steps per surface -- base, shadow, occasional highlight -- no soft
+airbrushed gradients or blurry ambient occlusion). Clear legibility when
+zoomed out to a small size. Muted, desaturated, earthy fantasy palette
+(olive greens, weathered browns, stone grays, faded ochres) -- no
+saturated cartoon colors. Dark-fantasy mood, weathered and lived-in, not
+cute or whimsical. Single consistent light direction from the upper left,
+implied by the shadow/highlight color steps rather than rendered soft
+light.
+
+This asset must stay legible when shrunk down to a very small size, so:
+use strong contrast between neighboring color regions (a bright/light
+element against a dark one, not two similar mid-tones touching); hold
+identifying details out and away from each other rather than overlapping,
+so key shapes don't merge together; and keep ornamental detail minimal --
+favor a small number of bold, simple shapes over fine texture like
+carved knots or leaf clusters that won't survive downscaling anyway.
+
+Subject: a proper elven town built up around one large ancient central
+tree -- several living-wood dwellings ring the great trunk at ground
+level, linked by two tiers of raised wooden walkways spiraling up the
+trunk to small platform-houses nestled in the lower boughs. A carved
+root-stone archway frames the main entrance at the base -- more stone
+presence than earlier tiers, still secondary to the living wood. A
+modest watch-platform near the top has a single green (#3f8f5c) banner,
+the only accent-color element.
+
+Framing: elevated isometric diorama angle (~30-40 degree downward tilt),
+the full settlement visible as a self-contained island silhouette (not a
+filled square background), portrait 1:2 (width:height) composition. This
+is the fourth tier in a 6-tier growth sequence -- clearly taller than
+tier 3, the central tree and its platform-houses occupying roughly the
+bottom 60% of the frame, leaving a visible but smaller empty/transparent
+gap above. Ground level sits at the very bottom edge of the frame. The
+ground itself (including the root-stone archway) must read as an
+irregular, organic footprint -- uneven natural terrain, spreading
+roots, a rough-edged clearing -- NEVER a crisp geometric diamond,
+rhombus, or flat rotated square platform (that would read as a
+separate isometric tile, not an object sitting on the game's actual
+flat top-down square grid).
+
+Background: a single flat, solid, saturated magenta (#FF00FF) background,
+completely uniform, no gradient, no shadow cast onto it, no vignette --
+this will be chroma-keyed out, so nothing in the subject itself should be
+magenta or near-magenta.
+
+Race material language: living wood grown into architecture as the
+dominant material (the great central tree itself forms the town's
+spine), carved root-stone as a secondary accent at ground level only,
+soft canopy-integrated forms throughout. The green (#3f8f5c) accent
+color may only appear as the small banner described above -- never as
+the dominant hue of wood, stone, or foliage.
+
+Do not include any text, watermark, logo, UI elements, or border in the
+image.

@@ -44,7 +44,7 @@ window.GameData.UNIT_QUIPS = {
   human: {
     pioneer: {
       move: [
-        "Westward, or wherever's cheapest.",
+        "Toward the frontier!",
         "Boots on, hopes up.",
         "New land waits for no one.",
       ],
@@ -109,7 +109,8 @@ window.GameData.UNIT_QUIPS = {
     },
     knight: {
       attack: [
-        "For honor, mostly. Some glory too.",
+        "For the Queen!",
+		"For honor, mostly. Some glory too.",
         "A duel, if you insist.",
         "Chivalry has limits. This isn't one.",
       ],
@@ -119,6 +120,17 @@ window.GameData.UNIT_QUIPS = {
         "A knight's errand, more or less.",
       ],
     },
+	paladin: {
+      attack: [
+        "Justice and Honor!",
+        "Die, monster! You don't belong in this world.",
+        "For glory!",
+      ],
+      move: [
+        "Onward, banner held high.",
+        "The road to glory is often muddy.",
+      ],
+    },	
     archer: {
       attack: [
         "Mark. Draw. Regret.",
@@ -148,6 +160,7 @@ window.GameData.UNIT_QUIPS = {
         "Loading. Releasing. No regrets.",
         "Gravity does most of the work, really.",
         "Incoming! That part's obvious.",
+		"Time to dispense some indiscriminate justice!",
       ],
       move: [
         "Slowly. Very, very slowly.",
@@ -169,14 +182,15 @@ window.GameData.UNIT_QUIPS = {
     },
     wizard: {
       attack: [
-        "Let me just... consult the theory first.",
-        "This spell is mostly tested!",
-        "Ah, the fun kind of magic.",
-      ],
+        "Maryzell!", // fireball EZSTYMGHAFQLMNUJKRBDIVWXOC
+        "Duish um wandyr!", // touch of winter! EZSTYMGHAFQLMNUJKRBDIVWXOC
+        "A sebd nun-megas mabbaly!", // i cast non-magic missile! EZSTYMGHAFQLMNUJKRBDIVWXOC
+      ], 
       move: [
         "Consulting the map. And the stars.",
         "Walking, but thinking hard about it.",
         "The theory suggests this way.",
+		"I prefer teleporting, but this will do for now.",
       ],
     },
   },
@@ -197,7 +211,7 @@ window.GameData.UNIT_QUIPS = {
         "No scars, just a suggestion.",
       ],
       found: [
-        "Here. The trees already agreed.",
+        "Here. The trees agreed.",
         "Roots before rooftops.",
         "A hundred years, then we'll see.",
       ],
@@ -290,8 +304,7 @@ window.GameData.UNIT_QUIPS = {
     shadowsteed: {
       attack: [
         "We strike as one shadow now.",
-        "Borrowed strength, freely spent.",
-        "The dark carries more than hooves.",
+        "Darkness takes you.",
       ],
       move: [
         "Silent hooves on silent ground.",
@@ -370,10 +383,10 @@ window.GameData.UNIT_QUIPS = {
         "Uphill again. Naturally.",
       ],
       prospect: [
-        "Gold in this rock. I can feel it.",
+        "Lore in this rock. I can feel it.",
         "Right, staking my claim here.",
         "I am a dwarf and im digging a hole...",
-        "This'll do. Settling in.",
+        "This'll do.",
       ],
     },
     troubadour: {
@@ -413,7 +426,7 @@ window.GameData.UNIT_QUIPS = {
       seek_target: [
         "That one. That city will do.",
         "A destination, finally.",
-        "Mark it. We march at dawn.",
+        "Mark it. We march.",
         "Something to crush on the horizon.",
       ],
     },
@@ -426,8 +439,8 @@ window.GameData.UNIT_QUIPS = {
     pioneer: {
       move: [
         "MOVING. FOUND NOTHING YET.",
-        "New dirt, same ambitions.",
-        "Somewhere to plant a flag.",
+        "New dirt, same smells.",
+        "Somewhere to plant a flag?",
       ],
       build_road: [
         "Flatten it, we're not fussy.",
@@ -454,7 +467,7 @@ window.GameData.UNIT_QUIPS = {
     },
     galley: {
       move: [
-        "FLOATING. LOUDLY.",
+        "FLOATING.",
         "The sea's just wet ground.",
         "Onward, before someone gets seasick.",
       ],
@@ -505,9 +518,10 @@ window.GameData.UNIT_QUIPS = {
         "A little curse for your trouble.",
         "The bog whispers your name now.",
         "This will sting. And linger.",
+		"Wuy! Hyx ent wuy!", // Woe! Hex and woe!
       ],
       move: [
-        "The bog whispers directions.",
+        "The bog whispers...",
         "Slow steps, old magic.",
         "Somewhere damp calls to me.",
       ],
@@ -546,14 +560,14 @@ window.GameData.UNIT_QUIPS = {
       move: [
         "I smell dinner...",
         "Wings first, thoughts later.",
-        "The sky belongs to me anyway.",
+        "The sky belongs to me.",
       ],
     },
     goblin_miscreant: {
       attack: [
         "Small blade, surprising results.",
-        "In, stab, out. Simple plan.",
-        "Nobody expects the little one.",
+        "Stab! Stab! Ah ha ha ha!",
+        "Time to stab?",
 		"Hahahahaha!",
       ],
       move: [

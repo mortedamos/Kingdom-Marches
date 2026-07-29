@@ -262,6 +262,38 @@ window.UI = window.UI || {};
     return pick(`unit/${unitId}`, seed);
   }
 
+  /** Same race-qualified-first-then-shared-fallback pattern as pickUnit,
+   *  for buildings. Only matters for isWall buildings (wall_section) --
+   *  the only building type that's actually shared across every race, so
+   *  it's the only one that can have a race-specific reskin (e.g. Elf's
+   *  living hedge wall vs. a plain stone wall elsewhere). Ordinary
+   *  race-only buildings never have a qualified variant registered (see
+   *  preloadAll), so this just falls through to the plain lookup for them,
+   *  identical to calling pick() directly. */
+  function pickBuilding(buildingId, raceId, seed) {
+    const qualified = pick(`building/${buildingId}/${raceId}`, seed);
+    if (qualified) return qualified;
+    return pick(`building/${buildingId}`, seed);
+  }
+
+  /** Wall segments additionally vary by ORIENTATION (horizontal run, vertical
+   *  run, or "node" -- a corner, junction, or isolated segment -- see
+   *  render.js's wallOrientation()), since a wall's art must connect visually
+   *  with its neighbors. Fallback chain, most-specific first: race+orientation
+   *  -> race-only (a race with a single generic wall image, no variants yet)
+   *  -> plain orientation (a hypothetical race-neutral oriented wall) -> plain
+   *  shared wall. Every step degrades gracefully so a race with partial or no
+   *  wall art at all still renders (the old colored-square placeholder, via
+   *  render.js's `if (sprite)` check finding nothing here). */
+  function pickWallSegment(buildingId, raceId, orientation, seed) {
+    return (
+      pick(`building/${buildingId}/${raceId}/${orientation}`, seed) ||
+      pick(`building/${buildingId}/${raceId}`, seed) ||
+      pick(`building/${buildingId}/${orientation}`, seed) ||
+      pick(`building/${buildingId}`, seed)
+    );
+  }
+
   // Default idle playback pacing -- "hold the first frame, play through to
   // the last, hold the last, loop back" (see currentFrame() below) rather
   // than a rigid fps-locked cycle. Overridable per-animation in a manifest
@@ -391,6 +423,37 @@ window.UI = window.UI || {};
       loads.push(loadVariants(`city/${id}`, `assets/cities/${id}`));
       loads.push(loadCityTiers(id));
     }
+    // Buildings (race-specific) and the universal wall_section -- single
+    // static image per id, no population-driven tiering, so the ordinary
+    // variant loader is enough (see art style guide §13).
+    for (const id of window.GameData.BUILDING_LIST)
+      loads.push(loadVariants(`building/${id}`, `assets/buildings/${id}`));
+    // isWall buildings (wall_section) may additionally ship optional
+    // race-specific art -- assets/buildings/{raceId}_{buildingId}.png --
+    // looked up via pickBuilding() in preference to the shared art above.
+    // Same convention as the universal-unit race art above. Ordinary
+    // race-only buildings skip this (they already belong to one race, no
+    // qualified variant to look for).
+    const universalBuildingIds = window.GameData.BUILDING_LIST.filter(
+      (id) => window.GameData.BUILDINGS[id].isWall
+    );
+    // Wall orientation variants -- see render.js's wallOrientation() and
+    // pickWallSegment() above. A race's wall art additionally varies by
+    // whether it's a straight horizontal/vertical run or a corner/junction/
+    // isolated "node" (see art style guide §13), since the art must connect
+    // visually with same-civ wall neighbors.
+    const WALL_ORIENTATIONS = ["horizontal", "vertical", "node"];
+    for (const buildingId of universalBuildingIds) {
+      for (const raceId of window.GameData.RACE_LIST) {
+        loads.push(loadVariants(`building/${buildingId}/${raceId}`, `assets/buildings/${raceId}_${buildingId}`));
+        for (const orientation of WALL_ORIENTATIONS) {
+          loads.push(loadVariants(
+            `building/${buildingId}/${raceId}/${orientation}`,
+            `assets/buildings/${raceId}_${buildingId}_${orientation}`
+          ));
+        }
+      }
+    }
     for (const id of window.GameData.RESOURCE_LIST)
       loads.push(loadVariants(`enhancement/resource_${id}`, `assets/enhancements/resource_${id}`));
     loads.push(loadVariants("enhancement/ruin", "assets/enhancements/ruin"));
@@ -407,5 +470,5 @@ window.UI = window.UI || {};
     return Promise.allSettled(loads);
   }
 
-  window.UI.sprites = { pick, pickUnit, pickCityTier, currentFrame, preloadAll };
+  window.UI.sprites = { pick, pickUnit, pickBuilding, pickWallSegment, pickCityTier, currentFrame, preloadAll };
 })();

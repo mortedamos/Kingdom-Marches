@@ -1,0 +1,67 @@
+Game asset: Wall Segment, junction/watchtower turret (race: Human, category: wall).
+
+A single game asset in a cel-shaded outline style: thick, clean black
+outlines around the silhouette and major interior linework, sharp
+details, cel-shaded flat colors with a limited palette (2-3 hard-edged
+tonal steps per surface -- base, shadow, occasional highlight -- no soft
+airbrushed gradients or blurry ambient occlusion). Clear legibility when
+zoomed out to a small size. Dark-fantasy mood overall, but this race's
+stonework is a deliberate exception to the usual muted-earthy palette:
+genuinely pale, bright white-gray dressed stone, clearly lighter than
+weathered wood or green foliage. Single consistent light direction from
+the upper left, implied by the shadow/highlight color steps rather than
+rendered soft light.
+
+This asset must stay legible when shrunk down to a very small size, so:
+use strong contrast between neighboring color regions; keep ornamental
+detail minimal -- favor a small number of bold, simple shapes over fine
+texture that won't survive downscaling anyway.
+
+Subject: a ROUND stone turret with a conical roof, used wherever the
+wall bends, joins another stretch of wall from any direction, or stands
+alone -- a circular structure built from the same finely dressed pale
+white-gray stone as the straight wall segments, seen from directly
+above as a circle, with a peaked conical roof (a different color from
+the walls, e.g. slate gray or deep purple-gray) rising from its center.
+This round shape is sized so its own outer curved edge touches all FOUR
+sides of the square frame at once -- the circle's diameter equals the
+full width (and height) of the tile, so the curve itself is tangent to
+the top, bottom, left, and right edges simultaneously, EXACTLY at the
+true pixel edge with no gap. CRITICAL shape constraint: the silhouette
+is a SINGLE CIRCLE and NOTHING ELSE -- do NOT add any straight
+rectangular arms, stubs, spokes, or a plus/cross shape reaching toward
+the corners or edges in addition to the circle. There is exactly one
+continuous curved stone silhouette, touching the frame at exactly four
+tangent points (the top/bottom/left/right edge midpoints) and nowhere
+else. The four corner areas of the square frame, between the circle's
+curve and the frame's actual corners, must be empty background -- no
+stone reaches into the corners at all. Because the turret is round, a
+straight wall segment can connect into it seamlessly from ANY of the
+four cardinal directions. One purple (#8e44ad) banner flies from the
+conical roof's peak as the only accent-color element.
+
+Framing: SQUARE 1:1 composition (equal width and height), matching one
+terrain tile -- same convention as this game's road and river tile art,
+not the taller portrait canvas used for standalone buildings, and the
+SAME square aspect ratio as the straight horizontal/vertical wall
+tiles. The round turret is centered in the frame with its circular
+stone edge touching all four sides as described; the conical roof and
+banner may rise higher within this square frame than the straight
+segments' crenellations do, but must still read as clearly shorter than
+an ordinary building's tallest form, let alone a city spire.
+
+Background: a single flat, solid, saturated magenta (#FF00FF)
+background, completely uniform, no gradient, no shadow cast onto it, no
+vignette -- this will be chroma-keyed out, so nothing in the subject
+itself should be magenta or near-magenta. Magenta MUST fill all four
+corner areas outside the circle; only the circular stonework's curved
+edge touches the frame, at exactly four tangent points (the edge
+midpoints).
+
+Race material language: finely dressed pale white-gray stone as the
+dominant material, a contrasting slate/purple-gray conical roof. The
+purple (#8e44ad) accent color may only appear as the small banner
+described above -- never as the dominant hue of stone or roof.
+
+Do not include any text, watermark, logo, UI elements, or border in the
+image.

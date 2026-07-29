@@ -93,7 +93,6 @@ window.GameEngine = window.GameEngine || {};
     civ.universalRangeGrant = civ.universalRangeGrant || 0; // floor on every unit's effective Ranged (see combat.js effectiveRange)
     civ.buildingCountBonus = civ.buildingCountBonus || {}; // { harvest|coin|lore: perBuildingValue } -- see cities.js's per-building-count yield
     civ.fillRateMult = civ.fillRateMult || 1; // multiplies advanceCityFill's per-turn progress (e.g. Halfellow Community Fellowship)
-    civ.buildSpeedMult = civ.buildSpeedMult || 1; // divides unitBuildTurns/speeds progressBuildQueue (e.g. Dwarf Runeforged Tools)
 
     for (const effect of tech.effects) {
       switch (effect.type) {
@@ -189,11 +188,6 @@ window.GameEngine = window.GameEngine || {};
         case "fill_rate_mult":
           // Multiplies advanceCityFill's per-turn tile-fill progress (cities.js).
           civ.fillRateMult *= effect.value;
-          break;
-        case "build_speed_mult":
-          // Divides unitBuildTurns's result and speeds up progressBuildQueue's
-          // per-turn progress -- see ai.js (e.g. Dwarf "Runeforged Tools").
-          civ.buildSpeedMult *= effect.value;
           break;
         case "garrison_defense_bonus": {
           const ov = civ.unitOverrides[effect.unit] || {};

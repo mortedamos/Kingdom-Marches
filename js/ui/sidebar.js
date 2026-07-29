@@ -79,7 +79,7 @@ window.UI = window.UI || {};
         <div class="stat-row"><span>Lore</span><span>${y.lore.toFixed(1)}</span></div>
         <h3>Building</h3>
         <div class="stat-row">${city.buildQueue
-          ? `${escapeHtml(city.buildQueue.id)} (${Math.min(100, Math.floor(100 * city.buildQueue.progress / city.buildQueue.coinCost))}%)`
+          ? `${escapeHtml(city.buildQueue.id)} (${buildQueuePct(city.buildQueue)}%)`
           : "<em>Nothing queued</em>"}</div>
         <h3>Structures (${city.structures.length}/${window.GameEngine.cities.RING1_SLOT_COUNT + window.GameEngine.cities.RING2_SLOT_COUNT})</h3>
         ${city.structures.length
@@ -143,7 +143,6 @@ window.UI = window.UI || {};
     if (b.radiusBonus) effects.push(`+${b.radiusBonus} radius`);
     if (b.coinPerAdjacentRoad) effects.push(`+${b.coinPerAdjacentRoad} coin / adjacent road`);
     if (b.lorePerAdjacentForest) effects.push(`+${b.lorePerAdjacentForest} lore / adjacent forest`);
-    if (b.coinToLoreConversionRate) effects.push(`coin→lore ×${b.coinToLoreConversionRate}`);
     if (b.contestedYieldPenaltyOverride) effects.push(`contested tiles yield ${Math.round(b.contestedYieldPenaltyOverride * 100)}%`);
     if (b.unitCostMult) effects.push(`unit cost ×${b.unitCostMult}`);
     if (b.raiseDeadPowerBonus) effects.push(`+${Math.round(b.raiseDeadPowerBonus * 100)}% raised power`);
@@ -188,6 +187,39 @@ window.UI = window.UI || {};
         }
       } else {
         pioneerActions += `<div class="stat-row"><em>Already acted this turn</em></div>`;
+      }
+    }
+
+    // Channeled actions (2026-07-21, user-directed): Prospector's Claim,
+    // Dungeon Delve, and Galley Fishing are all explicitly-started,
+    // explicitly-cancelled channels now (see turns.js's onAnchor gate on
+    // unit.channeling) rather than something that "just happens" from
+    // standing still -- these buttons are the player's own start/cancel
+    // controls, mirroring ai.js's maybeProspectorsClaimPlay/
+    // maybeDungeonDelvePlay/maybeGalleyFishingPlay for the AI side.
+    let channelActions = "";
+    if (isHumanUnit && gameState) {
+      const tile = gameState.map.tiles[unit.y * gameState.map.width + unit.x];
+      const CHANNEL_LABELS = { prospecting: "Prospecting", delving: "Delving", fishing: "Fishing" };
+      if (unit.channeling && CHANNEL_LABELS[unit.channeling]) {
+        channelActions = `<h3>Actions</h3>`;
+        const turnsIn = unit._ritualTurns || 0;
+        if (turnsIn > 0) {
+          channelActions += `<div class="stat-row"><span>${CHANNEL_LABELS[unit.channeling]}</span><span>${turnsIn} turn${turnsIn === 1 ? "" : "s"}</span></div>`;
+        }
+        channelActions += `<button id="cancel-channel-btn" class="action-btn action-btn-danger">Cancel ${CHANNEL_LABELS[unit.channeling]}</button>`;
+      } else if (!unit.usedThisTurn) {
+        const onVein = tile.resource === "gold" || tile.resource === "iron";
+        if (civ.raceId === "dwarf" && civ.unlockedMechanics && civ.unlockedMechanics.has("prospectors_claim") && onVein) {
+          channelActions = `<h3>Actions</h3>`;
+          channelActions += `<button id="start-prospecting-btn" class="action-btn">Start Prospecting</button>`;
+        } else if (unit.typeId === "wizard" && civ.unlockedMechanics && civ.unlockedMechanics.has("dungeon_delve") && tile.isRuin) {
+          channelActions = `<h3>Actions</h3>`;
+          channelActions += `<button id="start-delving-btn" class="action-btn">Start Delving</button>`;
+        } else if (unit.typeId === "galley" && !unit.carries && tile.resource === "fish") {
+          channelActions = `<h3>Actions</h3>`;
+          channelActions += `<button id="start-fishing-btn" class="action-btn">Start Fishing</button>`;
+        }
       }
     }
 
@@ -299,6 +331,7 @@ window.UI = window.UI || {};
         <div class="stat-row"><span>Position</span><span>(${unit.x}, ${unit.y})</span></div>
         ${carriedByTag}${carriesTag}
         ${pioneerActions}
+        ${channelActions}
         ${restBtn}
         ${defendBtn}
         ${disbandBtn}
@@ -338,6 +371,22 @@ window.UI = window.UI || {};
         <h3>Cities</h3>
         ${civ.cities.map((c) => `<div class="stat-row"><span>${escapeHtml(c.name)}</span><span>pop ${c.population.toFixed(0)}</span></div>`).join("")}
       </div>`;
+  }
+
+  /** City build-queue progress, 0-100 -- two different shapes depending on
+   *  cost model (see ai.js's progressBuildQueue): power-based unit/influence
+   *  builds count DOWN turnsRemaining against the totalTurns stamped when
+   *  the build started, while legacy coin-accumulation builds (buildings,
+   *  and the 3 units with no associated tech) count UP progress against
+   *  coinCost. Fixed 2026-07-21 -- previously always read the coin-
+   *  accumulation shape unconditionally, showing NaN% for every power-based
+   *  build. */
+  function buildQueuePct(item) {
+    if (item.turnsRemaining !== undefined) {
+      if (!item.totalTurns) return 0;
+      return Math.min(100, Math.floor(100 * (item.totalTurns - item.turnsRemaining) / item.totalTurns));
+    }
+    return Math.min(100, Math.floor(100 * item.progress / item.coinCost));
   }
 
   function escapeHtml(s) {

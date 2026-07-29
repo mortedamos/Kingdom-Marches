@@ -1,0 +1,60 @@
+Game asset: Dwarf City, tier 4 (race: Dwarf, category: city tier).
+
+A single game asset in a cel-shaded outline style: thick, clean black
+outlines around the silhouette and major interior linework, sharp
+details, cel-shaded flat colors with a limited palette (2-3 hard-edged
+tonal steps per surface -- base, shadow, occasional highlight -- no soft
+airbrushed gradients or blurry ambient occlusion). Clear legibility when
+zoomed out to a small size. Muted, desaturated, earthy fantasy palette
+(olive greens, weathered browns, stone grays, faded ochres) -- no
+saturated cartoon colors. Dark-fantasy mood, weathered and lived-in, not
+cute or whimsical. Single consistent light direction from the upper left,
+implied by the shadow/highlight color steps rather than rendered soft
+light.
+
+This asset must stay legible when shrunk down to a very small size, so:
+use strong contrast between neighboring color regions (a bright/light
+element against a dark one, not two similar mid-tones touching); hold
+identifying details out and away from each other rather than overlapping,
+so key shapes don't merge together; and keep ornamental detail minimal --
+favor a small number of bold, simple shapes over fine texture like
+individual mortar lines that won't survive downscaling anyway.
+
+Subject: a proper dwarven hold -- a wide cluster of joined stone halls
+built from heavy gray blocks, thick enclosing walls with two short
+squat corner towers (still low, not tall spires), a working forge
+building with a stone chimney glowing faintly orange at its top from
+the fire within. A heavy reinforced gate with prominent dark iron
+banding and a larger carved rune arch above it. This is freestanding
+stone construction, NOT built into or against a cliff/mountain face.
+One or two tan/brown (#9a7b56) banners on the corner towers as the only
+accent-color elements.
+
+Framing: elevated isometric diorama angle (~30-40 degree downward tilt),
+the full settlement visible as a self-contained island silhouette (not a
+filled square background), portrait 1:2 (width:height) composition. This
+is the fourth tier in a 6-tier growth sequence that stays LOW AND WIDE
+throughout (growth reads as increasing mass and fortification, not
+height) -- clearly wider and more fortified than tier 3, with the corner
+towers as the tallest elements, but still low and squat overall,
+occupying roughly the bottom 35-40% of the frame -- nowhere close to
+half the frame's height. Ground level sits at the very bottom edge of
+the frame. The ground itself must read as an irregular, organic
+footprint -- uneven natural terrain, a rough dirt clearing -- NEVER a
+crisp geometric diamond, rhombus, or flat rotated square platform (that
+would read as a separate isometric tile, not an object sitting on the
+game's actual flat top-down square grid).
+
+Background: a single flat, solid, saturated magenta (#FF00FF) background,
+completely uniform, no gradient, no shadow cast onto it, no vignette --
+this will be chroma-keyed out, so nothing in the subject itself should be
+magenta or near-magenta.
+
+Race material language: roughly-hewn gray stone blocks as the dominant
+material, dark iron banding/rivets as a recurring metal accent (gate
+reinforcement, hinges), a glowing forge chimney, carved rune-work at the
+gate. The tan/brown (#9a7b56) accent color may only appear as the small
+banners described above -- never as the dominant hue of stone or metal.
+
+Do not include any text, watermark, logo, UI elements, or border in the
+image.

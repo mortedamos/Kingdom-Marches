@@ -1,0 +1,78 @@
+Game asset: Wall Segment, junction/totem cluster (race: Orc, category: wall).
+
+A single game asset in a cel-shaded outline style: thick, clean black
+outlines around the silhouette and major interior linework, sharp
+details, cel-shaded flat colors with a limited palette (2-3 hard-edged
+tonal steps per surface -- base, shadow, occasional highlight -- no soft
+airbrushed gradients or blurry ambient occlusion). Clear legibility when
+zoomed out to a small size. Muted, desaturated, earthy fantasy palette
+(olive greens, weathered browns, stone grays, faded ochres) -- no
+saturated cartoon colors. Dark-fantasy mood, weathered and lived-in, not
+cute or whimsical. Single consistent light direction from the upper left,
+implied by the shadow/highlight color steps rather than rendered soft
+light.
+
+This asset must stay legible when shrunk down to a very small size, so:
+use strong contrast between neighboring color regions; keep ornamental
+detail minimal -- favor a small number of bold, simple shapes over fine
+texture that won't survive downscaling anyway.
+
+Subject: an orc tribal totem-junction, used wherever the wall bends,
+joins another stretch of wall from any direction, or stands alone. This
+has TWO layered parts, and the distinction between them matters:
+
+1. THE CONNECTING BASE (must be geometrically reliable): a solid ring of
+lashed sharpened logs identical in height and thickness to the straight
+wall segments, wrapping all the way around the tile so it reaches all
+FOUR sides of the square frame at its connecting band-height -- this
+base must present the SAME log-palisade band, at the SAME vertical
+position, on every side, so a straight wall segment placed on any
+neighboring tile connects into it cleanly no matter which direction it
+approaches from. Think of this base as circular/octagonal, not a
+plus/cross shape with thin arms -- one continuous ring of logs, full
+band-width all the way around.
+
+CRITICAL sizing: the ring must be drawn LARGE, filling nearly the ENTIRE
+canvas with only minimal padding -- do NOT draw a smaller composition
+centered with lots of empty margin around it the way a standalone
+building would be framed. The ring's log band must reach within a few
+pixels of all four frame edges, the same tight-to-the-edge framing the
+straight horizontal/vertical wall tiles use. A small centered
+composition floating in a mostly-empty square frame is WRONG for this
+asset -- it must look like a tight crop of a wall ring that continues
+believably past all four edges, not an object sitting in open space.
+
+2. THE TRIBAL ORNAMENT (can be as wild and irregular as fits the tribe):
+rising from the CENTER of that base, an irregular cluster of totem
+poles, sharpened stakes, and mounted skulls/bones of varying heights
+and angles -- chaotic, asymmetric, unmistakably tribal, taller and
+bolder than anything on the straight segments. This cluster sits well
+inside the base ring, not touching or extending past the frame's edges
+at all -- all of its visual chaos stays in the middle of the tile,
+never interfering with the clean connecting ring beneath it. One red
+(#7a2e2e) banner or trophy-hide hangs from the tallest totem pole as
+the only accent-color element.
+
+Framing: SQUARE 1:1 composition (equal width and height), matching one
+terrain tile -- same convention as this game's road and river tile art,
+not the portrait canvas used for standalone buildings, and the SAME
+square aspect ratio as the straight horizontal/vertical wall tiles, so
+the connecting base ring lines up with them exactly on every side. The
+totem cluster may rise higher within this square frame than the
+straight segments' log tops do, but must still read as clearly shorter
+than an ordinary building's tallest form, let alone a city spire.
+
+Background: a single flat, solid, saturated magenta (#FF00FF)
+background, completely uniform, no gradient, no shadow cast onto it, no
+vignette -- this will be chroma-keyed out, so nothing in the subject
+itself should be magenta or near-magenta. Magenta should fill the four
+corner areas outside the connecting ring.
+
+Race material language: roughly-sharpened wooden logs with crude rope
+lashings for the base ring, weathered totem poles and bone/skull trophies
+for the central cluster. The red (#7a2e2e) accent color may only appear
+as the small banner/hide described above -- never as the dominant hue
+of wood or bone.
+
+Do not include any text, watermark, logo, UI elements, or border in the
+image.

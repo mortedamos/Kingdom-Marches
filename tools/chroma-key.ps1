@@ -19,6 +19,13 @@
   If set, resizes the keyed result to ResizeTo x ResizeTo (square) as the
   final step, matching the target asset spec from the style guide.
 
+.PARAMETER ResizeWidth
+.PARAMETER ResizeHeight
+  Non-square alternative to -ResizeTo -- set both to resize to an exact
+  WidthxHeight instead of a square (e.g. 128x256 for the portrait City
+  tier canvas, see art style guide §12). Takes priority over -ResizeTo
+  when both are set.
+
 .PARAMETER ThresholdLow
   Magenta-amount below which a pixel stays fully opaque. Default 50.
 
@@ -57,6 +64,18 @@
   -BorderClearPx > 0 (that clears to transparent, which is wrong for an
   opaque terrain fill).
 
+.PARAMETER LowAlphaSnapThreshold
+  After resizing, any pixel with alpha in (0, LowAlphaSnapThreshold] is
+  snapped fully transparent. HighQualityBicubic resize blends a keyed-out
+  (alpha=0) magenta pixel's uncorrected RGB into the subject's own
+  silhouette edge, producing near-invisible pixels (often alpha 3-6) that
+  still carry magenta tint -- confirmed directly on Orc city tier 1
+  (2026-07-21). BorderClearPx only cleans the outer canvas edge; this
+  cleans the same contamination wherever it occurs, including interior
+  edges around the subject. Default 12, only applied when resizing (the
+  contamination is a resize artifact, not present in the unresized
+  chroma-keyed buffer). Set to 0 to disable.
+
 .EXAMPLE
   .\tools\chroma-key.ps1 -InputPath assets\img\test -ResizeTo 128
 #>
@@ -65,13 +84,16 @@ param(
     [Parameter(Mandatory = $true)][string]$InputPath,
     [string]$OutputDir,
     [int]$ResizeTo = 0,
+    [int]$ResizeWidth = 0,
+    [int]$ResizeHeight = 0,
     [int]$ThresholdLow = 50,
     [int]$ThresholdHigh = 120,
     [int]$SpillSlack = 30,
     [double]$MinComponentFraction = 0.05,
     [int]$MinComponentAbsolute = 40,
     [int]$BorderClearPx = 2,
-    [switch]$SeamlessEdges
+    [switch]$SeamlessEdges,
+    [int]$LowAlphaSnapThreshold = 12
 )
 
 Add-Type -AssemblyName System.Drawing
@@ -204,6 +226,37 @@ public static class ChromaKeyTool
             }
         }
     }
+
+    // BorderClearPx only cleans the outer canvas edge. HighQualityBicubic
+    // resize introduces the same kind of contamination at the SUBJECT's own
+    // silhouette edge, anywhere alpha=0 magenta meets alpha=255 subject --
+    // ProcessBuffer never spill-corrects fully-keyed (alpha=0) pixels, so
+    // their raw magenta RGB is still sitting there for the resize's
+    // interpolation to blend into a new low-but-nonzero-alpha pixel at the
+    // boundary. Confirmed directly (2026-07-21): pixels like R=255 G=61
+    // B=255 at alpha=3-6 survive resize even with correct thresholds,
+    // since alpha=3 is far too faint to be caught by the alpha<=thresholdLow
+    // opaque branch and the magenta tint was never suppressed pre-resize.
+    // Snapping near-zero alpha fully transparent removes the contaminated
+    // color with no visible cost (these pixels were already almost
+    // invisible) instead of letting it potentially show up as a faint
+    // magenta fringe if something later composites without respecting
+    // premultiplied alpha.
+    public static int SnapLowAlpha(byte[] buf, int width, int height, int alphaSnapThreshold)
+    {
+        int snapped = 0;
+        int n = width * height;
+        for (int i = 0; i < n; i++)
+        {
+            int idx = i * 4;
+            if (buf[idx + 3] > 0 && buf[idx + 3] <= alphaSnapThreshold)
+            {
+                buf[idx + 3] = 0;
+                snapped++;
+            }
+        }
+        return snapped;
+    }
 }
 "@
 
@@ -243,9 +296,14 @@ function Invoke-ChromaKeyOnFile {
 
     $strayComponents = ($sizes[1..$numComponents] | Where-Object { $_ -lt $minKeep -and $_ -gt 0 }).Count
 
+    $targetW = 0; $targetH = 0
+    $snappedCount = 0
+    if ($ResizeWidth -gt 0 -and $ResizeHeight -gt 0) { $targetW = $ResizeWidth; $targetH = $ResizeHeight }
+    elseif ($ResizeTo -gt 0) { $targetW = $ResizeTo; $targetH = $ResizeTo }
+
     $final = $bmp
-    if ($ResizeTo -gt 0) {
-        $resized = New-Object System.Drawing.Bitmap($ResizeTo, $ResizeTo, [System.Drawing.Imaging.PixelFormat]::Format32bppArgb)
+    if ($targetW -gt 0) {
+        $resized = New-Object System.Drawing.Bitmap($targetW, $targetH, [System.Drawing.Imaging.PixelFormat]::Format32bppArgb)
         $rg = [System.Drawing.Graphics]::FromImage($resized)
         $rg.InterpolationMode = [System.Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic
         $rg.PixelOffsetMode = [System.Drawing.Drawing2D.PixelOffsetMode]::HighQuality
@@ -253,15 +311,26 @@ function Invoke-ChromaKeyOnFile {
         if ($SeamlessEdges) {
             $ia = New-Object System.Drawing.Imaging.ImageAttributes
             $ia.SetWrapMode([System.Drawing.Drawing2D.WrapMode]::TileFlipXY)
-            $destRect = New-Object System.Drawing.Rectangle(0, 0, $ResizeTo, $ResizeTo)
+            $destRect = New-Object System.Drawing.Rectangle(0, 0, $targetW, $targetH)
             $rg.DrawImage($bmp, $destRect, 0, 0, $bmp.Width, $bmp.Height, [System.Drawing.GraphicsUnit]::Pixel, $ia)
             $ia.Dispose()
         } else {
-            $rg.DrawImage($bmp, 0, 0, $ResizeTo, $ResizeTo)
+            $rg.DrawImage($bmp, 0, 0, $targetW, $targetH)
         }
         $rg.Dispose()
         $bmp.Dispose()
         $final = $resized
+
+        if ($LowAlphaSnapThreshold -gt 0) {
+            $sRect = New-Object System.Drawing.Rectangle(0, 0, $final.Width, $final.Height)
+            $sData = $final.LockBits($sRect, [System.Drawing.Imaging.ImageLockMode]::ReadWrite, [System.Drawing.Imaging.PixelFormat]::Format32bppArgb)
+            $sByteCount = [Math]::Abs($sData.Stride) * $final.Height
+            $sBuffer = New-Object byte[] $sByteCount
+            [System.Runtime.InteropServices.Marshal]::Copy($sData.Scan0, $sBuffer, 0, $sByteCount)
+            $snappedCount = [ChromaKeyTool]::SnapLowAlpha($sBuffer, $final.Width, $final.Height, $LowAlphaSnapThreshold)
+            [System.Runtime.InteropServices.Marshal]::Copy($sBuffer, 0, $sData.Scan0, $sByteCount)
+            $final.UnlockBits($sData)
+        }
 
         if ($BorderClearPx -gt 0) {
             $rRect = New-Object System.Drawing.Rectangle(0, 0, $final.Width, $final.Height)
@@ -284,6 +353,7 @@ function Invoke-ChromaKeyOnFile {
         StrayRemoved     = $strayComponents
         PixelsCleared    = $cleared
         LargestComponent = $maxSize
+        LowAlphaSnapped  = $snappedCount
         Output           = $DestPath
     }
 }

@@ -1,0 +1,56 @@
+Game asset: Mage College (race: Human, category: building).
+
+A single game asset in a cel-shaded outline style: thick, clean black
+outlines around the silhouette and major interior linework, sharp
+details, cel-shaded flat colors with a limited palette (2-3 hard-edged
+tonal steps per surface -- base, shadow, occasional highlight -- no soft
+airbrushed gradients or blurry ambient occlusion). Clear legibility when
+zoomed out to a small size. Dark-fantasy mood overall, but this race's
+stonework is a deliberate exception to the usual muted-earthy palette:
+genuinely pale, bright white-gray dressed stone, clearly lighter than
+weathered wood or green foliage. Single consistent light direction from
+the upper left, implied by the shadow/highlight color steps rather than
+rendered soft light.
+
+This asset must stay legible when shrunk down to a very small size, so:
+use strong contrast between neighboring color regions; keep ornamental
+detail minimal -- favor a small number of bold, simple shapes over fine
+texture that won't survive downscaling anyway.
+
+Subject: a human mage college -- a slender pale white-gray stone tower
+with a few round arched windows, topped with a small open-air
+observatory platform rather than a normal roof. CRITICAL: one window
+and the observatory platform must show a CLEARLY, VISIBLY GLOWING soft
+blue-violet arcane light -- strong enough to read as glowing even at
+small size, like a lit magical beacon, not a subtle tint. A simple
+floating/glowing arcane rune symbol hovers just above the observatory
+platform as the clearest sign of magic at this college. One purple
+(#8e44ad) banner partway up the tower as the only accent-color element
+besides the arcane glow.
+
+Framing: elevated isometric diorama angle (~30-40 degree downward tilt),
+the structure visible as a self-contained island silhouette, portrait
+composition, content anchored to the bottom of the frame -- ground level
+sits at the very bottom edge. This building may be somewhat taller and
+narrower than the other Human buildings (a scholar's tower), occupying
+roughly the bottom 45-50% of the frame, but must still read as clearly
+shorter than an ordinary building's tallest form, let alone a city
+spire. The ground itself must read as an irregular, organic footprint --
+uneven natural terrain -- NEVER a crisp geometric diamond, rhombus, or
+flat rotated square platform (that would read as a separate isometric
+tile, not an object sitting on the game's actual flat top-down square
+grid).
+
+Background: a single flat, solid, saturated magenta (#FF00FF) background,
+completely uniform, no gradient, no shadow cast onto it, no vignette --
+this will be chroma-keyed out, so nothing in the subject itself should be
+magenta or near-magenta.
+
+Race material language: pale dressed white-gray stone as the dominant
+material, glowing blue-violet arcane light as this building's
+distinguishing detail. The purple (#8e44ad) accent color may only
+appear as the small banner described above -- never as the dominant hue
+of stone.
+
+Do not include any text, watermark, logo, UI elements, or border in the
+image.

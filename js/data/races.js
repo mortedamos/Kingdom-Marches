@@ -15,6 +15,83 @@
  * Values are placeholders pending real playtesting, consistent with the
  * design docs -- see realms_of_influence_race_redesign_v2.md for full
  * rationale behind every number here.
+ *
+ * FIELD REFERENCE (2026-07-22, user-directed audit of every consumer in
+ * the engine) -- every field below is read via `race.xxx ?? <default>` at
+ * each call site, so a race that omits a field silently gets that default,
+ * never a crash or undefined behavior:
+ *
+ * THE FIVE "PERSONALITY" TRAITS (0.0-1.0 each) -- the real behavioral
+ * core of a race. All five feed `racialWeights()` (ai.js, via a shared
+ * `trait()` curve) AND `chooseStrategy()` (strategy.js), which together
+ * pick and weight what an idle unit/city does this turn (settle vs. build
+ * vs. hunt vs. explore vs. garrison). Default 0.5 wherever read directly.
+ *   - militarism: NEVER read directly -- always through
+ *     `effectiveMilitarism(civ)` (ai.js), which adds any civ-wide bonus
+ *     earned so far (e.g. Halfellow's "every military tech completed"
+ *     creep) on top of the race's base value. Drives: garrison-holding
+ *     desire (blended with industriousness), the population-scaled army
+ *     size cap/target, the wall-per-soldier build gate, offense/defense
+ *     score weighting in chooseBuildAction, and the "hold vs. commit" bar
+ *     in tactical combat decisions.
+ *   - expansionism: Pioneer/Galley build-score weighting (how hard a civ
+ *     chases new cities/coastal expansion) in chooseBuildAction and
+ *     strategy.js's settle-focus scoring.
+ *   - curiosity: research-focus weighting in strategy.js/racialWeights,
+ *     PLUS several one-off "will this civ try something risky/new" rolls
+ *     elsewhere (Dungeon Delve pursuit, Anti-Titan tactical learning) that
+ *     reuse it as a general "how adaptable is this civ" knob rather than
+ *     inventing a second trait.
+ *   - industriousness: city-build-focus weighting, `raceUnitBuildRate`
+ *     (how fast units complete), `advanceCityFill`'s per-turn tile
+ *     fill-in rate, and `cities.js`'s influence-per-population multiplier
+ *     (`industriousnessInfluenceMult` -- Halfellow's 1.0 ceiling reproduces
+ *     the old flat 1.30 multiplier entirely through this one field now).
+ *   - aggressiveness: read directly (not "effective") everywhere.
+ *     `minAcceptableWinProbability(civ)` = 0.9 - aggressiveness*0.4 --
+ *     the actual combat-odds bar a unit needs to clear before attacking.
+ *     Also the flat per-turn probability an idle unit proactively hunts/
+ *     raids instead of waiting for a fight to come to it.
+ *
+ * OTHER FIELDS:
+ *   - startingTech: the one tech id every civ of this race starts the
+ *     game with already completed (see main.js's civ-init, which both
+ *     adds it to completedTechs and runs applyTechEffects on it).
+ *   - uniqueUnits / uniqueBuildings: NOT read by any engine or data code
+ *     anywhere -- purely a human-readable roster list for this file's own
+ *     documentation/cross-checking. Safe to edit freely; nothing breaks
+ *     if it drifts out of sync with the actual tech tree (though it
+ *     shouldn't).
+ *   - color / citySymbol / label / identity / id: cosmetic only --
+ *     consumed by the UI layer (render.js/sidebar.js) for civ-colored
+ *     sprites/borders and display text, never by engine logic.
+ *
+ * RACE-SPECIFIC ONE-OFFS (currently Undead and Halfellow only -- every
+ * other race simply omits these, falling back to the "no bonus" default
+ * noted at each call site):
+ *   - noUpkeep (Undead): skips per-turn Coin/Harvest upkeep entirely
+ *     (turns.js), and swaps in a much higher/steeper army-size cap curve
+ *     in ai.js's computeMilitaryCap (since normal economic strain, the
+ *     usual brake on army size, never applies to them).
+ *   - noHealing / ruinHeal (Undead): combat.js's healUnit -- Undead never
+ *     get the normal per-turn field/city heal tick, EXCEPT at full rate
+ *     while standing on a Ruin tile.
+ *   - healOnKillPct (Undead): ai.js -- on any kill, the attacker heals
+ *     this % of its own max HP immediately (checked at every attack-
+ *     resolution call site, not just one).
+ *   - raiseDeadChance / raiseDeadPowerRatio (Undead): ai.js's
+ *     maybeApplyZombie -- chance a defeated enemy unit is transferred to
+ *     the Undead civ's control IN PLACE (same unit object, not a new one)
+ *     under a persistent "zombie" condition (2026-07-22 rework): stats
+ *     scaled to raiseDeadPowerRatio x the original (boosted further by the
+ *     Necropolis building), 0% First Strike, level/XP reset and frozen at
+ *     level 1 forever after. See combat.js's effectiveAttack/effectiveDefense/
+ *     effectiveFirstStrikePct/grantXP for the actual effect implementation.
+ *   - ownCityHealingMultiplier / influenceHealMult (Halfellow):
+ *     combat.js's healUnit -- a flat multiplier on the heal roll while
+ *     resting in this civ's OWN city (replaces the universal 4x default),
+ *     further scaled by influenceHealMult while on any tile this civ owns
+ *     at all (not just inside a city).
  */
 
 window.GameData = window.GameData || {};
@@ -32,7 +109,7 @@ window.GameData.RACES = {
 
     // Personality traits (0.0–1.0) — drive all AI scoring and behavior.
     // See ai.js racialWeights() for how each trait maps to decisions.
-    militarism:      0.65, // balanced-leaning-defensive — builds armies when threatened, not as first instinct 
+    militarism:      0.6, // balanced-leaning-defensive — builds armies when threatened, not as first instinct 
     expansionism:    0.8, // eager settlers; Humans expand aggressively by land and sea
     curiosity:       0.9, // strong research drive; adaptability through tech
     industriousness: 0.7, // solid city development; roads and markets before barracks
@@ -61,7 +138,7 @@ window.GameData.RACES = {
     militarism:      0.8, // strong standing armies
     expansionism:    0.4, 
     curiosity:       0.4, 
-    industriousness: 0.9, // deeply invested in city development and grove infrastructure
+    industriousness: 0.6, // deeply invested in city development and grove infrastructure
 
     startingTech: "elf_watching_hunting",
 
@@ -83,8 +160,8 @@ window.GameData.RACES = {
 
     // Personality traits
     militarism:      0.7, // strong standing armies; every hold must be defended
-    expansionism:    0.4, // slow to expand; dwarves deepen what they hold rather than spreading thin
-    curiosity:       0.6, // practical research — engineering and stonecraft over abstract lore
+    expansionism:    0.2, // slow to expand; dwarves deepen what they hold rather than spreading thin
+    curiosity:       0.4, // practical research — engineering and stonecraft over abstract lore
     industriousness: 0.9, // maximum city development; forges, walls, and deep roads first
 
     startingTech: "dwarf_foe_hammer",
@@ -130,13 +207,13 @@ window.GameData.RACES = {
     raiseDeadChance: 1.0,     // confirmed: always triggers
     raiseDeadPowerRatio: 0.5, // raised unit's stats = 0.5x the defeated unit's
 
-    aggressiveness: 0.6,
+    aggressiveness: 0.9,
 
     // Personality traits
     militarism:      0.8, // every claimed tile is held; undead do not give ground
     expansionism:    0.4, // slow deliberate expansion — consolidate fully before advancing
-    curiosity:       0.3, // dark knowledge is static; undead rarely innovate
-    industriousness: 0.5, // moderate city development; barrows and wards before markets
+    curiosity:       0.1, // dark knowledge is static; undead rarely innovate
+    industriousness: 0.2, // moderate city development; barrows and wards before markets
 
     startingTech: "undead_arms",
 
@@ -164,13 +241,13 @@ window.GameData.RACES = {
 
     // Personality traits
     militarism:      0.2, // minimal standing armies; halfellows rely on community, not soldiers
-    expansionism:    0.5, // 
-    curiosity:       0.8, // strong research; halfellows value hearth-wisdom and practical craft
-    industriousness: 1.0, // maximum city investment; halls, hearths, and gardens before walls
+    expansionism:    0.3, // 
+    curiosity:       0.6, // strong research; halfellows value hearth-wisdom and practical craft
+    industriousness: 0.8, // maximum city investment; halls, hearths, and gardens before walls
 
     startingTech: "halfellow_arms",
 
-    uniqueUnits: ["wanderer", "pony_patrol", "militia"],
+    uniqueUnits: ["wanderer", "pony_patrol", "militia", "trouble_maker"],
     uniqueBuildings: ["farmers_market", "neighborhood_pub", "historical_society", "armory"],
   },
 };

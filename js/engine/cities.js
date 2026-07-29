@@ -6,7 +6,7 @@
  * scaling with population), founding restrictions, and naming.
  *
  * Resources: harvest (food/growth), coin (production + gold, merged),
- * lore (research). Toil was merged into coin.
+ * lore (research). 
  */
 
 window.GameEngine = window.GameEngine || {};
@@ -22,7 +22,6 @@ window.GameEngine = window.GameEngine || {};
   // resources available to reach it, causing growth to visibly accelerate
   // late-game. Matching the threshold's growth rate to the area's growth rate
   // keeps the pace roughly constant across levels instead of snowballing.
-  // Placeholder value pending playtesting, same as before.
   const GROWTH_THRESHOLD_PER_POP = 400.0;
   // Cap on a city's NATURAL (population-driven) growth and radius. This is
   // not a hard ceiling on city.influenceRadius itself -- tech/building radius
@@ -31,9 +30,9 @@ window.GameEngine = window.GameEngine || {};
   // it's also the point at which the merged influence/working radius (below)
   // tops out under its own steam.
   const MAX_CITY_POPULATION = 6;
-  const UPKEEP_RATE = 0.1;       // Harvest cost per population point per turn
-  const INTRINSIC_COIN_RATE = 0.4; // was INTRINSIC_TOIL_RATE — population-based coin production
-  const INTRINSIC_LORE_RATE = 0.3;
+  const UPKEEP_RATE = 0.5;       // Harvest cost per population point per turn
+  const INTRINSIC_COIN_RATE = 0.1; // population-based coin production
+  const INTRINSIC_LORE_RATE = 0.1;
   const FLAT_CITY_HARVEST = 1; // flat per-city per-turn base yield
   const FLAT_CITY_COIN    = 1;
   const FLAT_CITY_LORE    = 1;
@@ -72,8 +71,8 @@ window.GameEngine = window.GameEngine || {};
   // victory needs influence to grow slower than that so a war of conquest
   // can still outrace it. Net vs. the ORIGINAL pre-experiment values: 1.5x,
   // not 2x. See project_pacing_experiment memory.
-  const FILL_RATE_BASE = 0.6;
-  const FILL_RATE_PER_INDUSTRIOUSNESS = 0.975;
+  const FILL_RATE_BASE = 0.5;
+  const FILL_RATE_PER_INDUSTRIOUSNESS = 0.9;
   // ~3.4 turns/tile at industriousness 0.3 (current low end, Orc) down to
   // ~1.9 turns/tile at industriousness 1.0 (current high end, Halfellow) --
   // partway back up from the doubled rate's 2.5/1.4, but still faster than
@@ -102,7 +101,6 @@ window.GameEngine = window.GameEngine || {};
   }
 
   const SETTLER_MIN_POP = 1;
-  const SETTLER_POP_COST = 1;
   const MIN_CITY_SPACING = 8; // Chebyshev distance, from ANY city
   const EMERGENCY_CITY_SPACING = 3; // relaxed floor when a civ is stranded with no other option
 
@@ -677,11 +675,24 @@ window.GameEngine = window.GameEngine || {};
           }
         }
 
+        // Distance falloff (2026-07-21, user-directed): a city's baseline
+        // harvest/coin territorial yield (raw terrain, plus race-default
+        // tile/feature/road bonuses) tapers off 0.2/ring past ring 2 --
+        // ring 3 = 80%, ring 4 = 60%, etc. Deliberately does NOT touch lore
+        // (see radiusYieldMult's harvest/coin-only application below), and
+        // deliberately does NOT touch tile.resource bonuses (Iron/Gold/Game/
+        // Fertile/Fish), Ruin bonuses, or any tech-unlocked bonus (utb/ufb)
+        // -- a civ's actual tech/exploration investment should keep paying
+        // full value regardless of how far out the tile sits.
+        const ring = Math.max(Math.abs(dx), Math.abs(dy));
+        const radiusYieldMult = Math.max(0, 1 - 0.2 * Math.max(0, ring - 2));
+        const baseMult = tileYieldMult * radiusYieldMult;
+
         const terrainYield = TERRAIN[tile.terrain].yield;
         const race = window.GameData.getRace(civ.raceId);
-        for (const k of Object.keys(totals)) {
-          totals[k] += (terrainYield[k] || 0) * tileYieldMult;
-        }
+        totals.harvest += (terrainYield.harvest || 0) * baseMult;
+        totals.coin += (terrainYield.coin || 0) * baseMult;
+        totals.lore += (terrainYield.lore || 0) * tileYieldMult;
         if (tile.resource) {
           const resBonus = window.GameData.RESOURCES[tile.resource].bonus;
           for (const k of Object.keys(resBonus)) totals[k] += resBonus[k] * tileYieldMult;
@@ -689,21 +700,21 @@ window.GameEngine = window.GameEngine || {};
         const hasRiver = tile.hasRiver && (tile.hasRiver.n || tile.hasRiver.s || tile.hasRiver.e || tile.hasRiver.w);
         if (hasRiver) {
           const riverBonus = window.GameData.RIVER_YIELD_BONUS;
-          for (const [k, v] of Object.entries(riverBonus)) totals[k] += v * tileYieldMult;
+          for (const [k, v] of Object.entries(riverBonus)) totals[k] += v * (k === "lore" ? tileYieldMult : baseMult);
         }
-        // Ruins: +2 lore base
+        // Ruins: +2 lore base -- a special-tile bonus, exempt from the falloff.
         if (tile.isRuin) totals.lore += 2 * tileYieldMult;
         // Race terrain tile bonuses (e.g. dwarf +1 coin from hills) -- still a free
         // race default for races that haven't had their bonuses moved to tech yet.
         const tb = race.tileBonuses || {};
         const terrainBonus = tb[tile.terrain];
         if (terrainBonus) {
-          for (const [k, v] of Object.entries(terrainBonus)) totals[k] += v * tileYieldMult;
+          for (const [k, v] of Object.entries(terrainBonus)) totals[k] += v * (k === "lore" ? tileYieldMult : baseMult);
         }
         // Race feature bonuses (river, ruin, road) -- same as above, race-default path
         const fb = race.featureBonuses || {};
         if (hasRiver && fb.river) {
-          for (const [k, v] of Object.entries(fb.river)) totals[k] += v * tileYieldMult;
+          for (const [k, v] of Object.entries(fb.river)) totals[k] += v * (k === "lore" ? tileYieldMult : baseMult);
         }
         if (tile.isRuin && fb.ruin) {
           for (const [k, v] of Object.entries(fb.ruin)) totals[k] += v * tileYieldMult;
@@ -712,6 +723,7 @@ window.GameEngine = window.GameEngine || {};
         // Tech-unlocked tile/feature bonuses (e.g. Human's Homestead/Trade Roads) --
         // a civ-level equivalent of the two blocks above, for races whose bonuses
         // have moved off the race-default and onto their tech tree instead.
+        // Exempt from the distance falloff (see radiusYieldMult above).
         const utb = (civ.unlockedTileBonuses || {})[tile.terrain];
         if (utb) {
           for (const [k, v] of Object.entries(utb)) totals[k] += v * tileYieldMult;
@@ -724,11 +736,12 @@ window.GameEngine = window.GameEngine || {};
           for (const [k, v] of Object.entries(ufb.ruin)) totals[k] += v * tileYieldMult;
         }
 
-        // Road bonuses (race-default or tech-unlocked) share one per-city cap
-        // (ROAD_BONUS_TILE_CAP) -- see its definition above.
+        // Road bonuses share one per-city cap (ROAD_BONUS_TILE_CAP above):
+        // the race-default half (fb.road) falls off with distance like any
+        // other race-default bonus; the tech-unlocked half (ufb.road) doesn't.
         if (tile.hasRoad && (fb.road || ufb.road) && roadBonusTilesUsed < ROAD_BONUS_TILE_CAP) {
           roadBonusTilesUsed++;
-          if (fb.road) for (const [k, v] of Object.entries(fb.road)) totals[k] += v * tileYieldMult;
+          if (fb.road) for (const [k, v] of Object.entries(fb.road)) totals[k] += v * (k === "lore" ? tileYieldMult : baseMult);
           if (ufb.road) for (const [k, v] of Object.entries(ufb.road)) totals[k] += v * tileYieldMult;
         }
       }
@@ -739,8 +752,11 @@ window.GameEngine = window.GameEngine || {};
     return totals;
   }
 
-  /** Attempts to found a city; returns the new city or null + reason */
-  function foundCity(civ, map, x, y) {
+  /** Attempts to found a city; returns the new city or null + reason.
+   *  Takes `gameState` (not just `map`) so it can stamp civ.cityEvents with
+   *  the current turn number -- see the doc comment below. */
+  function foundCity(civ, gameState, x, y) {
+    const map = gameState.map;
     const name = window.GameData.getNextCityName(civ.raceId, civ.usedCityNames || []);
     const city = createCity({ x, y, civId: civ.id, raceId: civ.raceId, name, map, radiusBonus: civ.radiusBonus || 0 });
     civ.cities.push(city);
@@ -750,6 +766,14 @@ window.GameEngine = window.GameEngine || {};
     // not eliminated by the 0-cities check in turns.js) from "founded one and
     // then lost it" (which IS eliminated once cities.length hits 0 again).
     civ.hasFoundedCity = true;
+    // Founded/razed event log (2026-07-23, user-directed): feeds ai.js's
+    // recentCityDelta, which strategy.js and ai.js's chooseBuildAction/
+    // chooseStrategy use to taper "keep expanding" bonuses once a civ is
+    // net losing cities faster than founding them -- see destroyCity below
+    // for the matching "razed" event and the 2026-07-23 balance-audit
+    // memory for why this mattered.
+    civ.cityEvents = civ.cityEvents || [];
+    civ.cityEvents.push({ turn: gameState.turnNumber || 0, type: "founded" });
     return city;
   }
 
@@ -776,6 +800,10 @@ window.GameEngine = window.GameEngine || {};
       delete map.tiles[s.y * map.width + s.x].structure;
     }
     civ.cities = civ.cities.filter((c) => c !== city);
+    // Founded/razed event log -- see foundCity's matching "founded" push
+    // and ai.js's recentCityDelta for why this is tracked.
+    civ.cityEvents = civ.cityEvents || [];
+    civ.cityEvents.push({ turn: gameState.turnNumber || 0, type: "razed" });
     const tile = map.tiles[city.y * map.width + city.x];
     tile.ownerCivId = null;
     tile.status = "neutral";
@@ -822,7 +850,6 @@ window.GameEngine = window.GameEngine || {};
     RING1_SLOT_COUNT: ADJACENT_OFFSETS.length,
     RING2_SLOT_COUNT: RING2_OFFSETS.length,
     SETTLER_MIN_POP,
-    SETTLER_POP_COST,
     MIN_CITY_SPACING,
     EMERGENCY_CITY_SPACING,
     GROWTH_THRESHOLD_PER_POP,

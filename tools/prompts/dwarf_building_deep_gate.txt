@@ -1,0 +1,64 @@
+Game asset: Deep Gate (race: Dwarf, category: building).
+
+A single game asset in a cel-shaded outline style: thick, clean black
+outlines around the silhouette and major interior linework, sharp
+details, cel-shaded flat colors with a limited palette (2-3 hard-edged
+tonal steps per surface -- base, shadow, occasional highlight -- no soft
+airbrushed gradients or blurry ambient occlusion). Clear legibility when
+zoomed out to a small size. Muted, desaturated, earthy fantasy palette
+(olive greens, weathered browns, stone grays, faded ochres) -- no
+saturated cartoon colors. Dark-fantasy mood, weathered and lived-in, not
+cute or whimsical. Single consistent light direction from the upper left,
+implied by the shadow/highlight color steps rather than rendered soft
+light.
+
+This asset must stay legible when shrunk down to a very small size, so:
+use strong contrast between neighboring color regions (a bright/light
+element against a dark one, not two similar mid-tones touching); keep
+ornamental detail minimal -- favor a small number of bold, simple shapes
+over fine texture that won't survive downscaling anyway.
+
+Subject: a mystical dwarven gateway into the "Deep Roads" -- a massive
+tunnel entrance carved into a short, wide mound of gray stone (a small
+rock outcrop just for this structure, not implying the whole city sits
+against a mountain), framed by a heavy carved-stone archway. CRITICAL:
+angular dwarven rune-script is carved deep into the archway stone on
+both sides, and it must be CLEARLY, VISIBLY GLOWING -- a saturated,
+bright violet-blue light distinctly filling each carved rune line/
+symbol, strong enough to read as glowing even at small size, not a
+subtle tint. Think "lines of bright violet-blue light etched into dark
+stone," similar in visual strength to lava-glow cracks in rock, just
+violet-blue instead of orange. The glow should visibly light up the
+stonework immediately around the archway. Beyond the archway is only
+solid darkness -- a tunnel leading deep underground, not a lit interior
+-- the glowing runes should stand out sharply against that darkness.
+Dark iron gate-doors, currently open, with heavy hinges and bracing.
+This is the single most magical/mystical-looking Dwarf structure --
+the glowing rune-work is THE defining visual feature of this whole
+asset, more than any other Dwarf building -- without visibly glowing
+runes, the image is wrong. This is a single dedicated STRUCTURE on its
+own tile, not a settlement. No banner needed -- the glowing runes and
+dark tunnel opening are the focal point.
+
+Framing: elevated isometric diorama angle (~30-40 degree downward tilt),
+the structure visible as a self-contained island silhouette, portrait
+composition, content anchored to the bottom of the frame -- ground level
+sits at the very bottom edge. Low and wide like the rest of the Dwarf
+set -- occupying roughly the bottom 40-45% of the frame, clearly shorter
+than a city tier. The ground itself must read as an irregular, organic
+footprint -- uneven natural terrain, rock and dirt -- NEVER a crisp
+geometric diamond, rhombus, or flat rotated square platform (that would
+read as a separate isometric tile, not an object sitting on the game's
+actual flat top-down square grid).
+
+Background: a single flat, solid, saturated magenta (#FF00FF) background,
+completely uniform, no gradient, no shadow cast onto it, no vignette --
+this will be chroma-keyed out, so nothing in the subject itself should be
+magenta or near-magenta.
+
+Race material language: roughly-hewn gray stone as the dominant material,
+dark iron gate-doors and bracing as a recurring metal accent, glowing
+violet-blue rune-script as this building's distinguishing detail.
+
+Do not include any text, watermark, logo, UI elements, or border in the
+image.

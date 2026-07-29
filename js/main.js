@@ -291,6 +291,14 @@
       window.MusicSystem.setRace(humanCivId ? gameState.civs[humanCivId].raceId : null);
       populateAudioTrackOptions();
     });
+    window.SfxSystem.init();
+    // Off-screen units shouldn't play sounds (2026-07-24, user-directed) --
+    // e.g. a spectator-mode skirmish happening elsewhere on the map. Uses
+    // the exact same on-screen test the renderer itself uses to cull
+    // off-screen tiles (see render.js's isTileOnScreen); this is the only
+    // place gameState/viewState/canvas are all in scope to wire it up.
+    window.SfxSystem.setVisibilityCheck((x, y) =>
+      window.UI.render.isTileOnScreen(x, y, $("map-canvas"), gameState, viewState));
 
     setupCanvas();
     centerViewOnStart();
@@ -449,7 +457,7 @@
 
     // Turn order: decided once, randomly, at game start -- then fixed for the
     // rest of the game (never reshuffled turn to turn). Drives both the
-    // full-round runTurn and the granular advanceOneCivStep in turns.js.
+    // full-round runTurn and the granular advanceOneUnitStep in turns.js.
     const turnOrder = Object.keys(civs);
     for (let i = turnOrder.length - 1; i > 0; i--) {
       const j = Math.floor(Math.random() * (i + 1));
@@ -513,7 +521,7 @@
 
     function tileYield(t) {
       const y = window.GameData.TERRAIN[t.terrain].yield || {};
-      return (y.food || 0) + (y.production || 0) + (y.gold || 0);
+      return (y.harvest || 0) + (y.coin || 0) + (y.lore || 0);
     }
 
     function scoreLocation(t) {
@@ -995,6 +1003,12 @@
           civ.usedCityNames = civ.usedCityNames || [];
           civ.usedCityNames.push(name);
           civ.hasFoundedCity = true; // see cities.js foundCity -- gates the "no cities = eliminated" check
+          // Mirrors cities.js foundCity's event push (this path duplicates
+          // foundCity's logic for the found-city dialog rather than calling
+          // it directly) -- keeps ai.js's recentCityDelta accurate even for
+          // a human-founded city, in case any AI civ's scoring ever needs it.
+          civ.cityEvents = civ.cityEvents || [];
+          civ.cityEvents.push({ turn: gameState.turnNumber || 0, type: "founded" });
           civ.units = civ.units.filter((u) => u !== unit);
         }
         offerNextSettler(civ, eligible, idx + 1, onDone);
@@ -1028,6 +1042,10 @@
         ? `${victoryResult.winner} has conquered all rivals!`
         : `${victoryResult.winner} has achieved territorial dominance! (${(victoryResult.share * 100).toFixed(0)}% of the map)`;
       viewState.dialog = { kind: "message", title: "Victory!", text };
+      // Switches music to the winning race's victory theme (2026-07-22,
+      // user-directed) -- <race>_victory_#.mp3, falls back to that race's
+      // normal theme if it doesn't have one yet (see music.js's resolveCurrent).
+      window.MusicSystem.notifyVictory(gameState.civs[victoryResult.winner].raceId);
     }
   }
 
@@ -1110,6 +1128,14 @@
     if (restBtn) restBtn.onclick = handleRestUnit;
     const defendBtn = $("defend-unit-btn");
     if (defendBtn) defendBtn.onclick = handleDefendUnit;
+    const startProspectingBtn = $("start-prospecting-btn");
+    if (startProspectingBtn) startProspectingBtn.onclick = () => handleStartChannel("prospecting");
+    const startDelvingBtn = $("start-delving-btn");
+    if (startDelvingBtn) startDelvingBtn.onclick = () => handleStartChannel("delving");
+    const startFishingBtn = $("start-fishing-btn");
+    if (startFishingBtn) startFishingBtn.onclick = () => handleStartChannel("fishing");
+    const cancelChannelBtn = $("cancel-channel-btn");
+    if (cancelChannelBtn) cancelChannelBtn.onclick = handleCancelChannel;
 
     for (const btn of document.querySelectorAll(".view-tech-tree-btn")) {
       btn.onclick = () => { viewState.techTreeCivId = btn.dataset.civId; redraw(); };
@@ -1240,6 +1266,29 @@
     redraw();
   }
 
+  // Channeled actions (2026-07-21, user-directed): Prospector's Claim,
+  // Dungeon Delve, and Galley Fishing are all explicitly started/cancelled
+  // now -- see sidebar.js's channelActions for the button gating (tech
+  // unlocked, right unit/tile, not already channeling) and turns.js's
+  // onAnchor gate for what unit.channeling actually does turn to turn.
+  function handleStartChannel(kind) {
+    if (!humanCivId || !viewState.selectedUnit) return;
+    const unit = viewState.selectedUnit;
+    if (unit.usedThisTurn || unit.channeling) return;
+    unit.channeling = kind;
+    unit.resting = true;
+    unit.usedThisTurn = true;
+    redraw();
+  }
+
+  function handleCancelChannel() {
+    if (!humanCivId || !viewState.selectedUnit) return;
+    const unit = viewState.selectedUnit;
+    if (!unit.channeling) return;
+    unit.channeling = null;
+    redraw();
+  }
+
   function handleBuildRoad() {
     if (!humanCivId || !viewState.selectedUnit) return;
     const unit = viewState.selectedUnit;
@@ -1276,6 +1325,20 @@
   // Expose for sidebar button wiring
   window.UI.actions = window.UI.actions || {};
   window.UI.actions.buildRoad = () => handleBuildRoad();
+
+  // Headless simulation test hook (temporary scaffolding for balance
+  // testing -- not part of normal gameplay). Reuses the real
+  // createNewGame/runTurn code paths so AI-vs-AI games run identically to a
+  // real spectator game, just without the UI/render loop.
+  window.__sim = {
+    newGame(raceIds, seed) {
+      gameState = createNewGame(raceIds, seed);
+      window.GameEngine.turns.refreshVisibility(gameState);
+      return gameState;
+    },
+    getState: () => gameState,
+    runTurn: (opts) => window.GameEngine.turns.runTurn(gameState, opts),
+  };
 
   // Continuous animation loop — re-renders the map canvas every frame so
   // animated tile sprites play independently of turn progression or input.

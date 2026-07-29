@@ -164,7 +164,6 @@ window.GameEngine = window.GameEngine || {};
           const tx = unit.x + dx, ty = unit.y + dy;
           if (tx < 0 || tx >= map.width || ty < 0 || ty >= map.height) continue;
           const tileIdx = ty * map.width + tx;
-          if (TERRAIN[map.tiles[tileIdx].terrain].isDeepWater) continue;
           addInfluence(tileIdx, civ.id, strength);
         }
       }

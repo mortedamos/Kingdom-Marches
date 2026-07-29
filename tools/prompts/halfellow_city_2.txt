@@ -1,0 +1,59 @@
+Game asset: Halfellow City, tier 2 (race: Halfellow, category: city tier).
+
+CRITICAL: this is ONE single image containing ONE settlement. Do not
+split the canvas into two panels, do not draw two variations of the
+settlement stacked or side by side, do not repeat the subject anywhere
+in the frame. Exactly one self-contained island silhouette, once.
+
+A single game asset in a cel-shaded outline style: thick, clean black
+outlines around the silhouette and major interior linework, sharp
+details, cel-shaded flat colors with a limited palette (2-3 hard-edged
+tonal steps per surface -- base, shadow, occasional highlight -- no soft
+airbrushed gradients or blurry ambient occlusion). Clear legibility when
+zoomed out to a small size. TONE EXCEPTION for this race specifically:
+lean warm, cozy, and inviting rather than the usual weathered/grim
+dark-fantasy mood -- tidy, lived-in, gently cheerful (tended flowers,
+warm lit windows) -- while staying in a muted, NOT saturated-cartoon
+palette (soft greens, warm wood browns, dusty rose, cream). Single
+consistent light direction from the upper left, implied by the
+shadow/highlight color steps rather than rendered soft light.
+
+This asset must stay legible when shrunk down to a very small size, so:
+use strong contrast between neighboring color regions; hold identifying
+details out and away from each other rather than overlapping; and keep
+ornamental detail minimal -- favor a small number of bold, simple shapes
+over fine texture that won't survive downscaling anyway. No population
+figures scattered around -- this is an unpopulated environmental
+diorama, not a crowd scene.
+
+Subject: a small growing halfellow homestead -- exactly TWO round-doored
+hobbit cottages built into grassy mounds, connected by a short tidy
+garden path lined with a few flowers, one cottage slightly larger with
+a small stone chimney. One gold (#c9a857) pennant in the garden as the
+only accent-color element.
+
+Framing: elevated isometric diorama angle (~30-40 degree downward tilt),
+the full settlement visible as a self-contained island silhouette (not a
+filled square background), portrait 1:2 (width:height) composition. This
+is the second tier in a 6-tier growth sequence that stays VERY LOW AND
+COZY throughout -- slightly wider than tier 1, occupying roughly the
+bottom 20% of the frame. Ground level sits at the very bottom edge of
+the frame. The ground itself must read as an irregular, organic
+footprint with a SOFT edge blending into the surrounding terrain --
+gentle grassy mounds -- NEVER a crisp geometric diamond, rhombus, or any
+hard straight/angular facet edge (that would read as a separate
+isometric tile or a rigid platform, not an object sitting on the game's
+actual flat top-down square grid).
+
+Background: a single flat, solid, saturated magenta (#FF00FF) background,
+completely uniform, no gradient, no shadow cast onto it, no vignette --
+this will be chroma-keyed out, so nothing in the subject itself should be
+magenta or near-magenta.
+
+Race material language: round-doored cottages built into grassy mounds,
+warm wood and thatch, tended garden path and flowers. The gold (#c9a857)
+accent color may only appear as the small pennant described above --
+never as the dominant hue of the cottages or garden.
+
+Do not include any text, watermark, logo, UI elements, or border in the
+image.
