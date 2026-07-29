@@ -50,6 +50,7 @@
         <div class="menu-dropdown" id="menu-interface-dropdown" style="display:none;">
           <button id="influence-toggle-btn" class="menu-dropdown-btn">Toggle Influence Overlay</button>
           <button id="grid-toggle-btn" class="menu-dropdown-btn">Toggle Grid Lines</button>
+          <button id="toggle-3d-btn" class="menu-dropdown-btn">Toggle 3D View (Experimental)</button>
           <div id="fog-of-war-panel" class="fow-panel" style="display:none;">
             <div class="fow-panel-label">Fog of War</div>
             <label class="audio-panel-row"><span>Off</span><input type="radio" name="fow-mode" id="fow-mode-off" value="off" checked></label>
@@ -124,6 +125,7 @@
     <div class="game-body">
       <div class="map-area">
         <canvas id="map-canvas"></canvas>
+        <canvas id="map-canvas-3d"></canvas>
         <input type="file" id="load-game-file-input" accept="application/json" style="display:none;">
       </div>
       <div id="sidebar" class="sidebar"></div>
@@ -179,6 +181,7 @@
   <!-- UI -->
   <script src="js/ui/sprites.js"></script>
   <script src="js/ui/render.js"></script>
+  <script src="js/ui/render3d.js"></script>
   <script src="js/ui/sidebar.js"></script>
   <script src="js/ui/techtree.js"></script>
   <script src="js/ui/reports.js"></script>

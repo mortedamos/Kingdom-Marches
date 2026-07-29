@@ -278,6 +278,7 @@
     viewState = {
       scrollX: 0, scrollY: 0, zoomLevel: 1.0, showInfluence: false, showGrid: true,
       selectedUnit: null, selectedCity: null, selectedTile: null, humanCivId,
+      is3D: false, // Interface menu's "Toggle 3D View" -- see render3d.js
       fogMode: "off", fogCivIds: new Set(Object.keys(gameState.civs)), // spectator-only; see setupFogControls
       tileScoreCivId: null, // Interface menu's Tile City Score overlay -- available in both spectator and human modes
       dialog: null, // in-game confirm/prompt/alert replacement -- see js/ui/dialog.js
@@ -312,6 +313,12 @@
     });
     $("grid-toggle-btn").addEventListener("click", () => {
       viewState.showGrid = !viewState.showGrid;
+      redraw();
+    });
+    $("toggle-3d-btn").addEventListener("click", () => {
+      viewState.is3D = !viewState.is3D;
+      $("map-canvas").style.display = viewState.is3D ? "none" : "block";
+      $("map-canvas-3d").style.display = viewState.is3D ? "block" : "none";
       redraw();
     });
     $("report-influence-btn").addEventListener("click", () => {
@@ -1113,8 +1120,11 @@
   }
 
   function redraw() {
-    const canvas = $("map-canvas");
-    window.UI.render.render(canvas, gameState, viewState);
+    if (viewState.is3D) {
+      window.UI.render3d.render($("map-canvas-3d"), gameState, viewState);
+    } else {
+      window.UI.render.render($("map-canvas"), gameState, viewState);
+    }
     window.UI.sidebar.render($("sidebar"), gameState, viewState);
     const zoomLabel = $("zoom-level-label");
     if (zoomLabel) zoomLabel.textContent = `${Math.round((viewState.zoomLevel || 1) * 100)}%`;
@@ -1348,7 +1358,11 @@
     if (animFrameId !== null) return; // already running
     function frame() {
       if (gameState && viewState) {
-        window.UI.render.render($("map-canvas"), gameState, viewState);
+        if (viewState.is3D) {
+          window.UI.render3d.render($("map-canvas-3d"), gameState, viewState);
+        } else {
+          window.UI.render.render($("map-canvas"), gameState, viewState);
+        }
       }
       animFrameId = requestAnimationFrame(frame);
     }

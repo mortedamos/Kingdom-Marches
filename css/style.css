@@ -207,6 +207,14 @@ html, body {
   display: block;
   cursor: grab;
 }
+#map-canvas-3d {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: none;
+  cursor: grab;
+}
 /* Top menu bar: a full-width strip above the map (like the title screen's
    toolbar), not an overlay floating on top of it. */
 .menu-bar {
