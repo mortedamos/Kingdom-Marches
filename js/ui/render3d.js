@@ -53,11 +53,46 @@
  * not billboard geometry -- clicking squarely on a tall sprite that's
  * leaning toward camera can occasionally resolve to its neighbor.
  *
- * Not yet included: real 3D wall geometry (currently a billboard like any
- * other structure), billboard animation, and full spectator fog-mode
- * parity (spectator mode shows the union of every civ's vision instead of
- * respecting the Interface menu's fog-of-war selector). All are natural
- * fast-follows once this core loop is proven out.
+ * v5 adds full fog of war -- previously terrain/roads/rivers always
+ * rendered the whole map regardless of exploration state (only billboards
+ * were gated). Now a 1-texel-per-tile mask texture (see
+ * updateFogMaskTexture), rebuilt every frame from resolveFogSets (which
+ * mirrors render.js's humanCivId/spectator split exactly, including the
+ * Interface menu's fog-mode selector for spectator games), drives both the
+ * terrain and decal fragment shaders: never-explored tiles render as flat
+ * near-black, explored-but-not-currently-visible tiles render dimmed, and
+ * visible tiles render at full brightness -- the same three states 2D's
+ * black-fill/remembered-scrim/live-bright convention shows. Roads/rivers
+ * still build geometry from LIVE tile data every frame rather than a
+ * per-civ remembered snapshot (2D's tileMemory), so a remembered-but-not-
+ * visible tile's road could in principle be a turn or two stale relative
+ * to what that civ last actually saw -- a minor, documented simplification,
+ * not a real information leak (a road tile's presence still requires
+ * having explored it at all).
+ *
+ * v6 adds billboard animation: getBillboardTexture now uploads a sprite's
+ * FULL sheet (previously cropped to frame 0 only), and every render() call
+ * resolves each billboard's CURRENT frame through sprites.js's own
+ * currentFrame() state machine (same per-instance hold/play/loop timing and
+ * phase-staggering 2D uses -- reused as-is, not reimplemented), remapping
+ * the billboard quad's UV into that frame's sub-rect via uFrameUVMin/Max.
+ * Frame Y coordinates need an explicit flip in that remap (V = 1 -
+ * pixelRow/imgH) to stay consistent with UNPACK_FLIP_Y_WEBGL=true, which
+ * every other texture upload in this file already relies on.
+ *
+ * v7 replaces wall billboards with real 3D geometry (buildWallGroup),
+ * ported from the standalone WebGL prototype: straight box runs for
+ * horizontal/vertical wall tiles (see the ported wallOrientation), round
+ * towers for corner/junction/isolated ones, textured with the same
+ * procedural stone material terrain uses for hills/mountains. Rebuilt from
+ * live structure data every render() call like roads (walls can be built
+ * -- and sieged down -- mid-game), and drawn through the existing
+ * fog-aware terrainProg rather than a new shader, since wall geometry is
+ * only ever built for tiles already confirmed visible.
+ *
+ * This is now a fairly complete implementation of the core loop: terrain,
+ * roads/rivers, structures/walls, billboard animation, full fog of war,
+ * click-to-select, and orbit camera controls all work together.
  */
 
 window.UI = window.UI || {};
@@ -74,6 +109,15 @@ window.UI = window.UI || {};
   const STRUCTURE_WIDTH = 0.85; // width-driven (not height-driven) to match render.js's "fits the tile, bleeds upward" sizing
   const STRUCTURE_BLEND = 0.7; // same lean-correction as cities -- structures are similarly tall/flat-faced
   const MIN_DISTANCE = 4;
+  // Real 3D wall geometry (not a billboard, unlike every other structure) --
+  // straight runs span a full tile edge-to-edge so neighboring segments
+  // touch with no gap, corner/junction/isolated tiles get a round tower
+  // instead (same WALL_RECT-per-cell scheme validated in the standalone
+  // WebGL prototype, just driven by real wallOrientation() classification
+  // instead of a fixed rectangle). Dimensions kept identical to the
+  // prototype's tuned values.
+  const WALL_HEIGHT = 0.42, WALL_THICK = 0.14;
+  const WALL_TOWER_RADIUS = TILE / 2, WALL_TOWER_HEIGHT = 0.56, WALL_TOWER_SEGMENTS = 10;
   // Each decal layer gets its own tiny Y offset above the terrain surface --
   // hub/cardinal/diagonal are all full-tile quads (the real road/river art
   // is authored as full-tile stamps, not thin stubs), so at a junction tile
@@ -189,18 +233,39 @@ window.UI = window.UI || {};
   };
 
   // ---------- shaders ----------
+  // Fog of war: uFogTex is a 1-texel-per-tile mask (see updateFogMaskTexture)
+  // sampled by both terrain and decals to hide/dim tiles exactly like
+  // render.js's black-fill/dimmed-remembered/live-bright three states.
+  // NEAREST-filtered so a fragment always reads its OWN tile's state, never
+  // blended with a neighbor's across the tile boundary. World position maps
+  // to map UV directly (vMapUV = aPos.xz / mapSize + 0.5) rather than
+  // needing a dedicated per-vertex attribute, since every vertex already
+  // carries its true world position.
+  const FOG_GLSL_FS =
+    "uniform sampler2D uFogTex;\n" +
+    "uniform vec2 uMapSize;\n" +
+    "varying vec2 vMapUV;\n" +
+    "float fogFactor() {\n" +
+    "  float f = texture2D(uFogTex, vMapUV).r;\n" +
+    "  if (f < 0.2) return -1.0;\n" + // never explored -- caller discards or flat-fills
+    "  if (f < 0.6) return 0.35;\n" + // explored, not currently visible -- dimmed
+    "  return 1.0;\n" + // currently visible -- full bright
+    "}\n";
   const terrainVS =
     "attribute vec3 aPos;\n" +
     "attribute vec3 aNormal;\n" +
     "attribute vec2 aUV;\n" +
     "uniform mat4 uViewProj;\n" +
     "uniform vec3 uLightDir;\n" +
+    "uniform vec2 uMapSize;\n" +
     "varying vec2 vUV;\n" +
     "varying float vLight;\n" +
+    "varying vec2 vMapUV;\n" +
     "void main() {\n" +
     "  float diff = max(dot(normalize(aNormal), normalize(uLightDir)), 0.0);\n" +
     "  vLight = min(0.55 + diff * 0.55, 1.0);\n" +
     "  vUV = aUV;\n" +
+    "  vMapUV = vec2(aPos.x / uMapSize.x + 0.5, aPos.z / uMapSize.y + 0.5);\n" +
     "  gl_Position = uViewProj * vec4(aPos, 1.0);\n" +
     "}\n";
   const terrainFS =
@@ -208,8 +273,11 @@ window.UI = window.UI || {};
     "uniform sampler2D uTex;\n" +
     "varying vec2 vUV;\n" +
     "varying float vLight;\n" +
+    FOG_GLSL_FS +
     "void main() {\n" +
-    "  gl_FragColor = vec4(texture2D(uTex, vUV).rgb * vLight, 1.0);\n" +
+    "  float fog = fogFactor();\n" +
+    "  if (fog < 0.0) { gl_FragColor = vec4(0.06, 0.06, 0.07, 1.0); return; }\n" +
+    "  gl_FragColor = vec4(texture2D(uTex, vUV).rgb * vLight * fog, 1.0);\n" +
     "}\n";
   const billboardVS =
     "attribute vec3 aCenter;\n" +
@@ -218,10 +286,18 @@ window.UI = window.UI || {};
     "uniform mat4 uViewProj;\n" +
     "uniform vec3 uRight;\n" +
     "uniform vec3 uUp;\n" +
+    // The quad's own UVs always span the full 0..1 unit square (see
+    // makeBillboardVbo) -- uFrameUVMin/Max remap that into whichever
+    // sub-rect of the real (possibly multi-frame) sprite sheet is the
+    // CURRENT animation frame, computed in JS every render() call via
+    // sprites.js's own currentFrame() state machine (see collectBillboards),
+    // reused as-is rather than re-implemented here.
+    "uniform vec2 uFrameUVMin;\n" +
+    "uniform vec2 uFrameUVMax;\n" +
     "varying vec2 vUV;\n" +
     "void main() {\n" +
     "  vec3 worldPos = aCenter + uRight * aOffset.x + uUp * aOffset.y;\n" +
-    "  vUV = aUV;\n" +
+    "  vUV = uFrameUVMin + aUV * (uFrameUVMax - uFrameUVMin);\n" +
     "  gl_Position = uViewProj * vec4(worldPos, 1.0);\n" +
     "}\n";
   const billboardFS =
@@ -247,19 +323,25 @@ window.UI = window.UI || {};
     "attribute vec3 aPos;\n" +
     "attribute vec2 aUV;\n" +
     "uniform mat4 uViewProj;\n" +
+    "uniform vec2 uMapSize;\n" +
     "varying vec2 vUV;\n" +
+    "varying vec2 vMapUV;\n" +
     "void main() {\n" +
     "  vUV = aUV;\n" +
+    "  vMapUV = vec2(aPos.x / uMapSize.x + 0.5, aPos.z / uMapSize.y + 0.5);\n" +
     "  gl_Position = uViewProj * vec4(aPos, 1.0);\n" +
     "}\n";
   const decalFS =
     "precision mediump float;\n" +
     "uniform sampler2D uTex;\n" +
     "varying vec2 vUV;\n" +
+    FOG_GLSL_FS +
     "void main() {\n" +
+    "  float fog = fogFactor();\n" +
+    "  if (fog < 0.0) discard;\n" +
     "  vec4 c = texture2D(uTex, vUV);\n" +
     "  if (c.a < 0.5) discard;\n" +
-    "  gl_FragColor = vec4(c.rgb, 1.0);\n" +
+    "  gl_FragColor = vec4(c.rgb * fog, 1.0);\n" +
     "}\n";
 
   function compile(gl, type, src) {
@@ -287,6 +369,18 @@ window.UI = window.UI || {};
     const gl = canvas.getContext("webgl", { antialias: true, alpha: false, preserveDrawingBuffer: true });
     if (!gl) throw new Error("WebGL is not available in this browser.");
     gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
+    // Default UNPACK_ALIGNMENT is 4 bytes: WebGL assumes each row of a
+    // raw-array texture upload starts at a 4-byte-aligned offset unless
+    // told otherwise, silently padding/misreading any row whose width
+    // isn't a multiple of 4. The only raw-array upload in this file is the
+    // fog mask (updateFogMaskTexture, one byte per texel, width = map.width
+    // which is NOT guaranteed to be a multiple of 4 -- real maps run
+    // 52-80 tiles wide) -- without this, the mask silently reads corrupted/
+    // shifted data on any map whose width isn't a multiple of 4. Canvas/
+    // Image-sourced uploads (terrain materials, sprites) are unaffected by
+    // this setting, so it's safe to leave on globally rather than toggling
+    // it per-upload.
+    gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
     gl.enable(gl.DEPTH_TEST);
     gl.clearColor(0.56, 0.65, 0.74, 1.0);
 
@@ -303,6 +397,8 @@ window.UI = window.UI || {};
       t_uViewProj: gl.getUniformLocation(terrainProg, "uViewProj"),
       t_uLightDir: gl.getUniformLocation(terrainProg, "uLightDir"),
       t_uTex: gl.getUniformLocation(terrainProg, "uTex"),
+      t_uMapSize: gl.getUniformLocation(terrainProg, "uMapSize"),
+      t_uFogTex: gl.getUniformLocation(terrainProg, "uFogTex"),
       b_aCenter: gl.getAttribLocation(billboardProg, "aCenter"),
       b_aOffset: gl.getAttribLocation(billboardProg, "aOffset"),
       b_aUV: gl.getAttribLocation(billboardProg, "aUV"),
@@ -310,10 +406,14 @@ window.UI = window.UI || {};
       b_uRight: gl.getUniformLocation(billboardProg, "uRight"),
       b_uUp: gl.getUniformLocation(billboardProg, "uUp"),
       b_uTex: gl.getUniformLocation(billboardProg, "uTex"),
+      b_uFrameUVMin: gl.getUniformLocation(billboardProg, "uFrameUVMin"),
+      b_uFrameUVMax: gl.getUniformLocation(billboardProg, "uFrameUVMax"),
       d_aPos: gl.getAttribLocation(decalProg, "aPos"),
       d_aUV: gl.getAttribLocation(decalProg, "aUV"),
       d_uViewProj: gl.getUniformLocation(decalProg, "uViewProj"),
       d_uTex: gl.getUniformLocation(decalProg, "uTex"),
+      d_uMapSize: gl.getUniformLocation(decalProg, "uMapSize"),
+      d_uFogTex: gl.getUniformLocation(decalProg, "uFogTex"),
       terrainTextures: {}, // terrainId -> WebGLTexture, built once
       billboardTexCache: new WeakMap(), // Image -> {tex, aspect, bottomPadFrac}
       terrainDrawGroups: [],
@@ -322,8 +422,18 @@ window.UI = window.UI || {};
       builtForMap: null,
       mapWidth: 0, mapHeight: 0,
       dpr: Math.min(window.devicePixelRatio || 1, 2),
+      fogTexture: gl.createTexture(),
+      fogTexW: 0, fogTexH: 0, // texel dims currently allocated -- see updateFogMaskTexture
     };
     buildTerrainTextures(state);
+    {
+      const gl2 = state.gl;
+      gl2.bindTexture(gl2.TEXTURE_2D, state.fogTexture);
+      gl2.texParameteri(gl2.TEXTURE_2D, gl2.TEXTURE_WRAP_S, gl2.CLAMP_TO_EDGE);
+      gl2.texParameteri(gl2.TEXTURE_2D, gl2.TEXTURE_WRAP_T, gl2.CLAMP_TO_EDGE);
+      gl2.texParameteri(gl2.TEXTURE_2D, gl2.TEXTURE_MIN_FILTER, gl2.NEAREST);
+      gl2.texParameteri(gl2.TEXTURE_2D, gl2.TEXTURE_MAG_FILTER, gl2.NEAREST);
+    }
     attachControls(canvas);
     return state;
   }
@@ -342,6 +452,18 @@ window.UI = window.UI || {};
       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
       st.terrainTextures[id] = tex;
     }
+    // Stone material for wall geometry -- same generator, same "material,
+    // not a picture" reasoning as terrain, so real lighting on the box/
+    // cylinder shapes does the shape-telling.
+    const wallCanvas = makeMaterialCanvas(128, [150,148,145], [172,169,163], [110,108,106], "rgba(60,58,55,0.5)", "rgba(70,68,64,0.6)", 110);
+    const wallTex = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D, wallTex);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, wallCanvas);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    st.wallTexture = wallTex;
   }
 
   function worldX(st, tx) { return (tx - st.mapWidth / 2) * TILE; }
@@ -598,24 +720,133 @@ window.UI = window.UI || {};
     return HEIGHT_BY_TERRAIN[map.tiles[cz * map.width + cx].terrain] ?? 0;
   }
 
-  // ---------- billboard textures: real game sprite art, cropped to frame 0
-  // (no in-3D animation yet -- see file header) and measured for bottom
-  // transparent padding so buildings sit flush on the ground instead of
-  // floating on their own baked-in canvas padding (generalizes the manual
-  // per-asset measurement used during the WebGL prototype into an automatic
+  // ---------- wall geometry: real 3D boxes/cylinders instead of a
+  // billboard, ported from the standalone WebGL prototype. Vertex format
+  // matches the terrain mesh exactly (pos3+normal3+uv2, interleaved) so
+  // walls draw through st.terrainProg -- no separate shader needed, and
+  // fog-of-war naturally falls out correctly: this geometry is only ever
+  // built for tiles already confirmed visible (see buildWallGroup), and
+  // the terrain shader's fog sampling at a visible tile's own position
+  // always reads the "visible" tier anyway. ----------
+  function pushWallTri(positions, normals, uvs, p0, p1, p2, n, uvA, uvB, uvC) {
+    positions.push(p0[0],p0[1],p0[2], p1[0],p1[1],p1[2], p2[0],p2[1],p2[2]);
+    normals.push(n[0],n[1],n[2], n[0],n[1],n[2], n[0],n[1],n[2]);
+    uvs.push(uvA[0],uvA[1], uvB[0],uvB[1], uvC[0],uvC[1]);
+  }
+  function pushWallBox(positions, normals, uvs, cx, baseY, cz, w, h, d) {
+    const hx = w/2, hz = d/2, y0 = baseY, y1 = baseY + h;
+    const X0 = cx-hx, X1 = cx+hx, Z0 = cz-hz, Z1 = cz+hz;
+    function face(p0, p1, p2, p3, n) {
+      pushWallTri(positions, normals, uvs, p0, p1, p2, n, [0,0], [1,0], [1,1]);
+      pushWallTri(positions, normals, uvs, p0, p2, p3, n, [0,0], [1,1], [0,1]);
+    }
+    face([X0,y0,Z0], [X1,y0,Z0], [X1,y1,Z0], [X0,y1,Z0], [0,0,-1]);
+    face([X1,y0,Z1], [X0,y0,Z1], [X0,y1,Z1], [X1,y1,Z1], [0,0,1]);
+    face([X0,y0,Z1], [X0,y0,Z0], [X0,y1,Z0], [X0,y1,Z1], [-1,0,0]);
+    face([X1,y0,Z0], [X1,y0,Z1], [X1,y1,Z1], [X1,y1,Z0], [1,0,0]);
+    face([X0,y1,Z0], [X1,y1,Z0], [X1,y1,Z1], [X0,y1,Z1], [0,1,0]);
+  }
+  function pushWallCylinder(positions, normals, uvs, cx, baseY, cz, radius, height, segments) {
+    const y0 = baseY, y1 = baseY + height;
+    for (let i = 0; i < segments; i++) {
+      const t0 = i / segments, t1 = (i + 1) / segments;
+      const a0 = t0 * Math.PI * 2, a1 = t1 * Math.PI * 2;
+      const p0 = [cx + Math.cos(a0)*radius, y0, cz + Math.sin(a0)*radius];
+      const p1 = [cx + Math.cos(a1)*radius, y0, cz + Math.sin(a1)*radius];
+      const p2 = [cx + Math.cos(a1)*radius, y1, cz + Math.sin(a1)*radius];
+      const p3 = [cx + Math.cos(a0)*radius, y1, cz + Math.sin(a0)*radius];
+      const amid = (a0 + a1) / 2;
+      const n = [Math.cos(amid), 0, Math.sin(amid)];
+      pushWallTri(positions, normals, uvs, p0, p1, p2, n, [t0,0], [t1,0], [t1,1]);
+      pushWallTri(positions, normals, uvs, p0, p2, p3, n, [t0,0], [t1,1], [t0,1]);
+      // top cap (fan from center)
+      pushWallTri(positions, normals, uvs, [cx,y1,cz], p3, p2, [0,1,0],
+        [0.5,0.5], [Math.cos(a0)*0.5+0.5, Math.sin(a0)*0.5+0.5], [Math.cos(a1)*0.5+0.5, Math.sin(a1)*0.5+0.5]);
+    }
+  }
+
+  /** Rebuilt from live structure data every render() call, same reasoning
+   *  as roads: walls can be built (and destroyed, e.g. sieged down) mid-
+   *  game. Gated on the SAME visible set structures/billboards use (not
+   *  explored) -- matches render.js's own structures loop, which never
+   *  shows a structure from memory either. `visible` is resolved once per
+   *  frame by render() and passed in -- see updateFogMaskTexture's comment
+   *  for why. */
+  function buildWallGroup(st, gameState, map, visible) {
+    const positions = [], normals = [], uvs = [];
+    for (const civId of Object.keys(gameState.civs)) {
+      const civ = gameState.civs[civId];
+      if (civ.eliminated) continue;
+      for (const city of civ.cities) {
+        for (const s of city.structures) {
+          const building = window.GameData.getBuilding(s.id);
+          if (!building.isWall) continue;
+          const idx = s.y * map.width + s.x;
+          if (!visible.has(idx)) continue;
+          const wx = worldX(st, s.x) + TILE/2, wz = worldZ(st, s.y) + TILE/2;
+          const wy = cellHeight(map, s.x, s.y);
+          const orientation = wallOrientation(map, civ.id, s.x, s.y);
+          if (orientation === "node") {
+            pushWallCylinder(positions, normals, uvs, wx, wy, wz, WALL_TOWER_RADIUS, WALL_TOWER_HEIGHT, WALL_TOWER_SEGMENTS);
+          } else if (orientation === "horizontal") {
+            pushWallBox(positions, normals, uvs, wx, wy, wz, TILE, WALL_HEIGHT, WALL_THICK);
+          } else {
+            pushWallBox(positions, normals, uvs, wx, wy, wz, WALL_THICK, WALL_HEIGHT, TILE);
+          }
+        }
+      }
+    }
+    const vertCount = positions.length / 3;
+    if (vertCount === 0) return null;
+    const gl = st.gl;
+    const interleaved = new Float32Array(vertCount * 8);
+    for (let i = 0; i < vertCount; i++) {
+      interleaved[i*8+0]=positions[i*3+0]; interleaved[i*8+1]=positions[i*3+1]; interleaved[i*8+2]=positions[i*3+2];
+      interleaved[i*8+3]=normals[i*3+0]; interleaved[i*8+4]=normals[i*3+1]; interleaved[i*8+5]=normals[i*3+2];
+      interleaved[i*8+6]=uvs[i*2+0]; interleaved[i*8+7]=uvs[i*2+1];
+    }
+    const vbo = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, vbo);
+    gl.bufferData(gl.ARRAY_BUFFER, interleaved, gl.DYNAMIC_DRAW);
+    return { texture: st.wallTexture, vbo, vertCount };
+  }
+
+  // ---------- billboard textures: real game sprite art, uploaded as its
+  // full sheet (every animation frame, see uFrameUVMin/Max) and measured
+  // for bottom transparent padding so buildings sit flush on the ground
+  // instead of floating on their own baked-in canvas padding (generalizes
+  // the manual per-asset measurement used during the WebGL prototype into an automatic
   // runtime check that works for the whole roster, not just a few samples). ----------
+  /** Fallback manifest for sprites.js's pickCityTier(), which returns just
+   *  {image} -- no manifest, since tiered city art is a single static image
+   *  per tier, not an animated sheet. Needs a real .animations.idle (not
+   *  just frame dimensions) or sprites.js's currentFrame() would throw
+   *  trying to read manifest.animations.idle off an undefined field. */
+  function singleFrameManifest(image) {
+    return {
+      frameWidth: image.naturalWidth, frameHeight: image.naturalHeight, layout: "horizontal",
+      animations: { idle: { frames: [0], fps: 1 } },
+    };
+  }
+
+  /** Uploads the sprite's FULL sheet (no crop) so every animation frame is
+   *  available -- see collectBillboards/uFrameUVMin/Max for how a specific
+   *  frame gets picked out at draw time. Padding is still measured from
+   *  frame 0 only (assumed representative of the whole idle cycle -- an
+   *  idle animation sways/bobs a character but its ground anchor point
+   *  should stay put, and this only needs to be roughly right). */
   function getBillboardTexture(st, image, manifest) {
     let entry = st.billboardTexCache.get(image);
     if (entry) return entry;
     const gl = st.gl;
-    const fw = manifest.frameWidth || image.naturalWidth || 1;
-    const fh = manifest.frameHeight || image.naturalHeight || 1;
-    const c = document.createElement("canvas");
-    c.width = fw; c.height = fh;
-    const cctx = c.getContext("2d");
-    cctx.drawImage(image, 0, 0, fw, fh, 0, 0, fw, fh);
+    const iw = image.naturalWidth || 1, ih = image.naturalHeight || 1;
+    const fw = manifest.frameWidth || iw, fh = manifest.frameHeight || ih;
     let bottomPadFrac = 0;
     try {
+      const c = document.createElement("canvas");
+      c.width = fw; c.height = fh;
+      const cctx = c.getContext("2d");
+      cctx.drawImage(image, 0, 0, fw, fh, 0, 0, fw, fh);
       const data = cctx.getImageData(0, 0, fw, fh).data;
       let padRows = 0;
       outer:
@@ -634,12 +865,12 @@ window.UI = window.UI || {};
     }
     const tex = gl.createTexture();
     gl.bindTexture(gl.TEXTURE_2D, tex);
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, c);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, image);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
-    entry = { tex, aspect: fw / fh, bottomPadFrac };
+    entry = { tex, aspect: fw / fh, bottomPadFrac, imgW: iw, imgH: ih };
     st.billboardTexCache.set(image, entry);
     return entry;
   }
@@ -668,19 +899,68 @@ window.UI = window.UI || {};
     return set;
   }
 
-  /** Currently-visible tile index set for whoever's "eyes" we're rendering
-   *  through. Human civ: exactly what render.js uses. Spectator (no human
-   *  civ): union of every civ's vision -- a v1 simplification, not yet
-   *  respecting the Interface menu's per-civ fog-mode selector the 2D
-   *  spectator view has (see file header). */
-  function visibleTileSet(gameState, humanCivId) {
-    if (humanCivId) return gameState.visibility[humanCivId] || new Set();
-    const union = new Set();
-    for (const civId of Object.keys(gameState.civs)) {
-      const v = gameState.visibility[civId];
-      if (v) for (const idx of v) union.add(idx);
+  /** { visible, explored } tile index sets for whoever's "eyes" we're
+   *  rendering through -- mirrors render.js's own humanCivId/spectator
+   *  split exactly, including the Interface menu's spectator fog-mode
+   *  selector (off/all/selected + fogCivIds), so 3D respects the same fog
+   *  rules 2D does rather than always showing an omniscient view. */
+  function resolveFogSets(gameState, viewState) {
+    const map = gameState.map;
+    if (viewState.humanCivId) {
+      return {
+        visible: gameState.visibility[viewState.humanCivId] || new Set(),
+        explored: gameState.explored?.[viewState.humanCivId] || new Set(),
+      };
     }
-    return union;
+    const mode = viewState.fogMode || "off";
+    if (mode === "off") {
+      const full = new Set();
+      for (let i = 0; i < map.tiles.length; i++) full.add(i);
+      return { visible: full, explored: full };
+    }
+    const civIds = mode === "selected" ? [...(viewState.fogCivIds || [])] : Object.keys(gameState.civs);
+    const visible = new Set(), explored = new Set();
+    for (const civId of civIds) {
+      const vis = gameState.visibility[civId];
+      if (vis) for (const idx of vis) visible.add(idx);
+      const exp = gameState.explored?.[civId];
+      if (exp) for (const idx of exp) explored.add(idx);
+    }
+    return { visible, explored };
+  }
+
+  /** Builds/updates the 1-texel-per-tile fog mask (see FOG_GLSL_FS): 0 =
+   *  never explored, 128 = explored but not currently visible, 255 =
+   *  currently visible. Cheap enough to rebuild every frame (a handful of
+   *  thousand Set.has() checks even on the largest maps) rather than only
+   *  when visibility actually changes, which would need its own dirty-
+   *  tracking for no real benefit at this size. Takes the already-resolved
+   *  {visible, explored} sets (see render()) rather than calling
+   *  resolveFogSets itself -- buildWallGroup/collectBillboards need the
+   *  same sets this same frame, and re-deriving them (each a fresh
+   *  Object.keys/Set.add pass, or a full map.tiles.length Set in
+   *  spectator "off" mode) 3-4 times per frame is pure waste. */
+  function updateFogMaskTexture(st, map, visible, explored) {
+    const gl = st.gl;
+    const w = map.width, h = map.height;
+    const mask = new Uint8Array(w * h);
+    for (let i = 0; i < mask.length; i++) {
+      mask[i] = visible.has(i) ? 255 : explored.has(i) ? 128 : 0;
+    }
+    gl.bindTexture(gl.TEXTURE_2D, st.fogTexture);
+    // ensureInit sets UNPACK_FLIP_Y_WEBGL=true globally (needed for image-
+    // sourced textures -- terrain materials, sprites). This mask is a raw
+    // data array, not an image; flipping it would swap vMapUV's north/south
+    // sense against how mask[] is actually laid out (row 0 = tz=0), so it's
+    // turned off just for this upload.
+    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
+    if (st.fogTexW !== w || st.fogTexH !== h) {
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.LUMINANCE, w, h, 0, gl.LUMINANCE, gl.UNSIGNED_BYTE, mask);
+      st.fogTexW = w; st.fogTexH = h;
+    } else {
+      gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, w, h, gl.LUMINANCE, gl.UNSIGNED_BYTE, mask);
+    }
+    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
   }
 
   /** Ported from render.js's wallOrientation (not exported there) -- see its
@@ -701,10 +981,11 @@ window.UI = window.UI || {};
     return "node";
   }
 
-  function collectBillboards(gameState, viewState, mapWidth) {
+  /** `visible` is resolved once per frame by render() and passed in -- see
+   *  updateFogMaskTexture's comment for why. */
+  function collectBillboards(gameState, viewState, mapWidth, visible) {
     const list = [];
     const map = gameState.map;
-    const visible = visibleTileSet(gameState, viewState.humanCivId);
     const cityTiles = buildCityTileSet(gameState, mapWidth);
     for (const civId of Object.keys(gameState.civs)) {
       const civ = gameState.civs[civId];
@@ -716,19 +997,18 @@ window.UI = window.UI || {};
         const tiered = window.UI.sprites.pickCityTier(civ.raceId, pop);
         const sprite = tiered || window.UI.sprites.pick(`city/${civ.raceId}`, city);
         if (sprite && sprite.image && sprite.image.complete) {
-          const manifest = sprite.manifest || { frameWidth: sprite.image.naturalWidth, frameHeight: sprite.image.naturalHeight };
-          list.push({ x: city.x, y: city.y, dx: 0, dz: 0, image: sprite.image, manifest, size: CITY_HEIGHT, sizeAxis: "height", blend: CITY_BLEND });
+          const manifest = sprite.manifest || singleFrameManifest(sprite.image);
+          list.push({ x: city.x, y: city.y, dx: 0, dz: 0, image: sprite.image, manifest, seed: city, size: CITY_HEIGHT, sizeAxis: "height", blend: CITY_BLEND });
         }
         for (const s of city.structures) {
+          const building = window.GameData.getBuilding(s.id);
+          if (building.isWall) continue; // real 3D geometry now -- see buildWallGroup, drawn separately
           const sIdx = s.y * mapWidth + s.x;
           if (!visible.has(sIdx)) continue;
-          const building = window.GameData.getBuilding(s.id);
-          const sSprite = building.isWall
-            ? window.UI.sprites.pickWallSegment(s.id, civ.raceId, wallOrientation(map, civ.id, s.x, s.y), s)
-            : window.UI.sprites.pickBuilding(s.id, civ.raceId, s);
+          const sSprite = window.UI.sprites.pickBuilding(s.id, civ.raceId, s);
           if (!sSprite || !sSprite.image || !sSprite.image.complete) continue;
-          const manifest = sSprite.manifest || { frameWidth: sSprite.image.naturalWidth, frameHeight: sSprite.image.naturalHeight };
-          list.push({ x: s.x, y: s.y, dx: 0, dz: 0, image: sSprite.image, manifest, size: STRUCTURE_WIDTH, sizeAxis: "width", blend: STRUCTURE_BLEND });
+          const manifest = sSprite.manifest || singleFrameManifest(sSprite.image);
+          list.push({ x: s.x, y: s.y, dx: 0, dz: 0, image: sSprite.image, manifest, seed: s, size: STRUCTURE_WIDTH, sizeAxis: "width", blend: STRUCTURE_BLEND });
         }
       }
       for (const unit of civ.units) {
@@ -740,7 +1020,7 @@ window.UI = window.UI || {};
         const onCityTile = cityTiles.has(idx);
         list.push({
           x: unit.x, y: unit.y, dx: onCityTile ? 0.28 : 0, dz: 0,
-          image: sprite.image, manifest: sprite.manifest, size: UNIT_HEIGHT, sizeAxis: "height", blend: UNIT_BLEND,
+          image: sprite.image, manifest: sprite.manifest, seed: unit, size: UNIT_HEIGHT, sizeAxis: "height", blend: UNIT_BLEND,
         });
       }
     }
@@ -902,12 +1182,19 @@ window.UI = window.UI || {};
     const proj = mat4Perspective((FOV_DEG * Math.PI) / 180, aspect, 0.1, farPlane);
     const viewProj = mat4Multiply(proj, view);
 
+    const { visible: fogVisible, explored: fogExplored } = resolveFogSets(gameState, viewState);
+    updateFogMaskTexture(st, map, fogVisible, fogExplored);
+
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 
     gl.useProgram(st.terrainProg);
     gl.uniformMatrix4fv(st.t_uViewProj, false, viewProj);
     gl.uniform3f(st.t_uLightDir, 0.45, 1.0, 0.35);
+    gl.uniform2f(st.t_uMapSize, map.width, map.height);
     gl.uniform1i(st.t_uTex, 0);
+    gl.uniform1i(st.t_uFogTex, 1);
+    gl.activeTexture(gl.TEXTURE1);
+    gl.bindTexture(gl.TEXTURE_2D, st.fogTexture);
     gl.activeTexture(gl.TEXTURE0);
     for (const g of st.terrainDrawGroups) {
       gl.bindTexture(gl.TEXTURE_2D, g.texture);
@@ -921,16 +1208,38 @@ window.UI = window.UI || {};
       gl.drawArrays(gl.TRIANGLES, 0, g.vertCount);
     }
 
+    // Walls: real 3D geometry, drawn through the same terrainProg (still
+    // bound, same uniforms already set) rather than a dedicated shader --
+    // see buildWallGroup's comment for why this is fog-safe despite reusing
+    // the fog-aware terrain shader unmodified.
+    const wallGroup = buildWallGroup(st, gameState, map, fogVisible);
+    if (wallGroup) {
+      gl.bindTexture(gl.TEXTURE_2D, wallGroup.texture);
+      gl.bindBuffer(gl.ARRAY_BUFFER, wallGroup.vbo);
+      gl.enableVertexAttribArray(st.t_aPos);
+      gl.vertexAttribPointer(st.t_aPos, 3, gl.FLOAT, false, st.tStride, 0);
+      gl.enableVertexAttribArray(st.t_aNormal);
+      gl.vertexAttribPointer(st.t_aNormal, 3, gl.FLOAT, false, st.tStride, 12);
+      gl.enableVertexAttribArray(st.t_aUV);
+      gl.vertexAttribPointer(st.t_aUV, 2, gl.FLOAT, false, st.tStride, 24);
+      gl.drawArrays(gl.TRIANGLES, 0, wallGroup.vertCount);
+      gl.deleteBuffer(wallGroup.vbo); // rebuilt fresh every frame -- see buildWallGroup
+    }
+
     const roadDrawGroups = buildRoadDecalGroups(st, map);
     gl.useProgram(st.decalProg);
     gl.uniformMatrix4fv(st.d_uViewProj, false, viewProj);
+    gl.uniform2f(st.d_uMapSize, map.width, map.height);
     gl.uniform1i(st.d_uTex, 0);
+    gl.uniform1i(st.d_uFogTex, 1);
+    gl.activeTexture(gl.TEXTURE1);
+    gl.bindTexture(gl.TEXTURE_2D, st.fogTexture);
     gl.activeTexture(gl.TEXTURE0);
     for (const g of st.riverDrawGroups) drawDecalGroup(st, g);
     for (const g of roadDrawGroups) drawDecalGroup(st, g);
     for (const g of roadDrawGroups) gl.deleteBuffer(g.vbo); // rebuilt fresh every frame -- see buildRoadDecalGroups
 
-    const billboards = collectBillboards(gameState, viewState, map.width);
+    const billboards = collectBillboards(gameState, viewState, map.width, fogVisible);
     gl.useProgram(st.billboardProg);
     gl.uniformMatrix4fv(st.b_uViewProj, false, viewProj);
     gl.uniform3f(st.b_uRight, camRight[0], camRight[1], camRight[2]);
@@ -946,6 +1255,23 @@ window.UI = window.UI || {};
       const gy = cellHeight(map, b.x, b.y) - tex.bottomPadFrac * h;
       const up = norm(mix3(camUp, [0, 1, 0], b.blend));
       gl.uniform3f(st.b_uUp, up[0], up[1], up[2]);
+      // Per-instance idle-animation frame, via sprites.js's own state
+      // machine (currentFrame) so 3D billboards animate exactly like 2D's
+      // sprites do -- same hold/play/loop timing, same per-instance phase
+      // (keyed on b.seed, the real unit/city/structure object) so units
+      // don't all animate in lockstep.
+      const frame = window.UI.sprites.currentFrame(b.manifest, "idle", b.seed);
+      // Y is flipped relative to raw pixel rows: ensureInit sets
+      // UNPACK_FLIP_Y_WEBGL=true (needed so a billboard's bottom edge, UV.y
+      // 0, samples the source image's BOTTOM row -- e.g. a character's
+      // feet -- matching the game's art convention), which means texture
+      // V=0 corresponds to pixel row (imgH-1), not row 0. frame.sy/sh are
+      // plain top-down pixel coordinates from sprites.js, so they need
+      // inverting here (V = 1 - pixelRow/imgH), not used directly.
+      const vTop = 1 - frame.sy / tex.imgH;
+      const vBottom = 1 - (frame.sy + frame.sh) / tex.imgH;
+      gl.uniform2f(st.b_uFrameUVMin, frame.sx / tex.imgW, vBottom);
+      gl.uniform2f(st.b_uFrameUVMax, (frame.sx + frame.sw) / tex.imgW, vTop);
       gl.bindTexture(gl.TEXTURE_2D, tex.tex);
       const vbo = makeBillboardVbo(gl, w, h);
       gl.bindBuffer(gl.ARRAY_BUFFER, vbo);
