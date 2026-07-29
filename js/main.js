@@ -304,6 +304,12 @@
     setupCanvas();
     centerViewOnStart();
     window.UI.input.attach($("map-canvas"), gameState, viewState, redraw);
+    // 3D click-to-select needs to trigger the exact same post-selection
+    // refresh a 2D click does -- not just re-rendering the sidebar's HTML,
+    // but re-wiring its action buttons too (redraw() does both; see its
+    // body below). Handing it the whole function once, rather than just
+    // "render the sidebar", keeps that button-wiring logic in one place.
+    window.UI.render3d.setRedrawCallback(redraw);
     // Kick off sprite loading in the background; each successful load triggers
     // a redraw so sprites pop in as they arrive. Missing files are ignored.
     window.UI.sprites.preloadAll().then(() => redraw());

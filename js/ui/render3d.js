@@ -839,8 +839,14 @@ window.UI = window.UI || {};
       const hit = pickTileAtClient(canvas, map, e.clientX, e.clientY);
       if (!hit) return;
       window.UI.input.handleTileClick(hit, canvas.__gameState, canvas.__viewState);
-      const sidebarEl = document.getElementById("sidebar");
-      if (sidebarEl) window.UI.sidebar.render(sidebarEl, canvas.__gameState, canvas.__viewState);
+      // Must be the SAME post-selection refresh a 2D click triggers -- not
+      // just re-rendering the sidebar's HTML, but re-wiring its action
+      // buttons too (main.js's redraw() does both; a bare sidebar.render()
+      // call would leave Rest/Defend/Disband/etc. with no click handler,
+      // since replacing the sidebar's innerHTML drops the old ones). See
+      // setRedrawCallback, wired once from main.js's setup.
+      if (redrawCallback) redrawCallback();
+      else if (window.UI.sidebar) window.UI.sidebar.render(document.getElementById("sidebar"), canvas.__gameState, canvas.__viewState);
     }
     canvas.addEventListener("pointerup", endDrag);
     canvas.addEventListener("pointercancel", () => { dragging = false; canvas.style.cursor = "grab"; });
@@ -954,5 +960,10 @@ window.UI = window.UI || {};
     }
   }
 
-  window.UI.render3d = { render };
+  /** Set once by main.js to its own redraw() -- see the click handler's
+   *  comment for why this can't just be a sidebar.render() call. */
+  let redrawCallback = null;
+  function setRedrawCallback(fn) { redrawCallback = fn; }
+
+  window.UI.render3d = { render, setRedrawCallback };
 })();
