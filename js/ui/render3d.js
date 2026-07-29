@@ -1163,11 +1163,25 @@ window.UI = window.UI || {};
     ensureRiverGroups(st, map);
 
     if (!canvas.__cam) {
+      // Default target/distance frame the human player's own starting
+      // area, not the map's geometric center -- matches main.js's own
+      // centerViewOnStart() for 2D. Without this, a fresh game (which has
+      // only explored a small patch near its starting units -- see fog of
+      // war) puts that patch at a effectively random point on a huge black
+      // expanse if the camera happens to default to the map center instead,
+      // which reads as "nothing rendered at all" even though it's working
+      // correctly (confirmed live: reported as "just a black screen").
+      let focusTx = map.width / 2, focusTz = map.height / 2;
+      if (viewState.humanCivId) {
+        const civ = gameState.civs[viewState.humanCivId];
+        const unit = civ && civ.units[0];
+        if (unit) { focusTx = unit.x; focusTz = unit.y; }
+      }
       canvas.__cam = {
         azimuth: 0.6, elevationDeg: 55,
-        distance: Math.max(map.width, map.height) * 0.75,
+        distance: 12, // close enough to clearly frame the starting area, not the whole map
         maxDistance: Math.max(map.width, map.height) * 2.2,
-        target: [0, 0.15, 0],
+        target: [worldX(st, focusTx) + TILE/2, 0.15, worldZ(st, focusTz) + TILE/2],
       };
     }
     const cam = canvas.__cam;
