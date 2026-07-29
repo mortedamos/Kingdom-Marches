@@ -825,9 +825,49 @@ window.UI = window.UI || {};
    *  trying to read manifest.animations.idle off an undefined field. */
   function singleFrameManifest(image) {
     return {
-      frameWidth: image.naturalWidth, frameHeight: image.naturalHeight, layout: "horizontal",
+      frameWidth: image.naturalWidth || image.width, frameHeight: image.naturalHeight || image.height, layout: "horizontal",
       animations: { idle: { frames: [0], fps: 1 } },
     };
+  }
+
+  /** Fallback for a unit/city/structure with no shipped art at all (pick()
+   *  returns null -- distinct from a texture upload FAILING, see
+   *  notifyFileProtocolLimitation) -- mirrors render.js's own fallback
+   *  exactly: a race-colored disc with the unit/building's first initial,
+   *  instead of silently rendering nothing (which is what happened before
+   *  this existed, and reads exactly like "no units are showing up" for
+   *  any race/unit combination whose art isn't finished yet). Built once
+   *  per (color, label) pair and cached -- reuses getBillboardTexture's own
+   *  pipeline (it accepts a canvas source too) rather than a parallel one. */
+  const fallbackMarkerCache = new Map();
+  function makeFallbackMarkerCanvas(color, label) {
+    const key = color + "|" + label;
+    let c = fallbackMarkerCache.get(key);
+    if (c) return c;
+    const size = 128;
+    c = document.createElement("canvas");
+    c.width = size; c.height = size;
+    const ctx = c.getContext("2d");
+    ctx.clearRect(0, 0, size, size);
+    ctx.fillStyle = color;
+    ctx.globalAlpha = 0.85;
+    ctx.beginPath();
+    ctx.ellipse(size/2, size/2, size*0.42, size*0.42, 0, 0, Math.PI*2);
+    ctx.fill();
+    ctx.globalAlpha = 1;
+    ctx.strokeStyle = "rgba(0,0,0,0.55)";
+    ctx.lineWidth = size * 0.035;
+    ctx.stroke();
+    ctx.fillStyle = "#fff";
+    ctx.font = `bold ${Math.round(size*0.44)}px sans-serif`;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.strokeStyle = "rgba(0,0,0,0.6)";
+    ctx.lineWidth = size * 0.05;
+    ctx.strokeText(label, size/2, size/2 + size*0.02);
+    ctx.fillText(label, size/2, size/2 + size*0.02);
+    fallbackMarkerCache.set(key, c);
+    return c;
   }
 
   /** Uploads the sprite's FULL sheet (no crop) so every animation frame is
@@ -875,7 +915,10 @@ window.UI = window.UI || {};
     let entry = st.billboardTexCache.get(image);
     if (entry) return entry;
     const gl = st.gl;
-    const iw = image.naturalWidth || 1, ih = image.naturalHeight || 1;
+    // Also accepts a <canvas> (naturalWidth/Height don't exist there, only
+    // width/height) -- see makeFallbackMarkerCanvas, which reuses this same
+    // texture pipeline for race-colored markers instead of duplicating it.
+    const iw = image.naturalWidth || image.width || 1, ih = image.naturalHeight || image.height || 1;
     const fw = manifest.frameWidth || iw, fh = manifest.frameHeight || ih;
     let bottomPadFrac = 0;
     try {
@@ -1034,6 +1077,19 @@ window.UI = window.UI || {};
     return "node";
   }
 
+  /** Real sprite if one loaded, else render.js's own fallback (a race-
+   *  colored disc + initial -- see makeFallbackMarkerCanvas), instead of
+   *  the old behavior of silently rendering nothing for any unit/building
+   *  whose art isn't shipped yet, which for a race/civ combo with
+   *  incomplete art coverage reads as "no units are showing up at all". */
+  function resolveBillboardSprite(sprite, color, label) {
+    if (sprite && sprite.image && sprite.image.complete) {
+      return { image: sprite.image, manifest: sprite.manifest || singleFrameManifest(sprite.image) };
+    }
+    const marker = makeFallbackMarkerCanvas(color, label);
+    return { image: marker, manifest: singleFrameManifest(marker) };
+  }
+
   /** `visible` is resolved once per frame by render() and passed in -- see
    *  updateFogMaskTexture's comment for why. */
   function collectBillboards(gameState, viewState, mapWidth, visible) {
@@ -1043,25 +1099,24 @@ window.UI = window.UI || {};
     for (const civId of Object.keys(gameState.civs)) {
       const civ = gameState.civs[civId];
       if (civ.eliminated) continue;
+      const race = window.GameData.getRace(civ.raceId);
       for (const city of civ.cities) {
         const idx = city.y * mapWidth + city.x;
         if (!visible.has(idx)) continue;
         const pop = Math.floor(city.population);
         const tiered = window.UI.sprites.pickCityTier(civ.raceId, pop);
         const sprite = tiered || window.UI.sprites.pick(`city/${civ.raceId}`, city);
-        if (sprite && sprite.image && sprite.image.complete) {
-          const manifest = sprite.manifest || singleFrameManifest(sprite.image);
-          list.push({ x: city.x, y: city.y, dx: 0, dz: 0, image: sprite.image, manifest, seed: city, size: CITY_HEIGHT, sizeAxis: "height", blend: CITY_BLEND });
-        }
+        const resolved = resolveBillboardSprite(sprite, race.color, "C");
+        list.push({ x: city.x, y: city.y, dx: 0, dz: 0, image: resolved.image, manifest: resolved.manifest, seed: city, size: CITY_HEIGHT, sizeAxis: "height", blend: CITY_BLEND });
         for (const s of city.structures) {
           const building = window.GameData.getBuilding(s.id);
           if (building.isWall) continue; // real 3D geometry now -- see buildWallGroup, drawn separately
           const sIdx = s.y * mapWidth + s.x;
           if (!visible.has(sIdx)) continue;
           const sSprite = window.UI.sprites.pickBuilding(s.id, civ.raceId, s);
-          if (!sSprite || !sSprite.image || !sSprite.image.complete) continue;
-          const manifest = sSprite.manifest || singleFrameManifest(sSprite.image);
-          list.push({ x: s.x, y: s.y, dx: 0, dz: 0, image: sSprite.image, manifest, seed: s, size: STRUCTURE_WIDTH, sizeAxis: "width", blend: STRUCTURE_BLEND });
+          const sLabel = (building.label || building.symbol || "?").charAt(0).toUpperCase();
+          const sResolved = resolveBillboardSprite(sSprite, race.color, sLabel);
+          list.push({ x: s.x, y: s.y, dx: 0, dz: 0, image: sResolved.image, manifest: sResolved.manifest, seed: s, size: STRUCTURE_WIDTH, sizeAxis: "width", blend: STRUCTURE_BLEND });
         }
       }
       for (const unit of civ.units) {
@@ -1069,11 +1124,13 @@ window.UI = window.UI || {};
         if (!visible.has(idx)) continue;
         if (unit.conditions && unit.conditions.hidden && viewState.humanCivId != null && unit.civId !== viewState.humanCivId) continue;
         const sprite = window.UI.sprites.pickUnit(unit.typeId, civ.raceId, unit);
-        if (!sprite || !sprite.image || !sprite.image.complete) continue;
+        const baseUnit = window.GameData.UNITS[unit.typeId];
+        const uLabel = (baseUnit && baseUnit.label || "?").charAt(0).toUpperCase();
+        const uResolved = resolveBillboardSprite(sprite, race.color, uLabel);
         const onCityTile = cityTiles.has(idx);
         list.push({
           x: unit.x, y: unit.y, dx: onCityTile ? 0.28 : 0, dz: 0,
-          image: sprite.image, manifest: sprite.manifest, seed: unit, size: UNIT_HEIGHT, sizeAxis: "height", blend: UNIT_BLEND,
+          image: uResolved.image, manifest: uResolved.manifest, seed: unit, size: UNIT_HEIGHT, sizeAxis: "height", blend: UNIT_BLEND,
         });
       }
     }
