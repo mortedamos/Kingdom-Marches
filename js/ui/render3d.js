@@ -29,11 +29,21 @@
  * canvas (see buildDecalQuad and the ROAD_CARDINAL_ANGLE/ROAD_DIAGONAL_ANGLE
  * tables, kept in exact agreement with render.js's).
  *
- * Not yet included: walls as 3D geometry, individual city structures (only
- * the city itself is drawn), billboard animation, 3D click-to-select, and
- * full spectator fog-mode parity (spectator mode shows the union of every
- * civ's vision instead of respecting the Interface menu's fog-of-war
- * selector). All are natural fast-follows once this core loop is proven out.
+ * v3 adds city structures (every built building, including walls) as
+ * width-driven billboards -- unlike units/cities (a fixed height, width
+ * follows the art's aspect ratio), structures fit the tile's width and let
+ * height bleed upward for tall art, matching render.js's own sizing formula
+ * (`drawHeight = ts * (img.naturalHeight / img.naturalWidth)`). Walls use
+ * the same race+orientation art selection as 2D (see the ported
+ * wallOrientation), just as a billboard instead of procedural 3D geometry
+ * (boxes/cylinders) -- simpler and reuses the exact same real wall art the
+ * 2D view does, at the cost of not being real connected geometry.
+ *
+ * Not yet included: real 3D wall geometry (currently a billboard like any
+ * other structure), billboard animation, 3D click-to-select, and full
+ * spectator fog-mode parity (spectator mode shows the union of every civ's
+ * vision instead of respecting the Interface menu's fog-of-war selector).
+ * All are natural fast-follows once this core loop is proven out.
  */
 
 window.UI = window.UI || {};
@@ -47,6 +57,8 @@ window.UI = window.UI || {};
   const TILE_BLEED = 0.006; // seam-hiding overlap, see buildTerrainMesh
   const UNIT_HEIGHT = 0.75;
   const CITY_HEIGHT = 1.15;
+  const STRUCTURE_WIDTH = 0.85; // width-driven (not height-driven) to match render.js's "fits the tile, bleeds upward" sizing
+  const STRUCTURE_BLEND = 0.7; // same lean-correction as cities -- structures are similarly tall/flat-faced
   const MIN_DISTANCE = 4;
   // Each decal layer gets its own tiny Y offset above the terrain surface --
   // hub/cardinal/diagonal are all full-tile quads (the real road/river art
@@ -657,8 +669,27 @@ window.UI = window.UI || {};
     return union;
   }
 
+  /** Ported from render.js's wallOrientation (not exported there) -- see its
+   *  own comment for why walls pick between purpose-authored orientation
+   *  variants instead of rotating one stub like roads/rivers do (a wall's
+   *  art has an upright tree growing through the stonework that a 90deg
+   *  rotation would tip onto its side). */
+  function wallOrientation(map, civId, x, y) {
+    const isSameCivWall = (nx, ny) => {
+      if (nx < 0 || nx >= map.width || ny < 0 || ny >= map.height) return false;
+      const s = map.tiles[ny * map.width + nx].structure;
+      return !!s && s.id === "wall_section" && s.civId === civId;
+    };
+    const horiz = isSameCivWall(x + 1, y) || isSameCivWall(x - 1, y);
+    const vert = isSameCivWall(x, y - 1) || isSameCivWall(x, y + 1);
+    if (horiz && !vert) return "horizontal";
+    if (vert && !horiz) return "vertical";
+    return "node";
+  }
+
   function collectBillboards(gameState, viewState, mapWidth) {
     const list = [];
+    const map = gameState.map;
     const visible = visibleTileSet(gameState, viewState.humanCivId);
     const cityTiles = buildCityTileSet(gameState, mapWidth);
     for (const civId of Object.keys(gameState.civs)) {
@@ -670,9 +701,21 @@ window.UI = window.UI || {};
         const pop = Math.floor(city.population);
         const tiered = window.UI.sprites.pickCityTier(civ.raceId, pop);
         const sprite = tiered || window.UI.sprites.pick(`city/${civ.raceId}`, city);
-        if (!sprite || !sprite.image || !sprite.image.complete) continue;
-        const manifest = sprite.manifest || { frameWidth: sprite.image.naturalWidth, frameHeight: sprite.image.naturalHeight };
-        list.push({ x: city.x, y: city.y, dx: 0, dz: 0, image: sprite.image, manifest, height: CITY_HEIGHT, blend: CITY_BLEND });
+        if (sprite && sprite.image && sprite.image.complete) {
+          const manifest = sprite.manifest || { frameWidth: sprite.image.naturalWidth, frameHeight: sprite.image.naturalHeight };
+          list.push({ x: city.x, y: city.y, dx: 0, dz: 0, image: sprite.image, manifest, size: CITY_HEIGHT, sizeAxis: "height", blend: CITY_BLEND });
+        }
+        for (const s of city.structures) {
+          const sIdx = s.y * mapWidth + s.x;
+          if (!visible.has(sIdx)) continue;
+          const building = window.GameData.getBuilding(s.id);
+          const sSprite = building.isWall
+            ? window.UI.sprites.pickWallSegment(s.id, civ.raceId, wallOrientation(map, civ.id, s.x, s.y), s)
+            : window.UI.sprites.pickBuilding(s.id, civ.raceId, s);
+          if (!sSprite || !sSprite.image || !sSprite.image.complete) continue;
+          const manifest = sSprite.manifest || { frameWidth: sSprite.image.naturalWidth, frameHeight: sSprite.image.naturalHeight };
+          list.push({ x: s.x, y: s.y, dx: 0, dz: 0, image: sSprite.image, manifest, size: STRUCTURE_WIDTH, sizeAxis: "width", blend: STRUCTURE_BLEND });
+        }
       }
       for (const unit of civ.units) {
         const idx = unit.y * mapWidth + unit.x;
@@ -683,7 +726,7 @@ window.UI = window.UI || {};
         const onCityTile = cityTiles.has(idx);
         list.push({
           x: unit.x, y: unit.y, dx: onCityTile ? 0.28 : 0, dz: 0,
-          image: sprite.image, manifest: sprite.manifest, height: UNIT_HEIGHT, blend: UNIT_BLEND,
+          image: sprite.image, manifest: sprite.manifest, size: UNIT_HEIGHT, sizeAxis: "height", blend: UNIT_BLEND,
         });
       }
     }
@@ -805,7 +848,9 @@ window.UI = window.UI || {};
     const bStride = 4 * 4;
     for (const b of billboards) {
       const tex = getBillboardTexture(st, b.image, b.manifest);
-      const h = b.height, w = h * tex.aspect;
+      let w, h;
+      if (b.sizeAxis === "width") { w = b.size; h = w / tex.aspect; }
+      else { h = b.size; w = h * tex.aspect; }
       const gx = worldX(st, b.x) + TILE/2 + b.dx, gz = worldZ(st, b.y) + TILE/2 + b.dz;
       const gy = cellHeight(map, b.x, b.y) - tex.bottomPadFrac * h;
       const up = norm(mix3(camUp, [0, 1, 0], b.blend));
