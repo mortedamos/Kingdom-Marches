@@ -16,6 +16,7 @@
   let spectatorPaused = false;
   let autoplayTimer = null;
   let aiDifficulty = "normal";
+  let loadingStatusTimer = null; // see showLoadingScreen/hideLoadingScreen
 
   // Identity of whatever's currently rendered into the tech tree/reports/
   // dialog modals -- redraw() only rebuilds a modal's innerHTML when its
@@ -245,6 +246,24 @@
     });
   }
 
+  const LOADING_STATUS_PHRASES = [
+    "Loading terrain...", "Loading sprites...", "Loading music...",
+    "Loading sound effects...", "Rolling the dice...", "Almost there...",
+  ];
+  function showLoadingScreen() {
+    $("loading-screen").style.display = "flex";
+    let i = 0;
+    $("loading-status-text").textContent = LOADING_STATUS_PHRASES[0];
+    loadingStatusTimer = setInterval(() => {
+      i = (i + 1) % LOADING_STATUS_PHRASES.length;
+      $("loading-status-text").textContent = LOADING_STATUS_PHRASES[i];
+    }, 1400);
+  }
+  function hideLoadingScreen() {
+    $("loading-screen").style.display = "none";
+    if (loadingStatusTimer) { clearInterval(loadingStatusTimer); loadingStatusTimer = null; }
+  }
+
   function startGame() {
     spectatorMode = $("spectator-toggle").checked;
     const checkedSpectatorRaces = [...document.querySelectorAll(".spectator-race-checkbox:checked")].map((cb) => cb.value);
@@ -278,7 +297,7 @@
     viewState = {
       scrollX: 0, scrollY: 0, zoomLevel: 1.0, showInfluence: false, showGrid: true,
       selectedUnit: null, selectedCity: null, selectedTile: null, humanCivId,
-      is3D: false, // Interface menu's "Toggle 3D View" -- see render3d.js
+      is3D: true, // Interface menu's "Toggle 3D View" -- see render3d.js; 3D is now the default view
       fogMode: "off", fogCivIds: new Set(Object.keys(gameState.civs)), // spectator-only; see setupFogControls
       tileScoreCivId: null, // Interface menu's Tile City Score overlay -- available in both spectator and human modes
       dialog: null, // in-game confirm/prompt/alert replacement -- see js/ui/dialog.js
@@ -286,20 +305,58 @@
 
     stopTitleMusic();
     $("title-screen").style.display = "none";
-    $("game-screen").style.display = "flex";
+    showLoadingScreen();
 
-    window.MusicSystem.init().then(() => {
+    // Sprites/music/sfx are all real network loads (hundreds of small
+    // requests under connection-limit contention can take up to ~15-20s --
+    // see render3d.js's own notes on this), and the game screen used to
+    // appear immediately regardless, with most art/audio still streaming
+    // in -- looked broken rather than loading. Gate showing it on all
+    // three actually finishing. Each of these is designed to always
+    // resolve, never reject (a missing asset is skipped, not an error --
+    // see preloadAll's/SfxSystem.init's own doc comments), so this isn't
+    // expected to hang, but a failsafe timeout still backs it up below in
+    // case some future asset type doesn't hold to that.
+    const musicPromise = window.MusicSystem.init().then(() => {
       window.MusicSystem.setRace(humanCivId ? gameState.civs[humanCivId].raceId : null);
       populateAudioTrackOptions();
     });
-    window.SfxSystem.init();
+    const sfxPromise = window.SfxSystem.init();
+    const spritesPromise = window.UI.sprites.preloadAll();
+    const LOADING_FAILSAFE_MS = 30000;
+    Promise.race([
+      Promise.all([musicPromise, sfxPromise, spritesPromise]),
+      new Promise((resolve) => setTimeout(resolve, LOADING_FAILSAFE_MS)),
+    ]).then(finishStartGame);
+  }
+
+  /** Runs once loading actually finishes (or the failsafe timeout fires) --
+   *  see startGame's Promise.race. Everything here needs either real DOM
+   *  layout (setupCanvas's getBoundingClientRect) or fully-loaded assets,
+   *  so none of it could safely run before now. */
+  function finishStartGame() {
+    hideLoadingScreen();
+    $("game-screen").style.display = "flex";
+    // Match the two canvases' visibility to viewState.is3D's default --
+    // the toggle-3d-btn handler does this on click, but nothing set the
+    // INITIAL state before now, so both canvases relied on their CSS
+    // defaults (2D visible) regardless of what is3D actually said.
+    $("map-canvas").style.display = viewState.is3D ? "none" : "block";
+    $("map-canvas-3d").style.display = viewState.is3D ? "block" : "none";
+
     // Off-screen units shouldn't play sounds (2026-07-24, user-directed) --
     // e.g. a spectator-mode skirmish happening elsewhere on the map. Uses
     // the exact same on-screen test the renderer itself uses to cull
     // off-screen tiles (see render.js's isTileOnScreen); this is the only
     // place gameState/viewState/canvas are all in scope to wire it up.
+    // In 3D mode the 2D canvas is display:none, which makes its own
+    // getBoundingClientRect() (and so isTileOnScreen's bounds check)
+    // collapse to zero -- every tile would wrongly read as "off-screen" and
+    // mute every sound. render3d.js has no equivalent viewport-clipping
+    // test yet, so this errs toward always audible in 3D rather than
+    // silently muting everything.
     window.SfxSystem.setVisibilityCheck((x, y) =>
-      window.UI.render.isTileOnScreen(x, y, $("map-canvas"), gameState, viewState));
+      viewState.is3D || window.UI.render.isTileOnScreen(x, y, $("map-canvas"), gameState, viewState));
 
     setupCanvas();
     centerViewOnStart();
@@ -310,9 +367,6 @@
     // body below). Handing it the whole function once, rather than just
     // "render the sidebar", keeps that button-wiring logic in one place.
     window.UI.render3d.setRedrawCallback(redraw);
-    // Kick off sprite loading in the background; each successful load triggers
-    // a redraw so sprites pop in as they arrive. Missing files are ignored.
-    window.UI.sprites.preloadAll().then(() => redraw());
     $("influence-toggle-btn").addEventListener("click", () => {
       viewState.showInfluence = !viewState.showInfluence;
       redraw();
@@ -325,6 +379,22 @@
       viewState.is3D = !viewState.is3D;
       $("map-canvas").style.display = viewState.is3D ? "none" : "block";
       $("map-canvas-3d").style.display = viewState.is3D ? "block" : "none";
+      // Switching TO 2D: its canvas may have been display:none this whole
+      // time (3D is the default view now), which pins its pixel buffer at
+      // 0x0 -- see resizeMapCanvas's own comment. Re-measure now that it's
+      // actually visible again, rather than leaving it stuck blank. If this
+      // is the very first time 2D has ever been shown, centerViewOnStart()
+      // ran against that same 0x0 buffer too (scrollX/Y computed as
+      // focusX*TILE_SIZE - canvas.width/2 -- with width 0, that's just
+      // focusX*TILE_SIZE, nowhere near actually centered), so redo that
+      // too -- but only that first time, so toggling back to 2D later
+      // doesn't keep jumping the player's own scroll position back to start.
+      if (!viewState.is3D) {
+        const canvas2d = $("map-canvas");
+        const neverSized = canvas2d.width === 0;
+        resizeMapCanvas();
+        if (neverSized) centerViewOnStart();
+      }
       redraw();
     });
     $("report-influence-btn").addEventListener("click", () => {
@@ -618,23 +688,30 @@
     return { x: fb.x, y: fb.y, landmassSize: preferred.length };
   }
 
-  function setupCanvas() {
+  /** Match #map-canvas's pixel buffer to its CSS layout size so there's no
+   *  scaling. getBoundingClientRect() (and so this) returns all zeros for a
+   *  display:none element -- since 3D is now the default view, the 2D
+   *  canvas starts out hidden, so this must be re-run when switching TO 2D
+   *  as well as on every real window resize, or the 2D canvas stays stuck
+   *  at the 0x0 buffer size it captured while hidden (confirmed live: 2D
+   *  view was solid-blank after toggling away from the 3D default). */
+  function resizeMapCanvas() {
     const canvas = $("map-canvas");
-    const resize = () => {
-      // Match canvas pixel buffer to its CSS layout size so there's no scaling
-      const rect = canvas.getBoundingClientRect();
-      canvas.width = Math.floor(rect.width);
-      canvas.height = Math.floor(rect.height);
-      redraw();
-    };
-    window.addEventListener("resize", resize);
+    const rect = canvas.getBoundingClientRect();
+    canvas.width = Math.floor(rect.width);
+    canvas.height = Math.floor(rect.height);
+    redraw();
+  }
+
+  function setupCanvas() {
+    window.addEventListener("resize", resizeMapCanvas);
     // Size synchronously now so callers right after setupCanvas() (namely
     // centerViewOnStart) see real canvas.width/height instead of the stale
     // pre-layout default -- getBoundingClientRect() forces a layout, so this
     // is accurate even though game-screen's display was just flipped to flex.
-    resize();
+    resizeMapCanvas();
     // Extra safety net in case layout still settles after this tick.
-    requestAnimationFrame(resize);
+    requestAnimationFrame(resizeMapCanvas);
   }
 
   function centerViewOnStart() {

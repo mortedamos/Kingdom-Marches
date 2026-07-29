@@ -1,9 +1,11 @@
 /**
  * SFX SYSTEM
  * ----------
- * Per-unit, per-action sound effects: assets/sfx/<race>_<unitId>_<action>_<n>.wav
+ * Per-unit, per-action sound effects: assets/sfx/<race>_<unitId>_<action>_<n>.{mp3,wav}
  * (see js/data/sfx-actions.js for the naming convention and the full set of
- * combinations that should exist).
+ * combinations that should exist). mp3 is checked first (see
+ * SFX_EXTENSIONS) -- either extension works, so files can be converted from
+ * wav to mp3 gradually without any coordinated switchover.
  *
  * Deliberately UNLIKE music.js: there is no fallback chain. Music always
  * wants *something* mood-appropriate playing, so it falls back through
@@ -39,8 +41,15 @@ window.SfxSystem = (function () {
     return muted ? 0 : masterVolume * sfxVolume;
   }
 
-  function clipPath(raceId, unitId, action, n) {
-    return `assets/sfx/${window.GameData.sfxFileName(raceId, unitId, action, n)}`;
+  // Checked in this order -- mp3 first (smaller files, faster load, see the
+  // loading-screen work this pairs with) so once a clip has been converted
+  // it's picked up automatically with no other code change; wav still
+  // works for whatever hasn't been converted yet, so the switch can happen
+  // gradually, file by file, instead of needing a coordinated flip.
+  const SFX_EXTENSIONS = ["mp3", "wav"];
+
+  function clipPath(raceId, unitId, action, n, ext) {
+    return `assets/sfx/${window.GameData.sfxFileName(raceId, unitId, action, n, ext)}`;
   }
 
   // Same rationale as music.js's PROBE_CONCURRENCY: probing every combo/
@@ -98,23 +107,29 @@ window.SfxSystem = (function () {
 
   /** Scans which clip files actually exist. Called once at startup. Never
    *  throws -- an entirely-missing sfx library (e.g. a fresh checkout before
-   *  any files are curated) just means every playAction() call is a no-op. */
+   *  any files are curated) just means every playAction() call is a no-op.
+   *  availability values are the EXTENSION that was found (see
+   *  SFX_EXTENSIONS -- mp3 checked first), not a plain boolean, so
+   *  playAction knows which file to actually load; still falsy (undefined)
+   *  when neither exists, so every existing truthy check on this map
+   *  continues to work unchanged. */
   async function scanAvailability() {
     availability = new Map();
     const tasks = [];
     for (const combo of window.GameData.sfxAllCombos()) {
       for (let n = 1; n <= window.GameData.SFX_MAX_VARIANTS; n++) {
-        tasks.push({
-          key: `${combo.raceId}_${combo.unitId}_${combo.action}_${n}`,
-          path: clipPath(combo.raceId, combo.unitId, combo.action, n),
-        });
+        tasks.push({ key: `${combo.raceId}_${combo.unitId}_${combo.action}_${n}`, raceId: combo.raceId, unitId: combo.unitId, action: combo.action, n });
       }
     }
     let found = 0;
-    await mapWithConcurrencyLimit(tasks, PROBE_CONCURRENCY, async ({ key, path }) => {
-      const exists = await probeFile(path);
-      availability.set(key, exists);
-      if (exists) found++;
+    await mapWithConcurrencyLimit(tasks, PROBE_CONCURRENCY, async ({ key, raceId, unitId, action, n }) => {
+      for (const ext of SFX_EXTENSIONS) {
+        if (await probeFile(clipPath(raceId, unitId, action, n, ext))) {
+          availability.set(key, ext);
+          found++;
+          return;
+        }
+      }
     });
     console.log(`[sfx] availability scan complete: ${found} clips found, ${tasks.length - found} missing`);
   }
@@ -167,7 +182,8 @@ window.SfxSystem = (function () {
     lastVariantPlayed[pairKey] = choice;
 
     const key = `${pairKey}_${choice}`;
-    const audio = new Audio(clipPath(raceId, unitId, action, choice));
+    const ext = availability.get(key); // the extension scanAvailability actually found for this exact clip
+    const audio = new Audio(clipPath(raceId, unitId, action, choice, ext));
 
     // variable playback speed to add variety to the oft-repeated sfx
     const randSpeed = 0.8 + Math.random() * (1.7 - 0.8);
@@ -175,11 +191,11 @@ window.SfxSystem = (function () {
 
     audio.volume = effectiveVolume();
     audio.addEventListener("error", () => {
-      console.log(`[sfx] failed to play ${key}.wav -- will not retry this session`);
+      console.log(`[sfx] failed to play ${key}.${ext} -- will not retry this session`);
       failedClips.add(key);
     });
     audio.play().catch((e) => {
-      console.log(`[sfx] play() rejected for ${key}.wav: ${e.message}`);
+      console.log(`[sfx] play() rejected for ${key}.${ext}: ${e.message}`);
       failedClips.add(key);
     });
   }

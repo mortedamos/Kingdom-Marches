@@ -180,6 +180,58 @@ html, body {
   opacity: 0.5;
 }
 
+/* --- Loading screen: between clicking Begin and the game being ready --- */
+.loading-screen {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #0e1014;
+}
+.loading-bg-overlay {
+  position: absolute;
+  inset: 0;
+  background-image: url('../assets/img/title-bg.png');
+  background-size: cover;
+  background-position: center;
+  opacity: 0.30;
+}
+.loading-content {
+  position: relative;
+  z-index: 1;
+  text-align: center;
+  user-select: none;
+}
+.loading-logo {
+  display: block;
+  height: 22vh;
+  width: auto;
+  margin: 0 auto 28px;
+  opacity: 0.9;
+}
+.loading-spinner {
+  width: 34px;
+  height: 34px;
+  margin: 0 auto;
+  border: 3px solid rgba(201, 168, 87, 0.25);
+  border-top-color: rgba(201, 168, 87, 0.9);
+  border-radius: 50%;
+  animation: loading-spin 0.9s linear infinite;
+}
+@keyframes loading-spin {
+  to { transform: rotate(360deg); }
+}
+.loading-status {
+  margin: 20px 0 0 0;
+  font-family: "Cinzel", Georgia, serif;
+  font-size: clamp(12px, 1.5vw, 16px);
+  color: var(--text-dim);
+  letter-spacing: 0.1em;
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.8);
+}
+
 /* --- Game screen --- */
 .game-screen {
   display: flex;

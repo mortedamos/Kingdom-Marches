@@ -31,6 +31,19 @@
 
   </div>
 
+  <!-- Loading screen: shown between clicking Begin and the game actually
+       being ready (sprites/music/sfx preload -- see main.js's startGame).
+       Without this the game screen used to appear immediately with most
+       art/audio still streaming in, which read as broken rather than loading. -->
+  <div id="loading-screen" class="loading-screen" style="display:none;">
+    <div class="loading-bg-overlay"></div>
+    <div class="loading-content">
+      <img class="loading-logo" src="assets/img/logo.png" alt="Arcane Empires">
+      <div class="loading-spinner"></div>
+      <p class="loading-status" id="loading-status-text">Loading...</p>
+    </div>
+  </div>
+
   <!-- Game screen: shown once a game is running -->
   <div id="game-screen" class="game-screen" style="display:none;">
     <div class="menu-bar">

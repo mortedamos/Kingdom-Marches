@@ -1658,7 +1658,7 @@ window.UI = window.UI || {};
   }
 
   window.UI.render = {
-    render, screenToTile, isTileOnScreen, fullVisibilitySet,
+    render, screenToTile, isTileOnScreen, fullVisibilitySet, getVisualPos,
     get TILE_SIZE() { return TILE_SIZE; },
     MIN_ZOOM, MAX_ZOOM,
   };

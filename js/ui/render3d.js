@@ -126,6 +126,7 @@ window.UI = window.UI || {};
   // as passing over it").
   const RIVER_HUB_LIFT = 0.010, RIVER_CARDINAL_LIFT = 0.011;
   const ROAD_HUB_LIFT = 0.013, ROAD_CARDINAL_LIFT = 0.014, ROAD_DIAGONAL_LIFT = 0.015;
+  const SHADOW_RADIUS = 0.32, SHADOW_Y_LIFT = 0.017; // above every other decal layer -- sits "on top" under the unit
 
   // Kept in exact agreement with render.js's tables of the same name --
   // both describe the same road/river stub art, just rotated in world
@@ -587,8 +588,8 @@ window.UI = window.UI || {};
   // UV (0,0) at the NW corner -- rotating by angleDeg here uses the same
   // formula ctx.rotate() produces in a Y-down screen space, which is exactly
   // what world (+X east, +Z south) already is, so no axis flip is needed. ----------
-  function buildDecalQuad(positions, uvs, worldCx, worldCz, height, angleDeg) {
-    const hs = TILE / 2;
+  function buildDecalQuad(positions, uvs, worldCx, worldCz, height, angleDeg, halfSize) {
+    const hs = halfSize != null ? halfSize : TILE / 2;
     const rad = (angleDeg * Math.PI) / 180;
     const cosA = Math.cos(rad), sinA = Math.sin(rad);
     function corner(lx, lz) {
@@ -703,6 +704,36 @@ window.UI = window.UI || {};
     return groups;
   }
 
+  /** One small colored disc per unit billboard (see makeShadowCanvas),
+   *  grouped by civ color for batched draws -- rebuilt from the SAME
+   *  already-collected billboards list every frame (not re-derived from
+   *  gameState), so a shadow always agrees exactly with where its unit is
+   *  actually drawn, mid-glide position included. */
+  function buildShadowDecalGroups(st, map, billboards) {
+    const byColor = new Map();
+    for (const b of billboards) {
+      if (!b.color) continue;
+      let arr = byColor.get(b.color);
+      if (!arr) { arr = []; byColor.set(b.color, arr); }
+      arr.push(b);
+    }
+    const groups = [];
+    for (const [color, items] of byColor) {
+      const shadowCanvas = makeShadowCanvas(color);
+      const tex = getBillboardTexture(st, shadowCanvas, singleFrameManifest(shadowCanvas));
+      if (!tex.tex) continue;
+      const positions = [], uvs = [];
+      for (const b of items) {
+        const cx = worldX(st, b.x) + TILE/2 + b.dx, cz = worldZ(st, b.y) + TILE/2 + b.dz;
+        const y = cellHeight(map, b.x, b.y) + SHADOW_Y_LIFT;
+        buildDecalQuad(positions, uvs, cx, cz, y, 0, SHADOW_RADIUS);
+      }
+      const vbo = buildDecalVbo(st.gl, positions, uvs);
+      if (vbo) groups.push({ texture: tex.tex, ...vbo });
+    }
+    return groups;
+  }
+
   function drawDecalGroup(st, g) {
     const gl = st.gl;
     gl.bindTexture(gl.TEXTURE_2D, g.texture);
@@ -715,9 +746,15 @@ window.UI = window.UI || {};
     gl.drawArrays(gl.TRIANGLES, 0, g.vertCount);
   }
 
+  /** cx/cz can be fractional -- a mid-glide unit's visual position (see
+   *  getVisualPos) -- floored to the containing tile rather than truncated,
+   *  since Math.min/max above already clamp to [0, dimension-1] and a
+   *  fractional cx just inside that range (e.g. width-0.5) must still land
+   *  on a real integer tile index, not produce a non-integer array index
+   *  (map.tiles[5.3] is undefined, not tiles[5]). */
   function cellHeight(map, cx, cz) {
-    cx = Math.max(0, Math.min(map.width - 1, cx));
-    cz = Math.max(0, Math.min(map.height - 1, cz));
+    cx = Math.floor(Math.max(0, Math.min(map.width - 1, cx)));
+    cz = Math.floor(Math.max(0, Math.min(map.height - 1, cz)));
     return HEIGHT_BY_TERRAIN[map.tiles[cz * map.width + cx].terrain] ?? 0;
   }
 
@@ -867,6 +904,35 @@ window.UI = window.UI || {};
     ctx.strokeText(label, size/2, size/2 + size*0.02);
     ctx.fillText(label, size/2, size/2 + size*0.02);
     fallbackMarkerCache.set(key, c);
+    return c;
+  }
+
+  /** Civ-colored ground shadow under every unit -- mirrors render.js's
+   *  drawUnitShadow (a flat race-colored ellipse under EVERY unit, real
+   *  sprite or fallback alike), which 3D had no equivalent of: a billboard
+   *  alone gives no at-a-glance ownership cue the way a colored disc
+   *  planted on the ground does. Solid through ~65% of its radius then
+   *  fading to transparent, so the alpha-discard cutout decalFS already
+   *  uses (see drawDecalGroup) reads as a soft-edged blob instead of a
+   *  hard-edged disc, without needing real alpha blending (not enabled
+   *  anywhere in this file) or a dedicated shader. */
+  const shadowTexCache = new Map();
+  function makeShadowCanvas(color) {
+    let c = shadowTexCache.get(color);
+    if (c) return c;
+    const size = 64;
+    c = document.createElement("canvas");
+    c.width = size; c.height = size;
+    const ctx = c.getContext("2d");
+    const grad = ctx.createRadialGradient(size/2, size/2, 0, size/2, size/2, size/2);
+    grad.addColorStop(0, color);
+    grad.addColorStop(0.65, color);
+    grad.addColorStop(1, "rgba(0,0,0,0)");
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    ctx.arc(size/2, size/2, size/2, 0, Math.PI*2);
+    ctx.fill();
+    shadowTexCache.set(color, c);
     return c;
   }
 
@@ -1128,9 +1194,18 @@ window.UI = window.UI || {};
         const uLabel = (baseUnit && baseUnit.label || "?").charAt(0).toUpperCase();
         const uResolved = resolveBillboardSprite(sprite, race.color, uLabel);
         const onCityTile = cityTiles.has(idx);
+        // Same visual-position glide 2D uses (getVisualPos, exported from
+        // render.js for this reuse) -- units move instantly in game logic
+        // (a whole turn resolves in one call), but both views re-render
+        // every animation frame regardless of turn timing, so without this
+        // a unit would just pop to its destination tile instead of sliding
+        // there. Shared state on the unit object itself, so glide progress
+        // stays consistent even if the player toggles between 2D/3D mid-move.
+        const visPos = window.UI.render.getVisualPos(unit);
         list.push({
-          x: unit.x, y: unit.y, dx: onCityTile ? 0.28 : 0, dz: 0,
+          x: visPos.x, y: visPos.y, dx: onCityTile ? 0.28 : 0, dz: 0,
           image: uResolved.image, manifest: uResolved.manifest, seed: unit, size: UNIT_HEIGHT, sizeAxis: "height", blend: UNIT_BLEND,
+          color: race.color,
         });
       }
     }
@@ -1198,15 +1273,34 @@ window.UI = window.UI || {};
   }
 
   // ---------- camera controls + click-to-select ----------
+  // Continuous keyboard "fly" pan (item -- see file header): WASD/arrows
+  // move the camera target across the ground plane while held, speed
+  // scaled by current zoom distance (so panning feels consistent whether
+  // zoomed in tight or pulled back) and real elapsed time (frame-rate
+  // independent). Global listeners (not on the canvas) since a canvas
+  // needs explicit focus to receive key events otherwise, and the player
+  // shouldn't have to click the map first -- guarded by both "is 3D mode
+  // actually showing" and "is the player typing somewhere else" so this
+  // never steals keys from a text field or from 2D mode.
+  const PAN_KEYS = {
+    w: [0,-1], ArrowUp: [0,-1], s: [0,1], ArrowDown: [0,1],
+    a: [-1,0], ArrowLeft: [-1,0], d: [1,0], ArrowRight: [1,0],
+  };
+  function isTypingInField() {
+    const el = document.activeElement;
+    return !!(el && (el.tagName === "INPUT" || el.tagName === "SELECT" || el.tagName === "TEXTAREA"));
+  }
   function attachControls(canvas) {
     if (canvas.__render3dControlsAttached) return;
     canvas.__render3dControlsAttached = true;
-    let dragging = false, lastX = 0, lastY = 0, downX = 0, downY = 0, dragMoved = false;
+    canvas.__heldPanKeys = new Set();
+    let dragging = false, dragButton = 0, lastX = 0, lastY = 0, downX = 0, downY = 0, dragMoved = false;
     const CLICK_MOVE_THRESHOLD = 4; // px -- matches input.js's dragMoved suppression
     canvas.style.touchAction = "none";
+    canvas.addEventListener("contextmenu", (e) => e.preventDefault()); // right-drag pans instead of opening a menu
     canvas.addEventListener("pointerdown", (e) => {
       if (!canvas.__cam) return;
-      dragging = true; dragMoved = false;
+      dragging = true; dragButton = e.button; dragMoved = false;
       lastX = e.clientX; lastY = e.clientY;
       downX = e.clientX; downY = e.clientY;
       canvas.style.cursor = "grabbing";
@@ -1218,13 +1312,25 @@ window.UI = window.UI || {};
       lastX = e.clientX; lastY = e.clientY;
       if (Math.hypot(e.clientX - downX, e.clientY - downY) > CLICK_MOVE_THRESHOLD) dragMoved = true;
       const cam = canvas.__cam;
-      cam.azimuth -= dx * 0.008;
-      cam.elevationDeg = Math.max(20, Math.min(85, cam.elevationDeg - dy * 0.15));
+      if (dragButton === 2) {
+        // Right-drag: pan the target across the ground plane, same basis
+        // the keyboard fly controls use, scaled by distance so a drag
+        // covers the same apparent ground distance at any zoom level.
+        const { camRight, camBack } = cameraEyeAndBasis(cam);
+        const fwdGround = norm([-camBack[0], 0, -camBack[2]]);
+        const rightGround = norm([camRight[0], 0, camRight[2]]);
+        const scale = cam.distance * 0.0018;
+        cam.target[0] += (-rightGround[0]*dx + fwdGround[0]*dy) * scale;
+        cam.target[2] += (-rightGround[2]*dx + fwdGround[2]*dy) * scale;
+      } else {
+        cam.azimuth -= dx * 0.008;
+        cam.elevationDeg = Math.max(20, Math.min(85, cam.elevationDeg - dy * 0.15));
+      }
     });
     function endDrag(e) {
       dragging = false;
       canvas.style.cursor = "grab";
-      if (dragMoved || !canvas.__gameState || !canvas.__viewState) return;
+      if (dragButton === 2 || dragMoved || !canvas.__gameState || !canvas.__viewState) return;
       const map = canvas.__gameState.map;
       const hit = pickTileAtClient(canvas, map, e.clientX, e.clientY);
       if (!hit) return;
@@ -1247,6 +1353,38 @@ window.UI = window.UI || {};
       cam.distance = Math.max(MIN_DISTANCE, Math.min(cam.maxDistance, cam.distance + e.deltaY * 0.04));
     }, { passive: false });
     canvas.style.cursor = "grab";
+
+    window.addEventListener("keydown", (e) => {
+      if (!(e.key in PAN_KEYS)) return;
+      if (canvas.style.display === "none" || isTypingInField()) return;
+      canvas.__heldPanKeys.add(e.key);
+    });
+    window.addEventListener("keyup", (e) => {
+      if (e.key in PAN_KEYS) canvas.__heldPanKeys.delete(e.key);
+    });
+    // Held keys otherwise keep panning forever if focus leaves the page
+    // entirely (alt-tab, etc.) while a key is physically still down --
+    // window loses the eventual keyup.
+    window.addEventListener("blur", () => canvas.__heldPanKeys.clear());
+  }
+
+  /** Applies this frame's share of any held WASD/arrow pan, scaled by real
+   *  elapsed time (deltaMs) and current zoom distance -- see attachControls. */
+  function applyKeyboardPan(canvas, cam, deltaMs) {
+    const keys = canvas.__heldPanKeys;
+    if (!keys || keys.size === 0) return;
+    let fwd = 0, right = 0;
+    for (const key of keys) {
+      const [dx, dz] = PAN_KEYS[key];
+      right += dx; fwd -= dz;
+    }
+    if (fwd === 0 && right === 0) return;
+    const { camRight, camBack } = cameraEyeAndBasis(cam);
+    const fwdGround = norm([-camBack[0], 0, -camBack[2]]);
+    const rightGround = norm([camRight[0], 0, camRight[2]]);
+    const speed = cam.distance * 1.1 * (deltaMs / 1000); // world units/sec, scaled by zoom
+    cam.target[0] += (rightGround[0]*right + fwdGround[0]*fwd) * speed;
+    cam.target[2] += (rightGround[2]*right + fwdGround[2]*fwd) * speed;
   }
 
   function resize(gl, canvas, dpr) {
@@ -1338,6 +1476,11 @@ window.UI = window.UI || {};
     }
     const cam = canvas.__cam;
 
+    const now = performance.now();
+    const deltaMs = canvas.__lastFrameAt ? Math.min(200, now - canvas.__lastFrameAt) : 16; // clamp a long gap (tab was hidden, etc.) instead of jumping
+    canvas.__lastFrameAt = now;
+    applyKeyboardPan(canvas, cam, deltaMs);
+
     resize(gl, canvas, st.dpr);
     if (canvas.width === 0 || canvas.height === 0) return;
 
@@ -1392,6 +1535,8 @@ window.UI = window.UI || {};
     }
 
     const roadDrawGroups = buildRoadDecalGroups(st, map);
+    const billboards = collectBillboards(gameState, viewState, map.width, fogVisible);
+    const shadowDrawGroups = buildShadowDecalGroups(st, map, billboards);
     gl.useProgram(st.decalProg);
     gl.uniformMatrix4fv(st.d_uViewProj, false, viewProj);
     gl.uniform2f(st.d_uMapSize, map.width, map.height);
@@ -1403,8 +1548,9 @@ window.UI = window.UI || {};
     for (const g of st.riverDrawGroups) drawDecalGroup(st, g);
     for (const g of roadDrawGroups) drawDecalGroup(st, g);
     for (const g of roadDrawGroups) gl.deleteBuffer(g.vbo); // rebuilt fresh every frame -- see buildRoadDecalGroups
+    for (const g of shadowDrawGroups) drawDecalGroup(st, g);
+    for (const g of shadowDrawGroups) gl.deleteBuffer(g.vbo); // rebuilt fresh every frame, positions move every turn
 
-    const billboards = collectBillboards(gameState, viewState, map.width, fogVisible);
     gl.useProgram(st.billboardProg);
     gl.uniformMatrix4fv(st.b_uViewProj, false, viewProj);
     gl.uniform3f(st.b_uRight, camRight[0], camRight[1], camRight[2]);

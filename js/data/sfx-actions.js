@@ -92,6 +92,6 @@ window.GameData.sfxAllCombos = function () {
 
 /** "<race>_<unitId>_<action>_<n>.wav" -- the one place this filename pattern
  *  is assembled, so runtime and tooling can never disagree on it. */
-window.GameData.sfxFileName = function (raceId, unitId, action, n) {
-  return `${raceId}_${unitId}_${action}_${n}.wav`;
+window.GameData.sfxFileName = function (raceId, unitId, action, n, ext) {
+  return `${raceId}_${unitId}_${action}_${n}.${ext}`;
 };

@@ -135,7 +135,7 @@ async function mapWithConcurrencyLimit(items, limit, worker) {
 }
 
 function clipPath(raceId, unitId, action, n) {
-  return `../assets/sfx/${window.GameData.sfxFileName(raceId, unitId, action, n)}`;
+  return `../assets/sfx/${window.GameData.sfxFileName(raceId, unitId, action, n, "wav")}`;
 }
 
 async function main() {
@@ -210,7 +210,7 @@ function render(combos) {
           const btn = document.createElement("button");
           btn.className = "play";
           btn.textContent = "▶" + n;
-          btn.title = window.GameData.sfxFileName(combo.raceId, combo.unitId, combo.action, n);
+          btn.title = window.GameData.sfxFileName(combo.raceId, combo.unitId, combo.action, n, "wav");
           btn.addEventListener("click", () => {
             new Audio(clipPath(combo.raceId, combo.unitId, combo.action, n)).play().catch(() => {});
           });
@@ -219,7 +219,7 @@ function render(combos) {
       } else {
         const span = document.createElement("span");
         span.className = "placeholder";
-        span.textContent = "expected: " + window.GameData.sfxFileName(combo.raceId, combo.unitId, combo.action, 1);
+        span.textContent = "expected: " + window.GameData.sfxFileName(combo.raceId, combo.unitId, combo.action, 1, "wav");
         variantsWrap.appendChild(span);
       }
       variantsCell.appendChild(variantsWrap);
