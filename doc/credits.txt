@@ -1,0 +1,16 @@
+- KINGDOM MARCHES -
+
+By Shawn Nicolen 
+2026
+
+- ARTIFICIAL INTELLIGENCE DISCLAIMER -
+This project is a way for me to learn game development techniques. Some elements were created with AI. Should this game ever ake money, it will be foremost used to replace AI elements with human created.
+
+- SOUND EFFECTS -
+Sourced From
+Pixelbay - https://pixabay.com/
+Sonniss GameAudioGDC - https://sonniss.com/gameaudiogdc/
+
+- MUSIC -
+Suno.ai
+
