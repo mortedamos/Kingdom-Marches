@@ -14,3 +14,5 @@ Sonniss GameAudioGDC - https://sonniss.com/gameaudiogdc/
 - MUSIC -
 Suno.ai
 
+- ART - 
+Google Gemini

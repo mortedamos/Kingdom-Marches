@@ -6,5 +6,5 @@ backups/
 scratch/
 *.zip
 working/
-.claude
+.claude/
 .git
