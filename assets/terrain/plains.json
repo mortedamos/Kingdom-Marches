@@ -1,0 +1,8 @@
+{
+  "frameWidth": 64,
+  "frameHeight": 64,
+  "layout": "horizontal",
+  "animations": {
+    "idle": { "frames": [0, 1], "fps": 2 }
+  }
+}
