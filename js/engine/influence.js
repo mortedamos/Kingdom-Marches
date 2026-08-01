@@ -131,7 +131,10 @@ window.GameEngine = window.GameEngine || {};
       if (!civ.unlockedMechanics || !civ.unlockedMechanics.has("dungeon_delve")) continue;
       for (const unit of civ.units) {
         if (unit.typeId !== "wizard") continue;
-        if ((unit._ritualTurns || 0) < 2) continue;
+        // Kept in sync with turns.js's own payout gate (2026-07-30,
+        // user-directed fix: was < 2, wasting a full turn of an already-
+        // filled offset sitting inert before it started projecting).
+        if ((unit._ritualTurns || 0) < 1) continue;
         const filled = unit._delveFilledOffsets;
         if (!filled || filled.size === 0) continue;
         const strength = unitMilitaryInfluenceBase(unit) * 2;
@@ -155,7 +158,9 @@ window.GameEngine = window.GameEngine || {};
       if (civ.eliminated) continue;
       if (!civ.unlockedMechanics || !civ.unlockedMechanics.has("prospectors_claim")) continue;
       for (const unit of civ.units) {
-        if ((unit._ritualTurns || 0) < 2) continue;
+        // Kept in sync with turns.js's own payout gate (2026-07-30,
+        // user-directed fix: was < 2).
+        if ((unit._ritualTurns || 0) < 1) continue;
         const filled = unit._claimFilledOffsets;
         if (!filled || filled.size === 0) continue;
         const strength = unitMilitaryInfluenceBase(unit) * 2;

@@ -234,8 +234,8 @@ window.GameEngine = window.GameEngine || {};
    *  this turn -- it would just be silently overwritten next turn and
    *  never actually banked. Stockpile has no such reset, so it's timing-
    *  safe regardless of when this is called. No-op (and no floating text)
-   *  if the stash is empty, e.g. a channel that exhausts before ever
-   *  reaching the 2-turn payout threshold. */
+   *  if the stash is empty, e.g. a channel that exhausts on the very turn
+   *  it starts, before ever reaching its first payout turn. */
   function bankChannelStash(unit, civ) {
     const stash = unit._channelStash;
     delete unit._channelStash;
@@ -514,8 +514,12 @@ window.GameEngine = window.GameEngine || {};
       return acc;
     }, { harvest: 0, coin: 0, lore: 0 });
 
-    // Dungeon Delve (Human): a qualifying Wizard (2+ turns on a Ruin) pays
-    // out +3 lore, +3 coin per turn on top of normal city income -- that flat
+    // Dungeon Delve (Human): a qualifying Wizard (channeling for 1+ turns,
+    // i.e. every turn after the turn spent explicitly starting the channel
+    // -- 2026-07-30, user-directed fix: previously required 2+ turns of
+    // _ritualTurns, silently wasting the unit's first full turn of
+    // channeling with no payout) pays out +3 lore, +3 coin per turn on top
+    // of normal city income -- that flat
     // bonus is the tech's ENTIRE resource effect (2026-07-19, user-directed:
     // no per-tile harvest, unlike Dwarf's Prospector's Claim below). The
     // Wizard still gradually claims the 1-tile radius around itself (see
@@ -529,7 +533,7 @@ window.GameEngine = window.GameEngine || {};
       const industriousness = race.industriousness ?? 0.5;
       const cities = window.GameEngine.cities;
       for (const unit of civ.units) {
-        if (unit.typeId !== "wizard" || (unit._ritualTurns || 0) < 2) continue;
+        if (unit.typeId !== "wizard" || (unit._ritualTurns || 0) < 1) continue;
         // Accumulates instead of paying out directly -- see
         // accumulateChannelStash's doc comment above.
         accumulateChannelStash(unit, { coin: 3, lore: 3 });
@@ -567,10 +571,14 @@ window.GameEngine = window.GameEngine || {};
     // Dwarf "Prospector's Claim"/"The Deep Mines": same gradual-fill shape as
     // Dungeon Delve above, but ANY Dwarf unit qualifies (not just one type --
     // the tech's own wording), anchored on a Gold Vein tile instead of a
-    // Ruin. Base payout (2+ turns): +3 coin/+1 lore (2026-07-18: dropped the
-    // harvest component entirely). Once The Deep Mines is ALSO unlocked and
-    // the same unit has held its position 6+ turns (continuing straight
-    // through the same _ritualTurns counter -- not a separate clock), the
+    // Ruin. Base payout (1+ turns of channeling, i.e. every turn after the
+    // turn spent explicitly starting the channel -- 2026-07-30, user-
+    // directed fix, see Dungeon Delve's comment above): +3 coin/+1 lore
+    // (2026-07-18: dropped the harvest component entirely). Once The Deep
+    // Mines is ALSO unlocked and the same unit has held its position 5+
+    // turns (continuing straight through the same _ritualTurns counter --
+    // not a separate clock; kept at 4 turns past the base tier's own
+    // threshold when that threshold moved from 2 to 1), the
     // payout is REPLACED (not stacked) by +5 coin/+4 lore, plus +2 defense
     // while it remains there (applied as a refreshed-every-turn
     // "deepMinesGuard" condition, same convention as Crusade's aura -- see
@@ -581,10 +589,10 @@ window.GameEngine = window.GameEngine || {};
       const industriousness = race.industriousness ?? 0.5;
       const cities = window.GameEngine.cities;
       for (const unit of civ.units) {
-        if ((unit._ritualTurns || 0) < 2) continue;
+        if ((unit._ritualTurns || 0) < 1) continue;
         // Accumulates instead of paying out directly -- see
         // accumulateChannelStash's doc comment above.
-        const deepened = hasDeepMines && (unit._ritualTurns || 0) >= 6;
+        const deepened = hasDeepMines && (unit._ritualTurns || 0) >= 5;
         const onIron = map.tiles[unit.y * map.width + unit.x].resource === "iron";
         // Rebalanced 2026-07-18 (user-directed): both tiers dropped their
         // harvest component entirely on Gold Veins -- Prospector's Claim
@@ -859,6 +867,19 @@ window.GameEngine = window.GameEngine || {};
         console.error(`AI turn error for ${civ.id}:`, err);
         civ.lastAILog = [`ERROR: ${err.message}`];
         window.GameEngine.ai.appendAIActionLog(gameState, civ.id, civ.lastAILog);
+      }
+    } else {
+      // The human civ skips beginAITurn entirely -- but city production is
+      // NOT an AI behavior, it's a rule of the game, and it used to be
+      // trapped inside that skipped call (ai.js's maybeBuildInCities). A
+      // human player's cities therefore never advanced a build at all.
+      // Progress their queues here; the player still makes the CHOICE of what
+      // to build via the sidebar, this only ticks whatever they picked.
+      try {
+        const buildLog = window.GameEngine.ai.progressBuildQueues(civ, gameState);
+        if (buildLog.length) window.GameEngine.ai.appendAIActionLog(gameState, civ.id, buildLog);
+      } catch (err) {
+        console.error(`Build-queue error for ${civ.id}:`, err);
       }
     }
 

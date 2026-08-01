@@ -1,9 +1,13 @@
 /**
  * SIDEBAR UI
  * ----------
- * Updates the persistent sidebar panel: selected city/unit detail, or a
- * civ-wide summary when nothing is selected, plus the End Turn button.
- * See map_ui_design.md §1 for the layout this implements.
+ * Updates the persistent sidebar panel: a tabbed inspector for the selected
+ * tile (one tab per thing present on it -- city, each unit, building,
+ * terrain, kingdom), a civ-wide summary when nothing is selected, plus the
+ * End Turn button. See map_ui_design.md §1 for the layout this implements.
+ *
+ * The tab LIST is built in input.js (see its SELECTION MODEL comment); this
+ * file only draws the strip and dispatches to the matching detail panel.
  */
 
 window.UI = window.UI || {};
@@ -12,22 +16,44 @@ window.UI = window.UI || {};
   function render(container, gameState, viewState) {
     const { civs, turnNumber } = gameState;
     const humanCiv = civs[viewState.humanCivId];
+    const sel = viewState.selection;
 
     let html = "";
 
-    if (viewState.selectedCity) {
-      html += renderCityPanel(viewState.selectedCity, civs);
-    } else if (viewState.selectedUnit) {
-      html += renderUnitPanel(viewState.selectedUnit, civs, viewState, gameState);
-    } else if (viewState.selectedStructure) {
-      html += renderStructurePanel(viewState.selectedStructure);
-    } else if (viewState.selectedTile) {
-      html += renderTilePanel(viewState.selectedTile, civs);
+    // Placement mode is modal -- left-click means "put it here" until it
+    // resolves -- so it needs to say so loudly, above everything else.
+    if (viewState.placement) {
+      html += `<div class="placement-banner">
+        <strong>Placing ${escapeHtml(viewState.placement.label)}</strong>
+        <div>Click a highlighted tile on the map.<br>Click anywhere else to cancel.</div>
+      </div>`;
+    }
+
+    if (sel && sel.tabs && sel.tabs.length) {
+      html += renderTabStrip(sel);
+      const tab = sel.tabs[sel.activeTab];
+      if (tab.kind === "city")           html += renderCityPanel(tab.city, civs, sel, gameState, viewState);
+      else if (tab.kind === "unit")      html += renderUnitPanel(tab.unit, civs, viewState, gameState);
+      else if (tab.kind === "structure") html += renderStructurePanel(tab.structure);
+      else if (tab.kind === "terrain")   html += renderTilePanel(tab.tile, civs, sel);
+      else if (tab.kind === "kingdom")   html += renderKingdomPanel(tab.civ, gameState, viewState);
     } else {
-      html += renderCivSummary(humanCiv, gameState);
+      html += renderKingdomPanel(humanCiv, gameState, viewState);
+    }
+
+    // Awaiting-orders cycler: with a dozen units spread across the map,
+    // hunting for the ones that haven't moved is the single most tedious part
+    // of a turn. Only shown when there's actually something to jump to.
+    let cyclerHtml = "";
+    if (viewState.humanCivId) {
+      const waiting = window.GameEngine.orders.unitsNeedingOrders(gameState, viewState.humanCivId);
+      cyclerHtml = waiting.length
+        ? `<button id="next-unit-btn" class="next-unit-btn">Next Unit (${waiting.length})</button>`
+        : `<div class="all-units-moved">All units have orders</div>`;
     }
 
     html += `<div class="sidebar-footer">
+      ${cyclerHtml}
       <div class="turn-counter">Turn ${turnNumber}</div>
       <button id="end-turn-btn" class="end-turn-btn">End Turn</button>
     </div>`;
@@ -35,7 +61,18 @@ window.UI = window.UI || {};
     container.innerHTML = html;
   }
 
-  function renderCityPanel(city, civs) {
+  /** The tab strip itself. Suppressed for a bare terrain tile -- a lone
+   *  "Terrain" tab is pure noise, since that's self-evidently what the panel
+   *  below it is showing. */
+  function renderTabStrip(sel) {
+    if (sel.tabs.length <= 1) return "";
+    const buttons = sel.tabs.map((t, i) =>
+      `<button class="tile-tab${i === sel.activeTab ? " tile-tab-active" : ""}" data-tab-index="${i}">${escapeHtml(t.label)}</button>`
+    ).join("");
+    return `<div class="tile-tabs">${buttons}</div>`;
+  }
+
+  function renderCityPanel(city, civs, sel, gameState, viewState) {
     const civ = civs[city.civId];
     const race = civ ? window.GameData.getRace(civ.raceId) : null;
     const y = city.lastYield || { harvest: 0, coin: 0, lore: 0 };
@@ -48,21 +85,31 @@ window.UI = window.UI || {};
     const radiusTileCount = (2 * city.influenceRadius + 1) ** 2;
     const filledTileCount = city.filledOffsets ? city.filledOffsets.size : 0;
 
-    // Civilization-wide per-turn resource totals and stockpile
-    const civRes = (civ && civ.resources) ? civ.resources : null;
-    const civStock = (civ && civ.stockpile) ? civ.stockpile : null;
-    // Upkeep is derived (10% of raw unit power, across all 3 resources -- see
-    // GameData.unitUpkeep), not a flat stored value.
-    const totalUpkeep = civ ? civ.units.reduce((acc, u) => {
-      const up = window.GameData.unitUpkeep(u.typeId, civ, u);
-      acc.harvest += up.harvest || 0; acc.coin += up.coin || 0; acc.lore += up.lore || 0;
-      return acc;
-    }, { harvest: 0, coin: 0, lore: 0 }) : { harvest: 0, coin: 0, lore: 0 };
-    const civResHtml = civRes && race ? `
-        <h3>${escapeHtml(race.label)} — Economy</h3>
-        <div class="stat-row"><span>Income (Harvest / Coin / Lore)</span><span>${civRes.harvest.toFixed(1)} / ${civRes.coin.toFixed(1)} / ${civRes.lore.toFixed(1)}</span></div>
-        <div class="stat-row"><span>Unit Upkeep (Harvest / Coin / Lore)</span><span>${totalUpkeep.harvest.toFixed(1)} / ${totalUpkeep.coin.toFixed(1)} / ${totalUpkeep.lore.toFixed(1)}</span></div>
-        ${civStock ? `<div class="stat-row"><span>Stockpile (H / C / L)</span><span>${civStock.harvest.toFixed(0)} / ${civStock.coin.toFixed(0)} / ${civStock.lore.toFixed(0)}</span></div>` : ''}` : '';
+    // Garrison (2026-08-01, user-directed): units standing on the city tile.
+    // This is the case that motivated the whole tabbed inspector -- clicking
+    // a defended city used to show the city and silently swallow its
+    // defenders. Each entry jumps to that unit's own tab; the tab indices
+    // come straight from the same list input.js built, so they can't drift.
+    const garrisonHtml = sel ? (() => {
+      const unitTabs = sel.tabs
+        .map((t, i) => ({ t, i }))
+        .filter(({ t }) => t.kind === "unit");
+      if (!unitTabs.length) {
+        return `<h3>Garrison</h3><div class="stat-row"><em>Undefended</em></div>`;
+      }
+      const rows = unitTabs.map(({ t, i }) => {
+        const u = t.unit;
+        const uCiv = civs[u.civId];
+        const uRace = uCiv ? window.GameData.getRace(uCiv.raceId) : null;
+        // An enemy unit on your city tile is possible (a flying unit isn't
+        // blocked by the city) -- flag it rather than implying it's yours.
+        const foreign = uCiv && uCiv.id !== city.civId ? ` <em>(${escapeHtml(uRace ? uRace.label : uCiv.id)})</em>` : '';
+        return `<button class="tile-tab-link" data-tab-index="${i}">
+          <span>${escapeHtml(t.label)}${foreign}</span><span>${u.hp}/${u.maxHp} hp</span>
+        </button>`;
+      }).join("");
+      return `<h3>Garrison (${unitTabs.length})</h3>${rows}`;
+    })() : '';
 
     return `
       <div class="panel">
@@ -77,10 +124,7 @@ window.UI = window.UI || {};
         <div class="stat-row"><span>Harvest</span><span>${y.harvest.toFixed(1)}</span></div>
         <div class="stat-row"><span>Coin</span><span>${y.coin.toFixed(1)}</span></div>
         <div class="stat-row"><span>Lore</span><span>${y.lore.toFixed(1)}</span></div>
-        <h3>Building</h3>
-        <div class="stat-row">${city.buildQueue
-          ? `${escapeHtml(city.buildQueue.id)} (${buildQueuePct(city.buildQueue)}%)`
-          : "<em>Nothing queued</em>"}</div>
+        ${renderBuildSection(city, civ, gameState, viewState)}
         <h3>Structures (${city.structures.length}/${window.GameEngine.cities.RING1_SLOT_COUNT + window.GameEngine.cities.RING2_SLOT_COUNT})</h3>
         ${city.structures.length
           ? city.structures.map(s => {
@@ -88,11 +132,83 @@ window.UI = window.UI || {};
               return `<div class="stat-row"><span>${escapeHtml(b.label)}</span><span>${Math.max(0, s.hp)}/${s.maxHp} hp</span></div>`;
             }).join("")
           : '<div class="stat-row"><em>None built</em></div>'}
-        ${civResHtml}
+        ${garrisonHtml}
       </div>`;
   }
 
-  function renderTilePanel(tile, civs) {
+  /**
+   * The city's production: what's building now, and (for the player's own
+   * cities) a picker for what to build next.
+   *
+   * An AI city gets the read-only progress row it always had -- there's
+   * nothing for the player to decide there.
+   */
+  function renderBuildSection(city, civ, gameState, viewState) {
+    const isOwnCity = viewState && viewState.humanCivId && city.civId === viewState.humanCivId;
+
+    if (city.buildQueue) {
+      const item = city.buildQueue;
+      const label = item.kind === "building"
+        ? window.GameData.getBuilding(item.id).label
+        : (window.GameData.getUnit(item.id)?.label || item.id);
+      const placeTag = item.placeAt ? ` → (${item.placeAt.x}, ${item.placeAt.y})` : "";
+      const turnsTag = item.turnsRemaining !== undefined
+        ? `${item.turnsRemaining} turn${item.turnsRemaining === 1 ? "" : "s"} left`
+        : `${buildQueuePct(item)}%`;
+      return `<h3>Building</h3>
+        <div class="stat-row"><span>${escapeHtml(label + placeTag)}</span><span>${escapeHtml(turnsTag)}</span></div>
+        <div class="build-progress"><div class="build-progress-fill" style="width:${buildQueuePct(item)}%"></div></div>
+        ${isOwnCity ? `<button id="cancel-build-btn" class="action-btn action-btn-danger">Cancel Build</button>` : ""}`;
+    }
+
+    if (!isOwnCity) return `<h3>Building</h3><div class="stat-row"><em>Nothing queued</em></div>`;
+
+    // The picker itself. Collapsed behind a button by default -- the full
+    // list can run to a dozen entries and would otherwise bury the city's own
+    // stats every time you glance at it.
+    const open = viewState.buildPickerCityId === cityKey(city);
+    if (!open) {
+      return `<h3>Building</h3>
+        <div class="stat-row"><em>Nothing queued</em></div>
+        <button id="open-build-picker-btn" class="action-btn" data-city-key="${escapeHtml(cityKey(city))}">Choose Production…</button>`;
+    }
+
+    const options = window.GameEngine.ai.availableBuilds(civ, city, gameState);
+    if (!options.length) {
+      return `<h3>Building</h3><div class="stat-row"><em>Nothing available to build</em></div>`;
+    }
+    const units = options.filter((o) => o.kind === "unit");
+    const buildings = options.filter((o) => o.kind === "building");
+
+    const row = (o, i) => {
+      const price = o.cost
+        ? Object.entries(o.cost).map(([k, v]) => `${v}${k[0].toUpperCase()}`).join(" ")
+        : `${o.coinCost || 0}C`;
+      const time = o.turns ? `${o.turns}t` : "";
+      const needsPlacement = o.kind === "building";
+      return `<button class="build-option${o.affordable ? "" : " build-option-unaffordable"}"
+          data-build-index="${i}" ${o.affordable ? "" : "disabled"}>
+        <span>${escapeHtml(o.label)}${needsPlacement ? " ⌂" : ""}</span>
+        <span>${escapeHtml(`${price} ${time}`.trim())}</span>
+      </button>`;
+    };
+
+    // Indices are into the FULL options array, so the click handler can look
+    // the option straight back up without re-deriving the split.
+    const indexed = options.map((o, i) => ({ o, i }));
+    const unitRows = indexed.filter(({ o }) => o.kind === "unit").map(({ o, i }) => row(o, i)).join("");
+    const buildingRows = indexed.filter(({ o }) => o.kind === "building").map(({ o, i }) => row(o, i)).join("");
+
+    return `<h3>Choose Production</h3>
+      ${units.length ? `<div class="build-group-label">Units</div>${unitRows}` : ""}
+      ${buildings.length ? `<div class="build-group-label">Buildings <span style="opacity:0.6">⌂ = pick a tile</span></div>${buildingRows}` : ""}
+      <button id="close-build-picker-btn" class="action-btn">Cancel</button>`;
+  }
+
+  /** Cities have no stable id field, but (x,y) is unique and never changes. */
+  function cityKey(city) { return `${city.x},${city.y}`; }
+
+  function renderTilePanel(tile, civs, sel) {
     const terrain = window.GameData.TERRAIN[tile.terrain];
     const y = terrain.yield;
     const ownerCiv = tile.ownerCivId ? civs[tile.ownerCivId] : null;
@@ -110,6 +226,24 @@ window.UI = window.UI || {};
     const moveCostLabel = terrain.isWater ? "Movement Cost (Naval)" : "Movement Cost";
     const moveCostDisplay = moveCost === window.GameData.IMPASSABLE ? "Impassable" : moveCost;
 
+    // "Contents" doubles the Terrain tab as the tile's index -- one clickable
+    // row per other tab, so you can see at a glance everything sharing this
+    // tile even while reading the terrain itself. Skips the Kingdom tabs
+    // (not a thing physically ON the tile) and, obviously, Terrain itself.
+    const contentsHtml = sel ? (() => {
+      const rows = sel.tabs
+        .map((t, i) => ({ t, i }))
+        .filter(({ t }) => t.kind === "city" || t.kind === "unit" || t.kind === "structure")
+        .map(({ t, i }) => {
+          const KIND_LABEL = { city: "City", unit: "Unit", structure: "Building" };
+          return `<button class="tile-tab-link" data-tab-index="${i}">
+            <span>${escapeHtml(KIND_LABEL[t.kind])}</span><span>${escapeHtml(t.label)}</span>
+          </button>`;
+        }).join("");
+      if (!rows) return `<h3>Contents</h3><div class="stat-row"><em>Empty tile</em></div>`;
+      return `<h3>Contents</h3>${rows}`;
+    })() : '';
+
     return `
       <div class="panel">
         <h2>${escapeHtml(terrain.label)}</h2>
@@ -125,6 +259,7 @@ window.UI = window.UI || {};
         ${tile.hasRoad ? `<div class="stat-row"><span>Road</span><span>Connected</span></div>` : ''}
         ${tile.isRuin ? `<div class="stat-row"><span>Ruin</span><span>+2 Lore</span></div>` : ''}
         <div class="stat-row"><span>Position</span><span>(${tile.x}, ${tile.y})</span></div>
+        ${contentsHtml}
       </div>`;
   }
 
@@ -296,6 +431,23 @@ window.UI = window.UI || {};
       ? `${unitLevel} (max)`
       : `${unitLevel} (${Math.floor(unit.xp || 0)} / ${nextXpThreshold} XP)`;
 
+    // Turn status (2026-08-01, user-directed): the action economy is movement
+    // points PLUS one action (see orders.js), and until now the sidebar showed
+    // neither. Without this the player has no way to know why a unit won't
+    // move, or that it still has an attack available after moving.
+    let turnStatus = "";
+    if (isHumanUnit && gameState) {
+      const budget = unit.movesRemaining != null
+        ? unit.movesRemaining
+        : window.GameEngine.ai.computeMovementBudget(unit, gameState.map, gameState.civs);
+      const moveText = unit.channeling ? "Channeling" : `${budget} / ${baseUnit.movement}`;
+      const actionText = unit.usedThisTurn ? "Used" : "Available";
+      turnStatus = `
+        <div class="stat-row"><span>Movement Left</span><span>${escapeHtml(moveText)}</span></div>
+        <div class="stat-row"><span>Action</span><span${unit.usedThisTurn ? ' style="opacity:0.6"' : ''}>${actionText}</span></div>
+        <div class="stat-row"><em style="opacity:0.7">Right-click the map to move or attack</em></div>`;
+    }
+
     const canRest = isHumanUnit && !unit.usedThisTurn;
     const restBtn = canRest ? `<button id="rest-unit-btn" class="action-btn">Rest</button>` : '';
     // Defend (2026-07-20, user-directed): a universal normal action, any
@@ -330,6 +482,7 @@ window.UI = window.UI || {};
         ${properties.length ? `<div class="stat-row"><span>Properties</span><span>${escapeHtml(properties.join(', '))}</span></div>` : ''}
         <div class="stat-row"><span>Position</span><span>(${unit.x}, ${unit.y})</span></div>
         ${carriedByTag}${carriesTag}
+        ${turnStatus}
         ${pioneerActions}
         ${channelActions}
         ${restBtn}
@@ -338,11 +491,28 @@ window.UI = window.UI || {};
       </div>`;
   }
 
-  function renderCivSummary(civ, gameState) {
+  /**
+   * KINGDOM PANEL
+   * -------------
+   * The civ-wide view. Serves two callers: the "Kingdom" tab of whatever's on
+   * the selected tile, and the default no-selection panel (always the human's
+   * own civ there).
+   *
+   * INTEL REDACTION (2026-08-01, user-directed): clicking an enemy city would
+   * otherwise hand the player that civ's stockpile, research, and net income
+   * for free. Anything a player could plausibly infer from the map itself
+   * (city/unit counts, territory share) stays visible; the economic and
+   * research internals read "Unknown" for civs that aren't yours. Spectator
+   * games (humanCivId === null) have no one to hide from, so they fall back
+   * to full reveal automatically.
+   */
+  function renderKingdomPanel(civ, gameState, viewState) {
     if (!civ) return `<div class="panel"><em>Spectator mode -- no civ selected</em></div>`;
     const race = window.GameData.getRace(civ.raceId);
     const { counts, totalClaimable } = window.GameEngine.influence.countTerritory(gameState);
     const myShare = totalClaimable > 0 ? ((counts[civ.id] || 0) / totalClaimable * 100) : 0;
+    const isOwn = !viewState.humanCivId || civ.id === viewState.humanCivId;
+    const UNKNOWN = `<span style="opacity:0.6">Unknown</span>`;
 
     let researchHtml = "<em>None selected</em>";
     if (civ.currentResearch) {
@@ -358,18 +528,51 @@ window.UI = window.UI || {};
       return ud.category === "military" && !ud.isNaval;
     }).length;
 
+    // Economy -- moved here from the city panel, where it never belonged
+    // (it's civ-wide data that happened to be rendered under a single city).
+    // Upkeep is derived (10% of raw unit power across whichever resources
+    // that split uses -- see GameData.unitUpkeep), not a flat stored value.
+    const res = civ.resources || { harvest: 0, coin: 0, lore: 0 };
+    const stock = civ.stockpile;
+    const upkeep = civ.units.reduce((acc, u) => {
+      const up = window.GameData.unitUpkeep(u.typeId, civ, u);
+      acc.harvest += up.harvest || 0; acc.coin += up.coin || 0; acc.lore += up.lore || 0;
+      return acc;
+    }, { harvest: 0, coin: 0, lore: 0 });
+    // Net is income minus upkeep. Called out on its own row because a
+    // negative net is exactly the thing you want to notice, and eyeballing
+    // the subtraction across two three-number rows reliably hides it.
+    const net = {
+      harvest: res.harvest - upkeep.harvest,
+      coin: res.coin - upkeep.coin,
+      lore: res.lore - upkeep.lore,
+    };
+    const netIsNegative = net.harvest < 0 || net.coin < 0 || net.lore < 0;
+    const fmt3 = (o, dp = 1) => `${o.harvest.toFixed(dp)} / ${o.coin.toFixed(dp)} / ${o.lore.toFixed(dp)}`;
+
+    const economyHtml = isOwn ? `
+        <div class="stat-row"><span>Income (H / C / L)</span><span>${fmt3(res)}</span></div>
+        <div class="stat-row"><span>Unit Upkeep (H / C / L)</span><span>${fmt3(upkeep)}</span></div>
+        <div class="stat-row"><span>Net (H / C / L)</span><span${netIsNegative ? ' style="color:#f0a830"' : ''}>${fmt3(net)}</span></div>
+        ${stock ? `<div class="stat-row"><span>Stockpile (H / C / L)</span><span>${fmt3(stock, 0)}</span></div>` : ''}`
+      : `<div class="stat-row"><span>Income / Upkeep / Stockpile</span><span>${UNKNOWN}</span></div>`;
+
     return `
       <div class="panel">
         <h2>${escapeHtml(race.label)}</h2>
+        ${isOwn ? '' : '<div class="stat-row"><em style="opacity:0.7">Foreign power — limited intelligence</em></div>'}
         <div class="stat-row"><span>Cities</span><span>${civ.cities.length}</span></div>
         <div class="stat-row"><span>Population</span><span>${totalPop}</span></div>
         <div class="stat-row"><span>Units</span><span>${civ.units.length}</span></div>
         <div class="stat-row"><span>Military (cap)</span><span>${militaryCount} / ${militaryCap}</span></div>
         <div class="stat-row"><span>Territory Share</span><span>${myShare.toFixed(1)}%</span></div>
+        <h3>Economy</h3>
+        ${economyHtml}
         <h3>Research</h3>
-        <div class="stat-row">${researchHtml}</div>
-        <h3>Cities</h3>
+        <div class="stat-row">${isOwn ? researchHtml : UNKNOWN}</div>
+        ${isOwn ? `<h3>Cities</h3>
         ${civ.cities.map((c) => `<div class="stat-row"><span>${escapeHtml(c.name)}</span><span>pop ${c.population.toFixed(0)}</span></div>`).join("")}
+        <button class="action-btn view-tech-tree-btn" data-civ-id="${escapeHtml(civ.id)}">View Tech Tree</button>` : ''}
       </div>`;
   }
 

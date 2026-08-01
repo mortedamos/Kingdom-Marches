@@ -302,9 +302,71 @@ window.GameEngine = window.GameEngine || {};
     return null;
   }
 
-  /** Places a structure at a valid adjacent slot; returns the record or null if no slot. */
-  function placeStructure(city, civ, map, buildingId, civs) {
-    const slot = findStructureSlot(city, civ, map, buildingId, civs);
+  /**
+   * EVERY tile this building could legally be placed on, not just the first
+   * one findStructureSlot happens to pick.
+   *
+   * Added for the player UI (2026-08-01, user-directed): a human player picks
+   * the tile at queue time -- walls in particular are positional, and
+   * auto-placing them wherever the loop landed is exactly the decision a
+   * player wants to make themselves. Deliberately mirrors findStructureSlot's
+   * rules rather than reimplementing them: ring-2 first for walls, the
+   * ring-1 reservation rule that stops walls locking out future buildings,
+   * the ring-1 chaining requirement, and ring-1 only for ordinary buildings.
+   */
+  function validStructureSlots(city, civ, map, buildingId, civs) {
+    const building = window.GameData.getBuilding(buildingId);
+    const slots = [];
+
+    if (building.isWall) {
+      for (const [dx, dy] of RING2_OFFSETS) {
+        const nx = city.x + dx, ny = city.y + dy;
+        if (isPlaceableTile(map, civ, civs, building, nx, ny)) slots.push({ x: nx, y: ny, ring: 2 });
+      }
+      // Ring-1 walls are only offered when they wouldn't eat a slot this
+      // race still needs for an actual building (see findStructureSlot's own
+      // explanation), and must chain off an existing structure.
+      const raceBuildingIds = window.GameData.buildingsForRace(civ.raceId);
+      const stillNeeded = raceBuildingIds.filter((id) => !cityHasStructure(city, id)).length;
+      const ring1Structures = city.structures.filter(
+        (s) => window.GameEngine.influence.chebyshev(s.x, s.y, city.x, city.y) <= 1
+      ).length;
+      const openRing1Slots = ADJACENT_OFFSETS.length - ring1Structures;
+      if (openRing1Slots > stillNeeded) {
+        for (const [dx, dy] of ADJACENT_OFFSETS) {
+          const nx = city.x + dx, ny = city.y + dy;
+          if (!isPlaceableTile(map, civ, civs, building, nx, ny)) continue;
+          if (!hasAdjacentStructure(map, nx, ny)) continue;
+          slots.push({ x: nx, y: ny, ring: 1 });
+        }
+      }
+      return slots;
+    }
+
+    for (const [dx, dy] of ADJACENT_OFFSETS) {
+      const nx = city.x + dx, ny = city.y + dy;
+      if (isPlaceableTile(map, civ, civs, building, nx, ny)) slots.push({ x: nx, y: ny, ring: 1 });
+    }
+    return slots;
+  }
+
+  /**
+   * Places a structure and returns the record, or null if there's nowhere legal.
+   *
+   * `preferred` ({x,y}, optional) is the tile a human player chose back when
+   * they queued the build. Several turns can pass before the build finishes,
+   * so that tile may no longer be legal by then (something else got built
+   * there, an enemy moved in). Rather than stall the build or silently drop
+   * it, an invalid preference falls back to findStructureSlot's automatic
+   * pick -- the same behavior the AI has always had.
+   */
+  function placeStructure(city, civ, map, buildingId, civs, preferred) {
+    let slot = null;
+    if (preferred) {
+      const legal = validStructureSlots(city, civ, map, buildingId, civs);
+      slot = legal.find((s) => s.x === preferred.x && s.y === preferred.y) || null;
+    }
+    if (!slot) slot = findStructureSlot(city, civ, map, buildingId, civs);
     if (!slot) return null;
     const building = window.GameData.getBuilding(buildingId);
     const record = { id: buildingId, x: slot.x, y: slot.y, hp: building.maxHp, maxHp: building.maxHp };
@@ -844,6 +906,7 @@ window.GameEngine = window.GameEngine || {};
     cityHasStructure,
     civHasBuiltBuilding,
     findStructureSlot,
+    validStructureSlots,
     placeStructure,
     findStructureAt,
     destroyStructure,

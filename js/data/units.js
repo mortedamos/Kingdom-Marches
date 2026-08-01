@@ -384,7 +384,13 @@ window.GameData.UNITS = {
   // intended feel as a once-in-a-game commitment.
   runeforged_titan: {
     id: "runeforged_titan", label: "Runeforged Titan", symbol: "▣", category: "military", raceOnly: "dwarf",
-    attack: 10, defense: 15, movement: 1, visionRadius: 2, siegePct: 3.50,
+    // defense restored to the wall-tier 32 this unit's own doc comments above
+    // describe (2026-07-30, user-directed fix: had regressed to 15 -- barely
+    // above the next-highest unit's 11 -- making "near-indestructible to an
+    // ordinary attacker" false in practice and causing the Resilient
+    // Spirit/Unyielding death-save to fire on hits that were never supposed
+    // to be anywhere near lethal against a full-health Titan).
+    attack: 10, defense: 32, movement: 1, visionRadius: 2, siegePct: 3.50,
     coinCost: 60, biggerPct: 1.2, attackChars: ["🪨", "💥"],
     veryRare: true, neverExplores: true, siegeTarget: true,
     nameSpecial: true, // a construct, not a person -- see unit-names.js

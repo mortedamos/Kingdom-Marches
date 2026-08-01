@@ -19,7 +19,6 @@
  */
 
 window.MusicSystem = (function () {
-  const RACES = ["human", "elf", "dwarf", "orc", "undead", "halfellow"];
   // "victory" (2026-07-22, user-directed): <race>_victory_#.mp3, scanned and
   // resolved exactly like every other per-race situation below -- no special
   // casing needed there, only in resolveCurrent's priority order (see
@@ -144,29 +143,57 @@ window.MusicSystem = (function () {
   // guarantees that stays true either.
   let scanGeneration = 0;
 
-  /** Scans which files actually exist. Called once at startup. Never throws. */
-  async function scanAvailability() {
+  /** Scans which files actually exist. Called once at startup. Never throws.
+   *  racesInPlay (array of race ids -- normal games pass [humanRace,
+   *  ...opponents], spectator games pass the checked spectator races) scopes
+   *  the scan to just those races -- most of a match's 6-race library can
+   *  never be heard this game (see sprites.js's preloadAll, which got the
+   *  same racesInPlay scoping for the same reason).
+   *
+   *  Further split into a CRITICAL tier ("default" situation for every
+   *  racesInPlay race, plus the race-less "neutral" tracks) that the
+   *  returned promise waits on, and a BACKGROUND tier (combat/discovery/
+   *  victory -- situations that can't possibly be needed until whatever
+   *  triggers them actually happens in-game) that keeps scanning afterward
+   *  without making the loading screen wait on it. "default" is what's
+   *  ACTUALLY playing the instant a game starts (see main.js's startGame --
+   *  no notifySituation call happens before then, so resolveCurrent always
+   *  lands on "default"), and "neutral" is what spectator mode's pool needs
+   *  even before any race-specific situation is relevant (see
+   *  resolveSpectatorTrack). onProgress(done, total) is called only for the
+   *  critical tier, matching sprites.js/sfx.js's own critical/background
+   *  split. */
+  async function scanAvailability(racesInPlay, onProgress) {
     const myGeneration = ++scanGeneration;
     availability = new Map();
-    const tasks = [];
-    for (const race of RACES) {
+    const criticalTasks = [];
+    const backgroundTasks = [];
+    for (const race of racesInPlay) {
       for (const situation of SITUATIONS) {
         if (situation === "neutral") continue; // neutral has no race, checked separately below
+        const bucket = situation === "default" ? criticalTasks : backgroundTasks;
         for (let v = 1; v <= MAX_VARIANTS; v++) {
-          tasks.push({ key: `${race}_${situation}_${v}`, path: trackPath(race, situation, v) });
+          bucket.push({ key: `${race}_${situation}_${v}`, path: trackPath(race, situation, v) });
         }
       }
     }
     // Spectator-mode neutral track(s) -- no race prefix
     for (let v = 1; v <= MAX_VARIANTS; v++) {
-      tasks.push({ key: `neutral_${v}`, path: `assets/music/neutral_${v}.mp3` });
+      criticalTasks.push({ key: `neutral_${v}`, path: `assets/music/neutral_${v}.mp3` });
     }
-    await mapWithConcurrencyLimit(tasks, PROBE_CONCURRENCY, async ({ key, path }) => {
+    async function runTask({ key, path }) {
       const exists = await probeFile(path);
       if (myGeneration !== scanGeneration) return; // superseded -- see scanGeneration's doc comment
       availability.set(key, exists);
       if (!exists) console.log(`[music] missing: ${key}.mp3 - skipping`);
+    }
+    let done = 0;
+    await mapWithConcurrencyLimit(criticalTasks, PROBE_CONCURRENCY, async (task) => {
+      await runTask(task);
+      done++;
+      if (onProgress) onProgress(done, criticalTasks.length);
     });
+    mapWithConcurrencyLimit(backgroundTasks, PROBE_CONCURRENCY, runTask); // fire-and-forget
   }
 
   /** Existence check via a plain GET + immediate body cancel (2026-07-22,
@@ -496,12 +523,16 @@ window.MusicSystem = (function () {
     return tracks;
   }
 
-  async function init() {
+  async function init(racesInPlay, onProgress) {
     loadPersistedVolumes();
-    await scanAvailability();
-    console.log("[music] availability scan complete:",
-      [...availability.entries()].filter(([, v]) => v).length, "tracks found,",
-      [...availability.entries()].filter(([, v]) => !v).length, "missing (expected -- this is a prototype with no real mp3 files)");
+    await scanAvailability(racesInPlay, onProgress);
+    // Only the critical tier (see scanAvailability's doc comment) has
+    // settled by this point -- background situations (combat/discovery/
+    // victory) are still being scanned, so these counts will keep rising
+    // afterward as those settle too.
+    console.log("[music] critical availability scan complete:",
+      [...availability.entries()].filter(([, v]) => v).length, "tracks found so far,",
+      [...availability.entries()].filter(([, v]) => !v).length, "missing so far (expected -- this is a prototype with no real mp3 files)");
   }
 
   return {

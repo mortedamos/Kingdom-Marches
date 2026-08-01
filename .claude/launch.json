@@ -5,13 +5,15 @@
       "name": "index.html",
       "runtimeExecutable": "C:\\Program Files\\Git\\usr\\bin\\perl.exe",
       "runtimeArgs": ["C:\\Users\\snico\\Documents\\Claude Projects\\Fantasy Civilizations\\.claude\\static_server.pl", "C:\\Users\\snico\\Documents\\Claude Projects\\Fantasy Civilizations", "5500"],
-      "port": 5500
+      "port": 5500,
+      "autoPort": true
     },
     {
       "name": "index.html-perl",
       "runtimeExecutable": "C:\\Program Files\\Git\\usr\\bin\\perl.exe",
       "runtimeArgs": ["C:\\Users\\snico\\Documents\\Claude Projects\\Fantasy Civilizations\\.claude\\static_server.pl", "C:\\Users\\snico\\Documents\\Claude Projects\\Fantasy Civilizations", "5500"],
-      "port": 5500
+      "port": 5500,
+      "autoPort": true
     }
   ]
 }

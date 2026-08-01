@@ -317,6 +317,22 @@ window.GameEngine = window.GameEngine || {};
     return 0.9 - aggressivenessFor(civ) * 0.4;
   }
 
+  // Settle-need roll (2026-07-30, user-directed): a peaceful, low-militarism/
+  // low-aggressiveness civ addresses an ordinary pioneer/galley need almost
+  // every turn; a warlike civ sometimes skips it in favor of the army. Never
+  // a permanent block -- re-rolled every turn a need persists (see
+  // chooseBuildAction's own urgency/ordinary split below), same shape as the
+  // existing FULLY_FILLED_SETTLER_CHANCE pattern. Floored well above 0 so
+  // even the most warlike civ still expands eventually.
+  const SETTLE_ROLL_BASE = 0.85;
+  const SETTLE_ROLL_MILITARISM_PENALTY = 0.5;
+  const SETTLE_ROLL_FLOOR = 0.15;
+  function rollsForSettleNeed(civ) {
+    const drag = (effectiveMilitarism(civ) + aggressivenessFor(civ)) / 2; // 0 peaceful .. 1 warlike
+    const chance = Math.max(SETTLE_ROLL_FLOOR, SETTLE_ROLL_BASE - drag * SETTLE_ROLL_MILITARISM_PENALTY);
+    return Math.random() < chance;
+  }
+
   /** Quick win-probability estimate via sampling rather than exact Markov
    *  computation -- a pragmatic prototype-scale approximation of the
    *  exact-lookup approach the design doc describes. */
@@ -352,6 +368,18 @@ window.GameEngine = window.GameEngine || {};
   // militarism; a low-industry race gets negligible boost from this term and
   // falls back to its militarism alone.
   const INDUSTRIOUSNESS_GARRISON_WEIGHT = 0.75;
+
+  // Garrison-rate boost (2026-07-30, user-directed): every race garrisons
+  // too rarely -- Dwarf and Halfellow especially, despite already leaning on
+  // industriousness above, since a lightly-defended-but-not-empty city never
+  // pulled a unit back home (see reinforceHomeCity's own undefended-only
+  // scoping) and the roll below only ever fires for a unit already standing
+  // on its own city tile. A flat multiplier on top of garrisonDesire, capped
+  // at 1.0, so a unit that's already home and has nothing more pressing to
+  // do (this roll is checked well after combat/vanguard/rush-to-defend
+  // priorities above) garrisons far more reliably than before.
+  const GARRISON_DESIRE_BOOST = 1.3;
+  const GARRISON_DESIRE_BOOST_DWARF_HALFELLOW = 1.6;
 
   /** Summed combat power of `civ`'s other military units within `radius` of
    *  (x,y), excluding `excludeUnit`. Used to size up allied backup on either
@@ -535,6 +563,19 @@ window.GameEngine = window.GameEngine || {};
     // contact point the instant one becomes visible, same "recomputed
     // fresh every turn" convention as _invasionTarget above.
     if (civ.raceId === "orc") civ._orcSwarmSignal = computeOrcSwarmSignal(civ, gameState);
+
+    // Settle-need roll (2026-07-30, user-directed): computed once per civ-
+    // turn (not per-city) so every city in this civ sees the same verdict
+    // this turn -- see rollsForSettleNeed and chooseBuildAction's pioneer/
+    // galley section.
+    civ._pioneerNeedRoll = rollsForSettleNeed(civ);
+    civ._galleyNeedRoll = rollsForSettleNeed(civ);
+
+    // Elf "hunting party" (2026-07-30, user-directed): the whole party's
+    // shared kill target, recomputed fresh every Elf turn but sticking with
+    // the same target across turns as long as it's still alive -- see
+    // computeElfPartyTarget's doc comment.
+    if (civ.raceId === "elf") civ._elfPartyTarget = computeElfPartyTarget(civ, gameState, civ._elfPartyTarget);
 
     // Fog-of-war memory: remember every enemy city this civ has ever laid
     // eyes on, so an idle unit with nothing CURRENTLY visible to react to
@@ -1866,22 +1907,28 @@ window.GameEngine = window.GameEngine || {};
    *  this that ignores the return value, preserving its existing external
    *  contract for the ~35 call sites that only ever move a unit once per
    *  turn (for which persisting vs. discarding the budget is unobservable). */
-  function spendMovement(unit, targetX, targetY, map, civs) {
-    if (unit.movesRemaining == null) unit.movesRemaining = computeMovementBudget(unit, map, civs);
+  /**
+   * One unit's movement rules, in one place: which tiles it may CROSS and at
+   * what cost (costFn), and which it may actually STOP on (canLandOn).
+   *
+   * Extracted from spendMovement (2026-08-01) so the player's reachable-tile
+   * overlay can be computed from the exact same rules that the actual move
+   * will obey. If these ever diverged, the overlay would promise a tile the
+   * move then refuses -- the single most confusing bug a tile-based UI can
+   * have. Both paths now go through this, so they cannot drift.
+   *
+   * Flying (base property OR a temporary grant, e.g. Human's Flight -- see
+   * combat.js's isFlying) units may fly OVER a tile occupied by a non-flying
+   * unit (only another flying unit blocks their path); they must still never
+   * actually land/stop on any occupied tile, which is what the separate
+   * canLandOn test enforces using the full occupancy set instead.
+   */
+  function buildMoveRules(unit, civs) {
     const baseUnit = window.GameData.getUnit(unit.typeId);
-    // Flying (base property OR a temporary grant, e.g. Human's Flight -- see
-    // combat.js's isFlying) units may fly OVER a tile occupied by a non-flying
-    // unit (only another flying unit blocks their path); they must still never
-    // actually land/stop on any occupied tile, which the landing-safety check
-    // below enforces using the full occupancy set instead.
     const flying = window.GameEngine.combat.isFlying(unit);
     const occupied = flying ? buildFlyingBlockSet(civs, unit) : buildOccupancySet(civs, unit);
     const fullOccupied = flying ? buildOccupancySet(civs, unit) : occupied;
 
-    // Full route via A*, not a per-step greedy hill-climb -- this is what lets a unit
-    // detour around a mountain range or bay instead of stopping dead against it. If the
-    // exact target tile can't be reached (e.g. a land unit "heading toward" a galley
-    // sitting on water), findPath falls back to the closest reachable tile instead.
     const costFn = (nx, ny, tile) => {
       if (occupied.has(`${nx},${ny}`)) return window.GameData.IMPASSABLE;
       if (isEnemyStructureBlockingTile(tile, unit)) return window.GameData.IMPASSABLE;
@@ -1889,6 +1936,31 @@ window.GameEngine = window.GameEngine || {};
       const terrain = window.GameData.TERRAIN[tile.terrain];
       return getMoveCost(terrain, baseUnit, unit, tile.hasRoad);
     };
+
+    // A flier crossing OVER an enemy wall is fine; landing on it isn't --
+    // so this deliberately re-checks structure/city ownership WITHOUT the
+    // flying exemption that isEnemyStructureBlockingTile/isEnemyCityBlocking-
+    // Tile grant for costFn's pass-through case. For a non-flying unit,
+    // "can cross" and "can stop" are the same question, so it just defers.
+    const canLandOn = (nx, ny, tile) => {
+      if (!flying) return costFn(nx, ny, tile) !== window.GameData.IMPASSABLE;
+      return !fullOccupied.has(`${nx},${ny}`)
+        && !hasEnemyStructure(tile, unit.civId)
+        && !hasEnemyCity(civs, nx, ny, unit.civId);
+    };
+
+    return { baseUnit, flying, occupied, fullOccupied, costFn, canLandOn };
+  }
+
+  function spendMovement(unit, targetX, targetY, map, civs) {
+    if (unit.movesRemaining == null) unit.movesRemaining = computeMovementBudget(unit, map, civs);
+    const rules = buildMoveRules(unit, civs);
+    const { flying, costFn } = rules;
+
+    // Full route via A*, not a per-step greedy hill-climb -- this is what lets a unit
+    // detour around a mountain range or bay instead of stopping dead against it. If the
+    // exact target tile can't be reached (e.g. a land unit "heading toward" a galley
+    // sitting on water), findPath falls back to the closest reachable tile instead.
     const path = window.GameEngine.pathfinding.findPath(unit.x, unit.y, targetX, targetY, map, costFn);
     if (!path) return unit.movesRemaining;
     window.GameEngine.quips.maybeQuip(unit, civs?.[unit.civId], "move", currentGameStateRef);
@@ -1897,7 +1969,8 @@ window.GameEngine = window.GameEngine || {};
       const step = path[i];
       const isLandingStep = (i === path.length - 1 || unit.movesRemaining - step.cost <= 0);
 
-      // Hidden: this tile was excluded from `occupied`/`fullOccupied` above
+      // Hidden: this tile was excluded from the occupancy sets buildMoveRules
+      // built
       // if the unit standing there belongs to another civ (see
       // buildOccupancySet), so an unsuspecting mover can walk right onto/
       // through it -- doing so is what reveals the Hidden unit, whether
@@ -1915,15 +1988,11 @@ window.GameEngine = window.GameEngine || {};
       // -- either because movement runs out here, or because it's the final
       // step in the whole path -- and the tile is blocked by any of those,
       // stop one tile short instead. Deliberately re-checks structure/city
-      // ownership WITHOUT the flying exemption isEnemyStructureBlockingTile/
-      // isEnemyCityBlockingTile apply for costFn's pass-through case -- a
-      // flier crossing OVER an enemy wall is fine, landing on it isn't.
+      // ownership WITHOUT the flying exemption -- see buildMoveRules's
+      // canLandOn, which is where that distinction now lives.
       if (flying && isLandingStep) {
         const stepTile = map.tiles[step.y * map.width + step.x];
-        const landingBlocked = fullOccupied.has(`${step.x},${step.y}`)
-          || hasEnemyStructure(stepTile, unit.civId)
-          || hasEnemyCity(civs, step.x, step.y, unit.civId);
-        if (landingBlocked) break;
+        if (!rules.canLandOn(step.x, step.y, stepTile)) break;
       }
       unit.x = step.x;
       unit.y = step.y;
@@ -1934,6 +2003,89 @@ window.GameEngine = window.GameEngine || {};
 
   function moveUnitToward(unit, targetX, targetY, map, civs) {
     spendMovement(unit, targetX, targetY, map, civs);
+  }
+
+  /**
+   * Every tile `unit` could legally END its move on with the movement budget
+   * it has left this turn, as a Map of "x,y" -> { x, y, cost }.
+   *
+   * Added for the player UI (2026-08-01): a human player needs to SEE where a
+   * unit can go before committing, which the AI never needed. Uses
+   * buildMoveRules, so it is the same crossing rules, the same per-terrain
+   * costs, and the same landing restrictions that spendMovement will apply
+   * when the order is actually issued.
+   *
+   * Dijkstra rather than A* -- there's no single goal here, we want the whole
+   * reachable set, and costs vary per tile so a plain BFS would be wrong.
+   * Tiles that can be crossed but not stopped on (a flier passing over an
+   * enemy wall) are correctly expanded THROUGH but left out of the result.
+   */
+  function computeReachableTiles(unit, gameState) {
+    const { map, civs } = gameState;
+    const IMPASSABLE = window.GameData.IMPASSABLE;
+    const budget = unit.movesRemaining != null
+      ? unit.movesRemaining
+      : computeMovementBudget(unit, map, civs);
+    const reachable = new Map();
+    if (!(budget > 0)) return reachable;
+
+    const rules = buildMoveRules(unit, civs);
+    const bestCost = new Map([[`${unit.x},${unit.y}`, 0]]);
+    // Small frontier (bounded by the movement budget, not the map), so a
+    // linear extract-min is cheaper here than a heap's bookkeeping.
+    const frontier = [{ x: unit.x, y: unit.y, cost: 0 }];
+
+    while (frontier.length) {
+      let bi = 0;
+      for (let i = 1; i < frontier.length; i++) if (frontier[i].cost < frontier[bi].cost) bi = i;
+      const cur = frontier.splice(bi, 1)[0];
+      if (cur.cost > (bestCost.get(`${cur.x},${cur.y}`) ?? Infinity)) continue;
+
+      for (let dy = -1; dy <= 1; dy++) {
+        for (let dx = -1; dx <= 1; dx++) {
+          if (dx === 0 && dy === 0) continue;
+          const nx = cur.x + dx, ny = cur.y + dy;
+          if (nx < 0 || nx >= map.width || ny < 0 || ny >= map.height) continue;
+          const tile = map.tiles[ny * map.width + nx];
+          const stepCost = rules.costFn(nx, ny, tile);
+          if (stepCost === IMPASSABLE || !(stepCost >= 0)) continue;
+          const total = cur.cost + stepCost;
+          if (total > budget) continue; // out of movement -- can't reach this turn
+          const key = `${nx},${ny}`;
+          if (total >= (bestCost.get(key) ?? Infinity)) continue;
+          bestCost.set(key, total);
+          frontier.push({ x: nx, y: ny, cost: total });
+        }
+      }
+    }
+
+    for (const [key, cost] of bestCost) {
+      if (cost === 0) continue; // the unit's own tile is not a "move"
+      const [x, y] = key.split(",").map(Number);
+      if (!rules.canLandOn(x, y, map.tiles[y * map.width + x])) continue;
+      reachable.set(key, { x, y, cost });
+    }
+    return reachable;
+  }
+
+  /**
+   * Advances an already-queued build in each of `civ`'s cities, WITHOUT ever
+   * choosing a new one.
+   *
+   * The AI's maybeBuildInCities does both -- progress an existing queue, else
+   * pick something new -- and lives inside beginAITurn, which turns.js skips
+   * entirely for the human civ. That meant a human player's cities could
+   * never advance a build even once the UI let them queue one: the queue
+   * would just sit there forever. This is the progression half on its own, so
+   * turns.js can run it for the human civ while leaving the CHOICE to the
+   * player. Same progressBuildQueue the AI uses, so costs, timers, minimum
+   * build times, and completion behavior are identical for both.
+   */
+  function progressBuildQueues(civ, gameState, log = []) {
+    for (const city of civ.cities) {
+      if (city.buildQueue) progressBuildQueue(civ, city, gameState, log);
+    }
+    return log;
   }
 
   /** True while a unit is locked into a multi-turn CHANNELED action
@@ -2225,19 +2377,27 @@ window.GameEngine = window.GameEngine || {};
    *  list of mechanics that make it worth building; race-agnostic (checked
    *  purely via civ.unlockedMechanics) so a future race/mechanic pairing
    *  slots in here without touching the scoring logic itself. */
+  // Wizard and Trouble Maker used to live here too (scored by how many
+  // unlocked spell/utility techs they had) -- both now fold into the
+  // race-wide unit-ratio system instead (2026-07-30, user-directed: no
+  // separate scoring path, on equal footing with every other unit type --
+  // see RACE_UNIT_RATIO/ratioPick below). Druid stays on this dedicated
+  // path: its job (Raptor/Shadowsteed summon production, city-founding) is
+  // a different kind of decision than standing-army composition.
   const UTILITY_UNIT_MECHANICS = {
-    wizard: ["teleportation", "fireball_splash", "dungeon_delve", "invisibility", "invulnerability_chance", "freezing_touch", "flight_grant"],
     druid: ["natures_grace", "roots_of_the_world", "raptor_summon", "shadow_steed_summon"],
-    // Halfellow Trouble Maker (2026-07-24, user-directed): unlike Wizard/
-    // Druid above, resource_heist and unlock_the_gate are granted
-    // automatically the moment the unit itself unlocks (see "Making
-    // Trouble" in techs.js) -- so relevantMechanics.length is already >= 2
-    // as soon as the unit exists, giving it a real build score right away
-    // instead of needing separate tech investment first, same as its
-    // built-in framing. riddle only counts once "The Riddle Game" is
-    // separately researched, same shape as Wizard's per-spell techs.
-    trouble_maker: ["resource_heist", "unlock_the_gate", "riddle"],
   };
+
+  // Wizard's ability techs -- moved out of UTILITY_UNIT_MECHANICS above, but
+  // still used by ratioPick as a binary eligibility gate (not a score): a
+  // freshly-unlocked Wizard with none of these researched yet has no
+  // signature ability to actually run, so it isn't proposed as this civ's
+  // "support" pick until at least one is known. Trouble Maker needs no
+  // equivalent gate -- its kit is granted automatically the instant the unit
+  // itself unlocks (see "Making Trouble" in techs.js), no separate ability
+  // tech required.
+  const WIZARD_ABILITY_TECHS = ["teleportation", "fireball_splash", "dungeon_delve",
+    "invisibility", "invulnerability_chance", "freezing_touch", "flight_grant"];
 
   // Elf "one Shadowsteed per Druid": extra Druid build score when every
   // existing Druid is already at its 1-Shadowsteed cap -- see the
@@ -2466,6 +2626,86 @@ window.GameEngine = window.GameEngine || {};
     return false;
   }
 
+  /**
+   * Everything `city` could legally start building right now, for the player's
+   * build picker.
+   *
+   * Deliberately NOT chooseBuildAction: that function is the AI's strategy --
+   * it weighs expansion against militarism, threat, upkeep sustainability and
+   * a dozen racial traits, then returns the single option it likes best. A
+   * player wants the opposite: the full menu, unranked, with honest prices.
+   *
+   * What it does share is the pricing. Unit options come from buildUnitOption,
+   * the same function the AI prices against, so rarity premiums, `cheap`
+   * discounts, War Camp cost multipliers and the first-military double-speed
+   * bonus all apply identically -- a player and an AI pay the same for the
+   * same unit on the same turn.
+   *
+   * Buildings carry their legal placement slots, since the player picks the
+   * tile at queue time (see cities.js's validStructureSlots).
+   */
+  function availableBuilds(civ, city, gameState) {
+    const { map, civs } = gameState;
+    const out = [];
+
+    let unitCostMult = 1.0;
+    for (const s of city.structures) {
+      const m = window.GameData.getBuilding(s.id).unitCostMult;
+      if (m && m < unitCostMult) unitCostMult = m;
+    }
+
+    // Units. buildUnitOption returns null when the civ can't afford it, which
+    // is exactly the "greyed out" case -- surfaced with affordable:false
+    // rather than hidden, so the player can see what they're saving toward.
+    const unitIds = new Set(civ.unlockedUnits || []);
+    for (const legacyId of ["pioneer", "galley"]) unitIds.add(legacyId);
+    for (const unitId of unitIds) {
+      const unitData = window.GameData.getUnit(unitId);
+      if (!unitData) continue;
+      if (unitData.isNaval && !(city.isPort || isCoastalTile(map, city.x, city.y))) continue;
+      const option = buildUnitOption(civ, unitId, 0, unitCostMult);
+      if (option) {
+        out.push({ ...option, label: unitData.label, affordable: true });
+      } else {
+        out.push({
+          kind: "unit", id: unitId, label: unitData.label, affordable: false,
+          cost: window.GameData.unitBuildCost(unitId),
+          turns: unitBuildTurns(civ, unitId),
+        });
+      }
+    }
+
+    // Buildings: this race's roster, minus what this city already has, minus
+    // anything with nowhere legal to stand.
+    for (const buildingId of window.GameData.buildingsForRace(civ.raceId)) {
+      if (window.GameEngine.cities.cityHasStructure(city, buildingId)) continue;
+      const b = window.GameData.getBuilding(buildingId);
+      if (b.techId && !(civ.completedTechs && civ.completedTechs.has(b.techId))) continue;
+      const slots = window.GameEngine.cities.validStructureSlots(city, civ, map, buildingId, civs);
+      if (!slots.length) continue;
+      out.push({
+        kind: "building", id: buildingId, label: b.label,
+        coinCost: b.coinCost, slots, affordable: true,
+      });
+    }
+
+    // Walls are not part of the race roster and can be built repeatedly, so
+    // they're enumerated separately -- once per distinct wall building that
+    // still has somewhere to go.
+    for (const wallId of Object.keys(window.GameData.BUILDINGS || {})) {
+      const b = window.GameData.getBuilding(wallId);
+      if (!b || !b.isWall) continue;
+      const slots = window.GameEngine.cities.validStructureSlots(city, civ, map, wallId, civs);
+      if (!slots.length) continue;
+      out.push({
+        kind: "building", id: wallId, label: b.label,
+        coinCost: b.coinCost, slots, affordable: true,
+      });
+    }
+
+    return out;
+  }
+
   function chooseBuildAction(civ, city, gameState, weights) {
     const options = [];
     const { map, civs } = gameState;
@@ -2565,7 +2805,17 @@ window.GameEngine = window.GameEngine || {};
     const totalPioneers = civ.units.filter((u) => u.typeId === "pioneer").length
       + countQueuedUnits(civ, (id) => id === "pioneer");
     const needsMorePioneers = cityGateShortfall > totalPioneers;
-    if (popOk && (!civHasPioneer || needsMorePioneers) && (hasViableSite || islandLocked || noCoastalCity || wantsNavalExpansion || wantsNavalPioneer)
+    // Settle-need roll (2026-07-30, user-directed): island-locked/no-coastal-
+    // city/galley-waiting/tech-gate-desperation are near-mandatory
+    // correctness needs, not a personality preference, so they bypass the
+    // roll entirely -- see rollsForSettleNeed's doc comment. The ordinary
+    // "there's a good site out there" desire (plus the softer
+    // wantsNavalExpansion nudge) is what actually gets rolled against
+    // militarism/aggressiveness.
+    const pioneerUrgent = islandLocked || noCoastalCity || wantsNavalPioneer || pioneerTechGateBypass;
+    const pioneerOrdinaryNeed = (hasViableSite || wantsNavalExpansion) && !pioneerUrgent;
+    if (popOk && (!civHasPioneer || needsMorePioneers)
+        && (pioneerUrgent || (pioneerOrdinaryNeed && civ._pioneerNeedRoll))
         && (pioneerAffordable || pioneerTechGateBypass)) {
       // Influence-per-population is now derived from industriousness (see
       // cities.js industriousnessInfluenceMult), not a per-race flat field --
@@ -2615,8 +2865,14 @@ window.GameEngine = window.GameEngine || {};
     // Titan is stalled waiting for a target -- see civNeedsTitanScouting --
     // since the only way to find an overseas enemy is to go looking by sea.
     const wantsTitanScouting = !civHasGalley && civNeedsTitanScouting(civ);
+    // Settle-need roll (2026-07-30, user-directed): island-locked/a-pioneer-
+    // already-waiting-to-board/Titan-scouting are urgent, near-mandatory
+    // needs and bypass the roll; the ordinary naval-expansion/fleet-growth
+    // desire gates on it -- see rollsForSettleNeed's doc comment.
+    const galleyUrgent = islandLocked || civHasPioneer || wantsTitanScouting;
+    const galleyOrdinaryNeed = (wantsNavalExpansion || wantsMoreGalleys) && !galleyUrgent;
     if (cityIsCoastal && (!civHasGalley || wantsMoreGalleys)
-        && (civHasPioneer || islandLocked || wantsNavalExpansion || wantsMoreGalleys || wantsTitanScouting)
+        && (galleyUrgent || (galleyOrdinaryNeed && civ._galleyNeedRoll))
         && canAffordUnitUpkeep(civ, "galley", race)) {
       const settleWeight = weights.settle || 1.0;
       const opt = buildUnitOption(civ, "galley",
@@ -2744,89 +3000,135 @@ window.GameEngine = window.GameEngine || {};
       };
       const ownedRangedUnits = civ.units.filter((u) => isRangedSkirmisher(u.typeId)).length
         + countQueuedUnits(civ, isRangedSkirmisher);
-      // Dwarf "Heavy Metal"/"Power Metal" (2026-07-16, extended 2026-07-18):
-      // once EITHER is researched, the Troubadour's active aura (turns.js's
-      // per-turn application -- heal+defense+siege for Heavy Metal, or
-      // attack+first strike for Power Metal, whichever is currently active,
-      // to every ally within its radius every turn) is a persistent
-      // team-wide buff that militaryValue's raw attack/defense terms have no
-      // way to see. The Troubadour's OWN stats are deliberately weak
-      // (support unit, not a frontline fighter -- atk 2, def 3), so it
-      // permanently lost the offense/defense pick to FoeHammer/Musketeer and
-      // was never built -- confirmed the user's suspicion directly by
-      // walking the formula: Musketeer's higher attack/range beats it
-      // outright pre-saturation, and past ranged saturation it's a strict
-      // loss (atk) or a silent tied loss (def, same "reduce only replaces on
-      // strict >" trap RANGED_VALUE_CREDIT's own comment documents). Gated
-      // on having researched at least one of the two aura techs -- before
-      // either, the Troubadour really is just a mediocre skirmisher and
-      // shouldn't be artificially boosted -- and on a small saturation cap,
-      // since one embedded in the main army already covers everyone in its
-      // radius; a second only helps a genuinely split force.
-      const TROUBADOUR_AURA_SATURATION = 2;
-      const isTroubadour = (id) => id === "troubadour";
-      const ownedTroubadours = civ.units.filter((u) => isTroubadour(u.typeId)).length
-        + countQueuedUnits(civ, isTroubadour);
-      const hasHeavyMetal = !!(civ.unlockedMechanics &&
-        (civ.unlockedMechanics.has("heavy_metal") || civ.unlockedMechanics.has("power_metal")));
-      // Confirmed via live headless A/B (same map seeds, credit forced to 0
-      // vs the value below): 0/3 baseline games ever produced a Troubadour
-      // even when Heavy Metal was researched, vs 6/6 games with this credit
-      // active. 10 was the first value tried and cleared the bar cleanly, no
-      // further tuning needed -- see project_troubadour_aura_scoring memory.
-      const TROUBADOUR_AURA_CREDIT = 10;
+      // Dwarf "Heavy Metal"/"Power Metal": the Troubadour's active aura used
+      // to get a dedicated raw-stat credit here (TROUBADOUR_AURA_CREDIT) so
+      // it could compete with FoeHammer/Musketeer on militaryValue despite
+      // deliberately weak own stats (support unit, atk 2/def 3). Removed
+      // (2026-07-30, user-directed): the Troubadour now has its own
+      // dedicated `support` slot in RACE_UNIT_RATIO/RACE_UNIT_LINEAGES below,
+      // which guarantees it gets built at its target share directly --
+      // no raw-stat credit needed since a ratio-governed slot with a single
+      // candidate id never has anything to compete against in the first place.
       const militaryValue = (id, forDefense) => {
         const ud = window.GameData.getUnit(id);
         const firstStrike = ud.firstStrikePct || 0;
         const rangeCredit = ownedRangedUnits < RANGED_UNIT_SATURATION && isRangedSkirmisher(id) ? RANGED_VALUE_CREDIT : 0;
-        const auraCredit = hasHeavyMetal && ownedTroubadours < TROUBADOUR_AURA_SATURATION && isTroubadour(id)
-          ? TROUBADOUR_AURA_CREDIT : 0;
-        if (forDefense) return ud.defense + firstStrike * 60 + rangeCredit + auraCredit;
+        if (forDefense) return ud.defense + firstStrike * 60 + rangeCredit;
         const siegeCredit = ownedSiegeUnits < SIEGE_UNIT_SATURATION ? (ud.siegePct || 0) * 6 : 0;
-        return ud.attack + firstStrike * 60 + siegeCredit + rangeCredit + auraCredit;
+        return ud.attack + firstStrike * 60 + siegeCredit + rangeCredit;
       };
-      // Elf "teamwork army" (2026-07-21, user-directed): raw-stat scoring
-      // (militaryValue above) always converges on a single "best" unit --
-      // fine for races whose army is genuinely one dominant fighter type,
-      // but Elf's kit is built around utility/teamwork (Ranger volleys,
-      // Blade Dancer ambush sweeps, Awakened Oak as a siege-proof anchor --
-      // see maybeRangerRegroup/maybeBladeDancerSweep/units.js's Oak stats),
-      // so a pure stat-max pick just spams whichever of the three currently
-      // scores highest instead of fielding the intended mix. Overrides
-      // bestByValue's pick for Elf ONLY, targeting a fixed composition
-      // ratio among whichever of the three are actually unlocked so far
-      // (Druid is deliberately excluded -- it already has its own dedicated
-      // build path via UTILITY_UNIT_MECHANICS above, and Galley/Druid's own
-      // Raptor-Shadowsteed summons are separate production paths entirely,
-      // untouched by this).
-      const ELF_UNIT_RATIO = { ranger: 0.5, blade_dancer: 0.2, awakened_oak: 0.3 };
-      const elfRatioCandidates = civ.raceId === "elf"
-        ? unlockedMilitary.filter((id) => ELF_UNIT_RATIO[id] != null) : [];
-      /** Whichever Elf ratio candidate sits furthest BELOW its target share
-       *  of the current (owned + queued) army among the three -- a
-       *  deficit-driven pick so the mix converges toward 50/20/30 over time
-       *  as the army grows, rather than trying to enforce the ratio on any
-       *  single build. Normalizes the target shares against whichever
-       *  subset is currently unlocked, so e.g. only having Ranger unlocked
-       *  so far just means 100% Ranger until Blade Dancer/Awakened Oak
-       *  research catches up. */
-      function elfRatioPick(civ, candidates) {
-        const totalWeight = candidates.reduce((s, id) => s + ELF_UNIT_RATIO[id], 0);
+      // Civ-wide unit-composition ratio (2026-07-30, user-directed;
+      // generalizes what used to be an Elf-only special case): raw-stat
+      // scoring (militaryValue above) always converges on a single "best"
+      // unit -- fine for a race whose army is genuinely one dominant fighter
+      // type, but every race's kit is really built around a MIX of roles
+      // (frontline/shock/ranged/siege/support/...), so a pure stat-max pick
+      // just spams whichever one currently scores highest instead of
+      // fielding the intended composition. `bestByValue`'s pick is overridden
+      // for any race with a RACE_UNIT_RATIO entry, targeting a fixed
+      // composition among whichever of its role-lineages are actually
+      // unlocked (and, for Wizard, actually worth building yet -- see
+      // WIZARD_ABILITY_TECHS) so far.
+      //
+      // Grouped into role-LINEAGES rather than bare unit ids because several
+      // races have a tech-tree upgrade chain within one role (Human's
+      // cavalry -> knight -> paladin, archer -> longbowman) -- both tiers
+      // stay in civ.unlockedUnits forever once unlocked, so the ratio target
+      // applies to the lineage as a whole (owned+queued summed across every
+      // id in it), and the specific id actually built is whichever one in
+      // that lineage currently scores highest via militaryValue (always the
+      // newest tier, since every later tier in these chains is strictly
+      // better). A lineage with a single id (every non-Human race today)
+      // collapses to exactly "always build that one when it's this role's
+      // turn" -- Elf's old ranger/blade_dancer/awakened_oak behavior,
+      // unchanged in effect, just expressed the same way as everyone else.
+      //
+      // Wizard/Trouble Maker/Troubadour used to have their own separate
+      // scoring paths (UTILITY_UNIT_MECHANICS, TROUBADOUR_AURA_CREDIT) --
+      // both removed; their `support` lineage entries below are now the only
+      // thing governing how often they get built, on equal footing with
+      // every other unit type. Druid stays on its own UTILITY_UNIT_MECHANICS
+      // path (a summon-producer/settler, not a standing-army composition
+      // slot). Orc's goblin_miscreant (affordability fallback) and dire_wolf
+      // (shortage/drought-response) also stay out -- neither was ever a
+      // "count vs. unlocked mechanics" scoring path, so there's nothing to
+      // fold in. `undead` has no entry at all: only "skeleton" is a real
+      // (non-stub) buildable unit today, so a ratio table would be a no-op --
+      // falls through to the raw-militaryValue path below automatically,
+      // same as any race whose unlocked lineages don't cover any candidate
+      // yet.
+      const RACE_UNIT_LINEAGES = {
+        elf: {
+          ranged: ["ranger"], shock: ["blade_dancer"], siege: ["awakened_oak"],
+        },
+        human: {
+          frontline: ["spearguard"], shock: ["cavalry", "knight", "paladin"],
+          ranged: ["archer", "longbowman"], siege: ["catapult", "trebuchet"],
+          support: ["wizard"],
+        },
+        dwarf: {
+          frontline: ["foehammer"], ranged: ["musketeer"], support: ["troubadour"],
+          siege: ["runeforged_titan"],
+        },
+        orc: {
+          frontline: ["raider"], defensive: ["impaler"], skirmish: ["wolf_rider"],
+          ranged: ["bog_witch"], siege: ["battering_ram"], heavy: ["ogre"], capstone: ["dragon"],
+        },
+        halfellow: {
+          frontline: ["wanderer"], skirmish: ["pony_patrol"], standing: ["militia"],
+          support: ["trouble_maker"],
+        },
+      };
+      const RACE_UNIT_RATIO = {
+        elf:       { ranged: 0.5, shock: 0.2, siege: 0.3 },
+        human:     { frontline: 0.25, shock: 0.25, ranged: 0.15, siege: 0.15, support: 0.20 },
+        dwarf:     { frontline: 0.35, ranged: 0.25, support: 0.20, siege: 0.20 },
+        orc:       { frontline: 0.25, defensive: 0.15, skirmish: 0.15, ranged: 0.15, siege: 0.10, heavy: 0.10, capstone: 0.10 },
+        halfellow: { frontline: 0.25, skirmish: 0.30, standing: 0.25, support: 0.20 },
+      };
+      /** Whichever role-lineage sits furthest BELOW its target share of the
+       *  current (owned + queued, summed across every id in that lineage)
+       *  army among this race's ratio-covered roles -- a deficit-driven
+       *  pick so the mix converges toward the target over time, rather than
+       *  trying to enforce the ratio on any single build. Normalizes target
+       *  shares against whichever subset of roles is currently eligible, so
+       *  e.g. only having the frontline role unlocked so far just means
+       *  100% frontline until the others catch up. Returns the specific
+       *  unit id to build (the chosen lineage's currently-best-scoring
+       *  unlocked tier), or null if this race has no ratio table or no
+       *  eligible role yet. */
+      function ratioPick(civ, table, lineages) {
+        const eligible = (role) => lineages[role].some((id) => {
+          if (!civ.unlockedUnits.has(id)) return false;
+          if (id === "wizard") {
+            return WIZARD_ABILITY_TECHS.some((m) => civ.unlockedMechanics && civ.unlockedMechanics.has(m));
+          }
+          return true;
+        });
+        const roles = Object.keys(table).filter((role) => table[role] > 0 && eligible(role));
+        if (roles.length === 0) return null;
+        const totalWeight = roles.reduce((s, role) => s + table[role], 0);
         const counts = {};
-        for (const id of candidates) {
-          counts[id] = civ.units.filter((u) => u.typeId === id).length + countQueuedUnits(civ, (uid) => uid === id);
+        for (const role of roles) {
+          counts[role] = lineages[role].reduce((s, id) =>
+            s + civ.units.filter((u) => u.typeId === id).length + countQueuedUnits(civ, (uid) => uid === id), 0);
         }
-        const totalCount = candidates.reduce((s, id) => s + counts[id], 0);
-        let best = null, bestDeficit = -Infinity;
-        for (const id of candidates) {
-          const targetShare = ELF_UNIT_RATIO[id] / totalWeight;
-          const deficit = targetShare * (totalCount + 1) - counts[id]; // +1: value of building this one next
-          if (deficit > bestDeficit) { bestDeficit = deficit; best = id; }
+        const totalCount = roles.reduce((s, role) => s + counts[role], 0);
+        let bestRole = null, bestDeficit = -Infinity;
+        for (const role of roles) {
+          const targetShare = table[role] / totalWeight;
+          const deficit = targetShare * (totalCount + 1) - counts[role]; // +1: value of building this one next
+          if (deficit > bestDeficit) { bestDeficit = deficit; bestRole = role; }
         }
-        return best;
+        const unlockedInRole = lineages[bestRole].filter((id) => civ.unlockedUnits.has(id));
+        return unlockedInRole.reduce((best, id) =>
+          (!best || militaryValue(id, false) > militaryValue(best, false)) ? id : best, null);
       }
       const bestByValue = (forDefense) => {
-        if (elfRatioCandidates.length > 0) return elfRatioPick(civ, elfRatioCandidates);
+        const table = RACE_UNIT_RATIO[civ.raceId];
+        const lineages = RACE_UNIT_LINEAGES[civ.raceId];
+        const picked = table ? ratioPick(civ, table, lineages) : null;
+        if (picked) return picked;
         return unlockedMilitary.reduce((best, id) =>
           (!best || militaryValue(id, forDefense) > militaryValue(best, forDefense)) ? id : best, null);
       };
@@ -3237,10 +3539,17 @@ window.GameEngine = window.GameEngine || {};
         if (!spawnUnitInCity(civ, city, item.id, gameState, extra)) return; // naval retry next turn
         log.push(`Build complete: ${city.name} produced ${item.id}`);
       } else {
-        // Buildings are external structures placed on a tile adjacent to the city
-        const placed = window.GameEngine.cities.placeStructure(city, civ, gameState.map, item.id, gameState.civs);
+        // Buildings are external structures placed on a tile adjacent to the
+        // city. item.placeAt is the tile a human player picked when they
+        // queued this (see orders.js's queueBuild) -- honored if it's still
+        // legal by now, otherwise placeStructure falls back to its own
+        // automatic slot pick, which is what the AI always uses.
+        const placed = window.GameEngine.cities.placeStructure(
+          city, civ, gameState.map, item.id, gameState.civs, item.placeAt);
         if (placed) {
-          log.push(`Build complete: ${city.name} raised ${item.id} at (${placed.x},${placed.y})`);
+          const offSpot = item.placeAt && (placed.x !== item.placeAt.x || placed.y !== item.placeAt.y);
+          log.push(`Build complete: ${city.name} raised ${item.id} at (${placed.x},${placed.y})`
+            + (offSpot ? ` (chosen tile ${item.placeAt.x},${item.placeAt.y} was no longer available)` : ""));
         } else {
           // No valid adjacent slot (all occupied/blocked) — abandon this build
           log.push(`Build canceled: ${city.name} has no open slot for ${item.id}`);
@@ -3410,6 +3719,16 @@ window.GameEngine = window.GameEngine || {};
       // with something more specific; a unit that genuinely finds nothing to
       // do this turn (see the final exploreWith fallback) keeps this default.
       unit.currentMission = "Idle";
+
+      // Damage-since-last-turn tracking (2026-07-30, user-directed): a unit
+      // that was hit by anything (combat, a city/structure counter, Burning,
+      // ...) since the last time IT acted can't choose to Rest this turn --
+      // a snapshot comparison rather than instrumenting every damage call
+      // site, so it catches every damage source uniformly. `_hpAtTurnStart`
+      // is undefined the very first time a unit is ever processed, which
+      // correctly reads as "not recently damaged" (nothing to compare against).
+      const recentlyDamaged = unit._hpAtTurnStart != null && unit.hp < unit._hpAtTurnStart;
+      unit._hpAtTurnStart = unit.hp;
 
       // Teleportation exhaustion: forced to Rest every turn until healed to 100% HP
       if (unit.conditions?.exhausted) {
@@ -3609,6 +3928,16 @@ window.GameEngine = window.GameEngine || {};
       // who's fighting" definition the explore veto further down reuses.
       const nearActiveCombat = isNearActiveCombat(civ, unit, gameState);
 
+      // Dwarf/Halfellow "rush to defend" (2026-07-30, user-directed): a city
+      // under attack right now gets first claim on any unit that isn't
+      // already fighting its own battle -- see maybeDefendCityUnderAttack's
+      // doc comment. Checked immediately after nearActiveCombat (its own
+      // exemption) and before every other race-specific vanguard/positioning
+      // branch below, so it actually preempts them instead of just
+      // occasionally winning by luck of the cascade order.
+      if ((civ.raceId === "dwarf" || civ.raceId === "halfellow")
+          && maybeDefendCityUnderAttack(civ, unit, gameState, nearActiveCombat, log)) continue;
+
       // Dwarf "Power Metal": a Troubadour that knows both aura techs picks
       // whichever suits the situation (offense mid-fight, sustain
       // otherwise) before anything else this turn -- see
@@ -3668,9 +3997,11 @@ window.GameEngine = window.GameEngine || {};
         // the majority of the Titan's landmass, head for a galley and cross
         // to a foreign shore instead of idling -- see seekOverseasInvasion.
         if (seekOverseasInvasion(civ, unit, gameState, log)) continue;
-        unit.resting = true;
         unit.usedThisTurn = true;
+        // Recently-damaged Titans skip the heal here too (see recentlyDamaged
+        // above) but still hold position awaiting a target.
         unit.currentMission = "Holding position, awaiting a target city";
+        if (!recentlyDamaged) unit.resting = true;
         continue;
       }
       if (!nearActiveCombat && maybeEscortTitan(civ, unit, gameState, log)) continue;
@@ -3732,6 +4063,15 @@ window.GameEngine = window.GameEngine || {};
       // handles closing the distance so a lone Ranger isn't off skirmishing
       // solo when it could be forming up with siblings first.
       if (unit.typeId === "ranger" && maybeRangerRegroup(civ, unit, gameState, log)) continue;
+
+      // Elf "hunting party" (2026-07-30, user-directed): non-Ranger military
+      // units mass into stealthed packs of 3+ the same way -- see
+      // maybeElfHuntingPartyRegroup's doc comment. Checked right after the
+      // Ranger pack above (same cascade position, same rationale: forming up
+      // wins out over a lone unit's curiosity) and before maybeElfStealthPlay
+      // further down, so a unit already short of its party keeps closing the
+      // distance rather than vanishing solo first.
+      if (civ.raceId === "elf" && maybeElfHuntingPartyRegroup(civ, unit, gameState, log)) continue;
 
       // Orc "always looking for a fight" (2026-07-19, user-directed):
       // unconditional, not gated by an aggressiveness roll like the generic
@@ -3813,7 +4153,10 @@ window.GameEngine = window.GameEngine || {};
       // (whichever is higher wins) instead of militarism alone. A
       // high-militarism, low-industry race (Orc) is unaffected -- its
       // militarism already dominates the max. See [[project_halfellow_tactics]].
-      const garrisonDesire = Math.max(militarism, industriousness * INDUSTRIOUSNESS_GARRISON_WEIGHT);
+      const garrisonDesireBoost = (civ.raceId === "dwarf" || civ.raceId === "halfellow")
+        ? GARRISON_DESIRE_BOOST_DWARF_HALFELLOW : GARRISON_DESIRE_BOOST;
+      const garrisonDesire = Math.min(1,
+        Math.max(militarism, industriousness * INDUSTRIOUSNESS_GARRISON_WEIGHT) * garrisonDesireBoost);
       const onOwnCity = civ.cities.some((c) => c.x === unit.x && c.y === unit.y);
       // Elf Raptor/Shadowsteed (2026-07-18, user-directed): never garrison.
       // Both are Druid-summoned support units built for a specific job
@@ -3897,8 +4240,11 @@ window.GameEngine = window.GameEngine || {};
       // no longer this check's job -- nearActiveCombat is unconditionally
       // intercepted earlier now (see the Defend check above), so by the
       // time execution reaches here it's already guaranteed false. 2026-07-20,
-      // user-directed.
-      if (unit.hp < unit.maxHp * REST_HP_THRESHOLD) {
+      // user-directed. A unit hit since its own last turn skips this branch
+      // entirely (2026-07-30, user-directed: no resting-to-heal the very
+      // turn after taking damage) and falls through to the rest of the
+      // cascade below instead.
+      if (unit.hp < unit.maxHp * REST_HP_THRESHOLD && !recentlyDamaged) {
         unit.resting = true;
         unit.usedThisTurn = true;
         unit.currentMission = "Resting to heal (idle)";
@@ -3948,17 +4294,29 @@ window.GameEngine = window.GameEngine || {};
           // leaving the unit with no action at all this turn.
           if (unit.x === preX && unit.y === preY && !unit.usedThisTurn) {
             if (!maybeKeepAnEyeOutPlay(civ, unit, gameState, log)) {
-              unit.resting = true;
-              unit.usedThisTurn = true;
-              unit.currentMission = "Nothing left to explore nearby — holding position (resting)";
+              // Recently-damaged units still can't choose to rest here (see
+              // recentlyDamaged above) -- left with no action at all this
+              // turn instead, same as the already-precedented "genuinely
+              // nothing to do" outcome this fallback exists for.
+              if (!recentlyDamaged) {
+                unit.resting = true;
+                unit.usedThisTurn = true;
+                unit.currentMission = "Nothing left to explore nearby — holding position (resting)";
+              }
             }
           }
         } else {
           // neverExplores (Dwarf Runeforged Titan): hold position and heal
           // rather than wander off -- see units.js's doc comment on the flag.
-          unit.resting = true;
+          // Recently-damaged units skip the heal (see recentlyDamaged above)
+          // but still hold position rather than wandering off.
           unit.usedThisTurn = true;
-          unit.currentMission = "Holding position (never explores)";
+          if (!recentlyDamaged) {
+            unit.resting = true;
+            unit.currentMission = "Holding position (never explores)";
+          } else {
+            unit.currentMission = "Holding position (recovering from a hit, not resting)";
+          }
         }
       }
     } while (false);
@@ -5498,7 +5856,7 @@ window.GameEngine = window.GameEngine || {};
   // focused on teleporting combat units across the water at it -- Elf's
   // answer to the galley bottleneck, the same role Deep Gates fill for
   // Dwarves. Only these three unit types are ever ferried: the army's
-  // actual fighters, per the composition ratio (see ELF_UNIT_RATIO).
+  // actual fighters, per the composition ratio (see RACE_UNIT_RATIO's "elf" entry).
   // Ferrying an Awakened Oak (movement 1, could never march there) is the
   // headline play. Scouts/Pioneers/summons are never ferried.
   const ROOTS_FERRY_PASSENGERS = new Set(["ranger", "blade_dancer", "awakened_oak"]);
@@ -6370,6 +6728,99 @@ window.GameEngine = window.GameEngine || {};
     return true;
   }
 
+  // Elf "hunting party" (2026-07-30, user-directed): non-Ranger, non-support
+  // Elf military units travel together in stealthed packs of 3+ instead of
+  // operating solo, similarly to Orc's civ-wide swarm signal (see
+  // computeOrcSwarmSignal/maybeOrcSwarm) but scoped to actual local clusters
+  // rather than the whole warband converging on one point, and layered on
+  // top of the existing per-unit Hidden decision-making in
+  // maybeElfStealthPlay rather than replacing it. Rangers keep their own
+  // separate pack (maybeRangerRegroup/RANGER_VOLLEY_BONUS) since they're
+  // built around a synchronized ranged volley, not a melee ambush; the
+  // Druid/Raptor/Shadowsteed have their own dedicated non-combat jobs.
+  const ELF_HUNTING_PARTY_SIZE = 3;
+  const ELF_PARTY_EMBEDDED_RADIUS = 2;
+  const ELF_PARTY_REGROUP_SEARCH_RADIUS = 8;
+
+  function isElfPartyEligible(u) {
+    if (u.carriedBy || u.carries) return false;
+    if (["ranger", "druid", "raptor", "shadowsteed"].includes(u.typeId)) return false;
+    return window.GameData.getUnit(u.typeId).category === "military";
+  }
+
+  /** How many OTHER party-eligible allies (see isElfPartyEligible) are
+   *  within ELF_PARTY_EMBEDDED_RADIUS of (x,y) -- the unit itself is not
+   *  counted, so a "party of 3" reads as this returning >= 2 for each
+   *  member. Shared by the regroup decision below and computeElfPartyTarget. */
+  function elfPartyCompanionCount(civ, x, y, excludeUnit) {
+    let count = 0;
+    for (const u of civ.units) {
+      if (u === excludeUnit || !isElfPartyEligible(u)) continue;
+      if (window.GameEngine.influence.chebyshev(x, y, u.x, u.y) <= ELF_PARTY_EMBEDDED_RADIUS) count++;
+    }
+    return count;
+  }
+
+  /** Elf hunting party: mirrors maybeRangerRegroup's shape exactly (move
+   *  toward the nearest eligible ally, do nothing once already embedded),
+   *  except it only bothers moving while this unit's own local cluster is
+   *  still short of ELF_HUNTING_PARTY_SIZE -- once 3+ are already massed
+   *  together it stops pulling them further in, leaving them free to react
+   *  to combat/stealth decisions elsewhere in the cascade instead of
+   *  perpetually reshuffling position. Returns true if it moved (consuming
+   *  the turn). */
+  function maybeElfHuntingPartyRegroup(civ, unit, gameState, log) {
+    if (!isElfPartyEligible(unit)) return false;
+    if (elfPartyCompanionCount(civ, unit.x, unit.y, unit) + 1 >= ELF_HUNTING_PARTY_SIZE) return false;
+    const { map, civs } = gameState;
+    let nearest = null, nearestDist = Infinity;
+    for (const u of civ.units) {
+      if (u === unit || !isElfPartyEligible(u)) continue;
+      const d = window.GameEngine.influence.chebyshev(unit.x, unit.y, u.x, u.y);
+      if (d < nearestDist) { nearestDist = d; nearest = u; }
+    }
+    if (!nearest || nearestDist > ELF_PARTY_REGROUP_SEARCH_RADIUS || nearestDist <= ELF_PARTY_EMBEDDED_RADIUS) return false;
+    moveUnitToward(unit, nearest.x, nearest.y, map, civs);
+    unit.usedThisTurn = true;
+    unit.currentMission = `Massing into a hunting party near (${nearest.x},${nearest.y})`;
+    log.push(`Hunting party: ${civ.id}'s ${describeUnit(unit)} moves to form up with another Elf unit`);
+    return true;
+  }
+
+  /** The one shared target an entire Elf hunting party piles onto this turn
+   *  (see ELF_PARTY_FOCUS_BONUS in considerAttackOrGarrison), or null if no
+   *  party currently has one worth committing to. Sticks with the SAME
+   *  target across turns once picked (persisted on civ._elfPartyTarget,
+   *  recomputed fresh each call only to validate it's still alive/visible)
+   *  so "all attack the same target until it is defeated" holds across
+   *  multiple turns of a drawn-out fight, not just the one turn it was
+   *  first spotted. Only ever picks a NEW target from a genuine party (a
+   *  cluster of ELF_HUNTING_PARTY_SIZE+ eligible units, matching
+   *  maybeElfHuntingPartyRegroup's own grouping) with a visible, non-hidden
+   *  enemy within ELF_STEALTH_RANGE of at least one member -- an isolated
+   *  Elf unit never sets this on its own. */
+  function computeElfPartyTarget(civ, gameState, prevTarget) {
+    if (prevTarget) {
+      const prevCiv = gameState.civs[prevTarget.civId];
+      if (prevCiv && prevTarget.hp > 0 && prevCiv.units.includes(prevTarget)) return prevTarget;
+    }
+    const { map, civs } = gameState;
+    const visible = gameState.visibility[civ.id] || new Set();
+    for (const u of civ.units) {
+      if (!isElfPartyEligible(u)) continue;
+      if (elfPartyCompanionCount(civ, u.x, u.y, u) + 1 < ELF_HUNTING_PARTY_SIZE) continue;
+      for (const otherCiv of Object.values(civs)) {
+        if (otherCiv.id === civ.id || otherCiv.eliminated) continue;
+        for (const eu of otherCiv.units) {
+          if (eu.conditions?.hidden) continue;
+          if (!visible.has(eu.y * map.width + eu.x)) continue;
+          if (window.GameEngine.influence.chebyshev(u.x, u.y, eu.x, eu.y) <= ELF_STEALTH_RANGE) return eu;
+        }
+      }
+    }
+    return null;
+  }
+
   /**
    * Like moveUnitToward, but for a Ranged unit (effectiveRange > 1: Human's
    * Archer/Longbowman/Wizard/Catapult/Trebuchet, Orc's Bog Witch/Dragon)
@@ -6971,6 +7422,71 @@ window.GameEngine = window.GameEngine || {};
     unit.y = best.y;
     unit.usedThisTurn = true;
     unit.currentMission = `Used a Deep Gate to relocate to (${best.x},${best.y})`;
+    return true;
+  }
+
+  // Dwarf/Halfellow "rush to defend" (2026-07-30, user-directed): how close
+  // an enemy unit has to be to one of this civ's own cities to count as
+  // "under attack right now" -- covers both an adjacent melee siege and a
+  // ranged/siege attacker sitting one tile back (matches the common
+  // attacker ranges in units.js, e.g. Catapult/Trebuchet/Archer/Longbowman).
+  const CITY_UNDER_ATTACK_RANGE = 2;
+
+  /** Nearest of `civ`'s own cities (same landmass as `unit`, matching
+   *  reinforceHomeCity's own scoping below) currently threatened by a
+   *  visible, non-hidden enemy unit within CITY_UNDER_ATTACK_RANGE --
+   *  unlike reinforceHomeCity, does NOT require the city to be undefended
+   *  first: a city already fighting off an attacker still wants more help,
+   *  not just an empty one. Returns null if no city qualifies. */
+  function findCityUnderAttack(civ, unit, gameState) {
+    const { map, civs } = gameState;
+    const visible = gameState.visibility[civ.id] || new Set();
+    const unitTile = map.tiles[unit.y * map.width + unit.x];
+    const unitLandmassId = unitTile ? unitTile.landmassId : -1;
+    let best = null, bestDist = Infinity;
+    for (const city of civ.cities) {
+      const cityTile = map.tiles[city.y * map.width + city.x];
+      if (unitLandmassId >= 0 && cityTile && cityTile.landmassId !== unitLandmassId) continue;
+      let underAttack = false;
+      for (const other of Object.values(civs)) {
+        if (other.id === civ.id || other.eliminated) continue;
+        for (const eu of other.units) {
+          if (eu.conditions?.hidden) continue;
+          if (!visible.has(eu.y * map.width + eu.x)) continue;
+          if (window.GameEngine.influence.chebyshev(city.x, city.y, eu.x, eu.y) <= CITY_UNDER_ATTACK_RANGE) {
+            underAttack = true; break;
+          }
+        }
+        if (underAttack) break;
+      }
+      if (!underAttack) continue;
+      const d = window.GameEngine.influence.chebyshev(unit.x, unit.y, city.x, city.y);
+      if (d < bestDist) { bestDist = d; best = city; }
+    }
+    return best;
+  }
+
+  /** Dwarf/Halfellow "rush to defend" (2026-07-30, user-directed): a unit
+   *  not currently embroiled in its OWN fight (see nearActiveCombat, the
+   *  same "currently engaged in combat" exemption the caller already
+   *  computed) immediately beelines for the nearest of its civ's cities
+   *  under attack right now, overriding whatever else it would otherwise do
+   *  this turn. Checked very early in the dispatch cascade (right after
+   *  nearActiveCombat is computed) so it actually preempts the generic
+   *  hunt/patrol/explore/garrison logic further down instead of only ever
+   *  winning by accident. Returns false (caller falls through to the rest
+   *  of the cascade) if the unit is mid-fight or no city qualifies. */
+  function maybeDefendCityUnderAttack(civ, unit, gameState, nearActiveCombat, log) {
+    if (nearActiveCombat) return false; // finish the fight it's already in first
+    const target = findCityUnderAttack(civ, unit, gameState);
+    if (!target) return false;
+    if (unit.x === target.x && unit.y === target.y) return false; // already there
+    const usedGate = moveUnitTowardSmart(civ, unit, target.x, target.y, gameState);
+    unit.usedThisTurn = true;
+    unit.currentMission = usedGate
+      ? `Used a Deep Gate to rush to the defense of ${target.name} at (${target.x},${target.y}), under attack`
+      : `Rushing to defend ${target.name} at (${target.x},${target.y}), under attack`;
+    log.push(`Rush to defend: ${civ.id}'s ${describeUnit(unit)} heads to defend ${target.name} at (${target.x},${target.y})`);
     return true;
   }
 
@@ -8678,6 +9194,13 @@ window.GameEngine = window.GameEngine || {};
   // 0-20-ish base score range).
   const RANGER_VOLLEY_BONUS = 6;
 
+  // Elf "hunting party" (2026-07-30, user-directed): flat, not per-ally-
+  // scaled like RANGER_VOLLEY_BONUS above -- the party's shared target
+  // should win out over almost any other candidate for a member that can
+  // reach it, not just get a nudge proportional to how many siblings are
+  // also in range.
+  const ELF_PARTY_FOCUS_BONUS = 25;
+
   /** How many of `civ`'s OTHER (not-yet-acted, uncarried) Rangers can
    *  currently reach `target` -- same range/line-of-sight rules
    *  considerAttackOrGarrison itself uses for `unit`, just re-checked per
@@ -8702,7 +9225,47 @@ window.GameEngine = window.GameEngine || {};
       (c.x === unit.x && c.y === unit.y) || c.structures.some((s) => s.x === unit.x && s.y === unit.y));
   }
 
-  function considerAttackOrGarrison(civ, unit, gameState, weights, difficulty, log) {
+  /**
+   * Whether `unit` may attack `enemyUnit` right now: the enemy is visible and
+   * not Hidden, within this unit's effective range, and either has a clear
+   * ranged line of sight (dist > 1) or is reachable on foot (adjacent melee).
+   *
+   * Extracted from considerAttackOrGarrison's candidate loop (2026-08-01) so
+   * the player's attack cursor and the AI's target list answer that question
+   * with the same code -- the UI must never offer an attack the engine will
+   * then refuse, or refuse one the AI would happily make.
+   */
+  function canAttackUnitNow(civ, unit, enemyUnit, gameState) {
+    const { map } = gameState;
+    if (!enemyUnit || enemyUnit.civId === civ.id || enemyUnit.hp <= 0) return false;
+    const visible = gameState.visibility[civ.id] || new Set();
+    if (!visible.has(enemyUnit.y * map.width + enemyUnit.x) || enemyUnit.conditions?.hidden) return false;
+    const range = window.GameEngine.combat.effectiveRange(unit, civ);
+    const dist = window.GameEngine.influence.chebyshev(unit.x, unit.y, enemyUnit.x, enemyUnit.y);
+    if (dist > range) return false;
+    if (dist > 1) {
+      // Ranged: doesn't need to physically reach the target (see units.js's
+      // range property doc) -- a clear line matters instead, not footpath
+      // reachability.
+      return hasRangedLineOfSight(map, unit.x, unit.y, enemyUnit.x, enemyUnit.y);
+    }
+    // Melee: skip enemies that can't be reached on foot (across water or mountains)
+    return canReachByLand(unit.x, unit.y, enemyUnit.x, enemyUnit.y, map, 150, unit);
+  }
+
+  /**
+   * @param opts.forcedTarget  A specific enemy unit to attack, bypassing the
+   *   scoring loop below. Set only by a human player's explicit attack order
+   *   (see orders.js): the player has already decided WHO to hit, but the
+   *   ~200 lines of follow-through after the target is chosen -- Burning,
+   *   Fireball splash, curses, Freeze, zombie raising, replacement spawns,
+   *   cargo drops, plunder, XP, quips, combat events -- must still all run
+   *   exactly as they do for the AI. Rather than duplicate any of that, a
+   *   player order enters through this same function with the choice
+   *   pre-made. Still validated via canAttackUnitNow, so a forced target
+   *   can't bypass range/visibility rules.
+   */
+  function considerAttackOrGarrison(civ, unit, gameState, weights, difficulty, log, opts = {}) {
     const { map, civs } = gameState;
     const visible = gameState.visibility[civ.id] || new Set();
     const range = window.GameEngine.combat.effectiveRange(unit, civ);
@@ -8711,19 +9274,9 @@ window.GameEngine = window.GameEngine || {};
     for (const otherCiv of Object.values(civs)) {
       if (otherCiv.id === civ.id || otherCiv.eliminated) continue;
       for (const enemyUnit of otherCiv.units) {
-        const idx = enemyUnit.y * map.width + enemyUnit.x;
-        if (!visible.has(idx) || enemyUnit.conditions?.hidden) continue;
+        if (opts.forcedTarget && enemyUnit !== opts.forcedTarget) continue;
+        if (!canAttackUnitNow(civ, unit, enemyUnit, gameState)) continue;
         const dist = window.GameEngine.influence.chebyshev(unit.x, unit.y, enemyUnit.x, enemyUnit.y);
-        if (dist > range) continue;
-        if (dist > 1) {
-          // Ranged: doesn't need to physically reach the target (see units.js's
-          // range property doc) -- a clear line matters instead, not footpath
-          // reachability.
-          if (!hasRangedLineOfSight(map, unit.x, unit.y, enemyUnit.x, enemyUnit.y)) continue;
-        } else if (!canReachByLand(unit.x, unit.y, enemyUnit.x, enemyUnit.y, map, 150, unit)) {
-          // Skip enemies that can't be reached on foot (across water or mountains)
-          continue;
-        }
 
         const soloWinProb = estimateWinProbability(unit, enemyUnit, civs, {}, 20);
 
@@ -8780,6 +9333,16 @@ window.GameEngine = window.GameEngine || {};
         if (unit.typeId === "ranger") {
           score += countAlliedRangersInRange(civ, unit, enemyUnit, gameState) * RANGER_VOLLEY_BONUS;
         }
+        // Elf "hunting party" (2026-07-30, user-directed): the whole party's
+        // shared target (see computeElfPartyTarget) dominates target
+        // selection for every member that can currently reach it -- similar
+        // shape to Ranger volley above, but civ-wide/party-wide rather than
+        // scaling with how many allies are in range, since the whole point
+        // is "everyone piles onto the one target until it's dead," not just
+        // a soft preference.
+        if (civ.raceId === "elf" && civ._elfPartyTarget === enemyUnit) {
+          score += ELF_PARTY_FOCUS_BONUS;
+        }
         if (winProb < threshold) score *= 0.1; // heavily suppressed, not zeroed
         score = applyDifficultyNoise(score, difficulty);
         if (score > bestScore) {
@@ -8790,6 +9353,13 @@ window.GameEngine = window.GameEngine || {};
         }
       }
     }
+
+    // A forced (player-ordered) target skips the AI's willingness gates
+    // entirely -- both the `bestScore > 5` "is this worth doing" bar and the
+    // winProb suppression above exist to stop the AI throwing units away, and
+    // neither is the engine's business when a human has explicitly ordered the
+    // attack. Eligibility was already enforced by canAttackUnitNow.
+    if (opts.forcedTarget && bestTarget === opts.forcedTarget) bestScore = Infinity;
 
     if (bestTarget && bestScore > 5) {
       const defenderCiv = civs[bestTarget.civId];
@@ -8990,6 +9560,12 @@ window.GameEngine = window.GameEngine || {};
       return true;
     }
 
+    // A player-ordered attack must hit exactly what was ordered and nothing
+    // else. If the forced unit target turned out ineligible, stop here rather
+    // than falling through and opportunistically hitting some city or wall the
+    // player never picked.
+    if (opts.forcedTarget) return false;
+
     // No worthwhile unit fight — consider attacking an ungarrisoned enemy
     // CITY directly, within this unit's range (destroys it outright at level
     // 1, otherwise knocks it down a level -- see combat.js attackCity), or
@@ -9016,6 +9592,7 @@ window.GameEngine = window.GameEngine || {};
           if (otherCiv.id === civ.id || otherCiv.eliminated) continue;
           const targetCity = otherCiv.cities.find((c) => c.x === cx && c.y === cy);
           if (!targetCity) continue;
+          if (opts.forcedCity && targetCity !== opts.forcedCity) continue;
           const garrisonPresent = Object.values(civs).some((oc) =>
             oc.units.some((u) => u.x === cx && u.y === cy && !u.conditions?.hidden));
           if (garrisonPresent) continue; // defender intercepts -- city is safe for now
@@ -9042,6 +9619,7 @@ window.GameEngine = window.GameEngine || {};
         if (structDist > 1 && !hasRangedLineOfSight(map, unit.x, unit.y, sx, sy)) continue;
         const s = window.GameEngine.cities.findStructureAt(gameState, sx, sy);
         if (!s || s.civ.id === civ.id) continue;
+        if (opts.forcedStructure && s.record !== opts.forcedStructure) continue;
         const garrisonPresent = Object.values(civs).some((oc) =>
           oc.id === s.civ.id && oc.units.some((u) => u.x === sx && u.y === sy && !u.conditions?.hidden));
         if (garrisonPresent) continue; // defender intercepts -- structure is safe for now
@@ -9055,6 +9633,20 @@ window.GameEngine = window.GameEngine || {};
           + (b.radiusBonus ? b.radiusBonus * 8 : 0) + 4 + (b.isWall ? 8 : 0);
         if (val > bestStructScore) { bestStructScore = val; bestStruct = { s, x: sx, y: sy }; }
       }
+    }
+
+    // Player-ordered city/structure attack: force the decision below onto the
+    // ordered target and suppress the other kind entirely, so an ordered wall
+    // strike can't get "upgraded" into a city assault (or vice versa) by the
+    // AI's own relative scoring. Same rationale as the forcedTarget gate on
+    // the unit path above.
+    if (opts.forcedCity) {
+      bestStruct = null; bestStructScore = -Infinity;
+      if (bestCity) bestCityScore = Infinity;
+    }
+    if (opts.forcedStructure) {
+      bestCity = null; bestCityScore = -Infinity;
+      if (bestStruct) bestStructScore = Infinity;
     }
 
     if (bestCity && bestCityScore >= bestStructScore) {
@@ -9132,7 +9724,7 @@ window.GameEngine = window.GameEngine || {};
           const replacement = window.GameEngine.combat.maybeSpawnPonyReplacement(civ, unit.x, unit.y, map);
           if (replacement) log.push(`Undaunted: ${civ.id}'s fallen Pony Patrol is replaced by a ${describeUnit(replacement)} at (${replacement.x},${replacement.y})`);
         }
-        civ.units = civ.units.filter((u) => u !== unit);
+        otherCivRemoveDeadUnit(civs, unit);
         log.push(`Rouse the People: ${civ.id}'s ${describeUnit(unit)} was slain by ${bestCity.civ.id}'s city`);
       }
       return true;
@@ -9203,7 +9795,7 @@ window.GameEngine = window.GameEngine || {};
           const replacement = window.GameEngine.combat.maybeSpawnPonyReplacement(civ, unit.x, unit.y, map);
           if (replacement) log.push(`Undaunted: ${civ.id}'s fallen Pony Patrol is replaced by a ${describeUnit(replacement)} at (${replacement.x},${replacement.y})`);
         }
-        civ.units = civ.units.filter((u) => u !== unit);
+        otherCivRemoveDeadUnit(civs, unit);
         log.push(`Structure counter: ${civ.id}'s ${describeUnit(unit)} was slain by ${bestStruct.s.civ.id}'s ${bestStruct.s.record.id}`);
       }
       return true;
@@ -9411,9 +10003,25 @@ window.GameEngine = window.GameEngine || {};
     if (log.length) appendAIActionLog(gameState, civ.id, log);
   }
 
+  // Death sfx (2026-07-30, user-directed fix: no death clip was ever
+  // triggered anywhere in the codebase, despite "death" being a real
+  // sfxActionsForUnit entry with clips on disk). Lands a beat after the
+  // killing blow's own "attack" clip (see SfxSystem.playAction's delayMs)
+  // instead of overlapping it.
+  const DEATH_SFX_DELAY_MS = 350;
+
+  /** Single chokepoint every combat-kill path in this file funnels a dead
+   *  unit's removal through (city/structure counterattacks are the two
+   *  exceptions that used to filter civ.units directly -- both now route
+   *  through here too, see the "Rouse the People"/structure-counter blocks
+   *  below), so it's also the one place that needs to know how to play a
+   *  death sound. */
   function otherCivRemoveDeadUnit(civs, deadUnit) {
     const civ = civs[deadUnit.civId];
-    if (civ) civ.units = civ.units.filter((u) => u !== deadUnit);
+    if (civ) {
+      window.SfxSystem.playAction(civ.raceId, deadUnit.typeId, "death", deadUnit.x, deadUnit.y, DEATH_SFX_DELAY_MS);
+      civ.units = civ.units.filter((u) => u !== deadUnit);
+    }
   }
 
   /** Suppresses the move-glide animation for a unit that just "popped" into
@@ -9673,5 +10281,18 @@ window.GameEngine = window.GameEngine || {};
     findNearestUnseenTile,
     civNeedsTitanScouting,
     recentCityDelta,
+    // Player-order primitives (2026-08-01). Previously private to this file
+    // because only the AI ever issued orders; the human UI now issues the
+    // same orders through the same functions, so a player move obeys exactly
+    // the rules an AI move does.
+    spendMovement,
+    computeMovementBudget,
+    computeReachableTiles,
+    buildMoveRules,
+    buildOccupancySet,
+    progressBuildQueues,
+    canAttackUnitNow,
+    considerAttackOrGarrison,
+    availableBuilds,
   };
 })();

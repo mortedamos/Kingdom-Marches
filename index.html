@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Arcane Empires</title>
+<title>Kingdom Marches</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;700;900&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="css/style.css">
@@ -41,6 +41,23 @@
       <img class="loading-logo" src="assets/img/logo.png" alt="Arcane Empires">
       <div class="loading-spinner"></div>
       <p class="loading-status" id="loading-status-text">Loading...</p>
+      <div class="loading-progress-list">
+        <div class="loading-progress-row">
+          <span class="loading-progress-label">Graphics</span>
+          <div class="loading-progress-track"><div class="loading-progress-fill" id="loading-progress-sprites"></div></div>
+          <span class="loading-progress-pct" id="loading-progress-sprites-pct">0%</span>
+        </div>
+        <div class="loading-progress-row">
+          <span class="loading-progress-label">Music</span>
+          <div class="loading-progress-track"><div class="loading-progress-fill" id="loading-progress-music"></div></div>
+          <span class="loading-progress-pct" id="loading-progress-music-pct">0%</span>
+        </div>
+        <div class="loading-progress-row">
+          <span class="loading-progress-label">Sound Effects</span>
+          <div class="loading-progress-track"><div class="loading-progress-fill" id="loading-progress-sfx"></div></div>
+          <span class="loading-progress-pct" id="loading-progress-sfx-pct">0%</span>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -63,7 +80,6 @@
         <div class="menu-dropdown" id="menu-interface-dropdown" style="display:none;">
           <button id="influence-toggle-btn" class="menu-dropdown-btn">Toggle Influence Overlay</button>
           <button id="grid-toggle-btn" class="menu-dropdown-btn">Toggle Grid Lines</button>
-          <button id="toggle-3d-btn" class="menu-dropdown-btn">Toggle 3D View (Experimental)</button>
           <div id="fog-of-war-panel" class="fow-panel" style="display:none;">
             <div class="fow-panel-label">Fog of War</div>
             <label class="audio-panel-row"><span>Off</span><input type="radio" name="fow-mode" id="fow-mode-off" value="off" checked></label>
@@ -139,6 +155,7 @@
       <div class="map-area">
         <canvas id="map-canvas"></canvas>
         <canvas id="map-canvas-3d"></canvas>
+        <canvas id="map-canvas-3d-hud"></canvas>
         <input type="file" id="load-game-file-input" accept="application/json" style="display:none;">
       </div>
       <div id="sidebar" class="sidebar"></div>
@@ -185,6 +202,7 @@
   <script src="js/engine/strategy.js"></script>
   <script src="js/engine/ai.js"></script>
   <script src="js/engine/turns.js"></script>
+  <script src="js/engine/orders.js"></script>
   <script src="js/engine/savegame.js"></script>
 
   <!-- Audio -->
@@ -193,6 +211,7 @@
 
   <!-- UI -->
   <script src="js/ui/sprites.js"></script>
+  <script src="js/ui/overlays.js"></script>
   <script src="js/ui/render.js"></script>
   <script src="js/ui/render3d.js"></script>
   <script src="js/ui/sidebar.js"></script>

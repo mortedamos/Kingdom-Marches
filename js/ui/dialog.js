@@ -8,6 +8,7 @@
  * same split as reports.js/techtree.js.
  *
  *   { kind: "foundCity", x, y, suggested, onAnswer(nameOrNull) }
+ *   { kind: "confirmEndTurn", items[], onAnswer(bool) }
  *   { kind: "message", title, text, onDismiss() }
  */
 

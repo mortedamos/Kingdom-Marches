@@ -1,11 +1,17 @@
 /**
- * TECH TREE VIEWER (spectator mode)
- * ---------------------------------
- * Read-only overlay: the full tech tree for a chosen civ, laid out by layer
- * (rows) and column (civic/building/military), with each node's status --
- * completed, currently researching (with progress %), the AI's intended next
- * pick (via ai.js's previewNextResearch, a non-mutating preview), locked
- * (city-gate or prereqs unmet), or simply available.
+ * TECH TREE VIEWER
+ * ----------------
+ * The full tech tree for a chosen civ, laid out by layer (rows) and column
+ * (civic/building/military), with each node's status -- completed, currently
+ * researching (with progress %), the AI's intended next pick (via ai.js's
+ * previewNextResearch, a non-mutating preview), locked (city-gate or prereqs
+ * unmet), or simply available.
+ *
+ * Read-only for every civ EXCEPT the human player's own (2026-08-01,
+ * user-directed): before this the player had no way to pick research at all,
+ * because chooseResearch was only ever called from ai.js, which turns.js
+ * skips for the human civ -- a human game sat at "Research: None selected"
+ * forever. Available nodes in your own tree are now buttons.
  */
 
 window.UI = window.UI || {};
@@ -21,9 +27,11 @@ window.UI = window.UI || {};
     return COLUMNS.includes(tech.category) ? tech.category : "civic";
   }
 
-  function render(civ) {
+  function render(civ, isPlayerCiv) {
     const race = window.GameData.getRace(civ.raceId);
-    const nextPick = window.GameEngine.ai.previewNextResearch(civ);
+    // The AI's "intends to research next" hint is meaningless for the human's
+    // own tree -- nothing is going to pick for them, that's the whole point.
+    const nextPick = isPlayerCiv ? null : window.GameEngine.ai.previewNextResearch(civ);
 
     const techIds = window.GameData.techsForRace(civ.raceId);
     const byLayer = {};
@@ -43,7 +51,7 @@ window.UI = window.UI || {};
       rows += `<div class="techtree-layer">
         <div class="techtree-layer-label">L${layer}</div>
         ${COLUMNS.map((col) => `<div class="techtree-column">${
-          cols[col].map((tech) => renderNode(civ, tech, nextPick)).join("") || ""
+          cols[col].map((tech) => renderNode(civ, tech, nextPick, isPlayerCiv)).join("") || ""
         }</div>`).join("")}
       </div>`;
     }
@@ -57,11 +65,14 @@ window.UI = window.UI || {};
       <div class="panel">
         <h2>${escapeHtml(race.label)} — Tech Tree</h2>
         <div class="stat-row"><span>Cities</span><span>${civ.cities.length}</span></div>
+        ${isPlayerCiv && !civ.currentResearch
+          ? '<div class="techtree-prompt">Nothing is being researched. Click any available tech to start.</div>'
+          : ''}
         ${rows ? header + rows : '<div class="stat-row"><em>No researchable techs for this race yet.</em></div>'}
       </div>`;
   }
 
-  function renderNode(civ, tech, nextPick) {
+  function renderNode(civ, tech, nextPick, isPlayerCiv) {
     const completed = civ.completedTechs.has(tech.id);
     const researching = civ.currentResearch === tech.id;
     const isNextPick = !completed && !researching && tech.id === nextPick;
@@ -83,11 +94,23 @@ window.UI = window.UI || {};
       tag = !cityGateOk ? `Needs ${tech.layer} cities` : "Needs prerequisite";
     }
 
-    return `<div class="techtree-node ${stateClass}">
-      <div class="techtree-node-name">${escapeHtml(tech.label)}</div>
+    // Clickable only in the player's own tree, and only for a node that
+    // chooseResearch would actually accept: not done, not already underway,
+    // prereqs and city gate satisfied. Switching targets mid-research is
+    // allowed -- researchProgress is a single shared pool (see tech.js's
+    // tickResearch), so nothing is lost by changing your mind.
+    const selectable = isPlayerCiv && !completed && !researching && !locked;
+    if (selectable) tag = "Click to research";
+
+    const body = `<div class="techtree-node-name">${escapeHtml(tech.label)}</div>
       ${tech.description ? `<div class="techtree-node-desc">${escapeHtml(tech.description)}</div>` : ''}
-      <div class="techtree-node-tag">${escapeHtml(tag)} · ${Math.round(effectiveCost)} Lore</div>
-    </div>`;
+      <div class="techtree-node-tag">${escapeHtml(tag)} · ${Math.round(effectiveCost)} Lore</div>`;
+
+    if (selectable) {
+      return `<button class="techtree-node ${stateClass} techtree-node-selectable"
+        data-tech-id="${escapeHtml(tech.id)}">${body}</button>`;
+    }
+    return `<div class="techtree-node ${stateClass}">${body}</div>`;
   }
 
   function escapeHtml(s) {

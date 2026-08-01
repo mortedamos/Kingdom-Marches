@@ -258,6 +258,17 @@
       i = (i + 1) % LOADING_STATUS_PHRASES.length;
       $("loading-status-text").textContent = LOADING_STATUS_PHRASES[i];
     }, 1400);
+    for (const key of ["sprites", "music", "sfx"]) setLoadingProgress(key, 0, 1);
+  }
+  /** Updates one of the three loading-screen progress bars (see index.html's
+   *  loading-progress-list). done/total of 0/0 (nothing to load, e.g. sfx
+   *  library entirely absent) reads as 100% rather than NaN. */
+  function setLoadingProgress(key, done, total) {
+    const pct = total > 0 ? Math.round((done / total) * 100) : 100;
+    const fillEl = $(`loading-progress-${key}`);
+    const pctEl = $(`loading-progress-${key}-pct`);
+    if (fillEl) fillEl.style.width = `${pct}%`;
+    if (pctEl) pctEl.textContent = `${pct}%`;
   }
   function hideLoadingScreen() {
     $("loading-screen").style.display = "none";
@@ -297,7 +308,10 @@
     viewState = {
       scrollX: 0, scrollY: 0, zoomLevel: 1.0, showInfluence: false, showGrid: true,
       selectedUnit: null, selectedCity: null, selectedTile: null, humanCivId,
-      is3D: true, // Interface menu's "Toggle 3D View" -- see render3d.js; 3D is now the default view
+      // Tabbed tile inspector -- the selected* fields above are derived from
+      // this now (see input.js's SELECTION MODEL).
+      selection: null,
+      is3D: false, // 3D view was reverted to disabled -- see render3d.js; the Interface menu's "Toggle 3D View" button was removed
       fogMode: "off", fogCivIds: new Set(Object.keys(gameState.civs)), // spectator-only; see setupFogControls
       tileScoreCivId: null, // Interface menu's Tile City Score overlay -- available in both spectator and human modes
       dialog: null, // in-game confirm/prompt/alert replacement -- see js/ui/dialog.js
@@ -317,12 +331,12 @@
     // see preloadAll's/SfxSystem.init's own doc comments), so this isn't
     // expected to hang, but a failsafe timeout still backs it up below in
     // case some future asset type doesn't hold to that.
-    const musicPromise = window.MusicSystem.init().then(() => {
+    const musicPromise = window.MusicSystem.init(racesInPlay, (done, total) => setLoadingProgress("music", done, total)).then(() => {
       window.MusicSystem.setRace(humanCivId ? gameState.civs[humanCivId].raceId : null);
       populateAudioTrackOptions();
     });
-    const sfxPromise = window.SfxSystem.init();
-    const spritesPromise = window.UI.sprites.preloadAll();
+    const sfxPromise = window.SfxSystem.init(racesInPlay, (done, total) => setLoadingProgress("sfx", done, total));
+    const spritesPromise = window.UI.sprites.preloadAll(racesInPlay, (done, total) => setLoadingProgress("sprites", done, total));
     const LOADING_FAILSAFE_MS = 30000;
     Promise.race([
       Promise.all([musicPromise, sfxPromise, spritesPromise]),
@@ -337,12 +351,13 @@
   function finishStartGame() {
     hideLoadingScreen();
     $("game-screen").style.display = "flex";
-    // Match the two canvases' visibility to viewState.is3D's default --
-    // the toggle-3d-btn handler does this on click, but nothing set the
-    // INITIAL state before now, so both canvases relied on their CSS
-    // defaults (2D visible) regardless of what is3D actually said.
+    // Match the two canvases' visibility to viewState.is3D (always false --
+    // the 3D toggle was removed, see main.js's viewState init -- but the 3D
+    // canvas elements/renderer are still left in place, so keep them hidden
+    // explicitly rather than relying on their CSS defaults).
     $("map-canvas").style.display = viewState.is3D ? "none" : "block";
     $("map-canvas-3d").style.display = viewState.is3D ? "block" : "none";
+    $("map-canvas-3d-hud").style.display = viewState.is3D ? "block" : "none";
 
     // Off-screen units shouldn't play sounds (2026-07-24, user-directed) --
     // e.g. a spectator-mode skirmish happening elsewhere on the map. Uses
@@ -373,28 +388,6 @@
     });
     $("grid-toggle-btn").addEventListener("click", () => {
       viewState.showGrid = !viewState.showGrid;
-      redraw();
-    });
-    $("toggle-3d-btn").addEventListener("click", () => {
-      viewState.is3D = !viewState.is3D;
-      $("map-canvas").style.display = viewState.is3D ? "none" : "block";
-      $("map-canvas-3d").style.display = viewState.is3D ? "block" : "none";
-      // Switching TO 2D: its canvas may have been display:none this whole
-      // time (3D is the default view now), which pins its pixel buffer at
-      // 0x0 -- see resizeMapCanvas's own comment. Re-measure now that it's
-      // actually visible again, rather than leaving it stuck blank. If this
-      // is the very first time 2D has ever been shown, centerViewOnStart()
-      // ran against that same 0x0 buffer too (scrollX/Y computed as
-      // focusX*TILE_SIZE - canvas.width/2 -- with width 0, that's just
-      // focusX*TILE_SIZE, nowhere near actually centered), so redo that
-      // too -- but only that first time, so toggling back to 2D later
-      // doesn't keep jumping the player's own scroll position back to start.
-      if (!viewState.is3D) {
-        const canvas2d = $("map-canvas");
-        const neverSized = canvas2d.width === 0;
-        resizeMapCanvas();
-        if (neverSized) centerViewOnStart();
-      }
       redraw();
     });
     $("report-influence-btn").addEventListener("click", () => {
@@ -1016,6 +1009,9 @@
     Object.assign(viewState, {
       scrollX: 0, scrollY: 0, zoomLevel: 1.0, showInfluence: false, showGrid: true,
       selectedUnit: null, selectedCity: null, selectedTile: null, humanCivId,
+      // Tabbed tile inspector -- the selected* fields above are derived from
+      // this now (see input.js's SELECTION MODEL).
+      selection: null,
       fogMode: "off", fogCivIds: new Set(Object.keys(gameState.civs)),
       tileScoreCivId: null, dialog: null,
     });
@@ -1057,11 +1053,48 @@
 
   function handleEndTurnClick() {
     if (spectatorMode) return; // spectator turns advance automatically
+    // Turn-end guard (2026-08-01, user-directed): surface anything the player
+    // probably didn't mean to skip. Deliberately a confirm, not a block --
+    // deliberately holding units in reserve or coasting a turn without
+    // research is a legitimate choice, it just shouldn't happen by accident.
+    const unresolved = collectUnresolvedTurnWork();
+    if (unresolved.length) {
+      viewState.dialog = {
+        kind: "confirmEndTurn", items: unresolved,
+        onAnswer: (ok) => {
+          viewState.dialog = null;
+          if (ok) offerHumanSettling(() => advanceTurn());
+          else redraw();
+        },
+      };
+      redraw();
+      return;
+    }
     // Before ending, any human Settler standing on a valid founding tile
     // gets a chance to found -- in-game dialog (see js/ui/dialog.js), one
     // pioneer at a time since this is now asynchronous (waits on a modal
     // button click) rather than the old blocking confirm()/prompt() pair.
     offerHumanSettling(() => advanceTurn());
+  }
+
+  /** Things the player very likely still wants to do this turn. Empty means
+   *  End Turn goes straight through with no confirm. */
+  function collectUnresolvedTurnWork() {
+    if (!humanCivId) return [];
+    const civ = gameState.civs[humanCivId];
+    if (!civ) return [];
+    const items = [];
+
+    const waiting = window.GameEngine.orders.unitsNeedingOrders(gameState, humanCivId);
+    if (waiting.length) {
+      items.push(`${waiting.length} unit${waiting.length === 1 ? "" : "s"} still able to move or act`);
+    }
+    if (!civ.currentResearch) items.push("No research selected");
+    const idleCities = civ.cities.filter((c) => !c.buildQueue);
+    if (idleCities.length) {
+      items.push(`${idleCities.length} cit${idleCities.length === 1 ? "y is" : "ies are"} not building anything`);
+    }
+    return items;
   }
 
   function offerHumanSettling(onDone) {
@@ -1203,6 +1236,14 @@
   }
 
   function redraw() {
+    // Rebuild the selected tile's tab list from live state BEFORE anything
+    // draws. The tabs hold direct references to units/cities/structures, any
+    // of which can die, move, or be captured between redraws (autoplay does
+    // this constantly), and the map renderers read the legacy
+    // viewState.selected* fields this derives -- so it has to run ahead of
+    // both of them, not just ahead of the sidebar. See input.js's
+    // SELECTION MODEL comment.
+    window.UI.input.resolveSelection(gameState, viewState);
     if (viewState.is3D) {
       window.UI.render3d.render($("map-canvas-3d"), gameState, viewState);
     } else {
@@ -1229,6 +1270,39 @@
     if (startFishingBtn) startFishingBtn.onclick = () => handleStartChannel("fishing");
     const cancelChannelBtn = $("cancel-channel-btn");
     if (cancelChannelBtn) cancelChannelBtn.onclick = handleCancelChannel;
+    const nextUnitBtn = $("next-unit-btn");
+    if (nextUnitBtn) nextUnitBtn.onclick = handleNextUnit;
+
+    // City production picker
+    const openPickerBtn = $("open-build-picker-btn");
+    if (openPickerBtn) openPickerBtn.onclick = () => {
+      viewState.buildPickerCityId = openPickerBtn.dataset.cityKey;
+      redraw();
+    };
+    const closePickerBtn = $("close-build-picker-btn");
+    if (closePickerBtn) closePickerBtn.onclick = () => {
+      viewState.buildPickerCityId = null;
+      redraw();
+    };
+    const cancelBuildBtn = $("cancel-build-btn");
+    if (cancelBuildBtn) cancelBuildBtn.onclick = () => {
+      const city = viewState.selectedCity;
+      if (city) window.GameEngine.orders.cancelBuild(city);
+      redraw();
+    };
+    for (const btn of document.querySelectorAll(".build-option")) {
+      btn.onclick = () => handleChooseBuild(Number(btn.dataset.buildIndex));
+    }
+
+    // Tile-inspector tabs, plus the in-panel shortcuts that jump to one (the
+    // city panel's garrison list and the terrain panel's contents list) --
+    // both carry the same data-tab-index, so one handler covers them.
+    for (const btn of document.querySelectorAll(".tile-tab, .tile-tab-link")) {
+      btn.onclick = () => {
+        window.UI.input.setActiveTab(gameState, viewState, Number(btn.dataset.tabIndex));
+        redraw();
+      };
+    }
 
     for (const btn of document.querySelectorAll(".view-tech-tree-btn")) {
       btn.onclick = () => { viewState.techTreeCivId = btn.dataset.civId; redraw(); };
@@ -1252,12 +1326,25 @@
     // the fix itself.
     const overlay = $("techtree-overlay");
     if (viewState.techTreeCivId && gameState.civs[viewState.techTreeCivId]) {
-      const key = `${viewState.techTreeCivId}:${gameState.turnNumber}`;
+      const isPlayerCiv = viewState.techTreeCivId === humanCivId;
+      // The player's own tree also has to rebuild the moment they PICK
+      // something, not just once per turn -- otherwise the node they clicked
+      // wouldn't visibly become "Researching" until the turn rolled over.
+      const civ = gameState.civs[viewState.techTreeCivId];
+      const key = `${viewState.techTreeCivId}:${gameState.turnNumber}:${civ.currentResearch || ""}`;
       if (key !== lastRenderedTechTreeKey) {
-        $("techtree-content").innerHTML = window.UI.techtree.render(gameState.civs[viewState.techTreeCivId]);
+        $("techtree-content").innerHTML = window.UI.techtree.render(civ, isPlayerCiv);
         lastRenderedTechTreeKey = key;
       }
       $("techtree-close-btn").onclick = () => { viewState.techTreeCivId = null; redraw(); };
+      // Research selection (player's own tree only -- renderNode only emits
+      // these buttons when isPlayerCiv).
+      for (const node of document.querySelectorAll(".techtree-node-selectable")) {
+        node.onclick = () => {
+          window.GameEngine.tech.chooseResearch(civ, node.dataset.techId);
+          redraw();
+        };
+      }
       overlay.style.display = "flex";
     } else {
       lastRenderedTechTreeKey = null;
@@ -1382,6 +1469,77 @@
     redraw();
   }
 
+  /**
+   * Queues the picked build. Units start immediately; buildings first drop
+   * into placement mode -- the player clicks one of the highlighted legal
+   * slots on the map and the build is queued bound to that tile
+   * (2026-08-01, user-directed: placement is chosen at queue time, not on
+   * completion, so walls can be planned deliberately).
+   */
+  function handleChooseBuild(index) {
+    const city = viewState.selectedCity;
+    if (!city || !humanCivId) return;
+    const civ = gameState.civs[humanCivId];
+    const options = window.GameEngine.ai.availableBuilds(civ, city, gameState);
+    const option = options[index];
+    if (!option) return;
+
+    if (option.kind !== "building") {
+      window.GameEngine.orders.queueBuild(city, civ, gameState, option, null);
+      viewState.buildPickerCityId = null;
+      redraw();
+      return;
+    }
+
+    viewState.placement = {
+      slots: option.slots,
+      label: option.label,
+      onPick: (slot) => {
+        // A click outside the highlighted slots cancels rather than queuing
+        // the building somewhere arbitrary.
+        if (slot) {
+          window.GameEngine.orders.queueBuild(city, civ, gameState, option, slot);
+          viewState.buildPickerCityId = null;
+        }
+        viewState.placement = null;
+        redraw();
+      },
+    };
+    redraw();
+  }
+
+  /** Selects the next unit still awaiting orders and scrolls the map to it.
+   *  Cycles in roster order, resuming after whichever unit is currently
+   *  selected rather than always restarting at the first -- so repeated
+   *  presses walk the whole list instead of bouncing between two units. */
+  function handleNextUnit() {
+    if (!humanCivId) return;
+    const waiting = window.GameEngine.orders.unitsNeedingOrders(gameState, humanCivId);
+    if (!waiting.length) return;
+    const current = viewState.selectedUnit;
+    const currentIdx = current ? waiting.indexOf(current) : -1;
+    const next = waiting[(currentIdx + 1) % waiting.length];
+    window.UI.input.handleTileClick({ x: next.x, y: next.y }, gameState, viewState);
+    // Make sure the unit's own tab is the active one -- handleTileClick keeps
+    // the previously-active tab KIND, so arriving from a Terrain tab would
+    // otherwise land on Terrain again and hide the unit you just jumped to.
+    const sel = viewState.selection;
+    if (sel) {
+      const idx = sel.tabs.findIndex((t) => t.kind === "unit" && t.unit === next);
+      if (idx >= 0) window.UI.input.setActiveTab(gameState, viewState, idx);
+    }
+    centerViewOn(next.x, next.y);
+    redraw();
+  }
+
+  /** Scrolls the 2D map so tile (x,y) sits in the middle of the viewport. */
+  function centerViewOn(x, y) {
+    const canvas = $("map-canvas");
+    const ts = window.UI.render.TILE_SIZE * (viewState.zoomLevel || 1);
+    viewState.scrollX = (x + 0.5) * ts - canvas.width / 2;
+    viewState.scrollY = (y + 0.5) * ts - canvas.height / 2;
+  }
+
   function handleBuildRoad() {
     if (!humanCivId || !viewState.selectedUnit) return;
     const unit = viewState.selectedUnit;
@@ -1411,7 +1569,15 @@
       unit.carriedBy = null;
     }
     humanCiv.units = humanCiv.units.filter(u => u !== unit);
+    // Drop the tab's pin on this now-deleted unit. Without this, the next
+    // resolveSelection would still be hunting for it by reference; it falls
+    // back gracefully either way, but clearing the ref lets it pick the
+    // tile's remaining content cleanly instead of matching on kind alone.
     viewState.selectedUnit = null;
+    if (viewState.selection) {
+      viewState.selection.activeRef = null;
+      viewState.selection.activeKind = null;
+    }
     redraw();
   }
 

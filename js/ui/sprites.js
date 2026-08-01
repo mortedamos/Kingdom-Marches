@@ -71,13 +71,43 @@ window.UI = window.UI || {};
   // entirely under file://, which avoids the console noise altogether.
   const canFetchManifests = window.location.protocol !== "file:";
 
+  // preloadAll() below fires off hundreds-to-thousands of these (every
+  // variant slot of every terrain/unit/building/resource/road/river), all
+  // essentially at once. Unlike music.js/sfx.js's probeFile (see their own
+  // "browsers cap simultaneous connections per origin" comment, discovered
+  // 2026-07-22), this never got the same fix, so it used to flood past that
+  // cap and monopolize/starve the shared connection pool -- including
+  // music/sfx's OWN throttled probes, which run concurrently with this
+  // during the loading screen (see main.js's startGame). A stuck request
+  // also had no timeout, so it could hang past the loading screen's 30s
+  // failsafe entirely, leaving the game to open with art still missing.
+  // IMAGE_LOAD_CONCURRENCY mirrors music/sfx's PROBE_CONCURRENCY.
+  const IMAGE_LOAD_CONCURRENCY = 4;
+  const IMAGE_LOAD_TIMEOUT_MS = 8000;
+  let activeImageLoads = 0;
+  const imageLoadQueue = [];
+  function acquireImageSlot() {
+    if (activeImageLoads < IMAGE_LOAD_CONCURRENCY) {
+      activeImageLoads++;
+      return Promise.resolve();
+    }
+    return new Promise((resolve) => imageLoadQueue.push(resolve));
+  }
+  function releaseImageSlot() {
+    const next = imageLoadQueue.shift();
+    if (next) next(); // hand the slot straight to the next waiter -- activeImageLoads stays the same
+    else activeImageLoads--;
+  }
+
   function loadImage(src) {
-    return new Promise((resolve, reject) => {
+    return acquireImageSlot().then(() => new Promise((resolve, reject) => {
       const img = new Image();
-      img.onload  = () => resolve(img);
-      img.onerror = () => reject();
+      const timer = setTimeout(() => { cleanup(); reject(); }, IMAGE_LOAD_TIMEOUT_MS);
+      function cleanup() { clearTimeout(timer); releaseImageSlot(); }
+      img.onload  = () => { cleanup(); resolve(img); };
+      img.onerror = () => { cleanup(); reject(); };
       img.src = src;
-    });
+    }));
   }
 
   function resolveManifest(key, image) {
@@ -400,41 +430,97 @@ window.UI = window.UI || {};
     return frameRect(frames[state.frameIdx]);
   }
 
-  /** Fires off all asset loads. Always resolves — failures are swallowed. */
-  function preloadAll() {
-    const loads = [];
+  // The only units that exist the instant a game starts (see main.js's
+  // createNewGame) -- everything else (buildings, every other unit type)
+  // takes several turns to ever appear on screen, so it doesn't need to
+  // block the loading screen. See preloadAll's own doc comment for the full
+  // critical/background split.
+  const STARTING_UNIT_IDS = ["pioneer", "scout"];
+
+  /** Runs `criticalFns` (each a zero-arg function that KICKS OFF one load
+   *  when called -- deferred like this so background loads don't start
+   *  competing for the shared image-load semaphore until critical is fully
+   *  done) to completion, reporting onProgress(done, total) as they settle;
+   *  the returned promise resolves once that's done. `backgroundFns` are
+   *  then fired off afterward WITHOUT being awaited -- they keep loading
+   *  (still throttled by loadImage's own semaphore) and populate the
+   *  registry whenever they happen to finish, same as any other async
+   *  pick() miss. */
+  async function runTiered(criticalFns, backgroundFns, onProgress) {
+    const criticalPromises = criticalFns.map((fn) => fn());
+    const total = criticalPromises.length;
+    let done = 0;
+    const tracked = criticalPromises.map((p) => p.finally(() => {
+      done++;
+      if (onProgress) onProgress(done, total);
+    }));
+    await Promise.allSettled(tracked);
+    Promise.allSettled(backgroundFns.map((fn) => fn())); // fire-and-forget
+  }
+
+  /** Fires off all asset loads needed for a match between `racesInPlay`
+   *  (array of race ids -- normal games pass [humanRace, ...opponents],
+   *  spectator games pass the checked spectator races). Race-locked units/
+   *  buildings/city art for races NOT in this match are skipped entirely --
+   *  they can never appear on screen this game (see main.js's startGame,
+   *  which knows racesInPlay before calling this).
+   *
+   *  What's left is further split into a CRITICAL tier (terrain, resources/
+   *  ruin/road/river overlays, and racesInPlay's city + starting-unit art --
+   *  everything actually visible the instant the game screen appears) that
+   *  the returned promise waits on, and a BACKGROUND tier (buildings, wall
+   *  art, and every non-starting unit type -- nothing that can possibly be
+   *  on screen for several turns) that keeps loading afterward without
+   *  making the loading screen wait on it. Always resolves — failures are
+   *  swallowed. onProgress(done, total), if given, is called as each
+   *  individual CRITICAL load settles (fulfilled or rejected) -- rejections
+   *  are still counted as "done" since Promise.allSettled tolerates them
+   *  regardless. */
+  function preloadAll(racesInPlay, onProgress) {
+    const critical = [];
+    const background = [];
     for (const id of Object.keys(window.GameData.TERRAIN))
-      loads.push(loadVariants(`terrain/${id}`, `assets/terrain/${id}`));
-    for (const id of window.GameData.UNIT_LIST)
-      loads.push(loadVariants(`unit/${id}`, `assets/units/${id}`));
+      critical.push(() => loadVariants(`terrain/${id}`, `assets/terrain/${id}`));
+    const inPlayUnitIds = window.GameData.UNIT_LIST.filter(
+      (id) => !window.GameData.UNITS[id].raceOnly || racesInPlay.includes(window.GameData.UNITS[id].raceOnly)
+    );
+    for (const id of inPlayUnitIds) {
+      const tier = STARTING_UNIT_IDS.includes(id) ? critical : background;
+      tier.push(() => loadVariants(`unit/${id}`, `assets/units/${id}`));
+    }
     // Units with no raceOnly (Pioneer, Scout, Galley) may additionally ship
     // race-specific art -- assets/units/{raceId}_{unitId}.png -- looked up
     // via pickUnit() in preference to the shared art above. Race-locked
     // units skip this: they only ever belong to one race already.
-    const universalUnitIds = window.GameData.UNIT_LIST.filter(
+    const universalUnitIds = inPlayUnitIds.filter(
       (id) => !window.GameData.UNITS[id].raceOnly
     );
     for (const unitId of universalUnitIds) {
-      for (const raceId of window.GameData.RACE_LIST) {
-        loads.push(loadVariants(`unit/${unitId}/${raceId}`, `assets/units/${raceId}_${unitId}`));
+      const tier = STARTING_UNIT_IDS.includes(unitId) ? critical : background;
+      for (const raceId of racesInPlay) {
+        tier.push(() => loadVariants(`unit/${unitId}/${raceId}`, `assets/units/${raceId}_${unitId}`));
       }
     }
-    for (const id of window.GameData.RACE_LIST) {
-      loads.push(loadVariants(`city/${id}`, `assets/cities/${id}`));
-      loads.push(loadCityTiers(id));
+    for (const id of racesInPlay) {
+      critical.push(() => loadVariants(`city/${id}`, `assets/cities/${id}`));
+      critical.push(() => loadCityTiers(id));
     }
     // Buildings (race-specific) and the universal wall_section -- single
     // static image per id, no population-driven tiering, so the ordinary
-    // variant loader is enough (see art style guide §13).
-    for (const id of window.GameData.BUILDING_LIST)
-      loads.push(loadVariants(`building/${id}`, `assets/buildings/${id}`));
+    // variant loader is enough (see art style guide §13). None of these can
+    // exist the instant a game starts, so they're all background.
+    const inPlayBuildingIds = window.GameData.BUILDING_LIST.filter(
+      (id) => !window.GameData.BUILDINGS[id].raceOnly || racesInPlay.includes(window.GameData.BUILDINGS[id].raceOnly)
+    );
+    for (const id of inPlayBuildingIds)
+      background.push(() => loadVariants(`building/${id}`, `assets/buildings/${id}`));
     // isWall buildings (wall_section) may additionally ship optional
     // race-specific art -- assets/buildings/{raceId}_{buildingId}.png --
     // looked up via pickBuilding() in preference to the shared art above.
     // Same convention as the universal-unit race art above. Ordinary
     // race-only buildings skip this (they already belong to one race, no
     // qualified variant to look for).
-    const universalBuildingIds = window.GameData.BUILDING_LIST.filter(
+    const universalBuildingIds = inPlayBuildingIds.filter(
       (id) => window.GameData.BUILDINGS[id].isWall
     );
     // Wall orientation variants -- see render.js's wallOrientation() and
@@ -444,10 +530,10 @@ window.UI = window.UI || {};
     // visually with same-civ wall neighbors.
     const WALL_ORIENTATIONS = ["horizontal", "vertical", "node"];
     for (const buildingId of universalBuildingIds) {
-      for (const raceId of window.GameData.RACE_LIST) {
-        loads.push(loadVariants(`building/${buildingId}/${raceId}`, `assets/buildings/${raceId}_${buildingId}`));
+      for (const raceId of racesInPlay) {
+        background.push(() => loadVariants(`building/${buildingId}/${raceId}`, `assets/buildings/${raceId}_${buildingId}`));
         for (const orientation of WALL_ORIENTATIONS) {
-          loads.push(loadVariants(
+          background.push(() => loadVariants(
             `building/${buildingId}/${raceId}/${orientation}`,
             `assets/buildings/${raceId}_${buildingId}_${orientation}`
           ));
@@ -455,19 +541,20 @@ window.UI = window.UI || {};
       }
     }
     for (const id of window.GameData.RESOURCE_LIST)
-      loads.push(loadVariants(`enhancement/resource_${id}`, `assets/enhancements/resource_${id}`));
-    loads.push(loadVariants("enhancement/ruin", "assets/enhancements/ruin"));
+      critical.push(() => loadVariants(`enhancement/resource_${id}`, `assets/enhancements/resource_${id}`));
+    critical.push(() => loadVariants("enhancement/ruin", "assets/enhancements/ruin"));
     // Road overlay stubs -- layered/rotated at draw time (see render.js
     // drawRoadOverlay) to build any 8-neighbor connection pattern from just
     // these four, rather than pre-baking one image per combination.
     for (const part of ["cardinal", "diagonal", "hub"])
-      loads.push(loadVariants(`road/${part}`, `assets/roads/road_${part}`));
+      critical.push(() => loadVariants(`road/${part}`, `assets/roads/road_${part}`));
     // River overlay stubs -- same technique, cardinal-only (rivers never
     // flow diagonally, see worldgen.js generateRivers) -- see render.js
     // drawRiverOverlay.
     for (const part of ["cardinal", "hub"])
-      loads.push(loadVariants(`river/${part}`, `assets/rivers/river_${part}`));
-    return Promise.allSettled(loads);
+      critical.push(() => loadVariants(`river/${part}`, `assets/rivers/river_${part}`));
+
+    return runTiered(critical, background, onProgress);
   }
 
   window.UI.sprites = { pick, pickUnit, pickBuilding, pickWallSegment, pickCityTier, currentFrame, preloadAll };

@@ -5,3 +5,6 @@ assets/
 backups/
 scratch/
 *.zip
+working/
+.claude
+.git

@@ -3,9 +3,9 @@
  * ----------
  * Per-unit, per-action sound effects: assets/sfx/<race>_<unitId>_<action>_<n>.{mp3,wav}
  * (see js/data/sfx-actions.js for the naming convention and the full set of
- * combinations that should exist). mp3 is checked first (see
- * SFX_EXTENSIONS) -- either extension works, so files can be converted from
- * wav to mp3 gradually without any coordinated switchover.
+ * combinations that should exist). mp3 is tried first (smaller files), then
+ * wav, so files can be converted from wav to mp3 gradually without any
+ * coordinated switchover.
  *
  * Deliberately UNLIKE music.js: there is no fallback chain. Music always
  * wants *something* mood-appropriate playing, so it falls back through
@@ -13,18 +13,34 @@
  * Orc Raider's attack sound different from a Human Wizard's -- substituting
  * a generic/other-unit's sound would defeat that, so a missing combo simply
  * plays nothing. "Fail gracefully" here means exactly that: never throw,
- * never spam the console per call, just silently no-op.
+ * and never repeat a failed lookup.
  *
- * Availability is scanned once at startup (same probeFile approach as
- * music.js, including its fetch-then-Audio-element fallback for file://
- * contexts) so playAction() is a synchronous, instant lookup rather than a
- * per-call network probe.
+ * No upfront availability scan. Whether a clip exists is discovered lazily,
+ * on the first actual playAction() call that wants it, by just trying to
+ * play it -- there used to be a startup scan that probed every possible
+ * (race, unit, action, variant, extension) combination over the network up
+ * front (170+ combos x 5 variants x 2 extensions), which flooded devtools
+ * with a "failed to load resource" line per miss (a browser-level network
+ * log, not something a JS try/catch can suppress) before a single turn had
+ * even been played. Trying lazily means a missing clip is only ever
+ * requested (at most) once per session, the moment something actually wants
+ * it, and every outcome -- found, wrong extension, genuinely missing -- is
+ * cached so that exact clip is never requested again this session.
  */
 
 window.SfxSystem = (function () {
-  let availability = null; // Map<"race_unitId_action_n", boolean> -- built once at startup
-  let failedClips = new Set(); // clips that errored during playback; never retried this session
-  let lastVariantPlayed = {}; // per "race_unitId_action" key, last variant index used (no-immediate-repeat)
+  // Checked in this order -- mp3 first (smaller files, faster load).
+  const SFX_EXTENSIONS = ["mp3", "wav"];
+
+  // "race_unitId_action_n" -> extension it actually plays with, once a play
+  // attempt has succeeded. Lets repeat plays of the same clip skip straight
+  // to the right file instead of re-trying mp3 first every time.
+  let resolvedExt = new Map();
+  // "race_unitId_action_n" combos confirmed missing under every extension --
+  // permanently excluded from future variant choices this session.
+  let failedClips = new Set();
+  // per "race_unitId_action" key, last variant index used (no-immediate-repeat)
+  let lastVariantPlayed = {};
 
   let masterVolume = 1.0;
   let sfxVolume = 1.0;
@@ -41,120 +57,62 @@ window.SfxSystem = (function () {
     return muted ? 0 : masterVolume * sfxVolume;
   }
 
-  // Checked in this order -- mp3 first (smaller files, faster load, see the
-  // loading-screen work this pairs with) so once a clip has been converted
-  // it's picked up automatically with no other code change; wav still
-  // works for whatever hasn't been converted yet, so the switch can happen
-  // gradually, file by file, instead of needing a coordinated flip.
-  const SFX_EXTENSIONS = ["mp3", "wav"];
-
   function clipPath(raceId, unitId, action, n, ext) {
     return `assets/sfx/${window.GameData.sfxFileName(raceId, unitId, action, n, ext)}`;
   }
 
-  // Same rationale as music.js's PROBE_CONCURRENCY: probing every combo/
-  // variant at once (170+ combos x up to 5 variants = 850+ requests) trips
-  // the browser's per-origin connection cap, which falsely reports real
-  // on-disk files as missing purely from contention.
-  const PROBE_CONCURRENCY = 4;
-
-  async function mapWithConcurrencyLimit(items, limit, worker) {
-    const results = new Array(items.length);
-    let nextIndex = 0;
-    async function runNext() {
-      const i = nextIndex++;
-      if (i >= items.length) return;
-      results[i] = await worker(items[i]);
-      await runNext();
-    }
-    await Promise.all(Array.from({ length: Math.min(limit, items.length) }, runNext));
-    return results;
-  }
-
-  /** Identical strategy to music.js's probeFile -- see that file's doc
-   *  comment for why: a plain GET + immediate body cancel is used first
-   *  (an HTTP status is a direct answer to "does this exist", and
-   *  cache: "no-store" guards against a stale cached 404 from before the
-   *  file existed), falling back to an <audio>-element load probe for
-   *  file:// contexts where fetch() is blocked by Same Origin Policy. */
-  async function probeFile(path) {
-    try {
-      const res = await fetch(path, { method: "GET", cache: "no-store" });
-      if (res.body && res.body.cancel) {
-        try { await res.body.cancel(); } catch (e) { /* already consumed/closed -- fine */ }
-      }
-      return res.ok;
-    } catch (e) {
-      return probeFileViaAudio(path);
-    }
-  }
-
-  function probeFileViaAudio(path) {
-    return new Promise((resolve) => {
-      const audio = new Audio();
-      const onError = () => { cleanup(); resolve(false); };
-      const onCanPlay = () => { cleanup(); resolve(true); };
-      function cleanup() {
-        audio.removeEventListener("error", onError);
-        audio.removeEventListener("loadedmetadata", onCanPlay);
-      }
-      audio.addEventListener("error", onError);
-      audio.addEventListener("loadedmetadata", onCanPlay);
-      audio.src = path;
-      setTimeout(() => { cleanup(); resolve(false); }, 3000);
-    });
-  }
-
-  /** Scans which clip files actually exist. Called once at startup. Never
-   *  throws -- an entirely-missing sfx library (e.g. a fresh checkout before
-   *  any files are curated) just means every playAction() call is a no-op.
-   *  availability values are the EXTENSION that was found (see
-   *  SFX_EXTENSIONS -- mp3 checked first), not a plain boolean, so
-   *  playAction knows which file to actually load; still falsy (undefined)
-   *  when neither exists, so every existing truthy check on this map
-   *  continues to work unchanged. */
-  async function scanAvailability() {
-    availability = new Map();
-    const tasks = [];
-    for (const combo of window.GameData.sfxAllCombos()) {
-      for (let n = 1; n <= window.GameData.SFX_MAX_VARIANTS; n++) {
-        tasks.push({ key: `${combo.raceId}_${combo.unitId}_${combo.action}_${n}`, raceId: combo.raceId, unitId: combo.unitId, action: combo.action, n });
-      }
-    }
-    let found = 0;
-    await mapWithConcurrencyLimit(tasks, PROBE_CONCURRENCY, async ({ key, raceId, unitId, action, n }) => {
-      for (const ext of SFX_EXTENSIONS) {
-        if (await probeFile(clipPath(raceId, unitId, action, n, ext))) {
-          availability.set(key, ext);
-          found++;
-          return;
-        }
-      }
-    });
-    console.log(`[sfx] availability scan complete: ${found} clips found, ${tasks.length - found} missing`);
-  }
-
-  function availableVariants(raceId, unitId, action) {
-    if (!availability) return [];
+  /** Every variant slot (1..SFX_MAX_VARIANTS) not yet confirmed missing for
+   *  this combo -- optimistic, since without an upfront scan we don't know
+   *  which slots are real until something actually tries them. Narrows down
+   *  to just the real ones over the course of a session as misses land in
+   *  failedClips. */
+  function candidateVariants(raceId, unitId, action) {
     const variants = [];
     for (let n = 1; n <= window.GameData.SFX_MAX_VARIANTS; n++) {
       const key = `${raceId}_${unitId}_${action}_${n}`;
-      if (availability.get(key) && !failedClips.has(key)) variants.push(n);
+      if (!failedClips.has(key)) variants.push(n);
     }
     return variants;
   }
 
-  /** Public: does at least one clip exist for this combo? Lets callers (e.g.
-   *  combat resolution) decide whether to bother at all, though playAction()
-   *  is already safe to call unconditionally either way. */
+  /** Public: is this combo still worth trying? Lets callers (e.g. combat
+   *  resolution) decide whether to bother at all, though playAction() is
+   *  already safe to call unconditionally either way. Optimistic (see
+   *  candidateVariants) until a real attempt proves otherwise. */
   function hasClip(raceId, unitId, action) {
-    return availableVariants(raceId, unitId, action).length > 0;
+    return candidateVariants(raceId, unitId, action).length > 0;
+  }
+
+  /** Actually attempts playback of one specific (raceId, unitId, action, n)
+   *  clip, trying each extension in turn. Called at most once per clip per
+   *  extension per session -- a miss on every extension permanently marks
+   *  the clip failed (see failedClips) so playAction() never picks that
+   *  variant again. Never throws: both the load-error path and the
+   *  play()-rejection path (autoplay-policy blocks, an already-known-good
+   *  clip briefly unavailable, etc.) are caught and simply drop the sound. */
+  function tryPlay(raceId, unitId, action, n, key, extIndex) {
+    if (extIndex >= SFX_EXTENSIONS.length) {
+      failedClips.add(key);
+      return;
+    }
+    const ext = SFX_EXTENSIONS[extIndex];
+    const audio = new Audio(clipPath(raceId, unitId, action, n, ext));
+
+    // variable playback speed to add variety to the oft-repeated sfx
+    audio.playbackRate = 0.8 + Math.random() * (1.7 - 0.8);
+    audio.volume = effectiveVolume();
+
+    audio.addEventListener("error", () => tryPlay(raceId, unitId, action, n, key, extIndex + 1));
+    audio.play().then(
+      () => { resolvedExt.set(key, ext); },
+      () => { /* autoplay-policy rejection etc. -- not a missing-file signal, don't burn the other extension */ }
+    );
   }
 
   /** Public: play one clip for (raceId, unitId, action), picking a random
    *  variant with no-immediate-repeat (same pattern as music.js's
    *  pickVariant) for variety across repeated actions. No-ops silently if
-   *  nothing is available for this exact combo -- see file doc comment for
+   *  nothing is left to try for this exact combo -- see file doc comment for
    *  why there's no fallback to a different unit/race's sound.
    *
    *  x/y (optional, tile coordinates): if given AND a visibility check is
@@ -163,11 +121,17 @@ window.SfxSystem = (function () {
    *  attacking unit's position so a battle happening elsewhere on the map
    *  doesn't play. Omit x/y for actions that are inherently already
    *  on-screen (e.g. input.js's click-to-select "move" sfx) to skip the
-   *  gate entirely. */
-  function playAction(raceId, unitId, action, x, y) {
+   *  gate entirely.
+   *
+   *  delayMs (optional): defers the whole call (variant pick, visibility
+   *  check, and playback) by this many ms -- e.g. ai.js's death sfx, which
+   *  wants to land a beat after the killing blow's own "attack" clip
+   *  instead of overlapping it (2026-07-30, user-directed). */
+  function playAction(raceId, unitId, action, x, y, delayMs) {
+    if (delayMs) { setTimeout(() => playAction(raceId, unitId, action, x, y), delayMs); return; }
     if (visibilityCheck && x !== undefined && y !== undefined && !visibilityCheck(x, y)) return;
 
-    const variants = availableVariants(raceId, unitId, action);
+    const variants = candidateVariants(raceId, unitId, action);
     if (variants.length === 0) return;
 
     const pairKey = `${raceId}_${unitId}_${action}`;
@@ -182,22 +146,8 @@ window.SfxSystem = (function () {
     lastVariantPlayed[pairKey] = choice;
 
     const key = `${pairKey}_${choice}`;
-    const ext = availability.get(key); // the extension scanAvailability actually found for this exact clip
-    const audio = new Audio(clipPath(raceId, unitId, action, choice, ext));
-
-    // variable playback speed to add variety to the oft-repeated sfx
-    const randSpeed = 0.8 + Math.random() * (1.7 - 0.8);
-    audio.playbackRate = randSpeed;
-
-    audio.volume = effectiveVolume();
-    audio.addEventListener("error", () => {
-      console.log(`[sfx] failed to play ${key}.${ext} -- will not retry this session`);
-      failedClips.add(key);
-    });
-    audio.play().catch((e) => {
-      console.log(`[sfx] play() rejected for ${key}.${ext}: ${e.message}`);
-      failedClips.add(key);
-    });
+    const knownExt = resolvedExt.get(key);
+    tryPlay(raceId, unitId, action, choice, key, knownExt ? SFX_EXTENSIONS.indexOf(knownExt) : 0);
   }
 
   function setMasterVolume(v) { masterVolume = Math.max(0, Math.min(1, v)); }
@@ -210,8 +160,15 @@ window.SfxSystem = (function () {
    *  clear it (no gating -- every call plays regardless of position). */
   function setVisibilityCheck(fn) { visibilityCheck = fn || null; }
 
-  async function init() {
-    await scanAvailability();
+  /** Public: reset per-session learned state for a fresh game. Resolves
+   *  immediately -- kept async/awaitable (and keeps the racesInPlay/
+   *  onProgress params, unused now) purely so main.js's existing
+   *  Promise.all([...]).then(finishStartGame) loading gate needs no change. */
+  async function init(racesInPlay, onProgress) {
+    resolvedExt = new Map();
+    failedClips = new Set();
+    lastVariantPlayed = {};
+    if (onProgress) onProgress(1, 1);
   }
 
   return {

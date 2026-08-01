@@ -7,7 +7,7 @@ use File::Spec;
 $SIG{CHLD} = 'IGNORE';
 
 my $root = $ARGV[0] or die "usage: static_server.pl <root> <port>\n";
-my $port = $ARGV[1] || 5500;
+my $port = $ENV{PORT} || $ARGV[1] || 5500;
 
 my $d = HTTP::Daemon->new(LocalPort => $port, ReuseAddr => 1) or die "Could not start server: $!";
 print "Serving $root at ", $d->url, "\n";

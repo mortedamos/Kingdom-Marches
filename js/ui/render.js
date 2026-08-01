@@ -15,437 +15,14 @@ window.UI = window.UI || {};
   const MAX_ZOOM = 3.0;
   const RUIN_ICON_SCALE = .75; // ruins read as a little bigger than a tile-fill resource icon (see per-resource iconScale in terrain.js)
   const MOVE_ANIM_MS = 350; // purely visual glide duration for unit movement
-  const ATTACK_ANIM_MS = 500; // total lifetime of a combat "wiggle" (attacker lunge / defender recoil)
-  const SLASH_ANIM_MS = 260; // shorter-lived slash/swipe overlay drawn on top
-  const AREA_EFFECT_ANIM_MS = 700; // AoE radius highlight (Blade Dancer sweep, Fireball splash) -- quick flash, not a lingering overlay
-  const QUIP_ANIM_MS = 2200; // total lifetime of a speech bubble (incl. fade in/out)
-  const QUIP_FADE_MS = 250; // fade-in and fade-out duration at each end of QUIP_ANIM_MS
-  // Raised from an initial 1400ms (user-directed, 2026-07-18) -- too short to
-  // actually read the text before it faded. Now a quick pop-in, a long fully-
-  // opaque HOLD so there's real time to read it, then a quick fade-out at the
-  // very end, rather than one long linear fade the whole time (which reads as
-  // "washed out" for most of its life at this length).
-  const FLOAT_TEXT_ANIM_MS = 3000; // total lifetime of a floating-text popup (incl. fade in/hold/fade out)
-  const FLOAT_TEXT_FADE_IN_MS = 150; // quick pop-in at the start
-  const FLOAT_TEXT_FADE_OUT_MS = 500; // quick fade-out at the very end; everything between is full opacity
 
-  // Condition badges (2026-07-22, user-directed): a small icon per active
-  // entry in unit.conditions (see combat.js's setCondition/tickConditions),
-  // drawn stacked in the tile's upper-right corner, above the unit sprite.
-  // Keyed by the exact condition key each mechanic sets -- anything not
-  // listed here (there is no catch-all) is silently skipped rather than
-  // drawing a generic placeholder, so an unmapped future condition doesn't
-  // need an emergency render fix, it just has no badge yet.
-  const CONDITION_ICONS = {
-    hidden: "🌙",
-    forcedVisible: "👁️",
-    frozen: "❄️",
-    curse: "🧿",
-    exhausted: "💤",
-    forcedRest: "💤",
-    defending: "🛡️",
-    killMomentum: "💢",
-    flying: "🪽️",
-    crusadeAura: "✨",
-    heavyMetalAura: "♫",
-    powerMetalAura: "🎸",
-    deepMinesGuard: "⛰️",
-    burning: "🔥",
-    zombie: "💀",
-    befuddled: "🌀",
-    // Not a unit.conditions entry -- resting is a plain top-level field
-    // (see drawConditionBadges own special-case handling below, same
-    // shape as carries/CARRYING_ICON). Kept in this lookup table purely
-    // so its emoji lives in one place with everything else.
-    resting: "⛺",
-  };
-  // Not a unit.conditions entry (see CONDITION_ICONS above) -- carries is
-  // its own top-level field (set alongside carriedBy on the passenger, see
-  // e.g. operateShadowsteedCarry/operateCompanionCarry/operateDragonCarry
-  // in ai.js), so drawConditionBadges below handles it as a special case
-  // rather than folding it into that map.
-  const CARRYING_ICON = "🫴";
-
-  /**
-   * Live combat attack/wiggle effects, drained each frame from
-   * window.GameEngine.combat's cosmetic event queue (see combat.js --
-   * populated only at real, on-board attack call sites in ai.js, never by
-   * the resolveRound/resolveToTheDeath calls ai.js also uses for
-   * hypothetical win-probability sampling). Each entry gets a handful of
-   * randomized parameters at creation time so repeated attacks don't all
-   * play identically. Purely cosmetic, module-level state -- same pattern
-   * as getVisualPos's per-unit render fields above.
-   */
-  let activeCombatAnims = [];
-
-  function updateCombatAnims(now) {
-    const newEvents = window.GameEngine.combat.drainCombatEvents();
-    for (const evt of newEvents) {
-      const dxg = evt.dx - evt.ax, dyg = evt.dy - evt.ay;
-      const len = Math.hypot(dxg, dyg) || 1;
-      // Attack glyph: a random pick from the attacker's own unit-defined set
-      // (window.GameData.getAttackChars), falling back to "☽" for any unit
-      // that hasn't been given its own set yet. Elf "Shadowsteed": mounted,
-      // it fights with its RIDER's kit (see combat.js's shadowsteedMount and
-      // effectiveAttack/etc.), so its attack glyph should read as the
-      // rider's weapon too, not the Shadowsteed's own bare hooves.
-      // evt.attackChars: an explicit override (e.g. Elf "Treetop Snipers" --
-      // a wall attacking on its own has no real unit/typeId to look up a
-      // set from) takes precedence over the normal per-unit-type lookup.
-      const mount = window.GameEngine.combat.shadowsteedMount(evt.atkUnit);
-      const attackChars = evt.attackChars || window.GameData.getAttackChars(mount ? mount.typeId : evt.atkUnit.typeId);
-      // Ranged (see combat.js's effectiveRange): the glyph travels attacker
-      // -> defender instead of flashing at the midpoint -- see
-      // drawCombatSlashes. Chebyshev, matching every other range check.
-      const isRanged = Math.max(Math.abs(dxg), Math.abs(dyg)) > 1;
-      activeCombatAnims.push({
-        ...evt,
-        start: now,
-        nx: dxg / len, ny: dyg / len,
-        ampScale: 0.75 + Math.random() * 0.5,
-        freq: 2.5 + Math.random() * 2.5,
-        phase: Math.random() * Math.PI * 2,
-        phase2: Math.random() * Math.PI * 2,
-        slashChar: attackChars[Math.floor(Math.random() * attackChars.length)],
-        slashRot: (Math.random() - 0.5) * 0.5,
-        isRanged,
-      });
-    }
-    if (activeCombatAnims.length) {
-      activeCombatAnims = activeCombatAnims.filter((a) => now - a.start < ATTACK_ANIM_MS);
-    }
-  }
-
-  /** Same pull-based queue pattern as activeCombatAnims above, for the
-   *  momentary "this radius was just affected" highlight (2026-07-22,
-   *  user-directed) -- see combat.js's spawnAreaEffect. */
-  let activeAreaEffects = [];
-
-  function updateAreaEffects(now) {
-    const newEvents = window.GameEngine.combat.drainAreaEffectEvents();
-    for (const evt of newEvents) activeAreaEffects.push({ ...evt, start: now });
-    if (activeAreaEffects.length) {
-      activeAreaEffects = activeAreaEffects.filter((a) => now - a.start < AREA_EFFECT_ANIM_MS);
-    }
-  }
-
-  const AREA_EFFECT_COLORS = {
-    blade_sweep: "179,136,255", // matches FLOAT_TEXT_STYLES.aura's purple
-    fireball: "255,112,64", // matches FLOAT_TEXT_STYLES.warning's orange-red
-    default: "255,255,255",
-  };
-
-  /** Draws a fading colored highlight over every tile within `radius`
-   *  (Chebyshev, matching every in-game range/AoE check) of each active
-   *  area effect's center -- a quick flash-and-fade, not a lingering
-   *  overlay, so it reads as "this just happened here" rather than a
-   *  persistent zone. Drawn UNDER drawCombatSlashes (called right after
-   *  this) so the attack slashes/unit sprites still read clearly on top. */
-  function drawAreaEffects(ctx, offsetX, offsetY, ts, now) {
-    for (const a of activeAreaEffects) {
-      const elapsed = now - a.start;
-      if (elapsed > AREA_EFFECT_ANIM_MS) continue;
-      const t = elapsed / AREA_EFFECT_ANIM_MS;
-      // Quick pop-in, hold, then fade -- same 3-phase shape as floating text.
-      const alpha = t < 0.15 ? t / 0.15 : (t > 0.5 ? Math.max(0, 1 - (t - 0.5) / 0.5) : 1);
-      const color = AREA_EFFECT_COLORS[a.kind] || AREA_EFFECT_COLORS.default;
-      ctx.save();
-      ctx.globalAlpha = alpha * 0.35;
-      ctx.fillStyle = `rgb(${color})`;
-      ctx.strokeStyle = `rgb(${color})`;
-      ctx.lineWidth = Math.max(1, ts * 0.06);
-      for (let dy = -a.radius; dy <= a.radius; dy++) {
-        for (let dx = -a.radius; dx <= a.radius; dx++) {
-          const tx = a.x + dx, ty = a.y + dy;
-          const px = tx * ts + offsetX, py = ty * ts + offsetY;
-          ctx.fillRect(px, py, ts, ts);
-        }
-      }
-      ctx.globalAlpha = alpha * 0.8;
-      ctx.strokeRect(
-        (a.x - a.radius) * ts + offsetX + ctx.lineWidth / 2,
-        (a.y - a.radius) * ts + offsetY + ctx.lineWidth / 2,
-        (a.radius * 2 + 1) * ts - ctx.lineWidth,
-        (a.radius * 2 + 1) * ts - ctx.lineWidth,
-      );
-      ctx.restore();
-    }
-  }
-
-  /**
-   * Live speech-bubble quips, drained each frame from window.GameEngine.
-   * quips' cosmetic event queue (see engine/quips.js -- populated RARELY, at
-   * real action-decision call sites in ai.js). Same pull-based pattern as
-   * activeCombatAnims above: the engine never depends on window.UI, so the
-   * UI pulls from a private queue instead. Keyed by the unit object itself
-   * (a stable per-instance identity) so drawQuipBubble can look up "does
-   * THIS unit have an active quip right now" in the unit draw loop.
-   */
-  let activeQuips = [];
-
-  function updateQuipBubbles(now) {
-    const newEvents = window.GameEngine.quips.drainQuipEvents();
-    for (const evt of newEvents) activeQuips.push({ unit: evt.unit, text: evt.text, start: now });
-    if (activeQuips.length) {
-      activeQuips = activeQuips.filter((q) => now - q.start < QUIP_ANIM_MS);
-    }
-  }
-
-  /**
-   * Live floating-text popups ("Level Up!", "+N XP", per-turn resource
-   * gains -- see engine/floatingtext.js), drained each frame same as
-   * activeCombatAnims/activeQuips above. Several can be active for the SAME
-   * unit at once (e.g. an XP grant and the level-up it triggers fire back
-   * to back) -- `stackIndex` records how many of this unit's OTHER
-   * currently-active popups existed at spawn time, so drawFloatingTexts can
-   * offset each one higher, stacking them instead of drawing on top of
-   * each other illegibly.
-   */
-  let activeFloatingTexts = [];
-
-  function updateFloatingTexts(now) {
-    const newEvents = window.GameEngine.floatingText.drainFloatingTextEvents();
-    for (const evt of newEvents) {
-      const stackIndex = activeFloatingTexts.filter(
-        (f) => f.unit === evt.unit && now - f.start < FLOAT_TEXT_ANIM_MS).length;
-      activeFloatingTexts.push({ unit: evt.unit, text: evt.text, kind: evt.kind, start: now, stackIndex });
-    }
-    if (activeFloatingTexts.length) {
-      activeFloatingTexts = activeFloatingTexts.filter((f) => now - f.start < FLOAT_TEXT_ANIM_MS);
-    }
-  }
-
-  /** Color/weight per floating-text `kind` (see engine/floatingtext.js's
-   *  spawnFloatingText/spawnResourceGain call sites for which kind each
-   *  event uses). "default" is the fallback for anything uncategorized. */
-  const FLOAT_TEXT_STYLES = {
-    levelup: { color: "#ffd54f", bold: true, sizeFrac: 0.30 },
-    xp: { color: "#7fd8ff", bold: false, sizeFrac: 0.22 },
-    resource: { color: "#8bc34a", bold: false, sizeFrac: 0.20 },
-    heal: { color: "#69f0ae", bold: false, sizeFrac: 0.22 },
-    aura: { color: "#ce93d8", bold: true, sizeFrac: 0.26 },
-    warning: { color: "#ff7043", bold: true, sizeFrac: 0.24 },
-    default: { color: "#ffffff", bold: false, sizeFrac: 0.22 },
-  };
-
-  /** Draws every active floating-text popup anchored to `unit` -- pops in
-   *  quickly (FLOAT_TEXT_FADE_IN_MS), drifts upward the whole time, holds at
-   *  full opacity for most of its life (long enough to actually read), then
-   *  fades out quickly at the very end (FLOAT_TEXT_FADE_OUT_MS). `screenX`/
-   *  `screenY` are the unit's own tile-top screen position, same convention
-   *  as drawQuipBubble. */
-  function drawFloatingTexts(ctx, unit, screenX, screenY, ts, now) {
-    for (const f of activeFloatingTexts) {
-      if (f.unit !== unit) continue;
-      const age = now - f.start;
-      const t = age / FLOAT_TEXT_ANIM_MS;
-      let alpha = 1;
-      if (age < FLOAT_TEXT_FADE_IN_MS) alpha = age / FLOAT_TEXT_FADE_IN_MS;
-      else if (age > FLOAT_TEXT_ANIM_MS - FLOAT_TEXT_FADE_OUT_MS) {
-        alpha = (FLOAT_TEXT_ANIM_MS - age) / FLOAT_TEXT_FADE_OUT_MS;
-      }
-      const style = FLOAT_TEXT_STYLES[f.kind] || FLOAT_TEXT_STYLES.default;
-      const rise = ts * 0.85 * t; // drifts upward over its whole lifetime
-      const stackGap = ts * 0.32;
-      const px = screenX + ts / 2;
-      const py = screenY - ts * 0.12 - f.stackIndex * stackGap - rise;
-
-      ctx.save();
-      ctx.globalAlpha = Math.max(0, Math.min(1, alpha));
-      ctx.font = `${style.bold ? "bold " : ""}${Math.max(9, ts * style.sizeFrac)}px sans-serif`;
-      ctx.textAlign = "center";
-      ctx.textBaseline = "middle";
-      ctx.strokeStyle = "rgba(0,0,0,0.7)";
-      ctx.lineWidth = Math.max(1, ts * 0.05);
-      ctx.strokeText(f.text, px, py);
-      ctx.fillStyle = style.color;
-      ctx.fillText(f.text, px, py);
-      ctx.restore();
-    }
-  }
-
-  /** Greedy word-wrap: breaks `text` into lines that each fit within
-   *  maxWidth at the ctx's current font. Used so a quip's bubble never
-   *  renders wider than its own drawn shape, regardless of how long the
-   *  underlying string is. */
-  function wrapQuipText(ctx, text, maxWidth) {
-    const words = text.split(" ");
-    const lines = [];
-    let line = "";
-    for (const word of words) {
-      const candidate = line ? `${line} ${word}` : word;
-      if (ctx.measureText(candidate).width > maxWidth && line) {
-        lines.push(line);
-        line = word;
-      } else {
-        line = candidate;
-      }
-    }
-    if (line) lines.push(line);
-    return lines;
-  }
-
-  /** Draws a comic-book-style word bubble above a unit's head if it has an
-   *  active quip (see updateQuipBubbles). `screenX`/`screenY` are the
-   *  unit's own tile-top screen position (same values passed to
-   *  drawUnitShadow), so the bubble anchors consistently regardless of the
-   *  unit's "bigger" scale. */
-  function drawQuipBubble(ctx, unit, screenX, screenY, ts, now) {
-    const q = activeQuips.find((a) => a.unit === unit);
-    if (!q) return;
-    const age = now - q.start;
-    let alpha = 1;
-    if (age < QUIP_FADE_MS) alpha = age / QUIP_FADE_MS;
-    else if (age > QUIP_ANIM_MS - QUIP_FADE_MS) alpha = Math.max(0, (QUIP_ANIM_MS - age) / QUIP_FADE_MS);
-
-    const fontSize = Math.max(9, ts * 0.22);
-    ctx.font = `${fontSize}px "Comic Sans MS", "Chalkboard SE", cursive, sans-serif`;
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
-
-    const maxTextWidth = ts * 3.4;
-    const lines = wrapQuipText(ctx, q.text, maxTextWidth);
-    const lineHeight = fontSize * 1.25;
-    const padX = fontSize * 0.7, padY = fontSize * 0.55;
-    const textWidth = Math.min(maxTextWidth, Math.max(...lines.map((l) => ctx.measureText(l).width)));
-    const bubbleW = textWidth + padX * 2;
-    const bubbleH = lines.length * lineHeight + padY * 2;
-    const cx = screenX + ts / 2;
-    const tailH = fontSize * 0.5;
-    const bubbleBottom = screenY - tailH - ts * 0.06;
-    const bubbleX = cx - bubbleW / 2;
-    const bubbleY = bubbleBottom - bubbleH;
-    const radius = Math.min(10, bubbleH * 0.25);
-
-    ctx.save();
-    ctx.globalAlpha = alpha;
-
-    // Bubble body (rounded rect)
-    ctx.beginPath();
-    ctx.moveTo(bubbleX + radius, bubbleY);
-    ctx.arcTo(bubbleX + bubbleW, bubbleY, bubbleX + bubbleW, bubbleY + bubbleH, radius);
-    ctx.arcTo(bubbleX + bubbleW, bubbleY + bubbleH, bubbleX, bubbleY + bubbleH, radius);
-    ctx.arcTo(bubbleX, bubbleY + bubbleH, bubbleX, bubbleY, radius);
-    ctx.arcTo(bubbleX, bubbleY, bubbleX + bubbleW, bubbleY, radius);
-    ctx.closePath();
-    ctx.fillStyle = "#fff";
-    ctx.fill();
-    ctx.lineWidth = 1.5;
-    ctx.strokeStyle = "#222";
-    ctx.stroke();
-
-    // Tail: small triangle pointing down at the unit's head
-    ctx.beginPath();
-    ctx.moveTo(cx - tailH * 0.6, bubbleBottom - 1);
-    ctx.lineTo(cx + tailH * 0.6, bubbleBottom - 1);
-    ctx.lineTo(cx, bubbleBottom + tailH);
-    ctx.closePath();
-    ctx.fillStyle = "#fff";
-    ctx.fill();
-    ctx.beginPath();
-    ctx.moveTo(cx - tailH * 0.6, bubbleBottom - 1);
-    ctx.lineTo(cx, bubbleBottom + tailH);
-    ctx.lineTo(cx + tailH * 0.6, bubbleBottom - 1);
-    ctx.strokeStyle = "#222";
-    ctx.stroke();
-
-    // Text
-    ctx.fillStyle = "#1a1a1a";
-    const firstLineY = bubbleY + padY + lineHeight / 2;
-    lines.forEach((l, i) => ctx.fillText(l, cx, firstLineY + i * lineHeight));
-
-    ctx.restore();
-  }
-
-  /**
-   * Per-unit pixel offset for the "wiggle": the attacker lunges a step
-   * toward its target then settles back, the defender recoils a step away,
-   * both with a decaying side-to-side shimmy layered on top for variation.
-   * Amplitude scales with the current tile size so it stays proportional
-   * across zoom levels.
-   */
-  function getUnitShakeOffset(unit, ts, now) {
-    let ox = 0, oy = 0;
-    for (const a of activeCombatAnims) {
-      const isAttacker = a.atkUnit === unit;
-      const isDefender = a.defUnit === unit;
-      if (!isAttacker && !isDefender) continue;
-      const t = (now - a.start) / ATTACK_ANIM_MS;
-      if (t >= 1) continue;
-      const jump = Math.sin(Math.PI * t) * a.ampScale; // 0 -> peak -> 0
-      const shimmyEnv = 1 - t;
-      if (isAttacker) {
-        const jumpPx = ts * 0.16 * jump;
-        const shimmyPx = ts * 0.07 * a.ampScale * Math.sin(t * a.freq * Math.PI * 2 + a.phase) * shimmyEnv;
-        ox += a.nx * jumpPx + (-a.ny) * shimmyPx;
-        oy += a.ny * jumpPx + (a.nx) * shimmyPx;
-      } else {
-        const recoilPx = ts * 0.13 * jump;
-        const shimmyPx = ts * 0.06 * a.ampScale * Math.sin(t * a.freq * Math.PI * 2 + a.phase2) * shimmyEnv;
-        ox += -a.nx * recoilPx + (-a.ny) * shimmyPx;
-        oy += -a.ny * recoilPx + (a.nx) * shimmyPx;
-      }
-    }
-    return { x: ox, y: oy };
-  }
-
-  /**
-   * Glyph overlay between attacker and defender tiles -- the glyph itself is
-   * per-unit-type (window.GameData.getAttackChars/attackChars, picked at
-   * event-creation time in updateCombatAnims), defaulting to "☽" for
-   * anything without its own set. Two modes, decided by `a.isRanged` (set
-   * once at creation, see updateCombatAnims):
-   *   - Melee (adjacent): a quick slash flashes at the midpoint between the
-   *     two tiles, growing in then fading out, with a slight random tilt so
-   *     repeated attacks don't look perfectly identical.
-   *   - Ranged (see combat.js's effectiveRange): the glyph actually travels
-   *     from the attacker's tile to the defender's, facing its direction of
-   *     travel, fading in/out only briefly at each end -- a unit with real
-   *     reach shouldn't look like it's slashing from a shared midpoint it
-   *     may never get anywhere near.
-   */
-  function drawCombatSlashes(ctx, offsetX, offsetY, ts, now) {
-    for (const a of activeCombatAnims) {
-      const elapsed = now - a.start;
-      if (elapsed > SLASH_ANIM_MS) continue;
-      const t = elapsed / SLASH_ANIM_MS;
-      const ax = a.ax * ts + offsetX + ts / 2;
-      const ay = a.ay * ts + offsetY + ts / 2;
-      const dx = a.dx * ts + offsetX + ts / 2;
-      const dy = a.dy * ts + offsetY + ts / 2;
-
-      let px, py, angle, alpha, size;
-      if (a.isRanged) {
-        px = ax + (dx - ax) * t;
-        py = ay + (dy - ay) * t;
-        angle = Math.atan2(dy - ay, dx - ax) + a.slashRot;
-        // Full opacity in transit; only a brief fade right at launch/impact.
-        alpha = t < 0.15 ? t / 0.15 : (t > 0.85 ? (1 - t) / 0.15 : 1);
-        size = ts * 0.6;
-      } else {
-        px = (ax + dx) / 2;
-        py = (ay + dy) / 2;
-        angle = a.slashRot;
-        alpha = 1 - t;
-        const grow = 0.6 + 0.4 * Math.min(1, t * 2.5);
-        size = ts * 0.7 * grow;
-      }
-
-      ctx.save();
-      ctx.translate(px, py);
-      ctx.rotate(angle);
-      ctx.globalAlpha = Math.max(0, alpha);
-      ctx.font = `bold ${size}px sans-serif`;
-      ctx.textAlign = "center";
-      ctx.textBaseline = "middle";
-      ctx.strokeStyle = "rgba(0,0,0,0.6)";
-      ctx.lineWidth = Math.max(1, ts * 0.05);
-      ctx.strokeText(a.slashChar, 0, 0);
-      ctx.fillStyle = "#ffffff";
-      ctx.fillText(a.slashChar, 0, 0);
-      ctx.restore();
-    }
-  }
+  // Combat anims, area effects, quips, floating text, condition badges/tints,
+  // and the aura/hatch/tile-score color helpers all now live in overlays.js
+  // (window.UI.overlays), shared with render3d.js -- see that file's header
+  // comment for why this moved (in short: render3d.js's render() never called
+  // this file's own update*/drain* functions, so with 3D as the default view
+  // those event queues grew unbounded and nothing animated in 3D at all).
+  const overlays = window.UI.overlays;
 
   /**
    * Units move instantly in game logic (a whole turn resolves in one call),
@@ -538,10 +115,7 @@ window.UI = window.UI || {};
     // rounding it once here keeps the whole frame's tile grid pixel-aligned.
     const ts = Math.round(TILE_SIZE * (viewState.zoomLevel || 1));
     const now = performance.now();
-    updateCombatAnims(now);
-    updateAreaEffects(now);
-    updateQuipBubbles(now);
-    updateFloatingTexts(now);
+    overlays.tick(now);
 
     // Clamp scroll so we never go out of bounds
     const clamped = clampOffset(viewState.scrollX || 0, viewState.scrollY || 0, canvas, map, ts);
@@ -611,7 +185,7 @@ window.UI = window.UI || {};
                 )
               : null;
             drawRememberedTile(ctx, screenX, screenY, ts, memory[idx], roadConn, x, y, showGrid, deferredIcons);
-            if (tileScoreMemory) drawTileScoreOverlay(ctx, screenX, screenY, ts, tileScoreMemory[idx]?.cityScore);
+            if (tileScoreMemory) overlays.drawTileScoreOverlay(ctx, screenX, screenY, ts, tileScoreMemory[idx]?.cityScore);
           } else {
             ctx.fillStyle = "#1a1a1a";
             ctx.fillRect(screenX, screenY, ts, ts);
@@ -708,10 +282,10 @@ window.UI = window.UI || {};
           const civ = civs[tile.ownerCivId];
           const color = civ ? window.GameData.getRace(civ.raceId).color : "#888";
           if (tile.status === "owned") {
-            ctx.fillStyle = hexToRgba(color, 0.45);
+            ctx.fillStyle = overlays.hexToRgba(color, 0.45);
             ctx.fillRect(screenX, screenY, ts, ts);
           } else if (tile.status === "contested") {
-            drawHatch(ctx, screenX, screenY, ts, color);
+            overlays.drawHatch(ctx, screenX, screenY, ts, color);
           }
         }
 
@@ -722,7 +296,7 @@ window.UI = window.UI || {};
           ctx.strokeRect(screenX, screenY, ts, ts);
         }
 
-        if (tileScoreMemory) drawTileScoreOverlay(ctx, screenX, screenY, ts, tileScoreMemory[idx]?.cityScore);
+        if (tileScoreMemory) overlays.drawTileScoreOverlay(ctx, screenX, screenY, ts, tileScoreMemory[idx]?.cityScore);
       }
     }
 
@@ -730,6 +304,12 @@ window.UI = window.UI || {};
     // is painted (see deferredIcons comment above) -- still ahead of
     // cities/units below, preserving the normal stacking order.
     for (const draw of deferredIcons) draw();
+
+    // Order overlay sits above terrain but BELOW cities/units, so it tints
+    // the ground a unit could move onto without washing out whatever is
+    // standing there. The path preview is drawn later, on top of everything.
+    drawReachableOverlay(ctx, gameState, viewState, offsetX, offsetY, ts);
+    drawPlacementOverlay(ctx, viewState, offsetX, offsetY, ts);
 
     // Cities
     for (const civ of Object.values(civs)) {
@@ -863,7 +443,7 @@ window.UI = window.UI || {};
           } else {
             const pad = ts * 0.2;
             // Body: civ-colored rounded square
-            ctx.fillStyle = hexToRgba(race.color, 0.85);
+            ctx.fillStyle = overlays.hexToRgba(race.color, 0.85);
             ctx.fillRect(screenX + pad, screenY + pad, ts - pad * 2, ts - pad * 2);
             ctx.strokeStyle = "rgba(0,0,0,0.5)";
             ctx.lineWidth = 1;
@@ -891,7 +471,7 @@ window.UI = window.UI || {};
           // by object identity against activeFloatingTexts, same convention
           // as the per-unit queue below, just populated from this loop
           // instead since a structure record never appears in civ.units.
-          if (activeFloatingTexts.some((f) => f.unit === s)) {
+          if (overlays.hasActiveFloatingText(s)) {
             floatingTextQueue.push({ unit: s, screenX, screenY });
           }
         }
@@ -905,7 +485,7 @@ window.UI = window.UI || {};
     // convention as the city influence-radius border above.
     for (const civ of Object.values(civs)) {
       for (const unit of civ.units) {
-        const aura = auraInfoForUnit(unit, civ);
+        const aura = overlays.auraInfoForUnit(unit, civ);
         if (!aura) continue;
         const idx = unit.y * map.width + unit.x;
         if (!visible.has(idx)) continue;
@@ -915,12 +495,12 @@ window.UI = window.UI || {};
             const tx = unit.x + dx, ty = unit.y + dy;
             if (tx < 0 || tx >= map.width || ty < 0 || ty >= map.height) continue;
             if (!visible.has(ty * map.width + tx)) continue;
-            ctx.fillStyle = hexToRgba(color, 0.16);
+            ctx.fillStyle = overlays.hexToRgba(color, 0.16);
             ctx.fillRect(tx * ts + offsetX, ty * ts + offsetY, ts, ts);
           }
         }
         ctx.save();
-        ctx.strokeStyle = hexToRgba(color, 0.85);
+        ctx.strokeStyle = overlays.hexToRgba(color, 0.85);
         ctx.lineWidth = 1.5;
         ctx.strokeRect(
           (unit.x - radius) * ts + offsetX, (unit.y - radius) * ts + offsetY,
@@ -950,7 +530,7 @@ window.UI = window.UI || {};
 
     for (const { civ, unit, visualPos } of unitsToDraw) {
       const race = window.GameData.getRace(civ.raceId);
-      const shake = getUnitShakeOffset(unit, ts, now);
+      const shake = overlays.getUnitShakeOffset(unit, ts, now);
       const screenX = visualPos.x * ts + offsetX + shake.x;
       const screenY = visualPos.y * ts + offsetY + shake.y;
       const baseUnit = window.GameData.getUnit(unit.typeId);
@@ -976,7 +556,15 @@ window.UI = window.UI || {};
       // spectator mode (humanCivId null), where every civ's units are
       // equally "own" to the viewer.
       const isOwnHidden = !!unit.conditions?.hidden && (humanCivId == null || unit.civId === humanCivId);
-      const spriteAlpha = isOwnHidden ? 0.55 : 1;
+      // Spent-unit dimming (2026-08-01, user-directed): the player's own units
+      // that have nothing left to do this turn fade back, so "who still needs
+      // orders" is answerable by looking at the map rather than by clicking
+      // each unit in turn. Only ever applied to the human's own units -- an AI
+      // civ's units are never awaiting the player's orders, so dimming them
+      // would be meaningless noise.
+      const isOwnSpent = humanCivId != null && unit.civId === humanCivId
+        && window.GameEngine.orders.isSpent(unit, gameState);
+      const spriteAlpha = isOwnHidden ? 0.55 : (isOwnSpent ? 0.5 : 1);
       ctx.save();
       ctx.globalAlpha = spriteAlpha;
       if (unitSprite) {
@@ -997,7 +585,7 @@ window.UI = window.UI || {};
         ctx.fillText(initial, boxX + boxSize / 2, boxY + boxSize / 2);
       }
       ctx.restore();
-      drawConditionVisualEffects(ctx, unit, unitSprite, boxX, boxY, boxSize, now);
+      overlays.drawConditionVisualEffects(ctx, unit, unitSprite, boxX, boxY, boxSize, now);
 
       // HP bar
       if (unit.hp != null && unit.maxHp && unit.hp < unit.maxHp) {
@@ -1013,27 +601,162 @@ window.UI = window.UI || {};
         ctx.lineWidth = 2;
         ctx.strokeRect(boxX + 1, boxY + 1, boxSize - 2, boxSize - 2);
       }
-      drawConditionBadges(ctx, unit, boxX, boxY, boxSize, ts);
-      drawChannelStashLabel(ctx, unit, screenX, screenY, ts);
+      overlays.drawConditionBadges(ctx, unit, boxX, boxY, boxSize, ts);
+      overlays.drawChannelStashLabel(ctx, unit, screenX, screenY, ts);
 
-      if (activeQuips.some((q) => q.unit === unit)) {
+      if (overlays.hasActiveQuip(unit)) {
         quipBubbleQueue.push({ unit, screenX, screenY });
       }
-      if (activeFloatingTexts.some((f) => f.unit === unit)) {
+      if (overlays.hasActiveFloatingText(unit)) {
         floatingTextQueue.push({ unit, screenX, screenY });
       }
     }
 
-    drawAreaEffects(ctx, offsetX, offsetY, ts, now);
-    drawCombatSlashes(ctx, offsetX, offsetY, ts, now);
+    // Path preview last-but-one: it must read clearly over units and terrain
+    // alike, since the whole point is showing a route THROUGH them.
+    drawOrderPreview(ctx, gameState, viewState, offsetX, offsetY, ts);
+
+    overlays.drawAreaEffects(ctx, offsetX, offsetY, ts, now);
+    overlays.drawCombatSlashes(ctx, offsetX, offsetY, ts, now);
     for (const { unit, screenX, screenY } of quipBubbleQueue) {
-      drawQuipBubble(ctx, unit, screenX, screenY, ts, now);
+      overlays.drawQuipBubble(ctx, unit, screenX, screenY, ts, now);
     }
     // Drawn last (on top of quip bubbles too) -- floating text is the most
     // immediate, momentary feedback and shouldn't be occluded by anything.
     for (const { unit, screenX, screenY } of floatingTextQueue) {
-      drawFloatingTexts(ctx, unit, screenX, screenY, ts, now);
+      overlays.drawFloatingTexts(ctx, unit, screenX, screenY, ts, now);
     }
+  }
+
+  // --- Player order overlays (2026-08-01, user-directed) -----------------
+  // Only ever drawn for a unit the HUMAN player can actually command -- an AI
+  // civ's units and a spectator game get none of this, since there's no order
+  // to give. See js/engine/orders.js for the rules these visualize; this file
+  // only paints what that module reports, so the overlay can never promise a
+  // move the engine would then refuse.
+
+  /** Tints every tile the selected unit could end its move on, brighter for
+   *  cheaper tiles so the movement gradient is legible at a glance. */
+  function drawReachableOverlay(ctx, gameState, viewState, offsetX, offsetY, ts) {
+    const orders = window.GameEngine.orders;
+    const unit = viewState.selectedUnit;
+    if (!orders || !orders.canCommand(unit, gameState, viewState.humanCivId)) return;
+    const reach = orders.reachableTiles(unit, gameState);
+    if (!reach.size) return;
+
+    const budget = unit.movesRemaining != null ? unit.movesRemaining : 1;
+    for (const { x, y, cost } of reach.values()) {
+      const screenX = x * ts + offsetX;
+      const screenY = y * ts + offsetY;
+      if (screenX < -ts || screenX > ctx.canvas.width || screenY < -ts || screenY > ctx.canvas.height) continue;
+      // Cheap tiles read as "comfortably in reach", expensive ones as "this
+      // uses your whole turn" -- same information the cost number carries,
+      // but available without hovering every tile.
+      const spentFrac = budget > 0 ? Math.min(1, cost / budget) : 1;
+      ctx.fillStyle = `rgba(120, 190, 255, ${0.28 - 0.14 * spentFrac})`;
+      ctx.fillRect(screenX, screenY, ts, ts);
+    }
+
+    // Outline the reachable region's edge so its extent is unmistakable even
+    // where the fill is faintest: a tile is on the border if a neighbour is
+    // outside the set.
+    ctx.strokeStyle = "rgba(150, 205, 255, 0.75)";
+    ctx.lineWidth = 1.5;
+    for (const { x, y } of reach.values()) {
+      const screenX = x * ts + offsetX;
+      const screenY = y * ts + offsetY;
+      if (screenX < -ts || screenX > ctx.canvas.width || screenY < -ts || screenY > ctx.canvas.height) continue;
+      ctx.beginPath();
+      if (!reach.has(`${x},${y - 1}`)) { ctx.moveTo(screenX, screenY); ctx.lineTo(screenX + ts, screenY); }
+      if (!reach.has(`${x},${y + 1}`)) { ctx.moveTo(screenX, screenY + ts); ctx.lineTo(screenX + ts, screenY + ts); }
+      if (!reach.has(`${x - 1},${y}`)) { ctx.moveTo(screenX, screenY); ctx.lineTo(screenX, screenY + ts); }
+      if (!reach.has(`${x + 1},${y}`)) { ctx.moveTo(screenX + ts, screenY); ctx.lineTo(screenX + ts, screenY + ts); }
+      ctx.stroke();
+    }
+  }
+
+  /**
+   * Structure-placement mode: highlights every tile the queued building could
+   * legally stand on, so the player picks a real slot rather than guessing.
+   * Active only while viewState.placement is set (see main.js's
+   * handleOpenBuildPicker flow); the slot list comes from
+   * cities.js's validStructureSlots, the same rules placeStructure enforces.
+   */
+  function drawPlacementOverlay(ctx, viewState, offsetX, offsetY, ts) {
+    const placement = viewState.placement;
+    if (!placement || !placement.slots || !placement.slots.length) return;
+    const hover = viewState.hoverTile;
+    const pulse = 0.5 + 0.25 * Math.sin(performance.now() / 300);
+
+    for (const slot of placement.slots) {
+      const screenX = slot.x * ts + offsetX;
+      const screenY = slot.y * ts + offsetY;
+      if (screenX < -ts || screenX > ctx.canvas.width || screenY < -ts || screenY > ctx.canvas.height) continue;
+      const isHovered = hover && hover.x === slot.x && hover.y === slot.y;
+      ctx.fillStyle = isHovered ? "rgba(255, 215, 90, 0.55)" : `rgba(255, 215, 90, ${0.22 * pulse + 0.12})`;
+      ctx.fillRect(screenX, screenY, ts, ts);
+      ctx.strokeStyle = isHovered ? "#ffd75a" : "rgba(255, 215, 90, 0.8)";
+      ctx.lineWidth = isHovered ? 3 : 1.5;
+      ctx.strokeRect(screenX + 1, screenY + 1, ts - 2, ts - 2);
+    }
+  }
+
+  /** The hovered tile's order preview: an attack reticle with odds, a move
+   *  cost pip, or a struck-through marker when the order isn't legal. */
+  function drawOrderPreview(ctx, gameState, viewState, offsetX, offsetY, ts) {
+    const orders = window.GameEngine.orders;
+    const unit = viewState.selectedUnit;
+    const hover = viewState.hoverTile;
+    if (!orders || !hover) return;
+    if (!orders.canCommand(unit, gameState, viewState.humanCivId)) return;
+    if (hover.x === unit.x && hover.y === unit.y) return;
+
+    const preview = orders.previewOrder(unit, gameState, hover.x, hover.y, viewState.humanCivId);
+    const screenX = hover.x * ts + offsetX;
+    const screenY = hover.y * ts + offsetY;
+    const cx = screenX + ts / 2, cy = screenY + ts / 2;
+
+    const COLORS = { attack: "#ff5c5c", move: "#7fd4f7", blocked: "#888" };
+    const color = COLORS[preview.kind] || COLORS.blocked;
+
+    ctx.save();
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 2;
+    ctx.strokeRect(screenX + 1, screenY + 1, ts - 2, ts - 2);
+
+    if (preview.kind === "attack") {
+      // Reticle + odds. The odds come from the same estimator the AI consults
+      // before committing (estimateWinProbability / cityAttackWinProbability),
+      // so the player is reading the engine's real assessment, not a guess.
+      ctx.beginPath();
+      ctx.arc(cx, cy, ts * 0.30, 0, Math.PI * 2);
+      ctx.stroke();
+      if (preview.odds != null) {
+        drawPreviewLabel(ctx, `${Math.round(preview.odds * 100)}%`, cx, screenY - 2, color);
+      }
+    } else if (preview.kind === "move") {
+      drawPreviewLabel(ctx, `${preview.cost} mp`, cx, screenY - 2, color);
+    } else {
+      // Blocked: a slash through the tile, plus why.
+      ctx.beginPath();
+      ctx.moveTo(screenX + 4, screenY + 4);
+      ctx.lineTo(screenX + ts - 4, screenY + ts - 4);
+      ctx.stroke();
+      if (preview.reason) drawPreviewLabel(ctx, preview.reason, cx, screenY - 2, color);
+    }
+    ctx.restore();
+  }
+
+  /** Small pill label above a tile, used by the order preview. */
+  function drawPreviewLabel(ctx, text, cx, bottomY, color) {
+    ctx.font = "bold 11px monospace";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "bottom";
+    const w = ctx.measureText(text).width + 8;
+    ctx.fillStyle = "rgba(0,0,0,0.75)";
+    ctx.fillRect(cx - w / 2, bottomY - 14, w, 14);
+    ctx.fillStyle = color;
+    ctx.fillText(text, cx, bottomY - 2);
   }
 
   /**
@@ -1048,199 +771,10 @@ window.UI = window.UI || {};
     const cy = screenY + ts * 0.80;
     const radiusX = ts * 0.42 * scale;
     const radiusY = ts * 0.15 * scale;
-    ctx.fillStyle = hexToRgba(color, 0.6);
+    ctx.fillStyle = overlays.hexToRgba(color, 0.6);
     ctx.beginPath();
     ctx.ellipse(cx, cy, radiusX, radiusY, 0, 0, Math.PI * 2);
     ctx.fill();
-  }
-
-  /**
-   * Condition visual effects (2026-07-22, user-directed) -- on top of the
-   * small badge icons (see drawConditionBadges below), these treat the
-   * character's own drawn sprite/fallback icon directly:
-   *  - Burning: flickering orange/red flame tint.
-   *  - Frozen: flickering icy blue tint.
-   *  - Zombie: a static, washed-out grey fade -- no flicker, since it's a
-   *    PERMANENT condition (a perpetual flicker would get tiring over a
-   *    long game, unlike Burning/Frozen which are always short-lived).
-   *  - Hidden: handled separately (see the "own hidden units are slightly
-   *    transparent" alpha applied around the sprite draw call itself,
-   *    below) rather than as a tint here, since transparency has to affect
-   *    the base draw, not composite on top of it.
-   * All three tints stack independently (e.g. a burning zombie shows both).
-   */
-  const BURNING_TINT_COLOR = "255,87,34"; // orange-red, matches the Burning condition's warning-family color elsewhere
-  const FROZEN_TINT_COLOR = "129,212,250"; // icy blue
-  const ZOMBIE_TINT_COLOR = "120,120,120"; // washed-out grey
-
-  /** Stable per-unit random phase so multiple burning/frozen units on
-   *  screen at once don't flicker in perfect unison -- cached directly on
-   *  the unit object, same convention as this file's other render-only
-   *  per-unit fields (_lastLogicalX, etc. -- see getVisualPos above). */
-  function conditionEffectPhase(unit) {
-    if (unit._effectPhase == null) unit._effectPhase = Math.random() * Math.PI * 2;
-    return unit._effectPhase;
-  }
-
-  /** Tints whatever's already drawn within (boxX,boxY,boxSize) using
-   *  source-atop compositing directly on the MAIN canvas -- only correct
-   *  when nothing else opaque sits under that box (e.g. the AoE radius
-   *  highlight, drawn before terrain/units exist there yet this frame). For
-   *  a unit's own sprite, terrain is already opaque underneath by this
-   *  point, so this would tint the whole box, not just the character -- see
-   *  tintSprite below for that case. */
-  function tintDrawnArea(ctx, boxX, boxY, boxSize, color, alpha) {
-    if (alpha <= 0) return;
-    ctx.save();
-    ctx.globalCompositeOperation = "source-atop";
-    ctx.globalAlpha = alpha;
-    ctx.fillStyle = `rgb(${color})`;
-    ctx.fillRect(boxX, boxY, boxSize, boxSize);
-    ctx.restore();
-  }
-
-  // Reusable offscreen buffer for tintSprite below -- resized on demand
-  // rather than allocated fresh per call/per unit/per frame.
-  let effectMaskCanvas = null, effectMaskCtx = null;
-  function getEffectMaskCtx(size) {
-    if (!effectMaskCanvas) {
-      effectMaskCanvas = document.createElement("canvas");
-      effectMaskCtx = effectMaskCanvas.getContext("2d");
-    }
-    if (effectMaskCanvas.width !== size || effectMaskCanvas.height !== size) {
-      effectMaskCanvas.width = size;
-      effectMaskCanvas.height = size;
-    } else {
-      effectMaskCtx.clearRect(0, 0, size, size);
-    }
-    return effectMaskCtx;
-  }
-
-  /** Tints just the SPRITE's own opaque pixels (2026-07-22, user-directed
-   *  fix: tintDrawnArea's plain source-atop fill, applied directly on the
-   *  main canvas, also catches the opaque TERRAIN already drawn underneath
-   *  -- the tint showed as a solid block covering the whole tile instead of
-   *  following the character's actual silhouette). Redraws the same sprite
-   *  frame onto a small offscreen canvas (where nothing else has been
-   *  drawn), masks a solid fill to exactly that alpha shape via
-   *  source-atop THERE, then composites the masked result onto the main
-   *  canvas at the given alpha. `frame` is the {sx,sy,sw,sh} source rect
-   *  from sprites.currentFrame, or null to fall back to a plain box tint
-   *  (the no-shipped-art fallback icon case -- rare, and not worth a mask
-   *  for a single letter glyph). */
-  function tintSprite(ctx, image, frame, boxX, boxY, boxSize, color, alpha) {
-    if (alpha <= 0) return;
-    if (!image || !frame) { tintDrawnArea(ctx, boxX, boxY, boxSize, color, alpha); return; }
-    const size = Math.max(1, Math.round(boxSize));
-    const maskCtx = getEffectMaskCtx(size);
-    maskCtx.globalCompositeOperation = "source-over";
-    maskCtx.drawImage(image, frame.sx, frame.sy, frame.sw, frame.sh, 0, 0, size, size);
-    maskCtx.globalCompositeOperation = "source-atop";
-    maskCtx.fillStyle = `rgb(${color})`;
-    maskCtx.fillRect(0, 0, size, size);
-    ctx.save();
-    ctx.globalAlpha = alpha;
-    ctx.drawImage(effectMaskCanvas, boxX, boxY, boxSize, boxSize);
-    ctx.restore();
-  }
-
-  function drawConditionVisualEffects(ctx, unit, unitSprite, boxX, boxY, boxSize, now) {
-    if (!unit.conditions) return;
-    const hasEffect = unit.conditions.zombie || unit.conditions.burning || unit.conditions.frozen;
-    if (!hasEffect) return;
-    const phase = conditionEffectPhase(unit);
-    const frame = unitSprite ? window.UI.sprites.currentFrame(unitSprite.manifest, "idle", unit) : null;
-    const image = unitSprite ? unitSprite.image : null;
-    if (unit.conditions.zombie) {
-      tintSprite(ctx, image, frame, boxX, boxY, boxSize, ZOMBIE_TINT_COLOR, 0.45);
-    }
-    if (unit.conditions.burning) {
-      const flicker = 0.35 + 0.25 * Math.sin(now / 90 + phase) + 0.15 * Math.sin(now / 37 + phase * 1.7);
-      tintSprite(ctx, image, frame, boxX, boxY, boxSize, BURNING_TINT_COLOR, Math.max(0.15, Math.min(0.7, flicker)));
-    }
-    if (unit.conditions.frozen) {
-      const flicker = 0.30 + 0.20 * Math.sin(now / 140 + phase * 1.3);
-      tintSprite(ctx, image, frame, boxX, boxY, boxSize, FROZEN_TINT_COLOR, Math.max(0.15, Math.min(0.55, flicker)));
-    }
-  }
-
-  /**
-   * Small status badges (2026-07-22, user-directed) -- one per active
-   * unit.conditions entry with a mapped icon (see CONDITION_ICONS), plus a
-   * "carrying a passenger" badge (see CARRYING_ICON) when unit.carries is
-   * set, stacked leftward from the tile's upper-right corner, sitting just
-   * above the unit's own sprite box. A dark translucent disc behind each
-   * glyph keeps it legible over any terrain/sprite color. Purely a
-   * rendering concern -- reads unit.conditions/unit.carries but never
-   * mutates them (see combat.js's setCondition/tickConditions for how
-   * conditions appear and expire).
-   */
-  function drawConditionBadges(ctx, unit, boxX, boxY, boxSize, ts) {
-    const icons = [];
-    if (unit.carries) icons.push(CARRYING_ICON);
-    // Not a unit.conditions entry either (2026-07-22, user-directed) --
-    // unit.resting is a plain top-level field, reset to false for every
-    // unit at the start of each civ-turn and set true whenever that turn's
-    // action was actually resting (see turns.js's per-civ-turn reset).
-    if (unit.resting) icons.push(CONDITION_ICONS.resting);
-    if (unit.conditions) {
-      for (const key of Object.keys(unit.conditions)) {
-        if (CONDITION_ICONS[key]) icons.push(CONDITION_ICONS[key]);
-      }
-    }
-    if (icons.length === 0) return;
-    const iconSize = Math.max(9, ts * 0.30);
-    const cy = boxY - iconSize * 0.15;
-    let cx = boxX + boxSize - iconSize * 0.5;
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
-    ctx.font = `${iconSize}px sans-serif`;
-    for (const icon of icons) {
-      ctx.beginPath();
-      ctx.arc(cx, cy, iconSize * 0.58, 0, Math.PI * 2);
-      ctx.fillStyle = "rgba(0,0,0,0.4)";
-      ctx.fill();
-      ctx.fillText(icon, cx, cy);
-      cx -= iconSize * 0.95;
-    }
-  }
-
-  /**
-   * Persistent (non-fading) label showing a channeling unit's currently
-   * accumulated prospecting/delving/fishing stash (2026-07-24, user-
-   * directed -- see turns.js's accumulateChannelStash/bankChannelStash).
-   * Unlike drawFloatingTexts above, this reads LIVE state directly off the
-   * unit every frame rather than draining a one-shot animated event queue
-   * -- same "persistent per-unit UI driven by live state" shape as
-   * drawConditionBadges just above, since the value needs to visibly climb
-   * turn over turn while the channel stays active, and disappear the
-   * instant it doesn't (channel stopped, stolen, or the unit moved/died).
-   * No-op if there's nothing accumulated yet (channel just started, still
-   * under the 2-turn payout threshold).
-   */
-  function drawChannelStashLabel(ctx, unit, screenX, screenY, ts) {
-    if (!unit.channeling) return;
-    const stash = unit._channelStash;
-    if (!stash) return;
-    const parts = [];
-    if (stash.harvest) parts.push(`+${Math.round(stash.harvest)} Harvest`);
-    if (stash.coin) parts.push(`+${Math.round(stash.coin)} Coin`);
-    if (stash.lore) parts.push(`+${Math.round(stash.lore)} Lore`);
-    if (!parts.length) return;
-    const text = parts.join("  ");
-    const px = screenX + ts / 2;
-    const py = screenY - ts * 0.42;
-    ctx.save();
-    ctx.font = `${Math.max(9, ts * 0.19)}px sans-serif`;
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
-    const padX = ts * 0.08, padY = ts * 0.05;
-    const w = ctx.measureText(text).width;
-    ctx.fillStyle = "rgba(0,0,0,0.55)";
-    ctx.fillRect(px - w / 2 - padX, py - ts * 0.11 - padY, w + padX * 2, ts * 0.22 + padY * 2);
-    ctx.fillStyle = "#ffd54f";
-    ctx.fillText(text, px, py);
-    ctx.restore();
   }
 
   // --- Road overlay: draw-time compositing of rotatable stubs -------------
@@ -1361,57 +895,6 @@ window.UI = window.UI || {};
     drawOverlayStub(ctx, hub.image, screenX, screenY, ts, 0);
     for (const d of ["e", "s", "w", "n"])
       if (hasRiver[d]) drawOverlayStub(ctx, cardinal.image, screenX, screenY, ts, ROAD_CARDINAL_ANGLE[d]);
-  }
-
-  function drawHatch(ctx, x, y, size, color) {
-    ctx.save();
-    ctx.beginPath();
-    ctx.rect(x, y, size, size);
-    ctx.clip();
-    ctx.strokeStyle = hexToRgba(color, 0.6);
-    ctx.lineWidth = 1.5;
-    const spacing = Math.max(4, size * 0.18);
-    for (let i = -size; i < size * 2; i += spacing) {
-      ctx.beginPath();
-      ctx.moveTo(x + i, y);
-      ctx.lineTo(x + i + size, y + size);
-      ctx.stroke();
-    }
-    ctx.restore();
-  }
-
-  function hexToRgba(hex, alpha) {
-    const r = parseInt(hex.slice(1, 3), 16);
-    const g = parseInt(hex.slice(3, 5), 16);
-    const b = parseInt(hex.slice(5, 7), 16);
-    return `rgba(${r},${g},${b},${alpha})`;
-  }
-
-  /**
-   * Aura-radius overlay info for `unit`, or null if it doesn't currently
-   * have an active ally-buff aura -- see turns.js's per-turn Crusade/Heavy
-   * Metal/Power Metal application, which this mirrors exactly for radius
-   * and active-aura selection (Troubadour's own `activeAura` field, Epic
-   * Metal's +1 radius). Purely cosmetic; never touches game state.
-   */
-  function auraInfoForUnit(unit, civ) {
-    if (!civ.unlockedMechanics) return null;
-    if (unit.typeId === "paladin" && civ.unlockedMechanics.has("crusade")) {
-      return { radius: 1, color: "#ffd54f", label: "Crusade" }; // holy gold
-    }
-    if (unit.typeId === "troubadour"
-        && (civ.unlockedMechanics.has("heavy_metal") || civ.unlockedMechanics.has("power_metal"))) {
-      const hasHeavyMetal = civ.unlockedMechanics.has("heavy_metal");
-      const hasPowerMetal = civ.unlockedMechanics.has("power_metal");
-      const epicMetal = civ.unlockedMechanics.has("epic_metal");
-      const aura = (hasHeavyMetal && hasPowerMetal)
-        ? (unit.activeAura || "heavy_metal")
-        : (hasPowerMetal ? "power_metal" : "heavy_metal");
-      return aura === "heavy_metal"
-        ? { radius: epicMetal ? 2 : 1, color: "#ff8a65", label: "Heavy Metal" } // heal/defense -- warm ember
-        : { radius: epicMetal ? 2 : 1, color: "#7c4dff", label: "Power Metal" }; // attack/first strike -- electric violet
-    }
-    return null;
   }
 
   function fullVisibilitySet(map) {
@@ -1579,7 +1062,7 @@ window.UI = window.UI || {};
     if (snapshot.city) {
       const race = window.GameData.getRace(snapshot.city.raceId);
       const cx = screenX + ts / 2, cy = screenY + ts / 2;
-      ctx.fillStyle = hexToRgba(race.color, 0.4);
+      ctx.fillStyle = overlays.hexToRgba(race.color, 0.4);
       ctx.beginPath();
       ctx.arc(cx, cy, ts * 0.32, 0, Math.PI * 2);
       ctx.fill();
@@ -1591,7 +1074,7 @@ window.UI = window.UI || {};
     } else if (snapshot.structure) {
       const race = window.GameData.getRace(snapshot.structure.raceId);
       const pad = ts * 0.22;
-      ctx.fillStyle = hexToRgba(race.color, 0.35);
+      ctx.fillStyle = overlays.hexToRgba(race.color, 0.35);
       ctx.fillRect(screenX + pad, screenY + pad, ts - pad * 2, ts - pad * 2);
     }
 
@@ -1606,28 +1089,6 @@ window.UI = window.UI || {};
       ctx.lineWidth = 1;
       ctx.strokeRect(screenX, screenY, ts, ts);
     }
-  }
-
-  /**
-   * Tile City Score overlay (Interface menu): draws the selected race's
-   * remembered score for this tile as a centered number with a small
-   * translucent backing, on top of whatever else was already drawn.
-   * `score` is undefined/null for a tile the selected race hasn't explored
-   * (or that's water) -- silently skipped, no number shown.
-   */
-  function drawTileScoreOverlay(ctx, screenX, screenY, ts, score) {
-    if (score == null) return;
-    const cx = screenX + ts / 2, cy = screenY + ts / 2;
-    const r = Math.max(8, ts * 0.28);
-    ctx.fillStyle = "rgba(0,0,0,0.55)";
-    ctx.beginPath();
-    ctx.arc(cx, cy, r, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.fillStyle = "#ffe066";
-    ctx.font = `bold ${Math.max(7, ts * 0.26)}px monospace`;
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
-    ctx.fillText(String(Math.round(score)), cx, cy);
   }
 
   /** Converts a screen pixel coordinate to tile (x,y), or null if out of bounds */
