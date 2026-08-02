@@ -1,25 +1,10 @@
-# Arcane Empires -- Prototype
+# Kingdom Marches -- Prototype
 
 A working, playable prototype of the territory-control strategy game
 designed across the `realms_of_influence_*.md` design docs. This is a
 **real implementation of the core mechanics**, not a mockup -- world
 generation, the influence/territory system, dice+HP combat, city
 growth/founding, tech research, and a utility-scoring AI all actually run.
-
-## How to run it
-
-No build step. Just serve the folder and open `index.html`:
-
-```
-cd realms-of-influence
-python3 -m http.server 8000
-# then open http://localhost:8000 in a browser
-```
-
-(Opening `index.html` directly via `file://` may also work depending on
-your browser's settings, but a local server is the safer bet -- some
-browsers restrict certain APIs, like audio file probing, for `file://`
-pages.)
 
 ## Project structure
 
