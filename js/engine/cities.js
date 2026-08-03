@@ -768,8 +768,12 @@ window.GameEngine = window.GameEngine || {};
           const riverBonus = window.GameData.RIVER_YIELD_BONUS;
           for (const [k, v] of Object.entries(riverBonus)) totals[k] += v * (k === "lore" ? tileYieldMult : baseMult);
         }
-        // Ruins: +2 lore base -- a special-tile bonus, exempt from the falloff.
-        if (tile.isRuin) totals.lore += 2 * tileYieldMult;
+        // Ruins: a special-tile bonus, exempt from the falloff. Amount lives
+        // in terrain.js's RUIN_YIELD_BONUS alongside RIVER_YIELD_BONUS so the
+        // sidebar can display the same number this pays out.
+        if (tile.isRuin) {
+          for (const [k, v] of Object.entries(window.GameData.RUIN_YIELD_BONUS)) totals[k] += v * tileYieldMult;
+        }
         // Race terrain tile bonuses (e.g. dwarf +1 coin from hills) -- still a free
         // race default for races that haven't had their bonuses moved to tech yet.
         const tb = race.tileBonuses || {};

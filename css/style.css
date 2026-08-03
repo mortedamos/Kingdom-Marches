@@ -505,6 +505,25 @@ html, body {
 /* Shortcut rows that jump to another tab (city panel's garrison list,
    terrain panel's contents list). Deliberately shaped like a .stat-row so
    the panels stay visually uniform -- it just happens to be clickable. */
+/* Inline jump-to-tile link (see sidebar.js's tileLink/linkifyCoords). Sits
+   INSIDE a line of text, unlike .tile-tab-link below, which is a full-width
+   row -- so it's styled as a link rather than as a button. */
+.tile-link {
+  display: inline;
+  padding: 0;
+  background: none;
+  border: none;
+  color: var(--accent);
+  font-family: inherit;
+  font-size: inherit;
+  text-align: left;
+  text-decoration: underline;
+  text-decoration-style: dotted;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+.tile-link:hover { color: var(--accent-hover); text-decoration-style: solid; }
+
 .tile-tab-link {
   display: flex;
   justify-content: space-between;
@@ -603,6 +622,36 @@ html, body {
   font-style: italic;
   margin-bottom: 8px;
 }
+
+/* --- Unit/city panel action buttons ---
+   Rest, Defend, Disband, Build Road, Found City, Cancel Build, the channel
+   start/cancel pair, and the production picker's open/close. These were
+   unstyled browser default buttons until 2026-08-03. */
+.action-btn {
+  display: block;
+  width: 100%;
+  margin-top: 6px;
+  padding: 7px 8px;
+  background: var(--bg-panel-raised);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text-main);
+  font-family: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.action-btn:hover { border-color: var(--accent); color: var(--accent); }
+/* The one action the panel is actively recommending -- currently only
+   Found City, which is the whole reason a settler exists. */
+.action-btn-primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #1a1a1a;
+  font-weight: bold;
+}
+.action-btn-primary:hover { background: var(--accent-hover); border-color: var(--accent-hover); color: #1a1a1a; }
+.action-btn-danger { color: #d98a8a; }
+.action-btn-danger:hover { border-color: #d98a8a; color: #d98a8a; }
 
 /* --- AI action log --- */
 .ai-log-line {

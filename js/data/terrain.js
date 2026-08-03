@@ -101,3 +101,13 @@ window.GameData.RESOURCE_LIST = Object.keys(window.GameData.RESOURCES);
 
 // River adjacency: +1 harvest AND +1 coin on any tile with a river edge
 window.GameData.RIVER_YIELD_BONUS = { harvest: 1, coin: 1 };
+
+// Ruins are a tile FEATURE (tile.isRuin), not a RESOURCES entry -- they're
+// placed by worldgen independently of the resource layer, can coexist with a
+// resource, and are consumed by Dungeon Delve rather than by resource
+// exhaustion. Their yield bonus lives here anyway, in the same shape as the
+// entries above, so cities.js's computeWorkedTileYield and sidebar.js's tile
+// panel read one number instead of each hardcoding their own copy of "+2
+// lore" (they had drifted apart in presentation -- see sidebar.js).
+window.GameData.RUIN_YIELD_BONUS = { lore: 2 };
+window.GameData.RUIN_LABEL = "Ancient Ruin";

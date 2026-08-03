@@ -23,6 +23,11 @@
  * activeRef are what actually persist across those rebuilds -- activeTab is
  * a derived index, only meaningful until the next rebuild.
  *
+ * Which tab starts active on a fresh click: a unit on the tile always wins
+ * (2026-08-03, user-directed -- see handleTileClick); otherwise the kind you
+ * were already reading carries over, so panning across terrain keeps showing
+ * terrain.
+ *
  * The four legacy viewState.selected* fields are still maintained, derived
  * from whichever tab is active (see syncLegacySelection). That keeps
  * render.js's highlighting, render3d.js, and main.js's action handlers
@@ -167,14 +172,28 @@ window.UI = window.UI || {};
     // that particular comparison never breaks. activeRef is deliberately
     // dropped -- it belonged to the old tile.
     const prev = viewState.selection;
-    viewState.selection = {
+    const sel = {
       x, y,
       tabs: [],
       activeTab: 0,
       activeKind: prev ? prev.activeKind : null,
       activeRef: null,
     };
+    viewState.selection = sel;
     resolveSelection(gameState, viewState);
+
+    // ...EXCEPT when there's a unit standing here (2026-08-03, user-directed):
+    // a unit always wins the tab. Carrying the previous kind forward is right
+    // for reading terrain across an empty stretch of map, but when you click
+    // a tile precisely because something is standing on it, landing on the
+    // Terrain tab and having to click again is just wrong. Falls back to the
+    // carried-over kind (and then tab 0) on a tile with no unit, so the
+    // read-terrain-tile-to-tile behavior above is otherwise untouched.
+    if (sel.activeKind !== "unit" && sel.tabs.some((t) => t.kind === "unit")) {
+      sel.activeKind = "unit";
+      sel.activeRef = null;
+      resolveSelection(gameState, viewState);
+    }
 
     // "move" sfx plays on selection (clicking the unit), not on actual
     // movement (2026-07-24, user-directed) -- it's a "here I am, ready"

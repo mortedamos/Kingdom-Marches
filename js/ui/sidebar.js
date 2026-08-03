@@ -151,12 +151,15 @@ window.UI = window.UI || {};
       const label = item.kind === "building"
         ? window.GameData.getBuilding(item.id).label
         : (window.GameData.getUnit(item.id)?.label || item.id);
-      const placeTag = item.placeAt ? ` → (${item.placeAt.x}, ${item.placeAt.y})` : "";
+      // The chosen build site is a real tile -- make it a jump link too.
+      const placeTag = item.placeAt
+        ? ` → ${tileLink(item.placeAt.x, item.placeAt.y, `(${item.placeAt.x}, ${item.placeAt.y})`, "terrain")}`
+        : "";
       const turnsTag = item.turnsRemaining !== undefined
         ? `${item.turnsRemaining} turn${item.turnsRemaining === 1 ? "" : "s"} left`
         : `${buildQueuePct(item)}%`;
       return `<h3>Building</h3>
-        <div class="stat-row"><span>${escapeHtml(label + placeTag)}</span><span>${escapeHtml(turnsTag)}</span></div>
+        <div class="stat-row"><span>${escapeHtml(label)}${placeTag}</span><span>${escapeHtml(turnsTag)}</span></div>
         <div class="build-progress"><div class="build-progress-fill" style="width:${buildQueuePct(item)}%"></div></div>
         ${isOwnCity ? `<button id="cancel-build-btn" class="action-btn action-btn-danger">Cancel Build</button>` : ""}`;
     }
@@ -226,6 +229,24 @@ window.UI = window.UI || {};
     const moveCostLabel = terrain.isWater ? "Movement Cost (Naval)" : "Movement Cost";
     const moveCostDisplay = moveCost === window.GameData.IMPASSABLE ? "Impassable" : moveCost;
 
+    // Everything sitting on top of the base terrain, in one list under one
+    // heading (2026-08-03, user-reported): a Ruin used to be a bare stat-row
+    // with a hand-written "+2 Lore" while a Resource got its own "Resource"
+    // heading and a bonus string derived from the data -- two presentations
+    // for the same kind of thing. All four now share the label/bonus shape,
+    // and every bonus string is derived (see terrain.js's RESOURCES,
+    // RIVER_YIELD_BONUS and RUIN_YIELD_BONUS) so the panel can't claim a
+    // number the yield code doesn't actually pay.
+    const featureRows = [];
+    if (resource) featureRows.push([resource.label, formatBonus(resource.bonus)]);
+    if (tile.isRuin) featureRows.push([window.GameData.RUIN_LABEL, formatBonus(window.GameData.RUIN_YIELD_BONUS)]);
+    if (hasRiver) featureRows.push(["River", formatBonus(window.GameData.RIVER_YIELD_BONUS)]);
+    if (tile.hasRoad) featureRows.push(["Road", "Connected"]);
+    const featuresHtml = featureRows.length
+      ? `<h3>Features</h3>` + featureRows.map(([label, value]) =>
+          `<div class="stat-row"><span>${escapeHtml(label)}</span><span>${escapeHtml(value)}</span></div>`).join("")
+      : "";
+
     // "Contents" doubles the Terrain tab as the tile's index -- one clickable
     // row per other tab, so you can see at a glance everything sharing this
     // tile even while reading the terrain itself. Skips the Kingdom tabs
@@ -254,10 +275,7 @@ window.UI = window.UI || {};
         <div class="stat-row"><span>Harvest</span><span>${y.harvest}</span></div>
         <div class="stat-row"><span>Coin</span><span>${y.coin}</span></div>
         <div class="stat-row"><span>Lore</span><span>${y.lore}</span></div>
-        ${resource ? `<h3>Resource</h3><div class="stat-row"><span>${escapeHtml(resource.label)}</span><span>+${Object.entries(resource.bonus).map(([k,v]) => `${v} ${k}`).join(', ')}</span></div>` : ''}
-        ${hasRiver ? `<div class="stat-row"><span>River</span><span>+1 Harvest, +1 Coin</span></div>` : ''}
-        ${tile.hasRoad ? `<div class="stat-row"><span>Road</span><span>Connected</span></div>` : ''}
-        ${tile.isRuin ? `<div class="stat-row"><span>Ruin</span><span>+2 Lore</span></div>` : ''}
+        ${featuresHtml}
         <div class="stat-row"><span>Position</span><span>(${tile.x}, ${tile.y})</span></div>
         ${contentsHtml}
       </div>`;
@@ -301,23 +319,33 @@ window.UI = window.UI || {};
     const baseUnit = window.GameData.getUnit(unit.typeId);
     const isHumanUnit = viewState && unit.civId === viewState.humanCivId;
 
+    // Settler actions: found a city, build a road. Gated on the unit-data
+    // flags (canFoundCity/canBuildRoad) rather than typeId === "pioneer", so
+    // the other settler-capable units (Elf Druid, Undead Wanderer) get the
+    // same controls the AI already gives itself for them (see ai.js's
+    // maybeFoundCity, which is likewise flag-driven).
     let pioneerActions = "";
-    if (unit.typeId === "pioneer" && isHumanUnit && gameState) {
+    if ((baseUnit.canFoundCity || baseUnit.canBuildRoad) && isHumanUnit && gameState) {
       const tile = gameState.map.tiles[unit.y * gameState.map.width + unit.x];
-      const canFoundCheck = window.GameEngine.cities.canFoundCityAt(
-        gameState.map, gameState.civs, unit.x, unit.y, civ.raceId);
-      const canBuildRoad = !tile.hasRoad && !unit.usedThisTurn;
+      const canFoundCheck = baseUnit.canFoundCity
+        ? window.GameEngine.cities.canFoundCityAt(gameState.map, gameState.civs, unit.x, unit.y, civ.raceId)
+        : { ok: false, reason: null };
+      const canBuildRoad = baseUnit.canBuildRoad && !tile.hasRoad && !unit.usedThisTurn;
 
       pioneerActions = `<h3>Actions</h3>`;
       if (!unit.usedThisTurn) {
+        // A real button, not a "use End Turn to confirm" note (2026-08-03,
+        // user-reported): founding was previously only reachable from the
+        // end-turn settler sweep, so there was no way to ask for a city the
+        // moment the pioneer arrived. See main.js's handleFoundCity.
         if (canFoundCheck.ok) {
-          pioneerActions += `<div class="stat-row"><em>Can found city here — use End Turn to confirm</em></div>`;
-        } else if (canFoundCheck.reason && canFoundCheck.reason.includes("road")) {
-          pioneerActions += `<div class="stat-row"><em style="color:#f0a830">${escapeHtml(canFoundCheck.reason)}</em></div>`;
+          pioneerActions += `<button id="found-city-btn" class="action-btn action-btn-primary">Found City</button>`;
+        } else if (baseUnit.canFoundCity && canFoundCheck.reason) {
+          pioneerActions += `<div class="stat-row"><em style="color:#f0a830">Cannot found here: ${escapeHtml(canFoundCheck.reason)}</em></div>`;
         }
         if (canBuildRoad) {
           pioneerActions += `<button id="build-road-btn" class="action-btn">Build Road</button>`;
-        } else if (tile.hasRoad) {
+        } else if (baseUnit.canBuildRoad && tile.hasRoad) {
           pioneerActions += `<div class="stat-row"><span>Road</span><span>Already built here</span></div>`;
         }
       } else {
@@ -378,6 +406,7 @@ window.UI = window.UI || {};
     const effAttack = window.GameEngine.combat.effectiveAttack(unit, civ, {});
     const effDefense = window.GameEngine.combat.effectiveDefense(unit, civ, {});
     const firstStrikePct = window.GameEngine.combat.effectiveFirstStrikePct(unit, civ);
+    const doubleStrikePct = window.GameEngine.combat.effectiveDoubleStrikePct(unit, civ);
     const siegePct = window.GameEngine.combat.effectiveSiegePct(unit, civ);
     const isFlying = window.GameEngine.combat.isFlying(unit);
     const canCarry = window.GameEngine.combat.getUnitProperty(unit, civ, "canCarryUnit", false);
@@ -385,6 +414,7 @@ window.UI = window.UI || {};
       + (unit.conditions?.flying?.visionBonus || 0);
     const properties = [];
     if (firstStrikePct > 0) properties.push(`First Strike ${Math.round(firstStrikePct * 100)}%`);
+    if (doubleStrikePct > 0) properties.push(`Double Strike ${Math.round(doubleStrikePct * 100)}%`);
     if (siegePct > 0) properties.push(`Siege ${Math.round(siegePct * 100)}%`);
     if (isFlying) properties.push('Flying');
     if (canCarry) properties.push('Can Carry');
@@ -462,8 +492,11 @@ window.UI = window.UI || {};
     // maybeMoveUnits/maybeFoundCity/operateGalley etc.) describing whatever
     // it just decided to do. Not shown in a human player's own game since
     // that civ's units are player-directed, not AI-directed.
+    // Coordinates inside the mission text become clickable jumps to that
+    // tile -- see linkifyCoords for why this is done on the rendered string
+    // rather than by restructuring ai.js's mission strings.
     const missionTag = (!viewState.humanCivId)
-      ? `<div class="stat-row"><span>Mission</span><span>${escapeHtml(unit.currentMission || 'Awaiting orders')}</span></div>`
+      ? `<div class="stat-row"><span>Mission</span><span>${linkifyCoords(unit.currentMission || 'Awaiting orders')}</span></div>`
       : '';
 
     return `
@@ -571,7 +604,7 @@ window.UI = window.UI || {};
         <h3>Research</h3>
         <div class="stat-row">${isOwn ? researchHtml : UNKNOWN}</div>
         ${isOwn ? `<h3>Cities</h3>
-        ${civ.cities.map((c) => `<div class="stat-row"><span>${escapeHtml(c.name)}</span><span>pop ${c.population.toFixed(0)}</span></div>`).join("")}
+        ${civ.cities.map((c) => `<div class="stat-row">${tileLink(c.x, c.y, c.name, "city")}<span>pop ${c.population.toFixed(0)}</span></div>`).join("")}
         <button class="action-btn view-tech-tree-btn" data-civ-id="${escapeHtml(civ.id)}">View Tech Tree</button>` : ''}
       </div>`;
   }
@@ -590,6 +623,48 @@ window.UI = window.UI || {};
       return Math.min(100, Math.floor(100 * (item.totalTurns - item.turnsRemaining) / item.totalTurns));
     }
     return Math.min(100, Math.floor(100 * item.progress / item.coinCost));
+  }
+
+  /**
+   * TILE LINKS (2026-08-03, user-directed)
+   * --------------------------------------
+   * Any place the sidebar names a specific tile can make it clickable:
+   * clicking recenters the map there, selects the tile, and (optionally)
+   * opens a particular tab of the inspector. main.js wires every .tile-link
+   * in one place from its data-* attributes -- see its redraw().
+   *
+   * `tabKind` is a selection tab kind ("city", "unit", "structure",
+   * "terrain", "kingdom") or null to leave whichever tab the normal
+   * click-selection rules pick.
+   */
+  function tileLink(x, y, label, tabKind) {
+    return `<button class="tile-link" data-tile-x="${x}" data-tile-y="${y}"` +
+      `${tabKind ? ` data-tile-tab="${escapeHtml(tabKind)}"` : ""}>${escapeHtml(label)}</button>`;
+  }
+
+  /**
+   * Turns every "(x,y)" in a plain-text string into a tile link. Used on
+   * AI mission text, which already embeds the target tile's coordinates
+   * everywhere it has one -- a Runeforged Titan marching on a city, a unit
+   * chasing another, a warband swarming toward contact (see ai.js's
+   * currentMission assignments). Linkifying the coordinates covers all of
+   * those at once, instead of restructuring every mission string into
+   * separate text-plus-target fields.
+   *
+   * Escapes first, then substitutes, so `text` is never trusted as markup
+   * and the injected buttons are the only HTML in the result.
+   */
+  function linkifyCoords(text) {
+    return escapeHtml(text).replace(/\((\d+)\s*,\s*(\d+)\)/g, (match, x, y) =>
+      `<button class="tile-link" data-tile-x="${x}" data-tile-y="${y}">${match}</button>`);
+  }
+
+  /** A {harvest, coin, lore} bonus object as "+1 Harvest, +1 Coin". Shared by
+   *  every tile-feature row so resources, ruins and rivers all read alike. */
+  function formatBonus(bonus) {
+    return Object.entries(bonus)
+      .map(([k, v]) => `+${v} ${k.charAt(0).toUpperCase()}${k.slice(1)}`)
+      .join(", ");
   }
 
   function escapeHtml(s) {

@@ -1273,6 +1273,15 @@
     const check = window.GameEngine.cities.canFoundCityAt(gameState.map, gameState.civs, unit.x, unit.y, civ.raceId);
     if (!check.ok) { offerNextSettler(civ, eligible, idx + 1, onDone); return; }
 
+    openFoundCityDialog(civ, unit, () => offerNextSettler(civ, eligible, idx + 1, onDone));
+  }
+
+  /** Opens the name-and-confirm dialog for `unit` founding on its own tile,
+   *  and does the founding itself if the player accepts. Shared by the
+   *  end-turn settler sweep (offerNextSettler) and the unit panel's own
+   *  "Found City" button (handleFoundCity) so the two can't diverge.
+   *  `onDone` runs once the dialog is answered either way. */
+  function openFoundCityDialog(civ, unit, onDone) {
     const suggested = window.GameData.getNextCityName(civ.raceId, civ.usedCityNames || []);
     viewState.dialog = {
       kind: "foundCity", x: unit.x, y: unit.y, suggested,
@@ -1290,11 +1299,28 @@
           civ.cityEvents = civ.cityEvents || [];
           civ.cityEvents.push({ turn: gameState.turnNumber || 0, type: "founded" });
           civ.units = civ.units.filter((u) => u !== unit);
+          window.GameEngine.orders.invalidateReachCache();
+          window.GameEngine.turns.refreshVisibility(gameState);
+          window.SfxSystem.playAction(civ.raceId, unit.typeId, "found", unit.x, unit.y);
         }
-        offerNextSettler(civ, eligible, idx + 1, onDone);
+        if (onDone) onDone();
       },
     };
     redraw();
+  }
+
+  /** Unit panel's "Found City" button (see sidebar.js's pioneerActions).
+   *  Founding used to be reachable ONLY through the end-turn settler sweep,
+   *  which meant a player who wanted a city right now had no way to ask for
+   *  one -- the panel just told them to end their turn. */
+  function handleFoundCity() {
+    if (!humanCivId || !viewState.selectedUnit) return;
+    const unit = viewState.selectedUnit;
+    const civ = gameState.civs[humanCivId];
+    if (!civ || unit.civId !== humanCivId) return;
+    if (!window.GameData.getUnit(unit.typeId).canFoundCity) return;
+    if (!window.GameEngine.cities.canFoundCityAt(gameState.map, gameState.civs, unit.x, unit.y, civ.raceId).ok) return;
+    openFoundCityDialog(civ, unit, () => redraw());
   }
 
   // Captured once at the start of each round (when turnStepIndex is 0) so the
@@ -1413,6 +1439,8 @@
     if (endTurnBtn) endTurnBtn.onclick = handleEndTurnClick;
     const roadBtn = $("build-road-btn");
     if (roadBtn) roadBtn.onclick = handleBuildRoad;
+    const foundCityBtn = $("found-city-btn");
+    if (foundCityBtn) foundCityBtn.onclick = handleFoundCity;
     const disbandBtn = $("disband-unit-btn");
     if (disbandBtn) disbandBtn.onclick = handleDisbandUnit;
     const restBtn = $("rest-unit-btn");
@@ -1459,6 +1487,16 @@
         window.UI.input.setActiveTab(gameState, viewState, Number(btn.dataset.tabIndex));
         redraw();
       };
+    }
+
+    // Tile links (2026-08-03, user-directed): anything in the sidebar that
+    // names a specific tile -- a city in the Kingdom tab, the coordinates
+    // inside an AI unit's mission text, a queued building's chosen site --
+    // jumps the map there. See sidebar.js's tileLink/linkifyCoords for the
+    // markup and goToTile below for what "jump" means.
+    for (const btn of document.querySelectorAll(".tile-link")) {
+      btn.onclick = () => goToTile(
+        Number(btn.dataset.tileX), Number(btn.dataset.tileY), btn.dataset.tileTab || null);
     }
 
     for (const btn of document.querySelectorAll(".view-tech-tree-btn")) {
@@ -1570,6 +1608,19 @@
         input.select();
         input.onkeydown = (e) => { if (e.key === "Enter") confirmBtn.click(); };
       }
+    } else if (dialog.kind === "confirmEndTurn") {
+      const confirmBtn = $("game-dialog-confirm-btn");
+      const cancelBtn = $("game-dialog-cancel-btn");
+      // onAnswer clears viewState.dialog itself (see handleEndTurnClick), but
+      // lastRenderedDialog has to be dropped here too or the next dialog the
+      // callback opens would be considered "already rendered" and never drawn.
+      const finish = (ok) => {
+        lastRenderedDialog = null;
+        dialog.onAnswer(ok);
+        redraw();
+      };
+      if (confirmBtn) confirmBtn.onclick = () => finish(true);
+      if (cancelBtn) cancelBtn.onclick = () => finish(false);
     } else if (dialog.kind === "message") {
       const okBtn = $("game-dialog-ok-btn");
       if (okBtn) okBtn.onclick = () => {
@@ -1686,6 +1737,31 @@
       if (idx >= 0) window.UI.input.setActiveTab(gameState, viewState, idx);
     }
     centerViewOn(next.x, next.y);
+    redraw();
+  }
+
+  /**
+   * Recenters the map on tile (x,y) and selects it, optionally forcing a
+   * particular inspector tab open -- e.g. a city name in the Kingdom tab
+   * jumps to the city AND opens its City tab, rather than landing on
+   * whichever tab the normal click rules would have picked.
+   *
+   * Silently ignores an out-of-bounds tile: link coordinates come from live
+   * game state, but a save loaded onto a smaller map (or a stale sidebar
+   * still on screen) shouldn't throw.
+   */
+  function goToTile(x, y, tabKind) {
+    if (!gameState || !Number.isFinite(x) || !Number.isFinite(y)) return;
+    const { map } = gameState;
+    if (x < 0 || y < 0 || x >= map.width || y >= map.height) return;
+
+    window.UI.input.handleTileClick({ x, y }, gameState, viewState);
+    if (tabKind) {
+      const sel = viewState.selection;
+      const idx = sel ? sel.tabs.findIndex((t) => t.kind === tabKind) : -1;
+      if (idx >= 0) window.UI.input.setActiveTab(gameState, viewState, idx);
+    }
+    centerViewOn(x, y);
     redraw();
   }
 
