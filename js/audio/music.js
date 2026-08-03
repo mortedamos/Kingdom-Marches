@@ -211,17 +211,10 @@ window.MusicSystem = (function () {
    *  otherwise keep reporting it missing on a normal reload until a hard
    *  refresh -- this makes every scan a true, current disk check.
    *
-   *  BUT (2026-07-22, second fix, same day): fetch() to a file:// URL is
-   *  blocked outright by the browser's Same Origin Policy ("Cross-Origin
-   *  Request Blocked" in the console) when the game is opened directly as a
-   *  local file rather than served over http(s) -- unlike an <audio> tag's
-   *  src, which browsers DO allow to load local sibling files (that's the
-   *  whole reason the original implementation used one). A thrown fetch()
-   *  is ambiguous between "genuinely can't reach this" and "blocked before
-   *  it even tried" -- rather than assume the file is missing either way,
-   *  fall back to the old Audio-element probe, which works fine under
-   *  file://. Every environment gets a probe method that actually works in
-   *  it, instead of picking one at the cost of the other. */
+   *  The game is served over HTTP (2026-08-03, user-directed), so fetch()
+   *  always works here; the old Audio-element fallback that existed purely
+   *  for a file:// origin was removed. A thrown fetch() now means a genuine
+   *  network failure, which reads the same as "not available". */
   async function probeFile(path) {
     try {
       const res = await fetch(path, { method: "GET", cache: "no-store" });
@@ -230,30 +223,8 @@ window.MusicSystem = (function () {
       }
       return res.ok;
     } catch (e) {
-      return probeFileViaAudio(path);
+      return false;
     }
-  }
-
-  /** Fallback existence probe for contexts fetch() can't reach (see
-   *  probeFile above) -- an Audio element's own load pipeline, which
-   *  browsers permit against local file:// resources. Kept as a fallback
-   *  rather than the default because it's the slower, less reliable path
-   *  (loadedmetadata's timing depends on codec/media-pipeline quirks, and
-   *  needs a safety timeout in case neither event ever fires). */
-  function probeFileViaAudio(path) {
-    return new Promise((resolve) => {
-      const audio = new Audio();
-      const onError = () => { cleanup(); resolve(false); };
-      const onCanPlay = () => { cleanup(); resolve(true); };
-      function cleanup() {
-        audio.removeEventListener("error", onError);
-        audio.removeEventListener("loadedmetadata", onCanPlay);
-      }
-      audio.addEventListener("error", onError);
-      audio.addEventListener("loadedmetadata", onCanPlay);
-      audio.src = path;
-      setTimeout(() => { cleanup(); resolve(false); }, 3000);
-    });
   }
 
   function availableVariants(race, situation) {
@@ -477,11 +448,18 @@ window.MusicSystem = (function () {
   }
 
   /** Public: mute/unmute without touching the underlying volume levels --
-   *  un-muting restores exactly whatever the sliders were left at. */
-  function setMuted(v) {
+   *  un-muting restores exactly whatever the sliders were left at.
+   *
+   *  `persist` defaults to true (a user ticking the Audio menu's Mute box
+   *  expects it to stick across reloads). Pass false for a mute the player
+   *  didn't ask for and shouldn't inherit later -- specifically main.js's
+   *  ?mute test switch, which would otherwise write muted:true into
+   *  localStorage and leave every subsequent NORMAL session silent with no
+   *  visible cause. */
+  function setMuted(v, { persist = true } = {}) {
     muted = !!v;
     if (currentAudio) currentAudio.volume = effectiveVolume();
-    persistVolumes();
+    if (persist) persistVolumes();
   }
   function isMuted() { return muted; }
 

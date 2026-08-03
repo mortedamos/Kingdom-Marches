@@ -891,6 +891,12 @@
       window.MusicSystem.setMusicVolume(parseInt(volumeSlider.value, 10) / 100);
     });
 
+    const sfxSlider = $("sfx-volume-slider");
+    sfxSlider.value = Math.round(window.SfxSystem.getSfxVolume() * 100);
+    sfxSlider.addEventListener("input", () => {
+      window.SfxSystem.setSfxVolume(parseInt(sfxSlider.value, 10) / 100);
+    });
+
     $("audio-track-select").addEventListener("change", (e) => {
       window.MusicSystem.setManualTrack(e.target.value || null);
     });
