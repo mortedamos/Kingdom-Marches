@@ -85,11 +85,12 @@ window.GameEngine = window.GameEngine || {};
     civ.lorePerCity = civ.lorePerCity || 0;
     civ.unlockedTileBonuses = civ.unlockedTileBonuses || {};       // { terrainId: {harvest,coin,lore} }
     civ.unlockedFeatureBonuses = civ.unlockedFeatureBonuses || {}; // { river|ruin|road: {harvest,coin,lore} }
-    civ.unitOverrides = civ.unitOverrides || {}; // { unitTypeId: {attack,defense,movement,visionRadius,firstStrikePct,siegePct,garrisonDefenseBonus} }
+    civ.unitOverrides = civ.unitOverrides || {}; // { unitTypeId: {attack,defense,movement,visionRadius,firstStrikePct,doubleStrikePct,siegePct,garrisonDefenseBonus} }
     civ.unitTerrainMoveBonus = civ.unitTerrainMoveBonus || {}; // { unitTypeId: { terrainId: extraMovement } }
     civ.deathLoreBonus = civ.deathLoreBonus || 0;
     civ.raiseDeadResistance = civ.raiseDeadResistance || 0;
     civ.siegePropertyBonus = civ.siegePropertyBonus || 0;
+    civ.doubleStrikePropertyBonus = civ.doubleStrikePropertyBonus || 0; // civ-wide +Double Strike (see combat.js effectiveDoubleStrikePct)
     civ.universalRangeGrant = civ.universalRangeGrant || 0; // floor on every unit's effective Ranged (see combat.js effectiveRange)
     civ.buildingCountBonus = civ.buildingCountBonus || {}; // { harvest|coin|lore: perBuildingValue } -- see cities.js's per-building-count yield
     civ.fillRateMult = civ.fillRateMult || 1; // multiplies advanceCityFill's per-turn progress (e.g. Halfellow Community Fellowship)
@@ -149,6 +150,9 @@ window.GameEngine = window.GameEngine || {};
         case "siege_property_bonus":
           civ.siegePropertyBonus += effect.value;
           break;
+        case "double_strike_property_bonus":
+          civ.doubleStrikePropertyBonus += effect.value;
+          break;
         case "universal_range_grant":
           // Floor, not additive -- see effectiveRange in combat.js. Max
           // (not overwrite) so a second such tech, if one's ever added,
@@ -203,7 +207,10 @@ window.GameEngine = window.GameEngine || {};
           const ov = civ.unitOverrides[effect.unit] || {};
           for (const [k, v] of Object.entries(effect.changes)) {
             // attack/defense/movement/visionRadius/range are additive deltas;
-            // firstStrikePct/siegePct are overrides (not additive)
+            // firstStrikePct/doubleStrikePct/siegePct are overrides (not
+            // additive) -- note combat.js still adds the override on top of
+            // the unit's own BASE value, so a tech setting 0.05 here means
+            // "+5 percentage points", not "5% flat".
             if (k === "attack" || k === "defense" || k === "movement" || k === "visionRadius" || k === "range") ov[k] = (ov[k] || 0) + v;
             else ov[k] = v;
           }

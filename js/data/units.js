@@ -36,6 +36,28 @@
  *                          fires on every exchange instead of only a
  *                          fight's final lethal round -- see
  *                          project_first_strike_redesign memory.
+ *   doubleStrikePct 0-1   flat chance, rolled once per exchange, that this
+ *                          unit immediately attacks a SECOND time (see
+ *                          combat.js's resolveRound). The follow-up hit:
+ *                            - provokes NO counterattack (the defender's
+ *                              counter, if any, has already resolved against
+ *                              the first hit -- the roll happens last, after
+ *                              the whole exchange, which is what makes this
+ *                              fall out rather than needing a special case)
+ *                            - works at ANY range, unlike Siege: a Ranged
+ *                              unit gets a second shot from distance exactly
+ *                              as a melee unit gets a second blow
+ *                            - only happens if BOTH sides are still standing
+ *                              after the first exchange (nothing to swing at,
+ *                              or nobody left to swing)
+ *                            - is otherwise a completely ordinary forward hit
+ *                              -- Flying evasion, Invulnerability, and the
+ *                              death-save techs all apply to it normally
+ *                          Stacks additively with a civ-wide
+ *                          double_strike_property_bonus tech effect
+ *                          (mirrors siege_property_bonus). No unit has a base
+ *                          value yet -- the mechanic is built and ready to be
+ *                          granted here or from a tech.
  *   siegePct        extra attack multiplier when attacking a structure/city
  *   flying          true  moves over all terrain, ignoring every terrain
  *                          movement penalty. Any unit can still target a

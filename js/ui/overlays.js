@@ -244,6 +244,10 @@ window.UI = window.UI || {};
     heal: { color: "#69f0ae", bold: false, sizeFrac: 0.22 },
     aura: { color: "#ce93d8", bold: true, sizeFrac: 0.26 },
     warning: { color: "#ff7043", bold: true, sizeFrac: 0.24 },
+    // A combat property firing in the attacker's favor (currently Double
+    // Strike) -- deliberately not `warning`, which reads as something bad
+    // happening to the unit the text is anchored to.
+    strike: { color: "#ffab40", bold: true, sizeFrac: 0.26 },
     default: { color: "#ffffff", bold: false, sizeFrac: 0.22 },
   };
 

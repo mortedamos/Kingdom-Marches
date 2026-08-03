@@ -212,6 +212,42 @@ window.GameEngine = window.GameEngine || {};
   }
 
   /**
+   * DOUBLE STRIKE (2026-08-03, user-directed) -- a flat per-attack chance to
+   * immediately swing a SECOND time at the same target. The follow-up hit
+   * provokes no counterattack of its own (the defender already answered the
+   * first hit, if it was going to), and unlike Siege it works at any range:
+   * a Ranged unit firing from distance can loose a second shot exactly as a
+   * melee unit can land a second blow. See resolveRound for the roll itself.
+   *
+   * Same additive-stacking shape as effectiveFirstStrikePct above, and for the
+   * same reason: a tech granting "+5% Double Strike" should stack on top of
+   * whatever base the unit already has, not replace it -- so this reads the
+   * override directly rather than going through getUnitProperty.
+   */
+  function effectiveDoubleStrikePct(unit, civ) {
+    // Elf "Shadowsteed": mounted, it fights with the higher of its own and its
+    // rider's Double Strike -- the same "keeps its own if higher" rule the
+    // tech's wording gives First Strike, since these are the same kind of
+    // reflex-driven property.
+    const mount = shadowsteedMount(unit);
+    if (mount) {
+      const ownBase = window.GameData.getUnit("shadowsteed").doubleStrikePct || 0;
+      return Math.max(ownBase, effectiveDoubleStrikePct(mount, civ));
+    }
+    const baseUnit = window.GameData.getUnit(unit.typeId);
+    const ov = getUnitOverride(civ, unit.typeId);
+    let pct = (baseUnit.doubleStrikePct || 0) + (ov.doubleStrikePct || 0);
+    // Tech: double_strike_property_bonus -- civ-wide, additive on top of
+    // whatever the unit already has (mirrors siege_property_bonus).
+    pct += civ.doubleStrikePropertyBonus || 0;
+    // A reanimated or befuddled unit can't manage a second swing, for the
+    // same reason it loses First Strike -- overrides every source above.
+    if (unit.conditions?.zombie) return 0;
+    if (unit.conditions?.befuddled) return 0;
+    return Math.max(0, Math.min(1, pct));
+  }
+
+  /**
    * LEVELING -- per-unit-instance veteran progression, earned through combat
    * XP, capped at MAX_UNIT_LEVEL. Distinct from tech-granted unitOverrides
    * (civ-wide, per unit TYPE) and from CONDITIONS below (temporary): a level
@@ -743,7 +779,7 @@ window.GameEngine = window.GameEngine || {};
   // back up; tracked on the unit itself (unit._resilientSpiritTriggers),
   // the same convention as other persistent (non-expiring) per-unit
   // counters like Dungeon Delve's unit._ritualTurns.
-  const RESILIENT_SPIRIT_DECAY_PER_TRIGGER = 0.15;
+  const RESILIENT_SPIRIT_DECAY_PER_TRIGGER = CFG.resilientSpiritDecayPerTrigger;
 
   /** Halfellow "Resilient Spirit": if `damage` would be lethal for `unit`
    *  (every Halfellow unit type, forward OR counter), a chance to negate
@@ -752,16 +788,24 @@ window.GameEngine = window.GameEngine || {};
    *  0%, see RESILIENT_SPIRIT_DECAY_PER_TRIGGER above). Triggering forces
    *  a single Rest next turn (see the "forcedRest" condition, honored once
    *  by ai.js's maybeMoveUnits) and increments the unit's own trigger
-   *  count for next time. */
-  function rollsDeathSave(unit, civ, damage) {
+   *  count for next time.
+   *
+   *  `simulated` (from context.simulated -- see ai.js's estimateWinProbability)
+   *  means this exchange is a what-if being sampled by the AI, not a real
+   *  blow: the save still rolls, so the estimate reflects the unit's true
+   *  survivability, but neither persistent effect is applied. Without this,
+   *  every attack the AI merely CONSIDERED left real units forced to rest. */
+  function rollsDeathSave(unit, civ, damage, simulated) {
     if (unit.hp - damage > 0) return false; // not lethal -- nothing to save against
     if (!civ.unlockedMechanics || !civ.unlockedMechanics.has("resilient_spirit")) return false;
     const baseChance = (civ.mechanicValues && civ.mechanicValues.resilient_spirit) || 0.5;
     const priorTriggers = unit._resilientSpiritTriggers || 0;
     const chance = Math.max(0, baseChance - RESILIENT_SPIRIT_DECAY_PER_TRIGGER * priorTriggers);
     if (Math.random() >= chance) return false;
-    unit._resilientSpiritTriggers = priorTriggers + 1;
-    setCondition(unit, "forcedRest", {});
+    if (!simulated) {
+      unit._resilientSpiritTriggers = priorTriggers + 1;
+      setCondition(unit, "forcedRest", {});
+    }
     return true;
   }
 
@@ -771,22 +815,25 @@ window.GameEngine = window.GameEngine || {};
   // rather than guaranteed every time. Tracked on its own counter
   // (unit._unyieldingTriggers) so the two mechanics never interfere with each
   // other even in the (currently impossible) case of a unit somehow having both.
-  const UNYIELDING_DECAY_PER_TRIGGER = 0.15;
+  const UNYIELDING_DECAY_PER_TRIGGER = CFG.unyieldingDecayPerTrigger;
 
   /** Dwarf "Unyielding": if `damage` would be lethal for `unit`, a chance to
    *  negate all of it instead -- starts at the tech's base value (50%),
    *  reduced 15 percentage points per PAST trigger by this same unit
    *  (floored at 0%). Triggering has only a 50% chance to also force a
-   *  single Rest next turn (unlike Resilient Spirit's guaranteed rest). */
-  function rollsUnyieldingSave(unit, civ, damage) {
+   *  single Rest next turn (unlike Resilient Spirit's guaranteed rest).
+   *  `simulated`: see rollsDeathSave's doc comment. */
+  function rollsUnyieldingSave(unit, civ, damage, simulated) {
     if (unit.hp - damage > 0) return false; // not lethal -- nothing to save against
     if (!civ.unlockedMechanics || !civ.unlockedMechanics.has("unyielding")) return false;
     const baseChance = (civ.mechanicValues && civ.mechanicValues.unyielding) || 0.5;
     const priorTriggers = unit._unyieldingTriggers || 0;
     const chance = Math.max(0, baseChance - UNYIELDING_DECAY_PER_TRIGGER * priorTriggers);
     if (Math.random() >= chance) return false;
-    unit._unyieldingTriggers = priorTriggers + 1;
-    if (Math.random() < 0.5) setCondition(unit, "forcedRest", {});
+    if (!simulated) {
+      unit._unyieldingTriggers = priorTriggers + 1;
+      if (Math.random() < CFG.unyieldingForcedRestChance) setCondition(unit, "forcedRest", {});
+    }
     return true;
   }
 
@@ -857,6 +904,15 @@ window.GameEngine = window.GameEngine || {};
    * counterNegated, counterDenied, counterMissed, forwardSkipped,
    * returnSkipped, counterOutOfRange }. forwardSkipped/returnSkipped are
    * true when a hit never happened because the other side's order-winning
+   * Double Strike property (see effectiveDoubleStrikePct): after the exchange
+   * above has fully resolved, the ATTACKER rolls its own Double Strike % for
+   * a flat chance at one extra forward hit. That follow-up never draws a
+   * counter (the counter, if any, already happened) and is range-agnostic --
+   * a Ranged attacker gets a second shot from distance. It's reported
+   * separately in `doubleStruck`/`doubleDamage`/`doubleNegated`/`doubleMissed`
+   * so a caller can narrate/animate it as its own blow rather than silently
+   * folding it into fullDamage.
+   *
    * hit already killed its target first; counterDenied is First Strike's
    * effect #2 above (independent of lethality, checked every round);
    * fullMissed/counterMissed is the Flying-evasion miss described above;
@@ -908,38 +964,50 @@ window.GameEngine = window.GameEngine || {};
     let fullDamage = 0, fullNegated = false, fullMissed = false;
     let counterDamage = 0, counterNegated = false, counterDenied = false, counterMissed = false;
     let forwardSkipped = false, returnSkipped = false, counterOutOfRange = false;
+    let doubleStruck = false, doubleDamage = 0, doubleNegated = false, doubleMissed = false;
 
-    function dealForward() {
+    /** One forward hit from attacker to defender, applied to the defender's
+     *  HP. Split out from dealForward so Double Strike's follow-up swing can
+     *  reuse the identical hit resolution (evasion, invulnerability, damage
+     *  mult, death saves) while reporting into its OWN result fields rather
+     *  than overwriting the first hit's. */
+    function performForward() {
       // Flying evasion (see doc comment above): a non-Ranged attacker has a
       // flat chance to simply miss a Flying defender outright -- checked
       // first, before anything else, since a miss never connects at all.
       if (isFlying(defenderUnit) && effectiveRange(attackerUnit, attackerCiv) < 2
           && Math.random() < FLYING_EVASION_MISS_CHANCE) {
-        fullMissed = true;
-        return;
+        return { damage: 0, negated: false, missed: true };
       }
-      fullNegated = rollsInvulnerable(defenderUnit, defenderCiv);
-      if (!fullNegated) {
-        fullDamage = mitigatedDamage(atkStat, defStat);
-        // Elf "Whirlwind Strike"/"Blade Storm" (2026-07-20, user-directed):
-        // an AoE normal action that deals a FRACTION of a normal hit's
-        // damage to every target in range -- scaled here, post-mitigation
-        // (a straightforward "% of normal damage" reading), rather than by
-        // shrinking atkStat pre-mitigation, which wouldn't scale linearly
-        // through mitigatedDamage's ratio. Defaults to 1 (a no-op) for
-        // every ordinary single-target call site. See ai.js's
-        // performBladeSweep, the sole caller that passes this.
-        if (context.attackDamageMult != null) fullDamage = Math.round(fullDamage * context.attackDamageMult);
-        // Tech: Halfellow "Resilient Spirit" -- a would-be-lethal hit has a
-        // 50% chance to be negated entirely instead (forces a Rest next turn).
-        // Dwarf "Unyielding" -- same shape, own decay rate/probabilistic rest.
-        if (rollsDeathSave(defenderUnit, defenderCiv, fullDamage) || rollsUnyieldingSave(defenderUnit, defenderCiv, fullDamage)) {
-          fullNegated = true;
-          fullDamage = 0;
-        } else {
-          defenderUnit.hp -= fullDamage;
-        }
+      if (rollsInvulnerable(defenderUnit, defenderCiv)) {
+        return { damage: 0, negated: true, missed: false };
       }
+      let damage = mitigatedDamage(atkStat, defStat);
+      // Elf "Whirlwind Strike"/"Blade Storm" (2026-07-20, user-directed):
+      // an AoE normal action that deals a FRACTION of a normal hit's
+      // damage to every target in range -- scaled here, post-mitigation
+      // (a straightforward "% of normal damage" reading), rather than by
+      // shrinking atkStat pre-mitigation, which wouldn't scale linearly
+      // through mitigatedDamage's ratio. Defaults to 1 (a no-op) for
+      // every ordinary single-target call site. See ai.js's
+      // performBladeSweep, the sole caller that passes this.
+      if (context.attackDamageMult != null) damage = Math.round(damage * context.attackDamageMult);
+      // Tech: Halfellow "Resilient Spirit" -- a would-be-lethal hit has a
+      // 50% chance to be negated entirely instead (forces a Rest next turn).
+      // Dwarf "Unyielding" -- same shape, own decay rate/probabilistic rest.
+      if (rollsDeathSave(defenderUnit, defenderCiv, damage, context.simulated)
+          || rollsUnyieldingSave(defenderUnit, defenderCiv, damage, context.simulated)) {
+        return { damage: 0, negated: true, missed: false };
+      }
+      defenderUnit.hp -= damage;
+      return { damage, negated: false, missed: false };
+    }
+
+    function dealForward() {
+      const hit = performForward();
+      fullDamage = hit.damage;
+      fullNegated = hit.negated;
+      fullMissed = hit.missed;
     }
     function dealReturn() {
       if (!isAdjacent) { counterOutOfRange = true; return; }
@@ -972,7 +1040,8 @@ window.GameEngine = window.GameEngine || {};
         // Tech: Halfellow "Resilient Spirit" -- same death-save, applied to a
         // would-be-lethal COUNTERATTACK against the original attacker.
         // Dwarf "Unyielding" -- same shape, own decay rate/probabilistic rest.
-        if (rollsDeathSave(attackerUnit, attackerCiv, counterDamage) || rollsUnyieldingSave(attackerUnit, attackerCiv, counterDamage)) {
+        if (rollsDeathSave(attackerUnit, attackerCiv, counterDamage, context.simulated)
+            || rollsUnyieldingSave(attackerUnit, attackerCiv, counterDamage, context.simulated)) {
           counterNegated = true;
           counterDamage = 0;
         } else {
@@ -994,8 +1063,29 @@ window.GameEngine = window.GameEngine || {};
       dealReturn();
     }
 
+    // Double Strike (see effectiveDoubleStrikePct): rolled once per round,
+    // AFTER the exchange has fully resolved. Resolving it last is what makes
+    // "no counterattack from the second hit" fall out for free -- dealReturn
+    // has already happened (or been denied/skipped) and is never called
+    // again. Gated on both sides still standing: an attacker cut down by the
+    // counter doesn't get a follow-up, and there is nothing to swing at if
+    // the first hit already killed the defender. Deliberately NOT gated on
+    // adjacency -- per the mechanic's design, a Ranged attacker gets its
+    // second shot at distance exactly like a melee unit gets a second blow.
+    if (attackerUnit.hp > 0 && defenderUnit.hp > 0 && !forwardSkipped) {
+      const doubleStrikePct = effectiveDoubleStrikePct(attackerUnit, attackerCiv);
+      if (doubleStrikePct > 0 && Math.random() < doubleStrikePct) {
+        doubleStruck = true;
+        const hit = performForward();
+        doubleDamage = hit.damage;
+        doubleNegated = hit.negated;
+        doubleMissed = hit.missed;
+      }
+    }
+
     return { fullDamage, fullNegated, fullMissed, counterDamage, counterNegated, counterDenied, counterMissed,
-      forwardSkipped, returnSkipped, counterOutOfRange };
+      forwardSkipped, returnSkipped, counterOutOfRange,
+      doubleStruck, doubleDamage, doubleNegated, doubleMissed };
   }
 
   /**
@@ -1426,6 +1516,7 @@ window.GameEngine = window.GameEngine || {};
     effectiveAttack,
     effectiveDefense,
     effectiveFirstStrikePct,
+    effectiveDoubleStrikePct,
     effectiveSiegePct,
     effectiveRange,
     getUnitProperty,

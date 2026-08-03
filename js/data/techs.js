@@ -34,6 +34,7 @@
  *   coin_from_harvest_pct   { value }       converts this turn's harvest into bonus coin
  *   siege_attack_bonus      { value }       +% attack when attacking a structure (civ-wide flat multiplier)
  *   siege_property_bonus    { value }       +value to every unit's effective siegePct (civ-wide, additive)
+ *   double_strike_property_bonus { value }  +value to every unit's effective doubleStrikePct (civ-wide, additive; see units.js's doubleStrikePct)
  *   raid_kill_bonus         { harvest, coin, lore }   flat stockpile bonus on kill, adds to race baseline
  *   death_lore_bonus        { value }       +lore when this civ's own unit dies in combat
  *   raise_dead_resistance   { value }       chance (0-1) this civ's defeated units resist an enemy's raise-dead
@@ -1760,7 +1761,15 @@ window.GameData.techsForRace = function (raceId) {
 window.GameData.unitPower = function (unitId) {
   const u = window.GameData.getUnit(unitId);
   return (u.attack || 0) + (u.defense || 0) + (u.movement || 0) + (u.visionRadius || 0)
-    + (u.range || 1) * 0.75 + (u.firstStrikePct || 0) + (u.siegePct || 0) + (u.flying ? 2 : 0);
+    + (u.range || 1) * 0.75 + (u.firstStrikePct || 0) + (u.siegePct || 0)
+    // Double Strike is worth considerably more per point than First Strike or
+    // Siege: those shade an exchange's outcome, while this one adds a whole
+    // extra uncountered hit. Weighted 2.0/point (i.e. a 50% Double Strike is
+    // worth ~1 power) on the reading that it multiplies expected forward
+    // damage by (1 + pct) -- roughly half an extra attack's worth at 50%,
+    // and free of any counter-damage cost.
+    + (u.doubleStrikePct || 0) * 2.0
+    + (u.flying ? 2 : 0);
 };
 
 /** Which tech first grants a given unit id (via unlock_unit or, for a

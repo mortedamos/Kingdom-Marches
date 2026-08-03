@@ -333,15 +333,50 @@ window.GameEngine = window.GameEngine || {};
     return Math.random() < chance;
   }
 
+  /**
+   * A throwaway stand-in for `unit` that a simulated fight may freely mutate.
+   *
+   * The spread alone is NOT enough (2026-08-03, user-reported bug): `{...unit}`
+   * is shallow, so the copy shares the SAME `unit.conditions` object as the
+   * real unit. combat.js's death-save rolls (Halfellow "Resilient Spirit",
+   * Dwarf "Unyielding") call setCondition(unit, "forcedRest") when they fire,
+   * and estimateWinProbability runs 20-30 fights to the death per decision --
+   * so merely CONSIDERING an attack was stamping forcedRest onto real units
+   * on the board, over and over. That is what made "Shaken by a near-death
+   * blow (forced to rest)" show up constantly on units that had taken a
+   * single glancing hit, most visibly on the Dwarf Runeforged Titan (huge HP,
+   * a Dwarf civ, so a real lethal blow is rare but the AI evaluates fights
+   * near it every turn).
+   *
+   * `levelBonuses` is copied for the same reason even though nothing writes
+   * to it today -- a simulated unit must not be able to reach anything real.
+   */
+  function cloneUnitForSim(unit) {
+    return {
+      ...unit,
+      hp: unit.hp,
+      conditions: { ...(unit.conditions || {}) },
+      levelBonuses: { ...(unit.levelBonuses || {}) },
+    };
+  }
+
   /** Quick win-probability estimate via sampling rather than exact Markov
    *  computation -- a pragmatic prototype-scale approximation of the
-   *  exact-lookup approach the design doc describes. */
+   *  exact-lookup approach the design doc describes.
+   *
+   *  `simulated: true` is a second, independent guard on the same class of
+   *  bug cloneUnitForSim exists for: it tells combat.js not to apply the
+   *  persistent side effects of a death save (the forced Rest, and the
+   *  per-unit trigger counter that permanently decays future saves) for a
+   *  fight that isn't really happening. The save itself still ROLLS, so the
+   *  estimate stays honest about how survivable the unit is. */
   function estimateWinProbability(attackerUnit, defenderUnit, civs, context, samples = 30) {
+    const simContext = { ...(context || {}), simulated: true };
     let wins = 0;
     for (let i = 0; i < samples; i++) {
-      const a = { ...attackerUnit, hp: attackerUnit.hp };
-      const b = { ...defenderUnit, hp: defenderUnit.hp };
-      const result = window.GameEngine.combat.resolveToTheDeath(a, b, civs, context, 30);
+      const a = cloneUnitForSim(attackerUnit);
+      const b = cloneUnitForSim(defenderUnit);
+      const result = window.GameEngine.combat.resolveToTheDeath(a, b, civs, simContext, 30);
       if (result.outcome === "attacker_wins") wins++;
     }
     return wins / samples;
@@ -5606,7 +5641,8 @@ window.GameEngine = window.GameEngine || {};
       // mirrors considerAttackOrGarrison's two separate unit.hp>0 gates.
       if (unit.hp > 0) {
         grantXPAndAutoLevel(unit, civ, window.GameEngine.combat.xpForCombatAction(
-          { damage: result.fullDamage, killedUnitTypeId: target.hp <= 0 ? target.typeId : null }));
+          { damage: result.fullDamage + result.doubleDamage,
+            killedUnitTypeId: target.hp <= 0 ? target.typeId : null }));
       }
       if (target.hp > 0) {
         grantXPAndAutoLevel(target, defenderCiv, window.GameEngine.combat.xpForCombatAction(
@@ -9381,6 +9417,18 @@ window.GameEngine = window.GameEngine || {};
         ax: unit.x, ay: unit.y, atkUnit: unit,
         dx: bestTarget.x, dy: bestTarget.y, defUnit: bestTarget,
       });
+      // Double Strike (see combat.js's resolveRound): the follow-up hit gets
+      // its own animation, callout and (delayed) attack sfx, so a second blow
+      // reads as a second blow rather than as one unusually large damage
+      // number. Delay roughly matches render.js's own attack-animation beat.
+      if (result.doubleStruck) {
+        window.GameEngine.floatingText.spawnFloatingText(unit, "Double Strike!", "strike");
+        window.GameEngine.combat.recordCombatEvent({
+          ax: unit.x, ay: unit.y, atkUnit: unit,
+          dx: bestTarget.x, dy: bestTarget.y, defUnit: bestTarget,
+        });
+        window.SfxSystem.playAction(civ.raceId, unit.typeId, "attack", unit.x, unit.y, DOUBLE_STRIKE_SFX_DELAY_MS);
+      }
       markCombatEngaged(civ);
       markCombatEngaged(defenderCiv);
       // Hidden: attacking reveals the attacker, regardless of target type.
@@ -9406,6 +9454,9 @@ window.GameEngine = window.GameEngine || {};
           : result.counterDenied ? ", counter denied (first strike)"
           : result.counterMissed ? ", counter missed (flying)"
           : result.counterNegated ? ", counter negated" : `, ${result.counterDamage} counter`) +
+        (result.doubleStruck
+          ? `, DOUBLE STRIKE ${result.doubleNegated ? "negated" : result.doubleMissed ? "missed (flying)" : result.doubleDamage + " dmg"}`
+          : "") +
         (Math.abs(bestCoalitionShift) > 0.1
           ? ` [odds ${Math.round(bestWinProb * 100)}%, ${bestCoalitionShift > 0 ? "emboldened" : "wary"} by allies]`
           : ""));
@@ -9545,8 +9596,11 @@ window.GameEngine = window.GameEngine || {};
       // this exchange (see combat.js's LEVELING section) -- a dead unit
       // doesn't bother leveling, there's nothing left to spend it on.
       if (unit.hp > 0) {
+        // Double Strike's follow-up hit is real damage this unit dealt, so it
+        // earns XP like any other -- see combat.js's resolveRound.
         grantXPAndAutoLevel(unit, civ, window.GameEngine.combat.xpForCombatAction(
-          { damage: result.fullDamage, killedUnitTypeId: bestTarget.hp <= 0 ? bestTarget.typeId : null }));
+          { damage: result.fullDamage + result.doubleDamage,
+            killedUnitTypeId: bestTarget.hp <= 0 ? bestTarget.typeId : null }));
       }
       if (bestTarget.hp > 0) {
         grantXPAndAutoLevel(bestTarget, defenderCiv, window.GameEngine.combat.xpForCombatAction(
@@ -10009,6 +10063,12 @@ window.GameEngine = window.GameEngine || {};
   // killing blow's own "attack" clip (see SfxSystem.playAction's delayMs)
   // instead of overlapping it.
   const DEATH_SFX_DELAY_MS = 350;
+
+  // Double Strike's follow-up "attack" clip -- same reasoning as the death
+  // delay above: it should land as a distinct second blow rather than
+  // overlapping the first hit's own clip. Shorter, since the two hits are
+  // meant to read as one fast flurry. See the resolveRound call site.
+  const DOUBLE_STRIKE_SFX_DELAY_MS = 220;
 
   /** Single chokepoint every combat-kill path in this file funnels a dead
    *  unit's removal through (city/structure counterattacks are the two
