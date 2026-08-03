@@ -32,18 +32,53 @@
   // --- Title screen music ---
   // Place your track at assets/music/title.mp3.
   let titleAudio = null;
+  // The title track is its own <audio> element, NOT routed through
+  // MusicSystem, so MusicSystem.setMuted has no effect on it. ?mute has to
+  // silence it separately or an unattended test run still plays sound (see
+  // applyMuteUrlSwitch).
+  let titleAudioMuted = false;
+
+  const TITLE_TRACK_PATH = "assets/music/title.mp3";
+  // Counts how many times we've built the element. A retry appends a
+  // cache-busting query: a browser that CACHED A 404 for this path -- e.g.
+  // from a session before the file was in place, or a moment when the local
+  // server wasn't serving it -- keeps replaying that cached miss on every
+  // normal reload until a hard refresh. music.js guards its own probes
+  // against exactly this with cache:"no-store" (see probeFile's comment);
+  // a bare <audio> element has no equivalent, so the retry does it by URL.
+  let titleAudioAttempts = 0;
+
+  // Media error codes, for a log line that says what actually went wrong
+  // instead of a bare number.
+  const MEDIA_ERROR_MEANING = {
+    1: "load aborted",
+    2: "network error (server closed/stalled the connection)",
+    3: "decode error (file is corrupt or not really an MP3)",
+    4: "not supported (usually a 404 -- the file isn't being served)",
+  };
 
   function initTitleAudio() {
     if (titleAudio) return titleAudio;
-    console.log("[title music] creating Audio — assets/music/title.mp3");
-    titleAudio = new Audio("assets/music/title.mp3");
+    titleAudioAttempts++;
+    const src = titleAudioAttempts > 1
+      ? `${TITLE_TRACK_PATH}?retry=${Date.now()}`
+      : TITLE_TRACK_PATH;
+    console.log(`[title music] creating Audio — ${src}`);
+    titleAudio = new Audio(src);
     titleAudio.loop   = true;
-    titleAudio.volume = 1.0;
+    titleAudio.volume = titleAudioMuted ? 0 : 1.0;
 
     titleAudio.addEventListener("error", () => {
-      const code = titleAudio.error?.code ?? "?";
-      console.error(`[title music] load error code ${code} (1=ABORTED 2=NETWORK 3=DECODE 4=NOT_SUPPORTED)`);
-      console.error("[title music] check that assets/music/title.mp3 exists and is a valid MP3");
+      const code = titleAudio.error?.code ?? 0;
+      console.error(`[title music] load failed for ${src}: ${MEDIA_ERROR_MEANING[code] || "unknown error"} (code ${code})`);
+      console.error(`[title music] open ${new URL(src, location.href).href} directly to see what the server returns`);
+      // Drop the element so the next click builds a FRESH one (with the
+      // cache-buster above) rather than retrying a permanently-errored
+      // element. The old behaviour disabled the button outright, so a single
+      // transient hiccup killed title music for the whole session with no
+      // way back -- which is what "(no audio file)" was reporting even when
+      // the file was perfectly fine.
+      titleAudio = null;
       setMusicBtnState("error");
     });
     titleAudio.addEventListener("canplay", () =>
@@ -66,8 +101,15 @@
       .then(() => console.log("[title music] play() resolved — waiting for playing event"))
       .catch((err) => {
         console.warn(`[title music] play() rejected — ${err.name}: ${err.message}`);
-        console.warn("[title music] autoplay blocked; click the ♪ Play Music button to start");
-        setMusicBtnState("idle");
+        // Only NotAllowedError is a real autoplay block. Anything else
+        // (typically NotSupportedError, which follows a failed load) means
+        // the error listener above has already logged the true cause and put
+        // the button into its retry state -- resetting to "idle" here would
+        // clobber that and wrongly blame autoplay for a missing file.
+        if (err.name === "NotAllowedError") {
+          console.warn("[title music] autoplay blocked; click the button to start");
+          setMusicBtnState("idle");
+        }
       });
   }
 
@@ -99,8 +141,10 @@
       btn.textContent = "♪ Play Title Music";
       btn.disabled    = false;
     } else if (state === "error") {
-      btn.textContent = "♪ (no audio file)";
-      btn.disabled    = true;
+      // Stays CLICKABLE -- clicking rebuilds the element with a cache-buster
+      // (see initTitleAudio). The console line names the real cause.
+      btn.textContent = "♪ Music failed — click to retry";
+      btn.disabled    = false;
     }
   }
 
@@ -199,7 +243,9 @@
     if (!params.has("mute") || params.get("mute") === "0") return;
     window.MusicSystem.setMuted(true, { persist: false });
     window.SfxSystem.setMuted(true); // sfx mute is in-memory only already
-    console.log("[audio] ?mute in the URL -- music and sfx start muted");
+    titleAudioMuted = true;          // separate element -- see initTitleAudio
+    if (titleAudio) titleAudio.volume = 0;
+    console.log("[audio] ?mute in the URL -- music, sfx and title music start muted");
   }
 
   /**

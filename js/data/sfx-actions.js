@@ -6,8 +6,9 @@
  * it can't drift out of sync with the real unit roster (e.g. if a unit's
  * attack stat or raceOnly ever changes, its sfx rows update automatically).
  *
- * File naming convention (2026-07-23, user-directed):
- *   assets/sfx/<race>_<unitId>_<action>_<n>.wav
+ * File naming convention (2026-07-23, user-directed; mp3-only since
+ * 2026-08-03 -- wav is no longer looked for at all):
+ *   assets/sfx/<race>_<unitId>_<action>_<n>.mp3
  * where <unitId> is the EXACT key from GameData.UNITS (matches sprites.js's
  * asset keying one-for-one -- see unit/{unitId}/{raceId} in sprites.js --
  * so there's no separate naming table to keep in sync), <action> is one of
@@ -26,12 +27,13 @@
 
 window.GameData = window.GameData || {};
 
-// How many numbered variants (_1, _2, ...) to probe for per combination.
-// Cheap to check (existence probes only) -- generous headroom for variety,
-// matching the "variety in that space, similar to how we do graphics"
-// request. Shared by js/audio/sfx.js and tools/sfx-tracker.html so both
-// check the exact same range.
-window.GameData.SFX_MAX_VARIANTS = 5;
+// How many numbered variants (_1, _2, _3) a combination may have.
+// Lowered 5 -> 3 (2026-08-03, user-directed): nothing on disk has ever used
+// a _4 or _5 slot, so the extra headroom only widened the manifest scan and
+// the coverage tracker's grid for no benefit. Shared by js/audio/sfx.js,
+// working/tools/build-sfx-manifest.ps1 and working/tools/sfx-tracker.html so
+// all three agree on the range.
+window.GameData.SFX_MAX_VARIANTS = 3;
 
 // unitId -> extra actions beyond the universal core (attack/move/death).
 // Only units with a confirmed, distinct in-code mechanic get an entry here
@@ -90,7 +92,7 @@ window.GameData.sfxAllCombos = function () {
   return combos;
 };
 
-/** "<race>_<unitId>_<action>_<n>.wav" -- the one place this filename pattern
+/** "<race>_<unitId>_<action>_<n>.mp3" -- the one place this filename pattern
  *  is assembled, so runtime and tooling can never disagree on it. */
 window.GameData.sfxFileName = function (raceId, unitId, action, n, ext) {
   return `${raceId}_${unitId}_${action}_${n}.${ext}`;

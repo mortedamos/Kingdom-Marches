@@ -1,7 +1,7 @@
 /**
  * SFX SYSTEM
  * ----------
- * Per-unit, per-action sound effects: assets/sfx/<race>_<unitId>_<action>_<n>.{mp3,wav}
+ * Per-unit, per-action sound effects: assets/sfx/<race>_<unitId>_<action>_<n>.mp3
  * (see js/data/sfx-actions.js for the naming convention and the full set of
  * combinations that should exist).
  *
@@ -37,8 +37,10 @@
 
 window.SfxSystem = (function () {
   // Checked in this order when the manifest offers a clip under more than one
-  // extension -- mp3 first (smaller files, faster decode).
-  const SFX_EXTENSIONS = ["mp3", "wav"];
+  // Every sfx file is mp3 (2026-08-03, user-directed). wav support was
+  // dropped outright -- there are no wav files and none are planned, so the
+  // two-extension lookup was dead weight.
+  const SFX_EXTENSION = "mp3";
 
   // How many simultaneous voices one clip may occupy. Beyond this, the oldest
   // is rewound and reused rather than allocating without bound -- a 16x-speed
@@ -51,8 +53,6 @@ window.SfxSystem = (function () {
   // is stored rather than re-derived from the key: an action can contain an
   // underscore, so keys are only ever built from known parts, never split.
   let clipIndex = new Map();
-  // "race_unitId_action_n" -> the extension that combo's file uses.
-  let clipExt = new Map();
   // "race_unitId_action_n" -> preloaded <audio> template (the element that
   // holds the decoded data; playback uses cloneNode of this).
   let loaded = new Map();
@@ -101,34 +101,29 @@ window.SfxSystem = (function () {
   loadPersistedVolume();
 
   function clipPath(key) {
-    return `assets/sfx/${key}.${clipExt.get(key)}`;
+    return `assets/sfx/${key}.${SFX_EXTENSION}`;
   }
 
   /**
-   * Parses the generated manifest into the two lookup tables above. Filenames
-   * are matched against the CONSTRUCTED name for each known (race, unit,
-   * action, variant) combination rather than parsed apart -- an action can
-   * contain its own underscore ("build_road", "summon_raptor"), so splitting
-   * a filename on "_" is ambiguous, while building the expected name from
-   * known parts never is (the same reasoning as sfx-actions.js's own
-   * sfxFileName doc comment).
+   * Parses the generated manifest into the clip index. Filenames are matched
+   * against the CONSTRUCTED name for each known (race, unit, action, variant)
+   * combination rather than parsed apart -- an action can contain its own
+   * underscore ("build_road", "summon_raptor"), so splitting a filename on
+   * "_" is ambiguous, while building the expected name from known parts never
+   * is (the same reasoning as sfx-actions.js's own sfxFileName doc comment).
    *
    * A file in assets/sfx/ that doesn't correspond to any real combination is
    * simply ignored -- nothing would ever ask for it.
    */
   function buildIndex() {
     clipIndex = new Map();
-    clipExt = new Map();
     const present = new Set(window.GameData.SFX_FILES || []);
     for (const { raceId, unitId, action } of window.GameData.sfxAllCombos()) {
       const pairKey = `${raceId}_${unitId}_${action}`;
       const variants = [];
       for (let n = 1; n <= window.GameData.SFX_MAX_VARIANTS; n++) {
-        for (const ext of SFX_EXTENSIONS) {
-          if (!present.has(window.GameData.sfxFileName(raceId, unitId, action, n, ext))) continue;
+        if (present.has(window.GameData.sfxFileName(raceId, unitId, action, n, SFX_EXTENSION))) {
           variants.push(n);
-          clipExt.set(`${pairKey}_${n}`, ext);
-          break; // first extension wins; don't index the same variant twice
         }
       }
       if (variants.length) clipIndex.set(pairKey, { raceId, variants });
