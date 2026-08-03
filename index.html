@@ -10,14 +10,12 @@
 </head>
 <body>
 
-  <!-- Title screen: visible before a game starts -->
+  <!-- Title screen: visible before a game starts.
+       Launch controls used to sit in a permanent toolbar strip across the top
+       here; they now live in the Game Options modal below (2026-08-03,
+       user-directed), leaving the splash screen as just artwork and one
+       button. -->
   <div id="title-screen" class="title-screen">
-
-    <!-- Toolbar: all launch controls live here -->
-    <div class="title-toolbar">
-      <div id="toolbar-controls" class="toolbar-controls"></div>
-      <button id="start-game-btn" class="start-btn-toolbar">Begin</button>
-    </div>
 
     <!-- Main area: faded background image + logo -->
     <div class="title-main">
@@ -25,7 +23,16 @@
       <div class="title-content">
         <img class="title-logo" src="assets/img/logo.png" alt="Arcane Empires">
         <p class="title-byline">2026 Shawn Nicolen</p>
-        <button id="title-music-btn" class="title-music-btn">♪ Play Music</button>
+        <button id="title-options-btn" class="title-options-btn">Game Options</button>
+      </div>
+    </div>
+
+    <!-- Launch options: every pre-game choice, plus the Start Game button.
+         Contents are injected by main.js's showSetupScreen. -->
+    <div id="launch-options-overlay" class="techtree-overlay" style="display:none;">
+      <div id="launch-options-modal" class="techtree-modal launch-options-modal">
+        <button class="techtree-close-btn" id="launch-options-close-btn">Close</button>
+        <div id="launch-options-content"></div>
       </div>
     </div>
 
@@ -80,6 +87,15 @@
         <div class="menu-dropdown" id="menu-interface-dropdown" style="display:none;">
           <button id="influence-toggle-btn" class="menu-dropdown-btn">Toggle Influence Overlay</button>
           <button id="grid-toggle-btn" class="menu-dropdown-btn">Toggle Grid Lines</button>
+          <!-- The shortcut hint is F11 because that is the key players
+               actually reach for. It is the BROWSER's own fullscreen
+               shortcut, not something this page binds -- browsers reserve
+               F11 and a page cannot reliably intercept it. This button uses
+               the Fullscreen API instead, which looks the same to the
+               player. See main.js's setupFullscreenControl. -->
+          <button id="fullscreen-toggle-btn" class="menu-dropdown-btn menu-dropdown-btn-shortcut">
+            <span>Enter Full Screen</span><span class="menu-shortcut">F11</span>
+          </button>
           <div id="fog-of-war-panel" class="fow-panel" style="display:none;">
             <div class="fow-panel-label">Fog of War</div>
             <label class="audio-panel-row"><span>Off</span><input type="radio" name="fow-mode" id="fow-mode-off" value="off" checked></label>

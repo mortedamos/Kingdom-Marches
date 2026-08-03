@@ -26,85 +26,6 @@ html, body {
   display: flex; flex-direction: column;
 }
 
-/* Toolbar: holds all launch controls in a compact horizontal strip */
-.title-toolbar {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 0 16px;
-  height: 52px;
-  background: rgba(14, 16, 20, 0.96);
-  border-bottom: 1px solid var(--border);
-  flex-shrink: 0;
-  flex-wrap: wrap;
-  overflow: hidden;
-}
-.toolbar-controls {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  flex: 1;
-  flex-wrap: wrap;
-}
-.toolbar-field {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 12px;
-  color: var(--text-dim);
-  white-space: nowrap;
-}
-.toolbar-field select,
-.toolbar-field input[type="text"] {
-  background: var(--bg-panel-raised);
-  border: 1px solid var(--border);
-  border-radius: 3px;
-  color: var(--text-main);
-  font-family: inherit;
-  font-size: 12px;
-  padding: 3px 6px;
-  height: 26px;
-}
-.toolbar-field select:focus,
-.toolbar-field input[type="text"]:focus {
-  outline: none;
-  border-color: var(--accent);
-}
-.toolbar-field input[type="checkbox"] {
-  accent-color: var(--accent);
-  margin: 0;
-}
-.race-checklist {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex-wrap: nowrap;
-}
-.race-checklist-item {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  white-space: nowrap;
-}
-.race-checklist-item input[type="checkbox"] {
-  accent-color: var(--accent);
-  margin: 0;
-}
-.start-btn-toolbar {
-  padding: 6px 20px;
-  background: var(--accent);
-  border: none;
-  border-radius: 4px;
-  color: #1a1a1a;
-  font-size: 13px;
-  font-weight: bold;
-  cursor: pointer;
-  font-family: inherit;
-  white-space: nowrap;
-  flex-shrink: 0;
-  height: 30px;
-}
-.start-btn-toolbar:hover { background: var(--accent-hover); }
 
 /* Main area: background image + centered title text */
 .title-main {
@@ -139,14 +60,15 @@ html, body {
   user-select: none;
 }
 /*
- * Title logo (assets/img/logo.png, 701x629). Sized to ~50% of the title
- * area's height (viewport height minus the 52px toolbar) with width auto to
- * preserve its aspect ratio; centered via the parent's text-align + auto
- * side margins.
+ * Title logo (assets/img/logo.png, 701x629). Sized to ~50% of the viewport
+ * height with width auto to preserve its aspect ratio; centered via the
+ * parent's text-align + auto side margins. (Was `100vh - 52px` back when a
+ * launch toolbar took a fixed strip off the top -- that toolbar is gone, its
+ * controls now live in the Game Options modal.)
  */
 .title-logo {
   display: block;
-  height: calc((100vh - 52px) * 0.5);
+  height: 50vh;
   width: auto;
   margin: 0 auto;
 }
@@ -158,26 +80,26 @@ html, body {
   letter-spacing: 0.12em;
   text-shadow: 0 1px 4px rgba(0, 0, 0, 0.8);
 }
-.title-music-btn {
+/* The splash screen's one button -- opens the launch options modal. Sits
+   where the old "♪ Play Music" button did (that control moved into the
+   modal's Audio section). */
+.title-options-btn {
   margin-top: 36px;
-  padding: 8px 24px;
-  background: transparent;
-  border: 1px solid rgba(201, 168, 87, 0.45);
+  padding: 11px 34px;
+  background: rgba(201, 168, 87, 0.12);
+  border: 1px solid rgba(201, 168, 87, 0.55);
   border-radius: 4px;
-  color: rgba(201, 168, 87, 0.7);
-  font-family: "Cinzel", Georgia, serif;
-  font-size: 13px;
-  letter-spacing: 0.08em;
-  cursor: pointer;
-  transition: border-color 0.2s, color 0.2s;
-}
-.title-music-btn:hover:not(:disabled) {
-  border-color: var(--accent);
   color: var(--accent);
+  font-family: "Cinzel", Georgia, serif;
+  font-size: 15px;
+  letter-spacing: 0.1em;
+  cursor: pointer;
+  transition: background 0.2s, border-color 0.2s, color 0.2s;
 }
-.title-music-btn:disabled {
-  cursor: default;
-  opacity: 0.5;
+.title-options-btn:hover {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #1a1a1a;
 }
 
 /* --- Loading screen: between clicking Begin and the game being ready --- */
@@ -370,6 +292,18 @@ html, body {
   text-align: left;
 }
 .menu-dropdown-btn:hover { border-color: var(--accent); }
+/* Menu item with a keyboard-shortcut hint pushed to the right edge. */
+.menu-dropdown-btn-shortcut {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+.menu-shortcut {
+  color: var(--text-dim);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+}
 
 .audio-panel {
   min-width: 320px;
@@ -895,6 +829,119 @@ html, body {
   margin: 4px 0 14px 0;
 }
 .game-dialog-input:focus { outline: none; border-color: var(--accent); }
+/* Turn-end guard's list of things the player hasn't resolved yet. */
+.game-dialog-list {
+  color: var(--text-main);
+  font-size: 13px;
+  line-height: 1.6;
+  margin: 4px 0 14px 0;
+  padding-left: 20px;
+}
 .game-dialog-actions { display: flex; justify-content: flex-end; gap: 8px; }
 .game-dialog-primary { background: var(--accent); border-color: var(--accent); color: #1a1a1a; }
 .game-dialog-primary:hover { background: var(--accent-hover); }
+/* --- Launch options modal (reuses .techtree-overlay for the backdrop) --- */
+.launch-options-modal {
+  width: min(460px, 94vw);
+  max-height: 88vh;
+  overflow-y: auto;
+}
+.launch-title {
+  margin: 0 0 4px 0;
+  font-family: "Cinzel", Georgia, serif;
+  font-size: 20px;
+  color: var(--accent);
+  letter-spacing: 0.06em;
+}
+.launch-section {
+  padding: 14px 0;
+  border-bottom: 1px solid var(--border);
+}
+.launch-section:last-of-type { border-bottom: none; }
+.launch-section-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  color: var(--text-dim);
+  margin-bottom: 10px;
+}
+.launch-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+  font-size: 13px;
+  color: var(--text-main);
+}
+.launch-row:last-child { margin-bottom: 0; }
+.launch-row-check { cursor: pointer; }
+.launch-row select,
+.launch-row input[type="text"] {
+  flex: 1;
+  max-width: 260px;
+  background: var(--bg-panel-raised);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  color: var(--text-main);
+  font-family: inherit;
+  font-size: 13px;
+  padding: 5px 7px;
+}
+.launch-row select:focus,
+.launch-row input[type="text"]:focus { outline: none; border-color: var(--accent); }
+.launch-row input[type="checkbox"] { accent-color: var(--accent); margin: 0; }
+.launch-hint {
+  margin: 8px 0 0 0;
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--text-dim);
+}
+/* Race checklist: a wrapping grid rather than the old single nowrap row,
+   which is what capped it at "however many fit across the toolbar". */
+.launch-race-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px 12px;
+}
+.launch-race-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--text-main);
+  cursor: pointer;
+}
+.launch-race-item input[type="checkbox"] { accent-color: var(--accent); margin: 0; }
+.launch-music-btn {
+  width: 100%;
+  padding: 7px 8px;
+  background: var(--bg-panel-raised);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text-main);
+  font-family: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.launch-music-btn:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+.launch-music-btn:disabled { cursor: default; opacity: 0.5; }
+.launch-actions {
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+}
+.launch-start-btn {
+  width: 100%;
+  padding: 11px;
+  background: var(--accent);
+  border: none;
+  border-radius: 4px;
+  color: #1a1a1a;
+  font-family: "Cinzel", Georgia, serif;
+  font-size: 15px;
+  font-weight: bold;
+  letter-spacing: 0.08em;
+  cursor: pointer;
+}
+.launch-start-btn:hover { background: var(--accent-hover); }
+

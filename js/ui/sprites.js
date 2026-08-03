@@ -2,10 +2,13 @@
  * SPRITE LOADER
  * -------------
  * Loads PNG assets for terrain, units, cities, and enhancements.
- * Manifests (frame size, layout, animation data) normally come from
- * js/data/sprite-manifests.js — a plain JS file that works under
- * file:// without any server or fetch(). Missing PNGs are skipped
- * silently; callers get null from pick() and fall back to color/symbol.
+ * Manifests (frame size, layout, animation data) come from
+ * js/data/sprite-manifests.js. Missing PNGs are skipped silently; callers
+ * get null from pick() and fall back to color/symbol.
+ *
+ * The game is served over HTTP (2026-08-03, user-directed -- the file://
+ * detection and its fallbacks were removed throughout; run a local server,
+ * e.g. working/tools/launch-server.ps1).
  *
  * Auto-detected per-asset JSON manifest: alongside any PNG, drop a same-
  * named .json file (e.g. assets/terrain/plains.png + plains.json, or
@@ -13,16 +16,7 @@
  * image's frameWidth/frameHeight/layout/animations. If present, it's used
  * INSTEAD of the js/data/sprite-manifests.js entry for that image -- no
  * code change needed to add or tweak an animation, just ship the JSON next
- * to the art. This uses fetch(), which is blocked outright under a bare
- * file:// origin (no local server) -- unlike the Image() loading below.
- * We detect that up front (window.location.protocol === "file:") and skip
- * the fetch attempt entirely in that case, falling back straight to the
- * existing manifest resolution exactly as if no JSON existed. Trying the
- * fetch anyway and catching the failure doesn't work cleanly: the browser
- * logs the blocked request to the console itself before our JS ever sees
- * it, so skipping it outright is the only way to avoid that console noise.
- * Manifest JSON only ever loads when served over http (e.g. the dev preview
- * server); under file:// only the PNGs load, same as before.
+ * to the art.
  *
  * Variant sets: for any asset key, drop up to 6 numbered files
  * (e.g. assets/terrain/plains_1.png .. plains_6.png) to get random visual
@@ -63,13 +57,6 @@ window.UI = window.UI || {};
   // object itself rather than a string key since callers already have it
   // to hand and every sprite category's manifest object is distinct.)
   const animStateCaches = new Map();
-
-  // fetch() is blocked outright under a bare file:// origin (no local server) --
-  // the browser logs that block to the console itself, before our code ever
-  // gets a chance to handle it, so a try/catch around the fetch can't suppress
-  // it. Detecting the protocol up front lets us skip the fetch attempt
-  // entirely under file://, which avoids the console noise altogether.
-  const canFetchManifests = window.location.protocol !== "file:";
 
   // preloadAll() below fires off hundreds-to-thousands of these (every
   // variant slot of every terrain/unit/building/resource/road/river), all
@@ -120,13 +107,7 @@ window.UI = window.UI || {};
     // strip gets squished into one tile-sized draw, reading as a squished/
     // repeating mess instead of an idle animation. This is exactly what a
     // freshly-added unit sprite sheet looks like the moment its PNG lands in
-    // assets/units/ before a matching entry is added here, OR (2026-07-18,
-    // user-reported) under a bare file:// origin with no local server --
-    // loadManifestJson's fetch() is deliberately skipped there (see
-    // canFetchManifests above), so even an asset THAT DOES ship a JSON
-    // sidecar falls all the way through to this function when opened that
-    // way, while working fine once actually hosted (or served locally) lets
-    // the JSON load normally.
+    // assets/units/ before a matching entry is added here.
     //
     // Every sprite sheet shipped so far is N square frames laid out
     // left-to-right (see doc/art_style_guide.md) -- so when the image is
@@ -144,10 +125,9 @@ window.UI = window.UI || {};
   }
 
   /** Best-effort load of a same-named .json manifest next to a PNG. Returns
-   *  null (never throws) if it's missing, invalid, or we're running under a
-   *  bare file:// origin -- callers fall back to resolveManifest(). */
+   *  null (never throws) if it's missing or invalid -- callers fall back to
+   *  resolveManifest(). */
   async function loadManifestJson(jsonPath) {
-    if (!canFetchManifests) return null;
     try {
       const res = await fetch(jsonPath);
       if (!res.ok) return null;

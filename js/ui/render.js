@@ -10,11 +10,22 @@
 window.UI = window.UI || {};
 
 (function () {
-  const TILE_SIZE = 34; // base tile size; actual rendered size = TILE_SIZE * zoomLevel
-  const MIN_ZOOM = 0.4;
-  const MAX_ZOOM = 3.0;
+  // Base tile size in px; actual rendered size = TILE_SIZE * zoomLevel.
+  // Values live in js/data/config.js's VIEW section.
+  //
+  // TILE_SIZE was raised 34 -> 52 there (2026-08-03, user-directed: "the
+  // default state of the map should be zoomed in more"). Done via tile size
+  // rather than by shipping a zoomLevel > 1 default so that 100% still MEANS
+  // the intended default view -- the zoom readout would otherwise open every
+  // game reading "160%". MIN_ZOOM/MAX_ZOOM were rescaled to compensate,
+  // keeping the reachable absolute range essentially what it was:
+  // 0.25*52 = 13px/tile zoomed out (was 0.4*34 = 13.6) and 2.0*52 = 104px
+  // zoomed in (was 3.0*34 = 102).
+  const TILE_SIZE = window.GameConfig.view.tileSize;
+  const MIN_ZOOM = window.GameConfig.view.minZoom;
+  const MAX_ZOOM = window.GameConfig.view.maxZoom;
   const RUIN_ICON_SCALE = .75; // ruins read as a little bigger than a tile-fill resource icon (see per-resource iconScale in terrain.js)
-  const MOVE_ANIM_MS = 350; // purely visual glide duration for unit movement
+  const MOVE_ANIM_MS = window.GameConfig.view.moveAnimMs; // purely visual glide duration for unit movement
 
   // Combat anims, area effects, quips, floating text, condition badges/tints,
   // and the aura/hatch/tile-score color helpers all now live in overlays.js

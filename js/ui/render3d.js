@@ -1829,41 +1829,6 @@ window.UI = window.UI || {};
    *  frame 0 only (assumed representative of the whole idle cycle -- an
    *  idle animation sways/bobs a character but its ground anchor point
    *  should stay put, and this only needs to be roughly right). */
-  let fileProtocolNoticeShown = false;
-  /** Fires once, the first time a real sprite/decal texture upload fails --
-   *  which in practice only ever happens under a bare file:// origin (see
-   *  the try/catch below). Explains the limitation visibly (not just a
-   *  console message the player may never open) and points at the fix:
-   *  serve the folder locally instead of double-clicking index.html --
-   *  terrain still renders either way (procedural canvases aren't subject
-   *  to this restriction), only real art (units/buildings/roads/rivers) is
-   *  affected. */
-  function notifyFileProtocolLimitation() {
-    if (fileProtocolNoticeShown) return;
-    fileProtocolNoticeShown = true;
-    console.warn(
-      "[render3d] Running from a file:// URL: units, buildings, and road/river art can't load as WebGL textures here " +
-      "(the browser blocks it as a cross-origin operation, even though the same art draws fine in the 2D view). " +
-      "Terrain still renders. Serve this folder from a local web server (e.g. the project's .claude/static_server.pl, " +
-      "or `python -m http.server`) and open it via http://localhost instead to see everything."
-    );
-    const mapArea = document.querySelector(".map-area");
-    if (!mapArea || document.getElementById("render3d-file-protocol-notice")) return;
-    const banner = document.createElement("div");
-    banner.id = "render3d-file-protocol-notice";
-    banner.style.cssText =
-      "position:absolute; left:12px; bottom:12px; max-width:min(480px, calc(100% - 24px)); z-index:20; " +
-      "background:rgba(30,20,10,0.92); color:#f0e6d2; border:1px solid rgba(255,255,255,0.25); " +
-      "border-radius:8px; padding:10px 14px; font:13px/1.4 sans-serif; box-shadow:0 2px 10px rgba(0,0,0,0.4);";
-    banner.innerHTML =
-      "<b>3D view: limited art from a file:// page.</b> Units, buildings, and roads/rivers can't load here " +
-      "(terrain still works) -- serve this folder from a local web server and open it via http://localhost to see everything. " +
-      '<button type="button" style="margin-left:10px; cursor:pointer;" id="render3d-file-protocol-dismiss">Dismiss</button>';
-    mapArea.appendChild(banner);
-    const dismissBtn = document.getElementById("render3d-file-protocol-dismiss");
-    if (dismissBtn) dismissBtn.addEventListener("click", () => banner.remove());
-  }
-
   function getBillboardTexture(st, image, manifest) {
     let entry = st.billboardTexCache.get(image);
     if (entry) return entry;
@@ -1904,17 +1869,14 @@ window.UI = window.UI || {};
       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
     } catch (e) {
-      // Uploading a real loaded PNG (not a from-scratch procedural canvas
-      // like terrain/wall materials use) throws under a bare file:// origin
-      // -- unlike plain 2D canvas drawImage(), which is how the 2D view
-      // gets away with never hitting this, WebGL texture uploads (and
-      // getImageData, guarded above) require same-origin or CORS, and
-      // file:// resources have no origin to grant that from. `tex: null`
-      // here signals every caller (billboard draw loop, road/river decal
-      // builders) to skip this asset instead of crashing -- see
-      // notifyFileProtocolLimitation, which explains this to the user once.
+      // A WebGL texture upload requires the image be same-origin or served
+      // with CORS headers. Serving the game over HTTP (the only supported
+      // way to run it) satisfies that, so this should never fire -- but a
+      // future asset pulled from another origin without CORS would land
+      // here. `tex: null` signals every caller (billboard draw loop,
+      // road/river decal builders) to skip this asset rather than crash.
       gl.deleteTexture(tex);
-      notifyFileProtocolLimitation();
+      console.warn("[render3d] Texture upload failed for an asset (not same-origin/CORS-enabled); skipping it.", e);
       entry = { tex: null, aspect: fw / fh, bottomPadFrac, imgW: iw, imgH: ih };
       st.billboardTexCache.set(image, entry);
       return entry;

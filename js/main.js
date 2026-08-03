@@ -93,10 +93,10 @@
     const btn = document.getElementById("title-music-btn");
     if (!btn) return;
     if (state === "playing") {
-      btn.textContent = "♪ Stop Music";
+      btn.textContent = "♪ Stop Title Music";
       btn.disabled    = false;
     } else if (state === "idle") {
-      btn.textContent = "♪ Play Music";
+      btn.textContent = "♪ Play Title Music";
       btn.disabled    = false;
     } else if (state === "error") {
       btn.textContent = "♪ (no audio file)";
@@ -175,57 +175,129 @@
 
   function $(id) { return document.getElementById(id); }
 
+  /**
+   * Automated-testing switch (2026-08-03, user-directed): opening the game
+   * with ?mute (or ?mute=1) starts it fully silent -- no music, no sfx.
+   *
+   * Driving a real game from a test harness otherwise blasts audio out of
+   * whatever machine the browser is running on, which is exactly what you
+   * don't want from a check that's supposed to run unattended. This is a
+   * deliberate URL switch rather than a default, so normal play is untouched:
+   * the Audio menu's Mute checkbox reads back through MusicSystem.isMuted(),
+   * so it shows the muted state correctly and can still be unticked by hand.
+   *
+   * Muting is applied HERE, at bootstrap, so it's already in effect before
+   * the title-music button, MusicSystem.init, or startGame can play anything.
+   *
+   * Deliberately NOT persisted (see MusicSystem.setMuted's `persist` option):
+   * music.js normally writes the mute state to localStorage, which would mean
+   * one ?mute test run left every later NORMAL session silent for no visible
+   * reason.
+   */
+  function applyMuteUrlSwitch() {
+    const params = new URLSearchParams(window.location.search);
+    if (!params.has("mute") || params.get("mute") === "0") return;
+    window.MusicSystem.setMuted(true, { persist: false });
+    window.SfxSystem.setMuted(true); // sfx mute is in-memory only already
+    console.log("[audio] ?mute in the URL -- music and sfx start muted");
+  }
+
+  /**
+   * LAUNCH OPTIONS (2026-08-03, user-directed)
+   * -----------------------------------------
+   * Every pre-game choice lives in one modal now, opened by the splash
+   * screen's "Game Options" button, and the modal owns the Start Game button
+   * too. Previously these controls sat in a permanent toolbar strip pinned
+   * across the top of the splash screen, which fixed the number of options
+   * at "however many fit on one row" -- the reason this moved is to leave
+   * room for single-player options that don't exist yet.
+   *
+   * The control IDs are deliberately UNCHANGED from the old toolbar markup
+   * (spectator-toggle, human-race-select, opponent-count, difficulty-select,
+   * seed-input, .spectator-race-checkbox), so startGame() reads them exactly
+   * as before and knows nothing about where they're rendered.
+   *
+   * Sections are shown/hidden by mode rather than mixed together: picking
+   * All-AI Spectator swaps the Single Player block for the race checklist,
+   * since "Race"/"Opponents" are meaningless in a spectator game and the old
+   * flat strip left them sitting there greyed-in-spirit-only.
+   */
+  function renderLaunchOptions() {
+    return `
+      <h2 class="launch-title">Game Options</h2>
+
+      <div class="launch-section">
+        <div class="launch-section-label">Mode</div>
+        <label class="launch-row launch-row-check">
+          <span>All-AI Spectator</span>
+          <input type="checkbox" id="spectator-toggle">
+        </label>
+        <p class="launch-hint">Watch the AI races play each other. No player civ.</p>
+      </div>
+
+      <div class="launch-section" id="single-player-section">
+        <div class="launch-section-label">Single Player</div>
+        <label class="launch-row">
+          <span>Your Race</span>
+          <select id="human-race-select">
+            ${RACE_LIST.map((r) => `<option value="${r}">${window.GameData.getRace(r).label} — ${window.GameData.getRace(r).identity}</option>`).join("")}
+          </select>
+        </label>
+        <label class="launch-row">
+          <span>Opponents</span>
+          <select id="opponent-count">
+            <option value="1">1</option>
+            <option value="2" selected>2</option>
+            <option value="3">3</option>
+            <option value="4">4</option>
+            <option value="5">5</option>
+          </select>
+        </label>
+      </div>
+
+      <div class="launch-section" id="spectator-race-section" style="display:none;">
+        <div class="launch-section-label">Races in Play</div>
+        <div id="spectator-race-list" class="launch-race-list"></div>
+        <p class="launch-hint">Pick at least two.</p>
+      </div>
+
+      <div class="launch-section">
+        <div class="launch-section-label">World</div>
+        <label class="launch-row">
+          <span>Difficulty</span>
+          <select id="difficulty-select">
+            <option value="easy">Easy</option>
+            <option value="normal" selected>Normal</option>
+            <option value="hard">Hard</option>
+          </select>
+        </label>
+        <label class="launch-row">
+          <span>Map Seed</span>
+          <input type="text" id="seed-input" placeholder="random">
+        </label>
+        <p class="launch-hint">Leave the seed blank for a random map, or reuse one to replay the same world.</p>
+      </div>
+
+      <div class="launch-section">
+        <div class="launch-section-label">Audio</div>
+        <button id="title-music-btn" class="launch-music-btn">♪ Play Title Music</button>
+        <p class="launch-hint">In-game music and sound effect volumes are under the Audio menu once a game starts.</p>
+      </div>
+
+      <div class="launch-actions">
+        <button id="start-game-btn" class="launch-start-btn">Start Game</button>
+      </div>`;
+  }
+
   function showSetupScreen() {
-    // Inject launch controls into the toolbar strip
-    $("toolbar-controls").innerHTML = `
-      <label class="toolbar-field">
-        <input type="checkbox" id="spectator-toggle">
-        All-AI Spectator
-      </label>
-
-      <div class="toolbar-field" id="human-race-section">
-        <span>Race:</span>
-        <select id="human-race-select">
-          ${RACE_LIST.map((r) => `<option value="${r}">${window.GameData.getRace(r).label} — ${window.GameData.getRace(r).identity}</option>`).join("")}
-        </select>
-      </div>
-
-      <label class="toolbar-field" id="opponent-count-field">
-        <span>Opponents:</span>
-        <select id="opponent-count">
-          <option value="1">1</option>
-          <option value="2" selected>2</option>
-          <option value="3">3</option>
-          <option value="4">4</option>
-          <option value="5">5</option>
-        </select>
-      </label>
-
-      <div class="toolbar-field" id="spectator-race-section" style="display:none;">
-        <span>Races:</span>
-        <div id="spectator-race-list" class="race-checklist"></div>
-      </div>
-
-      <label class="toolbar-field">
-        <span>Difficulty:</span>
-        <select id="difficulty-select">
-          <option value="easy">Easy</option>
-          <option value="normal" selected>Normal</option>
-          <option value="hard">Hard</option>
-        </select>
-      </label>
-
-      <label class="toolbar-field">
-        <span>Seed:</span>
-        <input type="text" id="seed-input" placeholder="random" style="width:80px">
-      </label>
-    `;
+    applyMuteUrlSwitch();
+    $("launch-options-content").innerHTML = renderLaunchOptions();
 
     // Spectator mode: pick exactly which races participate via checkboxes,
     // instead of a random subset sized by "Opponents" (that dropdown/random
     // pick is still how a human-player game picks its AI opponents).
     $("spectator-race-list").innerHTML = RACE_LIST.map((r) => `
-      <label class="race-checklist-item">
+      <label class="launch-race-item">
         <input type="checkbox" class="spectator-race-checkbox" value="${r}" checked>
         ${window.GameData.getRace(r).label}
       </label>
@@ -233,9 +305,8 @@
 
     $("spectator-toggle").addEventListener("change", (e) => {
       const isSpectator = e.target.checked;
-      $("human-race-section").style.display = isSpectator ? "none" : "flex";
-      $("opponent-count-field").style.display = isSpectator ? "none" : "flex";
-      $("spectator-race-section").style.display = isSpectator ? "flex" : "none";
+      $("single-player-section").style.display = isSpectator ? "none" : "block";
+      $("spectator-race-section").style.display = isSpectator ? "block" : "none";
     });
 
     $("start-game-btn").addEventListener("click", startGame);
@@ -243,6 +314,24 @@
     $("title-music-btn").addEventListener("click", () => {
       console.log("[title music] button clicked");
       toggleTitleMusic();
+    });
+
+    setupLaunchOptionsOverlay();
+  }
+
+  /** Open/close wiring for the launch options modal. Closing is deliberately
+   *  generous (button, backdrop click, Escape) because this modal is the only
+   *  thing on the splash screen -- there's nothing behind it to lose. */
+  function setupLaunchOptionsOverlay() {
+    const overlay = $("launch-options-overlay");
+    const open = () => { overlay.style.display = "flex"; };
+    const close = () => { overlay.style.display = "none"; };
+
+    $("title-options-btn").addEventListener("click", open);
+    $("launch-options-close-btn").addEventListener("click", close);
+    overlay.addEventListener("mousedown", (e) => { if (e.target === overlay) close(); });
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape" && overlay.style.display === "flex") close();
     });
   }
 
@@ -409,6 +498,7 @@
     $("zoom-in-btn").addEventListener("click", () => adjustZoom(1.25));
     $("zoom-out-btn").addEventListener("click", () => adjustZoom(0.8));
     setupMenuBar();
+    setupFullscreenControl();
     setupAudioControls();
     setupSpectatorControls(); // wired unconditionally -- a loaded save can switch modes later
     setupFileControls();
@@ -709,7 +799,10 @@
 
   function centerViewOnStart() {
     const canvas = $("map-canvas");
-    const TILE_SIZE = window.UI.render.TILE_SIZE;
+    // Scaled by the current zoom, same as centerViewOn/render's own math --
+    // this used to use the raw TILE_SIZE, which silently mis-centered the
+    // opening view by the zoom factor whenever zoomLevel wasn't exactly 1.
+    const ts = window.UI.render.TILE_SIZE * (viewState.zoomLevel || 1);
     // Find the human civ's starting settler, or fall back to map center
     let focusX = gameState.map.width / 2;
     let focusY = gameState.map.height / 2;
@@ -718,8 +811,8 @@
       const unit = civ && civ.units[0];
       if (unit) { focusX = unit.x; focusY = unit.y; }
     }
-    viewState.scrollX = Math.max(0, focusX * TILE_SIZE - canvas.width  / 2);
-    viewState.scrollY = Math.max(0, focusY * TILE_SIZE - canvas.height / 2);
+    viewState.scrollX = Math.max(0, (focusX + 0.5) * ts - canvas.width  / 2);
+    viewState.scrollY = Math.max(0, (focusY + 0.5) * ts - canvas.height / 2);
   }
 
   /** Menu-bar zoom in/out buttons -- same clamp and cursor/anchor-relative
@@ -878,11 +971,69 @@
   /** Wires the in-game audio panel (mute toggle, volume slider, track picker).
    *  The panel itself is populated with actual track options once
    *  MusicSystem.init() resolves -- see populateAudioTrackOptions. */
+  /**
+   * Interface menu's Full Screen toggle.
+   *
+   * Two DIFFERENT fullscreen mechanisms are in play and it's worth being
+   * clear about which one this is. F11 is the BROWSER's own fullscreen; the
+   * page cannot bind or intercept it (browsers reserve the key), so the
+   * "F11" text next to this item is a hint about a key the browser handles,
+   * not a shortcut this code registers. The button itself uses the
+   * Fullscreen API on <html>, which is a separate mechanism that happens to
+   * look identical to the player. Either route triggers `fullscreenchange`
+   * often enough to keep the label honest, and the label falls back to
+   * re-reading document.fullscreenElement whenever the menu is opened.
+   *
+   * requestFullscreen() can reject (an iframe without the `allow-fullscreen`
+   * permission, or a browser policy that wants a more direct user gesture) --
+   * that's caught and logged rather than thrown, since F11 still works.
+   */
+  function setupFullscreenControl() {
+    const btn = $("fullscreen-toggle-btn");
+    if (!btn) return;
+    const label = btn.querySelector("span");
+
+    function syncLabel() {
+      if (label) label.textContent = document.fullscreenElement ? "Exit Full Screen" : "Enter Full Screen";
+    }
+
+    btn.addEventListener("click", () => {
+      if (document.fullscreenElement) {
+        document.exitFullscreen().catch((e) => console.warn(`[fullscreen] exit failed: ${e.message}`));
+      } else {
+        const req = document.documentElement.requestFullscreen;
+        if (!req) {
+          console.warn("[fullscreen] Fullscreen API unavailable in this browser -- use F11 instead.");
+          return;
+        }
+        req.call(document.documentElement).catch((e) => {
+          console.warn(`[fullscreen] request rejected (${e.name}: ${e.message}) -- F11 still works.`);
+        });
+      }
+    });
+
+    document.addEventListener("fullscreenchange", syncLabel);
+    // Opening the menu re-reads the real state, which covers the player
+    // having used F11 (browser-level fullscreen doesn't always fire the
+    // Fullscreen API's own change event).
+    const interfaceBtn = $("menu-interface-btn");
+    if (interfaceBtn) interfaceBtn.addEventListener("click", syncLabel);
+    syncLabel();
+  }
+
   function setupAudioControls() {
+    // Mute covers BOTH systems (2026-08-03): it used to silence music only,
+    // so a "muted" game still had units shouting over every attack -- which
+    // reads as the checkbox being broken rather than as a deliberate split.
+    // The two VOLUME sliders below stay independent; mute is the one master
+    // switch. Music's mute persists (it owns the stored audio settings);
+    // sfx's is in-memory and re-derived from the checkbox on load.
     const muteCheckbox = $("audio-mute-checkbox");
     muteCheckbox.checked = window.MusicSystem.isMuted();
+    window.SfxSystem.setMuted(muteCheckbox.checked);
     muteCheckbox.addEventListener("change", () => {
       window.MusicSystem.setMuted(muteCheckbox.checked);
+      window.SfxSystem.setMuted(muteCheckbox.checked);
     });
 
     const volumeSlider = $("audio-volume-slider");
