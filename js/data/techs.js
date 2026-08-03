@@ -1690,7 +1690,7 @@ window.GameData.getTech = function (techId) {
 // unitUpkeepLayerPremium's shape (compounds per layer past 1) but is its own
 // independent rate -- tech research time and unit upkeep are tuned for
 // different goals and shouldn't be forced to move together.
-const TECH_LAYER_PREMIUM_RATE = 0.2;
+const TECH_LAYER_PREMIUM_RATE = window.GameConfig.research.layerPremiumRate;
 
 /** Multiplier on a tech's authored `cost`, purely from how deep its layer
  *  is -- L1 pays none, L5 pays roughly (1.15)^4 =~1.75x on top of whatever
@@ -1705,7 +1705,7 @@ window.GameData.techLayerPremium = function (layer) {
 // individual tech's authored `cost`, so the RELATIVE cost curve (cheap
 // early techs vs. expensive late ones) is preserved exactly, just
 // compressed in absolute time. See project_pacing_experiment memory.
-const TECH_RESEARCH_TIME_MULT = 0.80;
+const TECH_RESEARCH_TIME_MULT = window.GameConfig.research.researchTimeMult;
 
 /** The REAL Lore cost to complete a tech -- authored `cost` times
  *  techLayerPremium times TECH_RESEARCH_TIME_MULT. Every consumer that
@@ -1803,7 +1803,7 @@ window.GameData.unitTechLayer = function (unitId) {
 // layer 5, so a layer-5 unit (Dragon-tier) lands at roughly (1.18)^4 =~2x
 // a layer-1 unit of identical power -- enough to actually feel expensive
 // without the curve running away, since 4 layer-steps is the whole range.
-const LAYER_PREMIUM_RATE = 0.18;
+const LAYER_PREMIUM_RATE = window.GameConfig.units.buildLayerPremiumRate;
 
 /** Multiplier applied to unitBuildCost (the one-time purchase) for how deep
  *  in the tech tree a unit sits -- an L1 unit (or a legacy one) pays no
@@ -1823,7 +1823,7 @@ window.GameData.unitLayerPremium = function (unitId) {
 // entire army of top-tier units (not just a few, on top of a mixed-tier
 // core) should bankrupt the economy that's paying for it, rather than merely
 // costing more the way the one-time build price does.
-const UPKEEP_LAYER_PREMIUM_RATE = 0.40;
+const UPKEEP_LAYER_PREMIUM_RATE = window.GameConfig.units.upkeepLayerPremiumRate;
 
 /** Same shape as unitLayerPremium above, but at UPKEEP_LAYER_PREMIUM_RATE --
  *  used ONLY by unitUpkeep, never unitBuildCost. Kept as a separate function
@@ -1865,9 +1865,9 @@ window.GameData.unitBuildCost = function (unitId) {
 // not paid in scholarship); the 3 thematically "magical" units draw a
 // slice from Lore instead, reflecting the arcane upkeep of maintaining
 // them (spellwork, wards, the Bog Witch's curse-magic).
-const UNIT_UPKEEP_SPLIT_DEFAULT = { harvest: 0.70, coin: 0.30 };
-const UNIT_UPKEEP_SPLIT_MAGICAL = { harvest: 0.50, coin: 0.25, lore: 0.25 };
-const MAGICAL_UNIT_IDS = new Set(["wizard", "bog_witch", "dragon", "paladin"]);
+const UNIT_UPKEEP_SPLIT_DEFAULT = window.GameConfig.units.upkeepSplitDefault;
+const UNIT_UPKEEP_SPLIT_MAGICAL = window.GameConfig.units.upkeepSplitMagical;
+const MAGICAL_UNIT_IDS = new Set(window.GameConfig.units.magicalUnitIds);
 
 // Base upkeep rate: 10% -> 35% (2026-07-17, user-directed). Measured
 // directly in a real 900-turn game (see [[project_roads_upkeep_stall_review]])
@@ -1882,7 +1882,7 @@ const MAGICAL_UNIT_IDS = new Set(["wizard", "bog_witch", "dragon", "paladin"]);
 // balance batch after any further change to this constant, same caveat
 // this project's own code has flagged before for the layer-premium rate
 // just below (see UPKEEP_LAYER_PREMIUM_RATE's comment).
-const UPKEEP_BASE_RATE = 0.35;
+const UPKEEP_BASE_RATE = window.GameConfig.units.upkeepBaseRate;
 
 /** Ongoing per-turn upkeep for a unit: UPKEEP_BASE_RATE of its raw power
  *  (GameData.unitPower -- NOT its build cost; upkeep is deliberately

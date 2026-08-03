@@ -18,8 +18,8 @@ window.GameEngine = window.GameEngine || {};
   // viable win conditions (Halfellow-style economy vs. Orc-style conquest),
   // not one dominant path with the other as a rare fallback. See
   // project_pacing_experiment memory.
-  const VICTORY_SHARE_THRESHOLD = 0.30;
-  const VICTORY_SUSTAIN_TURNS = 2;
+  const VICTORY_SHARE_THRESHOLD = window.GameConfig.victory.shareThreshold;
+  const VICTORY_SUSTAIN_TURNS = window.GameConfig.victory.sustainTurns;
 
   /** Computes each civ's currently-visible tile set (own territory + vision radius around units/cities) */
   function refreshVisibility(gameState) {
@@ -199,7 +199,7 @@ window.GameEngine = window.GameEngine || {};
   // removed from the map -- see beginRound's ritual-tracking loop below.
   // Deliberately NOT applied to Dark Ritual (Undead), which the user didn't
   // include in this request.
-  const RESOURCE_EXHAUSTION_CHANCE = 0.05;
+  const RESOURCE_EXHAUSTION_CHANCE = window.GameConfig.world.resourceExhaustionChance;
 
   /**
    * Prospecting/delving/fishing payout redesign (2026-07-24, user-directed):

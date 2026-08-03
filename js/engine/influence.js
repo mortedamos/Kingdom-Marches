@@ -11,9 +11,12 @@ window.GameEngine = window.GameEngine || {};
 
 (function () {
   const TERRAIN = window.GameData.TERRAIN;
-  const OWNERSHIP_THRESHOLD = 2 / 3;
-  const CONTESTED_GRACE_TURNS = 3;
-  const LOW_VALUE_TERRAIN_WEIGHT = 0.25; // water (ocean+coast) and tundra
+  // Tuning lives in js/data/config.js -- see its INFLUENCE section for what
+  // each of these does and what changing it costs.
+  const CFG = window.GameConfig.influence;
+  const OWNERSHIP_THRESHOLD = CFG.ownershipThreshold;
+  const CONTESTED_GRACE_TURNS = CFG.contestedGraceTurns;
+  const LOW_VALUE_TERRAIN_WEIGHT = CFG.lowValueTerrainWeight; // water (ocean+coast) and tundra
 
   /** Chebyshev (square) distance -- the metric used everywhere in this design */
   function chebyshev(x1, y1, x2, y2) {
@@ -30,7 +33,7 @@ window.GameEngine = window.GameEngine || {};
     // linear interpolation from 1.0 at distance=1 down to ~0 at radius+1,
     // passing through ~0.6 at distance=radius (per design doc's spec)
     const t = (distance - 1) / (radius);
-    return Math.max(0, 1.0 - t * 0.85);
+    return Math.max(0, 1.0 - t * CFG.cityFalloffDecay);
   }
 
   /**

@@ -177,6 +177,10 @@
     </div>
   </div>
 
+  <!-- Balance/tuning constants -- must load FIRST; every other file reads
+       window.GameConfig at module scope. -->
+  <script src="js/data/config.js"></script>
+
   <!-- Data files (must load before engine files) -->
   <script src="js/data/sprite-manifests.js"></script>
   <script src="js/data/races.js"></script>

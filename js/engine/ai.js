@@ -2447,7 +2447,7 @@ window.GameEngine = window.GameEngine || {};
   // 0.45: 1st copy pays no premium, 2nd costs 1.45x, 3rd 2.10x, 4th 3.05x,
   // 5th 4.42x -- affordable to field 2-3 as a real army anchor, ruinous to
   // mass-produce past that. See project_dragon_rebalance memory.
-  const RARE_UNIT_PREMIUM_RATE = 0.45;
+  const RARE_UNIT_PREMIUM_RATE = window.GameConfig.units.rarePremiumRate;
   // `veryRare: true` (2026-07-15, currently only Dwarf's Runeforged Titan)
   // is a steeper tier above `rare` for a unit that should feel like a
   // once-in-a-game commitment rather than a repeatable army anchor -- users
@@ -2458,7 +2458,7 @@ window.GameEngine = window.GameEngine || {};
   // commitment, not just "real but reachable," and a 3rd is effectively
   // never worth it. Mutually exclusive with `rare` (checked first in
   // buildUnitOption below) rather than additive with it.
-  const VERY_RARE_UNIT_PREMIUM_RATE = 1.50;
+  const VERY_RARE_UNIT_PREMIUM_RATE = window.GameConfig.units.veryRarePremiumRate;
 
   // Disposable-filler discount (2026-07-14): the mirror-image of the rarity
   // premium above -- a `cheap: true` unit (currently only Orc's Goblin
@@ -2468,7 +2468,7 @@ window.GameEngine = window.GameEngine || {};
   // Flat 30% off cost, build time, AND upkeep (see unitUpkeep in
   // techs.js for the upkeep side) -- user-directed, see
   // project_pairwise_balance_human_orc_halfellow memory.
-  const CHEAP_UNIT_DISCOUNT_RATE = 0.30;
+  const CHEAP_UNIT_DISCOUNT_RATE = window.GameConfig.units.cheapUnitDiscountRate;
 
   // "Cultural Influence" tech-tree capstone (2026-07-21, user-directed):
   // flat multi-resource cost + turn count, deliberately large/slow --

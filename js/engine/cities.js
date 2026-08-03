@@ -13,6 +13,10 @@ window.GameEngine = window.GameEngine || {};
 
 (function () {
   const TERRAIN = window.GameData.TERRAIN;
+  // Tuning lives in js/data/config.js -- see its CITY section. The local
+  // names below are kept so the (extensive) explanatory comments around each
+  // one stay attached to the code that actually uses them.
+  const CFG = window.GameConfig.city;
 
   // Quadratic, not linear: threshold = population^2 * GROWTH_THRESHOLD_PER_POP
   // (see tickCity). This deliberately mirrors the geometry of the merged
@@ -22,22 +26,22 @@ window.GameEngine = window.GameEngine || {};
   // resources available to reach it, causing growth to visibly accelerate
   // late-game. Matching the threshold's growth rate to the area's growth rate
   // keeps the pace roughly constant across levels instead of snowballing.
-  const GROWTH_THRESHOLD_PER_POP = 400.0;
+  const GROWTH_THRESHOLD_PER_POP = CFG.growthThresholdPerPop;
   // Cap on a city's NATURAL (population-driven) growth and radius. This is
   // not a hard ceiling on city.influenceRadius itself -- tech/building radius
   // bonuses (extraRadiusBonus/structureRadiusBonus) still add on top, uncapped
   // (see tickCity's radius formula). 6 replaces the old population cap of 10;
   // it's also the point at which the merged influence/working radius (below)
   // tops out under its own steam.
-  const MAX_CITY_POPULATION = 6;
-  const UPKEEP_RATE = 0.5;       // Harvest cost per population point per turn
-  const INTRINSIC_COIN_RATE = 0.1; // population-based coin production
-  const INTRINSIC_LORE_RATE = 0.1;
-  const FLAT_CITY_HARVEST = 1; // flat per-city per-turn base yield
-  const FLAT_CITY_COIN    = 1;
-  const FLAT_CITY_LORE    = 1;
-  const LORE_TRICKLE_RATE = 0.1;  // influence bonus per point of Lore/turn
-  const BASE_INFLUENCE_RADIUS = 1; // pop 1 city starts with radius 1
+  const MAX_CITY_POPULATION = CFG.maxPopulation;
+  const UPKEEP_RATE = CFG.upkeepRatePerPop;       // Harvest cost per population point per turn
+  const INTRINSIC_COIN_RATE = CFG.intrinsicCoinRate; // population-based coin production
+  const INTRINSIC_LORE_RATE = CFG.intrinsicLoreRate;
+  const FLAT_CITY_HARVEST = CFG.flatHarvest; // flat per-city per-turn base yield
+  const FLAT_CITY_COIN    = CFG.flatCoin;
+  const FLAT_CITY_LORE    = CFG.flatLore;
+  const LORE_TRICKLE_RATE = CFG.loreTrickleRate;  // influence bonus per point of Lore/turn
+  const BASE_INFLUENCE_RADIUS = CFG.baseInfluenceRadius; // pop 1 city starts with radius 1
 
   // city.influenceRadius is now the SINGLE radius governing both territory
   // influence (influence.js's computeInfluenceMap) and worked-tile yield
@@ -63,7 +67,7 @@ window.GameEngine = window.GameEngine || {};
   // no per-ring sequencing) is added to filledOffsets. Filled offsets are
   // never removed, so growth never erases progress even if the radius grows
   // again before an earlier ring finishes.
-  const FILL_THRESHOLD = 3;
+  const FILL_THRESHOLD = CFG.fillThreshold;
   // Pacing experiment (2026-07-12): first doubled from 0.4/0.65 to 0.8/1.3,
   // then dialed back 25% from THAT (not back to the original) once a
   // territory-heavy batch under the doubled rate + a 25% victory threshold
@@ -71,8 +75,8 @@ window.GameEngine = window.GameEngine || {};
   // victory needs influence to grow slower than that so a war of conquest
   // can still outrace it. Net vs. the ORIGINAL pre-experiment values: 1.5x,
   // not 2x. See project_pacing_experiment memory.
-  const FILL_RATE_BASE = 0.5;
-  const FILL_RATE_PER_INDUSTRIOUSNESS = 0.9;
+  const FILL_RATE_BASE = CFG.fillRateBase;
+  const FILL_RATE_PER_INDUSTRIOUSNESS = CFG.fillRatePerIndustriousness;
   // ~3.4 turns/tile at industriousness 0.3 (current low end, Orc) down to
   // ~1.9 turns/tile at industriousness 1.0 (current high end, Halfellow) --
   // partway back up from the doubled rate's 2.5/1.4, but still faster than
@@ -83,7 +87,7 @@ window.GameEngine = window.GameEngine || {};
   // the full reasoning. 0.5 means a max-industriousness civ (Halfellow,
   // 1.0) gets +50% fill-in speed from garrisoning a city; a low-
   // industriousness one (Orc, 0.3) only gets +15%.
-  const GARRISON_FILL_MULT_RATE = 0.5;
+  const GARRISON_FILL_MULT_RATE = CFG.garrisonFillMultRate;
 
   // Influence-per-population multiplier: deliberately NOT a per-race flat
   // field (races.js used to carry a bespoke `influenceMult`, e.g. Halfellow's
@@ -95,14 +99,14 @@ window.GameEngine = window.GameEngine || {};
   // 1.3 at 1.0 (Halfellow) -- same ceiling Halfellow's old flat field had,
   // so this reproduces that number as an emergent consequence of already
   // having the highest industriousness, not a second hidden bonus on top of it.
-  const INFLUENCE_MULT_PER_INDUSTRIOUSNESS = 0.6;
+  const INFLUENCE_MULT_PER_INDUSTRIOUSNESS = CFG.influenceMultPerIndustriousness;
   function industriousnessInfluenceMult(race) {
     return 1.0 + ((race.industriousness ?? 0.5) - 0.5) * INFLUENCE_MULT_PER_INDUSTRIOUSNESS;
   }
 
   const SETTLER_MIN_POP = 1;
-  const MIN_CITY_SPACING = 8; // Chebyshev distance, from ANY city
-  const EMERGENCY_CITY_SPACING = 3; // relaxed floor when a civ is stranded with no other option
+  const MIN_CITY_SPACING = CFG.minCitySpacing; // Chebyshev distance, from ANY city
+  const EMERGENCY_CITY_SPACING = CFG.emergencyCitySpacing; // relaxed floor when a civ is stranded with no other option
 
   /** Creates a new city object at founding (population 1) */
   function createCity({ x, y, civId, raceId, name, map, radiusBonus = 0 }) {
@@ -710,7 +714,7 @@ window.GameEngine = window.GameEngine || {};
   // city actually has -- prevents a player from farming a resource bonus by
   // paving their entire territory. Applies to every race/tech that grants a
   // per-road-tile bonus, not just whichever one happens to define it.
-  const ROAD_BONUS_TILE_CAP = 8;
+  const ROAD_BONUS_TILE_CAP = CFG.roadBonusTileCap;
 
   function computeWorkedTileYield(city, civ, map) {
     const totals = { harvest: 0, coin: 0, lore: 0 };

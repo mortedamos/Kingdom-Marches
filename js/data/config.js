@@ -1,0 +1,306 @@
+/**
+ * GAME CONFIGURATION
+ * ==================
+ * The game's balance dials, in one place (2026-08-03, user-directed).
+ *
+ * Every value here is a knob a designer would plausibly want to turn to
+ * change how the game FEELS -- how fast territory spreads, what an army
+ * costs to keep in the field, how long research takes, how quickly cities
+ * grow. Change a number here and the engine picks it up; there is no second
+ * copy of any of these anywhere else.
+ *
+ * ---------------------------------------------------------------------------
+ * WHAT IS DELIBERATELY *NOT* HERE
+ * ---------------------------------------------------------------------------
+ * Per-race AI tactical heuristics -- search radii, party sizes, "how injured
+ * before a Troubadour comes running", ambush staging thresholds, and the
+ * hundred or so similar constants in js/engine/ai.js. Those are not balance
+ * dials; each one only makes sense next to the behavior it drives, and
+ * hoisting them here would turn one readable behavior into two files to
+ * cross-reference. They stay where they are, named and commented in place.
+ *
+ * Also not here: per-unit stats (js/data/units.js), per-tech costs and
+ * effects (js/data/techs.js), per-race traits (js/data/races.js), per-terrain
+ * yields (js/data/terrain.js), per-building effects (js/data/buildings.js).
+ * Those are the game's CONTENT, not its tuning; they belong in their own
+ * data files where they can be read as tables.
+ *
+ * ---------------------------------------------------------------------------
+ * LOAD ORDER
+ * ---------------------------------------------------------------------------
+ * This file must load before every other script (see index.html). Nothing
+ * here depends on anything else.
+ *
+ * ---------------------------------------------------------------------------
+ * CHANGING VALUES
+ * ---------------------------------------------------------------------------
+ * Most of these interact. Prior tuning passes on this project found that
+ * changing one in isolation tends to move the win-condition mix in ways that
+ * aren't obvious from the number alone (e.g. raising influence fill rate made
+ * territorial victory win 20/20 games and elimination 0/20). Re-validate with
+ * a headless batch (window.__sim in js/main.js) after touching anything in
+ * the INFLUENCE, CITY, or UNIT ECONOMY sections.
+ */
+
+window.GameConfig = {
+
+  // =========================================================================
+  // INFLUENCE & TERRITORY  (js/engine/influence.js)
+  // How fast borders spread, and what it takes to actually own ground.
+  // =========================================================================
+  influence: {
+    /** Share of a tile's total influence one civ needs to OWN it outright.
+     *  Below this the tile is Contested and pays reduced yield. Raising this
+     *  makes borders harder to hold and pushes games toward stalemate lines;
+     *  lowering it makes territory flip quickly and favors territorial
+     *  victory over conquest. */
+    ownershipThreshold: 2 / 3,
+
+    /** Consecutive turns a tile can sit contested (or with no influence on it
+     *  at all) before it reverts to neutral. A grace period, so a single turn
+     *  of an enemy army walking past doesn't cost you the tile. */
+    contestedGraceTurns: 3,
+
+    /** How much an ocean, coast, or tundra tile counts for in the victory
+     *  tally, relative to ordinary land. Applied to BOTH a civ's owned count
+     *  and the total claimable pool, so a water-heavy map doesn't inflate the
+     *  denominator against everyone. */
+    lowValueTerrainWeight: 0.25,
+
+    /** City influence falloff steepness. Influence is full strength at
+     *  distance 0-1 and interpolates down to (1 - this) at the radius edge --
+     *  0.85 puts the edge at ~15% strength. Higher = sharper borders. */
+    cityFalloffDecay: 0.85,
+  },
+
+  // =========================================================================
+  // CITIES  (js/engine/cities.js)
+  // Growth pace, yields, and how quickly a city's radius fills in.
+  // =========================================================================
+  city: {
+    /** Growth is quadratic: harvest needed for the next pop level is
+     *  population^2 * this. Quadratic deliberately mirrors the worked-tile
+     *  AREA also growing quadratically with radius, which is what stops
+     *  growth from accelerating away late-game. */
+    growthThresholdPerPop: 400.0,
+
+    /** Cap on NATURAL (population-driven) growth and radius. Tech/building
+     *  radius bonuses still stack on top of this, uncapped. */
+    maxPopulation: 6,
+
+    /** Harvest consumed per population point per turn. */
+    upkeepRatePerPop: 0.5,
+
+    /** Coin and Lore produced per population point per turn. */
+    intrinsicCoinRate: 0.1,
+    intrinsicLoreRate: 0.1,
+
+    /** Flat per-city, per-turn yield, before any tiles are worked -- keeps a
+     *  brand-new city from producing literally nothing. */
+    flatHarvest: 1,
+    flatCoin: 1,
+    flatLore: 1,
+
+    /** Extra influence a city projects per point of Lore it makes per turn. */
+    loreTrickleRate: 0.1,
+
+    /** Radius a freshly founded (population 1) city starts with. */
+    baseInfluenceRadius: 1,
+
+    /** FILL-IN: a tile inside a city's radius contributes nothing to
+     *  influence OR yield until it has individually "filled in". This delay
+     *  is the main brake on the growth feedback loop (bigger radius -> more
+     *  harvest -> faster growth -> bigger radius). Each turn a city adds
+     *  (fillRateBase + industriousness * fillRatePerIndustriousness) to its
+     *  progress; each time that crosses fillThreshold, one random unfilled
+     *  offset within the current radius fills. Filled tiles are never lost.
+     *
+     *  At the current values that's ~3.4 turns/tile at industriousness 0.3
+     *  (Orc) down to ~1.9 at 1.0 (Halfellow). */
+    fillThreshold: 3,
+    fillRateBase: 0.5,
+    fillRatePerIndustriousness: 0.9,
+
+    /** Garrisoning a city speeds its fill-in by (industriousness * this).
+     *  0.5 means a max-industriousness civ gets +50%, a low one only +15%. */
+    garrisonFillMultRate: 0.5,
+
+    /** How strongly industriousness scales a city's influence output.
+     *  Centered on 1.0 at industriousness 0.5: 0.7 at 0, 1.3 at 1.0. */
+    influenceMultPerIndustriousness: 0.6,
+
+    /** Minimum Chebyshev distance between any two cities, anywhere, and the
+     *  relaxed floor used only when a civ is stranded with no legal site. */
+    minCitySpacing: 8,
+    emergencyCitySpacing: 3,
+
+    /** How many road tiles in a city's radius can pay a road yield bonus.
+     *  Without a cap, paving every tile becomes the dominant strategy. */
+    roadBonusTileCap: 8,
+  },
+
+  // =========================================================================
+  // UNIT ECONOMY  (js/data/techs.js, js/engine/ai.js)
+  // What units cost to buy and — more importantly — to keep.
+  // =========================================================================
+  units: {
+    /** Ongoing upkeep as a fraction of a unit's raw power, per turn.
+     *  Raised 0.10 -> 0.35 after a 900-turn game showed a 19-unit army
+     *  costing only ~6% of income -- a rounding error rather than real
+     *  economic pressure, which is why every race ended games sitting on
+     *  100+ turns of unspent resources. This is the single biggest dial on
+     *  "how large an army can this game sustain". */
+    upkeepBaseRate: 0.35,
+
+    /** Which resources upkeep is drawn from. Fixed and universal -- NOT the
+     *  unlocking tech's cost ratio (that's used for the one-time build cost).
+     *  Most units are provisioned from Harvest; thematically magical ones
+     *  draw a slice from Lore instead (spellwork, wards, curse-magic). */
+    upkeepSplitDefault: { harvest: 0.70, coin: 0.30 },
+    upkeepSplitMagical: { harvest: 0.50, coin: 0.25, lore: 0.25 },
+    magicalUnitIds: ["wizard", "bog_witch", "dragon", "paladin"],
+
+    /** Compounding premium per tech-tree layer past 1.
+     *
+     *  buildLayerPremiumRate is the ONE-TIME purchase: (1.18)^4 ~= 2x for a
+     *  layer-5 unit. Deliberately thinner than the tech tree's own cost
+     *  growth, since unit power already trends up with layer on its own.
+     *
+     *  upkeepLayerPremiumRate is much steeper: (1.40)^4 ~= 3.8x. A one-time
+     *  price only limits how FAST a civ can amass an elite army; ongoing
+     *  upkeep is what decides whether it can be SUSTAINED. At this rate an
+     *  army made entirely of top-tier units should bankrupt the economy
+     *  paying for it. */
+    buildLayerPremiumRate: 0.18,
+    upkeepLayerPremiumRate: 0.40,
+
+    /** Each copy a civ already owns (or has queued) of a `rare` unit
+     *  compounds the cost AND build time of the next one by this rate. At
+     *  0.45: 2nd copy 1.45x, 3rd 2.10x, 5th 4.42x -- 2-3 is a real army
+     *  anchor, past that is ruinous.
+     *
+     *  `veryRare` (currently only the Runeforged Titan) is the steeper tier,
+     *  mutually exclusive with `rare`. At 1.50: 2nd copy 2.5x, 3rd 6.25x --
+     *  a second one is a genuinely hard commitment and a third effectively
+     *  never worth it. */
+    rarePremiumRate: 0.45,
+    veryRarePremiumRate: 1.50,
+
+    /** Mirror image of the rarity premium: a `cheap: true` unit (currently
+     *  only the Goblin Miscreant) gets this much off cost, build time AND
+     *  upkeep -- deliberately weak bulk filler, discounted beyond what its
+     *  low raw power alone would give it. */
+    cheapUnitDiscountRate: 0.30,
+  },
+
+  // =========================================================================
+  // RESEARCH  (js/data/techs.js)
+  // =========================================================================
+  research: {
+    /** Compounding multiplier on a tech's authored cost per layer past 1 --
+     *  L5 pays roughly (1.20)^4 ~= 2x. Separate from the unit premiums above
+     *  because research time and army upkeep are tuned for different goals. */
+    layerPremiumRate: 0.2,
+
+    /** Flat global multiplier on research time, applied on top of the layer
+     *  premium. Compresses absolute research time without disturbing the
+     *  RELATIVE cost curve between cheap early and expensive late techs. */
+    researchTimeMult: 0.80,
+  },
+
+  // =========================================================================
+  // COMBAT  (js/engine/combat.js)
+  // =========================================================================
+  combat: {
+    /** Flat chance a non-Ranged attacker (effective range < 2) simply misses
+     *  a Flying target outright. Symmetric: it applies to a melee defender's
+     *  counter against a Flying attacker just as much as to a melee
+     *  attacker's forward hit against a Flying defender. */
+    flyingEvasionMissChance: 0.25,
+
+    /** Death-save techs (Halfellow "Resilient Spirit", Dwarf "Unyielding"):
+     *  each successful save permanently costs THAT UNIT this many percentage
+     *  points off its own future trigger chance. Diminishing returns per unit
+     *  instance rather than a civ-wide cooldown, so a unit that keeps
+     *  cheating death becomes steadily less able to. */
+    resilientSpiritDecayPerTrigger: 0.15,
+    unyieldingDecayPerTrigger: 0.15,
+
+    /** Chance an "Unyielding" save ALSO forces a Rest next turn. Resilient
+     *  Spirit's forced Rest is unconditional; this is the one deliberate
+     *  difference between the two mechanics. */
+    unyieldingForcedRestChance: 0.5,
+
+    /** How tough a city is to crack: base, plus per population level, plus
+     *  per structure built in it. */
+    cityBaseDefense: 4,
+    cityDefensePerLevel: 2.5,
+    cityDefensePerStructure: 1.5,
+  },
+
+  // =========================================================================
+  // VETERAN LEVELING  (js/engine/combat.js)
+  // =========================================================================
+  leveling: {
+    maxUnitLevel: 5,
+
+    /** Cumulative XP to REACH each level (index 0 == level 1). Front-loaded
+     *  (10/15/20/25/30 per level) so surviving a few fights pays off visibly
+     *  early, while level 5 stays a genuine long-game achievement. */
+    xpThresholds: [10, 25, 45, 70, 100],
+
+    /** XP awarded per combat action: a flat participation grant, a per-point
+     *  of damage dealt grant, and a kill bonus that scales with how strong
+     *  the victim was (so farming weak targets is a poor way to level). */
+    xpParticipation: 1,
+    xpPerDamage: 0.15,
+    xpKillBase: 3,
+    xpKillPowerMult: 0.5,
+
+    /** Per-level bonus for each of the four upgrade paths a leveling unit
+     *  can pick. Attack/Defense are flat +1 (meaningful on this game's small
+     *  integer stat scale). Siege/First Strike are percentage-point bonuses,
+     *  kept deliberately smaller per level: siegePct only applies against
+     *  structures, and firstStrikePct compounds every round of a fight. */
+    bonusValues: {
+      attack: 1,
+      defense: 1,
+      siegePct: 0.10,
+      firstStrikePct: 0.01,
+    },
+  },
+
+  // =========================================================================
+  // VICTORY & TURN LOOP  (js/engine/turns.js)
+  // =========================================================================
+  victory: {
+    /** Share of the map's total claimable weight one civ must hold to win
+     *  territorially, and how many consecutive turns they must hold it.
+     *  Lowering this makes territorial victory dominate; the sustain
+     *  requirement stops a one-turn border flicker from ending the game. */
+    shareThreshold: 0.30,
+    sustainTurns: 2,
+  },
+
+  world: {
+    /** Per-turn chance a worked resource tile is exhausted and removed. */
+    resourceExhaustionChance: 0.05,
+  },
+
+  // =========================================================================
+  // VIEW  (js/ui/render.js)
+  // Presentation only -- no gameplay effect.
+  // =========================================================================
+  view: {
+    /** Base tile size in px. Rendered size is this * zoomLevel, so this is
+     *  effectively the default zoom: raising it starts the map more zoomed
+     *  in while keeping the zoom readout meaningful (100% == the intended
+     *  default view). The zoom bounds are scaled to match. */
+    tileSize: 52,
+    minZoom: 0.25,
+    maxZoom: 2.0,
+
+    /** Purely visual glide duration for a unit moving between tiles. */
+    moveAnimMs: 350,
+  },
+};

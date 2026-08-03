@@ -27,6 +27,11 @@ window.GameEngine = window.GameEngine || {};
 
 (function () {
   const TERRAIN = window.GameData.TERRAIN;
+  // Tuning lives in js/data/config.js -- see its COMBAT and VETERAN LEVELING
+  // sections. Local names are kept so each value stays next to the comment
+  // explaining what it does to a fight.
+  const CFG = window.GameConfig.combat;
+  const LVL_CFG = window.GameConfig.leveling;
 
   function roll1d6() { return 1 + Math.floor(Math.random() * 6); }
   function roll3d6() { return roll1d6() + roll1d6() + roll1d6(); }
@@ -228,13 +233,13 @@ window.GameEngine = window.GameEngine || {};
    * A unit that reaches MAX_UNIT_LEVEL stops earning XP entirely (grantXP is
    * a no-op past the cap) rather than accumulating unusable surplus forever.
    */
-  const MAX_UNIT_LEVEL = 5;
+  const MAX_UNIT_LEVEL = LVL_CFG.maxUnitLevel;
 
   // Cumulative XP required to REACH level N (index 0 == level 1). Spaced out
   // (10/15/20/25/30 per level) so early levels come quickly -- a rewarding,
   // visible payoff for a unit that survives a few fights -- while level 5
   // stays a real achievement reserved for genuine long-game veterans.
-  const XP_LEVEL_THRESHOLDS = [10, 25, 45, 70, 100];
+  const XP_LEVEL_THRESHOLDS = LVL_CFG.xpThresholds;
 
   // Per-level stat bonus for each of the 4 player/AI-chosen upgrade paths.
   // Attack/Defense are flat +1 (meaningful on this game's small integer stat
@@ -247,12 +252,7 @@ window.GameEngine = window.GameEngine || {};
   // project_first_strike_redesign memory for why those values are already
   // ~10x smaller than they used to be) -- a Paladin's base 6% would nearly
   // triple by level 5 at +2%/level, so this is capped at +1%/level instead.
-  const LEVEL_BONUS_VALUES = {
-    attack: 1,
-    defense: 1,
-    siegePct: 0.10,
-    firstStrikePct: 0.01,
-  };
+  const LEVEL_BONUS_VALUES = LVL_CFG.bonusValues;
   const LEVEL_UP_STATS = Object.keys(LEVEL_BONUS_VALUES);
 
   /** Adds combat XP to `unit`. No-op once it's hit MAX_UNIT_LEVEL -- nothing
@@ -305,10 +305,10 @@ window.GameEngine = window.GameEngine || {};
    * trivial targets to level up. `killedUnitTypeId` is null for a non-lethal
    * hit and for damage dealt to a structure/city (no unit died).
    */
-  const XP_PARTICIPATION = 1;
-  const XP_PER_DAMAGE = 0.15;
-  const XP_KILL_BASE = 3;
-  const XP_KILL_POWER_MULT = 0.5;
+  const XP_PARTICIPATION = LVL_CFG.xpParticipation;
+  const XP_PER_DAMAGE = LVL_CFG.xpPerDamage;
+  const XP_KILL_BASE = LVL_CFG.xpKillBase;
+  const XP_KILL_POWER_MULT = LVL_CFG.xpKillPowerMult;
 
   function xpForCombatAction({ damage = 0, killedUnitTypeId = null } = {}) {
     let xp = XP_PARTICIPATION + damage * XP_PER_DAMAGE;
@@ -805,7 +805,7 @@ window.GameEngine = window.GameEngine || {};
    *  simply misses a Flying target outright, dealing no damage -- see
    *  resolveRound's doc comment and dealForward/dealReturn for the two
    *  (symmetric) places this is rolled. */
-  const FLYING_EVASION_MISS_CHANCE = 0.25;
+  const FLYING_EVASION_MISS_CHANCE = CFG.flyingEvasionMissChance;
 
   /**
    * Resolves ONE exchange between attacker and defender unit objects (each
@@ -1311,9 +1311,9 @@ window.GameEngine = window.GameEngine || {};
    * A win knocks the city down one level; a level-1 city that's breached is
    * destroyed outright rather than dropping to a nonsensical level 0.
    */
-  const CITY_BASE_DEFENSE = 4;
-  const CITY_DEFENSE_PER_LEVEL = 2.5;
-  const CITY_DEFENSE_PER_STRUCTURE = 1.5;
+  const CITY_BASE_DEFENSE = CFG.cityBaseDefense;
+  const CITY_DEFENSE_PER_LEVEL = CFG.cityDefensePerLevel;
+  const CITY_DEFENSE_PER_STRUCTURE = CFG.cityDefensePerStructure;
 
   /** Higher for a bigger, more built-up city -- deliberately has no defender
    *  garrison bonus of its own (that's the job of an actual defending unit;
