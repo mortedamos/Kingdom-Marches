@@ -1011,4 +1011,12 @@ html, body {
   cursor: pointer;
 }
 .launch-start-btn:hover { background: var(--accent-hover); }
+/* Build stamp -- date/time/build number under the Start Game button
+   (2026-08-03, user-directed). Purely informational. */
+.build-stamp {
+  margin-top: 6px;
+  text-align: right;
+  font-size: 10px;
+  color: var(--text-dim);
+}
 

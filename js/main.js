@@ -332,7 +332,22 @@
 
       <div class="launch-actions">
         <button id="start-game-btn" class="launch-start-btn">Start Game</button>
+        ${renderBuildStamp()}
       </div>`;
+  }
+
+  /** "Which copy of the game is this" -- date/time/build number under the
+   *  Start Game button (2026-08-03, user-directed). Purely informational,
+   *  no gameplay effect; see js/data/build-info.js for how the numbers
+   *  themselves are maintained (hand-bumped, no build pipeline exists). */
+  function renderBuildStamp() {
+    const info = window.GameData.BUILD_INFO;
+    if (!info) return "";
+    // No escaping here -- these are hand-authored constants from
+    // js/data/build-info.js, not user input, same trust level as the race
+    // labels/identity strings this function's caller already interpolates
+    // unescaped just above.
+    return `<div class="build-stamp">${info.date} ${info.time} &middot; build ${info.number}</div>`;
   }
 
   function showSetupScreen() {
