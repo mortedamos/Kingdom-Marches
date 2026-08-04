@@ -183,7 +183,7 @@ window.GameData.UNITS = {
   // --- Shared infrastructure (non-combat) ---
   pioneer: {
     id: "pioneer", label: "Pioneer", symbol: "⌂", category: "civilian",
-    attack: 0, defense: 0, movement: 1, visionRadius: 3,
+    attack: 0, defense: 2, movement: 2, visionRadius: 3,
     canFoundCity: true, canBuildRoad: true, canImprove: true, coinCost: 20,
   },
   scout: {
@@ -193,7 +193,7 @@ window.GameData.UNITS = {
   },
   galley: {
     id: "galley", label: "Galley", symbol: "⛵", category: "military",
-    attack: 1, defense: 2, movement: 3, visionRadius: 4, range: 1,
+    attack: 1, defense: 2, movement: 4, visionRadius: 4, range: 1,
     isNaval: true, canCarryUnit: true, coinCost: 25, biggerPct: .5,
     // A ship, not a person -- see unit-names.js's UNIT_TYPE_PROPER_NAMES doc.
     nameSpecial: true,

@@ -641,7 +641,16 @@
 
       const spot = pickStartSpot(landmasses, landmassIdx, map, civs, raceId);
       landmassIdx++;
-      const settler = { typeId: "pioneer", civId, x: spot.x, y: spot.y, isCivilian: true };
+      // startingUnit (2026-08-03, user-reported bug fix): this free
+      // starting Pioneer was missing the flag that exempts it from ongoing
+      // upkeep -- GameData.unitUpkeep's own doc comment already documented
+      // "civ-creation's free starting Pioneer/2-Scouts are stamped with this
+      // flag" as the intended design, but this line never actually set it,
+      // so the Pioneer was silently costing upkeep like any other unit while
+      // its starting Scouts/Galley (below) correctly didn't. Same one-time
+      // perk on this specific instance as those -- a Pioneer BUILT later
+      // (via the normal build-queue path) still costs upkeep normally.
+      const settler = { typeId: "pioneer", civId, x: spot.x, y: spot.y, isCivilian: true, startingUnit: true };
       window.GameEngine.combat.initUnitHP(settler, civ);
       civ.units.push(settler);
 
