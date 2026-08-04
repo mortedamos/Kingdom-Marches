@@ -228,7 +228,7 @@ window.GameData.UNITS = {
   archer: {
     id: "archer", label: "Archer", symbol: "⌖", category: "military", raceOnly: "human",
     attack: 5, defense: 3, movement: 2, visionRadius: 3, range: 2, attackChars: ["➵", "➳"], 
-    coinCost: 20, firstStrikePct: 0.01,
+    coinCost: 20, firstStrikePct: 0.01, 
   },
   longbowman: {
     id: "longbowman", label: "Longbowman", symbol: "⌖", category: "military", raceOnly: "human", range: 3, 
@@ -261,19 +261,19 @@ window.GameData.UNITS = {
     // still holds live after the cut, not just assumed.
     id: "wizard", label: "Wizard", symbol: "✦", category: "military", raceOnly: "human",
     attack: 3, defense: 3, movement: 2, visionRadius: 3, range: 2,
-    coinCost: 35, attackChars: ["⚡", "❄️", "🔥", "☄", "✨"],
+    coinCost: 35, attackChars: ["⚡", "❄️", "🔥", "☄", "✨"], doubleStrikePct: 0.1,
   },
 
   // --- ELF full roster (see techs.js) ---
   ranger: {
     id: "ranger", label: "Ranger", symbol: "⌖", category: "military", raceOnly: "elf",
     attack: 4, defense: 3, movement: 2, visionRadius: 4, range: 2, firstStrikePct: 0.05,
-    coinCost: 15, attackChars: ["➵", "➳"],
+    coinCost: 15, attackChars: ["➵", "➳"], doubleStrikePct: 0.1,
   },
   blade_dancer: {
     id: "blade_dancer", label: "Blade Dancer", symbol: "⚔", category: "military", raceOnly: "elf",
     attack: 5, defense: 3, movement: 2, visionRadius: 3, firstStrikePct: 0.09,
-    coinCost: 16, attackChars: ["🗡", "⚔"],
+    coinCost: 16, attackChars: ["🗡", "⚔"], doubleStrikePct: 0.1,
   },
   // Utility/caster unit, deliberately unremarkable in raw stats (same
   // convention as Human's Wizard, which this mirrors exactly -- its real
@@ -372,7 +372,7 @@ window.GameData.UNITS = {
   trouble_maker: {
     id: "trouble_maker", label: "Trouble Maker", symbol: "?", category: "military", raceOnly: "halfellow",
     attack: 3, defense: 3, movement: 2, visionRadius: 3, range: 2,
-    coinCost: 32, attackChars: ["🪤", "🔓"], 
+    coinCost: 32, attackChars: ["🪤", "🔓"], doubleStrikePct: 0.1,
   },
 
   // --- DWARF full roster (redesigned tree, no stubs -- see techs.js) ---
@@ -431,7 +431,7 @@ window.GameData.UNITS = {
   goblin_miscreant: {
     id: "goblin_miscreant", label: "Goblin Miscreant", symbol: "◇", category: "military", raceOnly: "orc",
     attack: 1, defense: 0, movement: 2, visionRadius: 2,
-    coinCost: 8, attackChars: ["🔪", "💣", "🗡", "🧨"], biggerPct: -0.2,
+    coinCost: 8, attackChars: ["🔪", "💣", "🗡", "🧨"], biggerPct: -0.2, doubleStrikePct: 0.2,
     cheap: true,
   },
   raider: {

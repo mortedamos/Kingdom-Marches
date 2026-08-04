@@ -192,11 +192,15 @@ window.GameEngine = window.GameEngine || {};
    * for a building, stored on the queue item and honored at completion (see
    * progressBuildQueue / cities.js's placeStructure).
    *
-   * Mirrors maybeBuildInCities' two cost models exactly: power-based units pay
-   * their multi-resource cost from the stockpile UP FRONT and then just count
-   * a turn timer down, while legacy coin-accumulation builds (buildings, and
-   * the few units with no associated tech) accumulate progress against
-   * coinCost each turn instead.
+   * Mirrors maybeBuildInCities' two cost models exactly: a power-based build
+   * pays its multi-resource cost from the stockpile UP FRONT and then just
+   * counts a turn timer down, while a legacy coin-accumulation build
+   * accumulates progress against coinCost each turn instead. Units and
+   * buildings both split across these two the same way now (2026-08-03):
+   * whichever ones have an unlocking tech with a costBreakdown use the
+   * modern model (see GameData.unitBuildCost/buildingBuildCost), the rest
+   * (Pioneer/Galley/Human's free Scout; wall_section, which has no
+   * unlocking tech at all) stay on the legacy path.
    */
   function queueBuild(city, civ, gameState, option, placeAt) {
     if (!option || !city || civ.id !== gameState.civs[civ.id]?.id) return false;

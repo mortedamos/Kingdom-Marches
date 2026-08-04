@@ -176,6 +176,10 @@ window.GameEngine = window.GameEngine || {};
     // Dwarf "Power Metal"/"Epic Metal": Troubadour's aura -- see turns.js's
     // per-turn application and effectiveAttack's matching check above.
     pct += unit.conditions?.powerMetalAura?.firstStrikePctBonus || 0;
+    // Orc "Violent Momentum": a unit that killed an enemy last turn gets a
+    // temporary First Strike bump alongside its movement bonus -- see
+    // ai.js's applyOrcCombatMechanics.
+    pct += unit.conditions?.killMomentum?.firstStrikePctBonus || 0;
     // Elf "Sudden Doom": +10 percentage points First Strike while Hidden --
     // ends the instant the unit is no longer Hidden, same as its attack bonus
     // (see effectiveAttack below).
@@ -240,6 +244,9 @@ window.GameEngine = window.GameEngine || {};
     // Tech: double_strike_property_bonus -- civ-wide, additive on top of
     // whatever the unit already has (mirrors siege_property_bonus).
     pct += civ.doubleStrikePropertyBonus || 0;
+    // Orc "Violent Momentum": same temporary bump as First Strike above,
+    // same source condition -- see ai.js's applyOrcCombatMechanics.
+    pct += unit.conditions?.killMomentum?.doubleStrikePctBonus || 0;
     // A reanimated or befuddled unit can't manage a second swing, for the
     // same reason it loses First Strike -- overrides every source above.
     if (unit.conditions?.zombie) return 0;

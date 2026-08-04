@@ -211,3 +211,63 @@ window.GameData.buildingsForRace = function (raceId) {
     (id) => window.GameData.BUILDINGS[id].raceOnly === raceId
   );
 };
+
+/**
+ * MULTI-RESOURCE BUILDING COST (2026-08-03, user-directed)
+ * ----------------------------------------------------------
+ * Every building above still carries only `coinCost` -- that field is now
+ * the building's overall RESOURCE VALUE (used to derive the split below),
+ * not literally "how much Coin it costs" anymore, for any building whose
+ * unlocking tech has a costBreakdown. Kept as a single field rather than
+ * hand-authoring a {harvest,coin,lore} object on every entry above so each
+ * building's existing, already-balanced relative cost (which one is pricier
+ * than which) can't drift out of sync with a second, hand-maintained number.
+ *
+ * This exactly mirrors techs.js's unitBuildCost: reuse the unlocking tech's
+ * resource-type MIX (not its absolute numbers -- that was hand-tuned for
+ * researching the tech, not for what the building costs to build), applied
+ * to a TOTAL taken from the building's own existing coinCost (units instead
+ * derive their total from unitPower, since buildings have no equivalent
+ * combat-stat total).
+ */
+
+/** Which tech first grants a given building id (via unlock_building),
+ *  scanned once across every tech's effects. null for wall_section, which
+ *  is universal and never gated by research (see this file's own header
+ *  comment on walls) -- callers fall back to the legacy flat-coinCost model
+ *  for it, same as they always have. */
+window.GameData._TECH_FOR_BUILDING = (() => {
+  const map = {};
+  for (const tech of Object.values(window.GameData.TECHS)) {
+    for (const effect of tech.effects || []) {
+      if (effect.type === "unlock_building") map[effect.building] = tech.id;
+    }
+  }
+  return map;
+})();
+window.GameData.techForBuilding = function (buildingId) {
+  return window.GameData._TECH_FOR_BUILDING[buildingId] || null;
+};
+
+/** A building's one-time cost, split across harvest/coin/lore in the same
+ *  ratio as its unlocking tech's own costBreakdown, scaled to the
+ *  building's own coinCost total. Returns null when there's no unlocking
+ *  tech (wall_section) or that tech has no costBreakdown -- ai.js's
+ *  buildingOption falls back to the legacy flat-coinCost model whenever
+ *  this returns null, the same convention window.GameData.unitBuildCost
+ *  already established for units. */
+window.GameData.buildingBuildCost = function (buildingId) {
+  const techId = window.GameData.techForBuilding(buildingId);
+  if (!techId) return null;
+  const breakdown = window.GameData.TECHS[techId].costBreakdown;
+  if (!breakdown) return null;
+  const sum = Object.values(breakdown).reduce((a, b) => a + b, 0);
+  if (sum <= 0) return null;
+  const total = window.GameData.getBuilding(buildingId).coinCost || 0;
+  if (total <= 0) return null;
+  const cost = {};
+  for (const [k, v] of Object.entries(breakdown)) {
+    cost[k] = Math.round(total * (v / sum));
+  }
+  return cost;
+};

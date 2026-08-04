@@ -617,6 +617,12 @@
       // Human's tech tree fully replaces the shared trunk (no toolcraft/beast_sense) --
       // Scout is granted free at creation instead, same treatment as Pioneer/Galley.
       if (raceId === "human") civ.unlockedUnits.add("scout");
+      // Registered in `civs` now rather than at the end of this loop
+      // (2026-08-03) so buildOccupancySet/findClosestOpenPlacementTile
+      // below can see THIS civ's own starting units as they're placed one
+      // at a time -- harmless for pickStartSpot's own spacing check just
+      // below, since an empty units/cities civ can never self-conflict.
+      civs[civId] = civ;
 
       const spot = pickStartSpot(landmasses, landmassIdx, map, civs, raceId);
       landmassIdx++;
@@ -647,7 +653,16 @@
         // not a blanket Scout/Galley-type exemption. Anything built later (via
         // the normal chooseBuildAction/canAffordUnitUpkeep path) never gets
         // this flag and costs upkeep like any other unit. See GameData.unitUpkeep.
-        const scout = { typeId: "scout", civId, x: spot.x, y: spot.y, isCivilian: true, startingUnit: true };
+        //
+        // Placed adjacent to the pioneer, not stacked on top of it
+        // (2026-08-03, user-reported) -- recomputed fresh each iteration so
+        // the SECOND scout also avoids the first one's just-claimed tile.
+        // Falls back to the pioneer's own tile only if every neighbor is
+        // somehow blocked (vanishingly unlikely at turn 0 on open land).
+        const occupied = window.GameEngine.ai.buildOccupancySet(civs, null);
+        const scoutSpot = window.GameEngine.ai.findClosestOpenPlacementTile(spot.x, spot.y, map, civs, occupied, civId)
+          || { x: spot.x, y: spot.y };
+        const scout = { typeId: "scout", civId, x: scoutSpot.x, y: scoutSpot.y, isCivilian: true, startingUnit: true };
         window.GameEngine.combat.initUnitHP(scout, civ);
         civ.units.push(scout);
       }
@@ -663,8 +678,6 @@
           civ.units.push(galley);
         }
       }
-
-      civs[civId] = civ;
     }
 
     // Turn order: decided once, randomly, at game start -- then fixed for the
@@ -1503,6 +1516,8 @@
     if (cancelChannelBtn) cancelChannelBtn.onclick = handleCancelChannel;
     const nextUnitBtn = $("next-unit-btn");
     if (nextUnitBtn) nextUnitBtn.onclick = handleNextUnit;
+    const openResearchBtn = $("open-research-btn");
+    if (openResearchBtn) openResearchBtn.onclick = () => { viewState.techTreeCivId = humanCivId; redraw(); };
 
     // City production picker
     const openPickerBtn = $("open-build-picker-btn");

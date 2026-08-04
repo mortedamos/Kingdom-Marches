@@ -91,7 +91,7 @@ window.UI = window.UI || {};
     } else if (isNextPick) { stateClass = "next-pick"; tag = "AI intends to research next"; }
     else if (locked) {
       stateClass = "locked";
-      tag = !cityGateOk ? `Needs ${tech.layer} cities` : "Needs prerequisite";
+      tag = !cityGateOk ? `Needs ${tech.layer} ${tech.layer === 1 ? "city" : "cities"}` : "Needs prerequisite";
     }
 
     // Clickable only in the player's own tree, and only for a node that

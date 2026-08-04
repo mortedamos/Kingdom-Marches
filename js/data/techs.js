@@ -572,7 +572,7 @@ window.GameData.TECHS = {
   elf_air_beneath_eyes_above: {
     id: "elf_air_beneath_eyes_above", label: "Air Beneath, Eyes Above", category: "military", layer: 2, cost: 34,
     prereqs: ["elf_druidism"], raceOnly: "elf",
-    description: "The Druid may summon a Raptor to assist elven allies -- like a city, it spends resources and several turns \"building\" the unit, unable to move or act while doing so (though it may do this while Hidden, if already Hidden beforehand). The Raptor has Atk 1/Def 0, Flying, First Strike 2%, very high movement and vision -- its purpose is to explore and scout. Cities cannot build Raptor units.",
+    description: "The Druid may summon a Raptor to assist elven allies -- like a city, it spends resources and several turns \"building\" the unit, unable to move or act while doing so (though it may do this while Hidden, if already Hidden beforehand). Cities cannot build Raptor units.",
     costBreakdown: { lore: 22, coin: 12 },
     // unlock_unit registers "raptor" with techForUnit (so unitBuildCost can
     // derive its resource split from this tech's costBreakdown) even though
@@ -595,9 +595,9 @@ window.GameData.TECHS = {
   elf_hunters_soul: {
     id: "elf_hunters_soul", label: "Hunter's Soul", category: "military", layer: 3, cost: 38,
     prereqs: ["elf_watching_hunting"], raceOnly: "elf",
-    description: "Rangers gain +1 range and +1 attack.",
+    description: "Rangers gain +1 range and 25% Double Strike.",
     costBreakdown: { lore: 24, coin: 14 },
-    effects: [{ type: "unit_stat_upgrade", unit: "ranger", changes: { range: 1, attack: 1 } }],
+    effects: [{ type: "unit_stat_upgrade", unit: "ranger", changes: { range: 1, doubleStrikePct: 0.25 } }],
   },
   elf_natures_grace: {
     id: "elf_natures_grace", label: "Nature's Grace", category: "military", layer: 3, cost: 36,
@@ -630,9 +630,9 @@ window.GameData.TECHS = {
   elf_silverlight_steel: {
     id: "elf_silverlight_steel", label: "Silverlight Steel", category: "military", layer: 3, cost: 40,
     prereqs: ["elf_silverleaf_atelier"], raceOnly: "elf",
-    description: "Blade Dancers gain +1 attack and +1% First Strike.",
+    description: "Blade Dancers gain 10% Double Strike and 2% First Strike.",
     costBreakdown: { coin: 22, lore: 18 },
-    effects: [{ type: "unit_stat_upgrade", unit: "blade_dancer", changes: { attack: 1, firstStrikePct: 0.01 } }],
+    effects: [{ type: "unit_stat_upgrade", unit: "blade_dancer", changes: { doubleStrikePct: 0.10, firstStrikePct: 0.02 } }],
   },
   elf_roots_of_the_world: {
     id: "elf_roots_of_the_world", label: "Roots of the World", category: "military", layer: 3, cost: 45,
@@ -675,11 +675,11 @@ window.GameData.TECHS = {
   elf_upon_the_wind: {
     id: "elf_upon_the_wind", label: "Upon the Wind", category: "military", layer: 5, cost: 90,
     prereqs: ["elf_hunters_soul", "elf_vision_beyond_sight"], raceOnly: "elf",
-    description: "All Ranger and Blade Dancer units gain +2 attack. Ranger units gain +1 range while being carried (by a Shadowsteed).",
+    description: "All Ranger and Blade Dancer units gain 40% Double Strike. Ranger units gain +1 range while being carried (by a Shadowsteed).",
     costBreakdown: { lore: 55, coin: 20, harvest: 15 },
     effects: [
-      { type: "unit_stat_upgrade", unit: "ranger", changes: { attack: 2 } },
-      { type: "unit_stat_upgrade", unit: "blade_dancer", changes: { attack: 2 } },
+      { type: "unit_stat_upgrade", unit: "ranger", changes: { doubleStrikePct: 0.40 } },
+      { type: "unit_stat_upgrade", unit: "blade_dancer", changes: { doubleStrikePct: 0.40 } },
       { type: "unlock_mechanic", mechanic: "upon_the_wind" },
     ],
   },
@@ -938,7 +938,7 @@ window.GameData.TECHS = {
   orc_violent_momentum: {
     id: "orc_violent_momentum", label: "Violent Momentum", category: "civic", layer: 1, cost: 14,
     prereqs: [], raceOnly: "orc",
-    description: "+2 movement for a unit that killed an enemy unit the previous turn.",
+    description: "+2 movement, 10% First Strike, and 10% Double Strike for a unit that killed an enemy unit the previous turn.",
     costBreakdown: { lore: 14 },
     effects: [{ type: "unlock_mechanic", mechanic: "violent_momentum" }],
   },
@@ -996,7 +996,7 @@ window.GameData.TECHS = {
   orc_spikes: {
     id: "orc_spikes", label: "Spikes!", category: "building", layer: 2, cost: 22,
     prereqs: [], raceOnly: "orc",
-    description: "Walls and cities can counterattack (not other buildings), with an attack rating of 1. No attack bonus multiplier and no militia spawn (unlike Halfellow's Rouse the People, which this mirrors structurally).",
+    description: "Walls and cities can counterattack (not other buildings), with an attack rating of 1.",
     costBreakdown: { coin: 14, lore: 8 },
     effects: [{ type: "unlock_mechanic", mechanic: "spikes" }],
   },
@@ -1017,13 +1017,13 @@ window.GameData.TECHS = {
   orc_swift_hunters: {
     id: "orc_swift_hunters", label: "Swift Hunters", category: "military", layer: 2, cost: 24,
     prereqs: ["orc_wolf_riders"], raceOnly: "orc",
-    // firstStrikePct is genuinely additive (see combat.js's
-    // effectiveFirstStrikePct) -- this +0.015 stacks on top of Wolf Rider's
-    // baked-in base 0.02 (see units.js) for 0.035 total, rather than
-    // replacing it.
-    description: "Wolf Rider gains 1.5% First Strike and increased attack and movement.",
+    // firstStrikePct is genuinely additive with the unit's own base value
+    // (see combat.js's effectiveFirstStrikePct) -- this +0.02 stacks on top
+    // of Wolf Rider's baked-in base (see units.js) rather than replacing it.
+    // 0.015 -> 0.02 (2026-08-03, user-directed).
+    description: "Wolf Rider gains 2% First Strike and increased attack and movement.",
     costBreakdown: { lore: 17, coin: 7 },
-    effects: [{ type: "unit_stat_upgrade", unit: "wolf_rider", changes: { firstStrikePct: 0.015, attack: 2, movement: 1 } }],
+    effects: [{ type: "unit_stat_upgrade", unit: "wolf_rider", changes: { firstStrikePct: 0.02, attack: 2, movement: 1 } }],
   },
   orc_spoils_of_war: {
     id: "orc_spoils_of_war", label: "Spoils of War", category: "civic", layer: 2, cost: 40,
@@ -1115,7 +1115,7 @@ window.GameData.TECHS = {
   orc_bigger_spikes: {
     id: "orc_bigger_spikes", label: "Bigger Spikes!", category: "building", layer: 3, cost: 38,
     prereqs: ["orc_spikes"], raceOnly: "orc",
-    description: "Walls and cities can counterattack (not other buildings), with an attack rating of 2. No attack bonus multiplier and no militia spawn (unlike Halfellow's Rouse the People, which this mirrors structurally).",
+    description: "Walls and cities can counterattack (not other buildings), with an attack rating of 2.",
     costBreakdown: { coin: 22, lore: 16 },
     effects: [{ type: "unlock_mechanic", mechanic: "bigger_spikes" }],
   },

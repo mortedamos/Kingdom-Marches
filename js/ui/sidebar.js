@@ -45,14 +45,37 @@ window.UI = window.UI || {};
     // hunting for the ones that haven't moved is the single most tedious part
     // of a turn. Only shown when there's actually something to jump to.
     let cyclerHtml = "";
+    // Research (2026-08-03, user-reported): the only way in used to be a
+    // "View Tech Tree" button buried inside the Kingdom panel, which
+    // disappears the instant anything else is selected -- e.g. the moment a
+    // player clicks their own starting Pioneer, which is the natural first
+    // move of the game. That made it look like there was no research UI at
+    // all. Always visible here instead, regardless of what's selected, so
+    // it's never more than one click away.
+    let researchHtml = "";
     if (viewState.humanCivId) {
       const waiting = window.GameEngine.orders.unitsNeedingOrders(gameState, viewState.humanCivId);
       cyclerHtml = waiting.length
         ? `<button id="next-unit-btn" class="next-unit-btn">Next Unit (${waiting.length})</button>`
         : `<div class="all-units-moved">All units have orders</div>`;
+
+      const civ = civs[viewState.humanCivId];
+      let researchLabel = "Choose Research";
+      if (civ && civ.currentResearch) {
+        const tech = window.GameData.getTech(civ.currentResearch);
+        const pct = Math.min(100, Math.floor(100 * (civ.researchProgress || 0) / window.GameData.effectiveTechCost(tech)));
+        researchLabel = `Researching: ${tech.label} (${pct}%)`;
+      } else if (civ && civ.cities.length === 0) {
+        // Explains WHY nothing's pickable yet (see tech.js's meetsCityGate --
+        // every tech needs at least 1 city) rather than sitting there
+        // unexplained, which is what made the gate itself look broken.
+        researchLabel = "Choose Research (found a city first)";
+      }
+      researchHtml = `<button id="open-research-btn" class="research-btn">${escapeHtml(researchLabel)}</button>`;
     }
 
     html += `<div class="sidebar-footer">
+      ${researchHtml}
       ${cyclerHtml}
       <div class="turn-counter">Turn ${turnNumber}</div>
       <button id="end-turn-btn" class="end-turn-btn">End Turn</button>
@@ -427,7 +450,12 @@ window.UI = window.UI || {};
     const frozen = unit.conditions?.frozen;
     if (frozen) properties.push(`Frozen (0 movement, ${Math.round((1 - frozen.attackMult) * 100)}% attack)`);
     const killMomentum = unit.conditions?.killMomentum;
-    if (killMomentum) properties.push(`Violent Momentum (+${killMomentum.moveBonus} movement)`);
+    if (killMomentum) {
+      properties.push(`Violent Momentum (+${killMomentum.moveBonus} movement`
+        + (killMomentum.firstStrikePctBonus ? `, +${Math.round(killMomentum.firstStrikePctBonus * 100)}% first strike` : '')
+        + (killMomentum.doubleStrikePctBonus ? `, +${Math.round(killMomentum.doubleStrikePctBonus * 100)}% double strike` : '')
+        + ')');
+    }
     const flightGrant = unit.conditions?.flying;
     if (flightGrant && flightGrant.moveBonus) properties.push(`Granted Flight (+${flightGrant.moveBonus} movement, +${flightGrant.visionBonus} vision)`);
     if (unit.conditions?.hidden) properties.push('Hidden');

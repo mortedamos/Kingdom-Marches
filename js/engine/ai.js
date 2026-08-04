@@ -1314,13 +1314,17 @@ window.GameEngine = window.GameEngine || {};
   function pioneerRoadStep(pioneer, targetX, targetY, map, log, civs) {
     const baseUnit = window.GameData.getUnit(pioneer.typeId);
     const occupied = buildOccupancySet(civs, pioneer);
-    const costFn = (nx, ny, tile) => {
+    const costFn = (nx, ny, tile, fromIdx) => {
       if (occupied.has(`${nx},${ny}`)) return window.GameData.IMPASSABLE;
       if (isEnemyStructureBlockingTile(tile, pioneer)) return window.GameData.IMPASSABLE;
       if (isEnemyCityBlockingTile(civs, nx, ny, pioneer)) return window.GameData.IMPASSABLE;
-      const terrain = window.GameData.TERRAIN[tile.terrain];
-      if (terrain.isWater) return window.GameData.IMPASSABLE;
-      return getMoveCost(terrain, baseUnit, pioneer, tile.hasRoad);
+      const destTerrain = window.GameData.TERRAIN[tile.terrain];
+      if (destTerrain.isWater) return window.GameData.IMPASSABLE;
+      // Origin tile for THIS hop, not the pioneer's turn-start position --
+      // see getMoveCost's doc comment (cost is charged for leaving it).
+      const originTile = fromIdx != null ? map.tiles[fromIdx] : map.tiles[pioneer.y * map.width + pioneer.x];
+      const originTerrain = window.GameData.TERRAIN[originTile.terrain];
+      return getMoveCost(originTerrain, destTerrain, baseUnit, pioneer, originTile.hasRoad);
     };
     const path = window.GameEngine.pathfinding.findPath(pioneer.x, pioneer.y, targetX, targetY, map, costFn);
     if (!path || path.length === 0) return;
@@ -1369,10 +1373,7 @@ window.GameEngine = window.GameEngine || {};
     const shuffled = dirs.sort(() => Math.random() - 0.5);
     for (const [dx, dy] of shuffled) {
       const nx = unit.x + dx, ny = unit.y + dy;
-      if (nx < 0 || nx >= map.width || ny < 0 || ny >= map.height) continue;
-      const terrain = window.GameData.TERRAIN[map.tiles[ny * map.width + nx].terrain];
-      if (terrain.isWater || terrain.moveCostLand === window.GameData.IMPASSABLE) continue;
-      if (occupied.has(`${nx},${ny}`)) continue; // no stacking
+      if (!isOpenPlacementTile(nx, ny, map, civs, occupied, unit.civId)) continue;
       unit.x = nx; unit.y = ny;
       return;
     }
@@ -1388,8 +1389,14 @@ window.GameEngine = window.GameEngine || {};
     for (const [dx, dy] of shuffled) {
       const nx = unit.x + dx, ny = unit.y + dy;
       if (nx < 0 || nx >= map.width || ny < 0 || ny >= map.height) continue;
-      if (!window.GameData.TERRAIN[map.tiles[ny * map.width + nx].terrain].isWater) continue;
+      const tile = map.tiles[ny * map.width + nx];
+      if (!window.GameData.TERRAIN[tile.terrain].isWater) continue;
       if (occupied.has(`${nx},${ny}`)) continue; // no stacking
+      // A naval unit can still wander onto an enemy's coastal city/port
+      // structure tile otherwise -- same missing check as the land version
+      // above, see isOpenPlacementTile's doc comment.
+      if (hasEnemyStructure(tile, unit.civId)) continue;
+      if (hasEnemyCity(civs, nx, ny, unit.civId)) continue;
       unit.x = nx; unit.y = ny;
       return;
     }
@@ -1681,7 +1688,43 @@ window.GameEngine = window.GameEngine || {};
     return !window.GameEngine.combat.isFlying(unit);
   }
 
-  // A road tile costs a flat 1 movement point to enter, regardless of the
+  /**
+   * True if (nx,ny) is a legal tile to directly PLACE a unit onto -- not
+   * occupied by another unit, not water/impassable terrain, and not
+   * standing on an enemy wall/building/city (2026-08-03, user-reported).
+   *
+   * Used by every "find an open adjacent tile" mechanic that places a unit
+   * WITHOUT going through the costed movement/pathfinding system --
+   * wanderUnit/wanderUnitOnWater, Elf's Raptor/Shadowsteed summon
+   * (spawnUnitAdjacentToUnit), Orc Dragon Riders' and Halfellow Devoted
+   * Companions' disembark, and spawnUnitInCity's stacked-city fallback.
+   * Each of those bypasses buildMoveRules' costFn entirely (a placement
+   * isn't a move), so each has always had to make this same check itself --
+   * the enemy-structure/city half was simply missing from every one of them
+   * until now, the one gap in an otherwise-consistent "never stand on an
+   * enemy's stuff" rule (buildMoveRules' costFn already enforces it for
+   * every ordinary move).
+   *
+   * Deliberately does NOT exempt flying units the way
+   * isEnemyStructureBlockingTile/isEnemyCityBlockingTile do for PASS-THROUGH
+   * movement -- this is about STANDING on the tile, the same question
+   * buildMoveRules' canLandOn answers for an ordinary move (also with no
+   * flying exemption), so it calls the same underlying hasEnemyStructure/
+   * hasEnemyCity checks those use directly, no unit instance required.
+   * `civId` is whichever civ is about to own the unit being placed.
+   */
+  function isOpenPlacementTile(nx, ny, map, civs, occupied, civId) {
+    if (nx < 0 || nx >= map.width || ny < 0 || ny >= map.height) return false;
+    if (occupied.has(`${nx},${ny}`)) return false;
+    const tile = map.tiles[ny * map.width + nx];
+    const terrain = window.GameData.TERRAIN[tile.terrain];
+    if (terrain.isWater || terrain.moveCostLand === window.GameData.IMPASSABLE) return false;
+    if (hasEnemyStructure(tile, civId)) return false;
+    if (hasEnemyCity(civs, nx, ny, civId)) return false;
+    return true;
+  }
+
+  // A road tile costs a flat 1 movement point to LEAVE, regardless of the
   // underlying terrain -- "removes any terrain based movement penalties"
   // (2026-07-17, user-directed). 1 is the cheapest a land terrain can
   // already be (Plains/Desert/Tundra), so this never makes a road tile
@@ -1690,9 +1733,63 @@ window.GameEngine = window.GameEngine || {};
   // mountain-tunneling tech built one on Mountains, its own 3-cost tunnel
   // rate too). See moveUnitToward's separate +1 movement bonus for a unit
   // that STARTS its turn on a road -- a different mechanic, stacks with this.
+  //
+  // WHOSE road (2026-08-03, user-directed): the discount applies when
+  // LEAVING a road tile, not when arriving at one -- see getMoveCost's own
+  // doc comment for why the whole cost model reads from the origin tile now.
+  // Concretely: walking a chain of connected road tiles still costs 1 per
+  // hop the entire way (every tile you leave along the chain has a road
+  // under it), but stepping OFF rough terrain onto a road no longer gets an
+  // immediate discount -- you pay what leaving the rough terrain costs; the
+  // road only pays off starting with your NEXT step.
   const ROAD_MOVE_COST = 1;
 
-  function getMoveCost(terrain, unitData, unit, hasRoad) {
+  /**
+   * Effective LAND movement cost of `terrain` under `mods` (a unit's
+   * `_moveMods`, or undefined/null) -- factors in mountain-tunneling tech and
+   * any terrain-override tech, either of which can turn an otherwise-
+   * IMPASSABLE terrain finite. Returns IMPASSABLE if the terrain genuinely
+   * can't be crossed even with those. Shared by getMoveCost's origin (cost)
+   * and destination (passability) evaluations below, so tunneling/override
+   * behave identically regardless of which side of a step they're read from.
+   */
+  function landCostForTerrain(terrain, mods) {
+    if (terrain.id === "mountains" && terrain.moveCostLand === window.GameData.IMPASSABLE && mods?.canTunnel) {
+      return 3; // slow but passable
+    }
+    const override = mods?.terrainOverride?.[terrain.id];
+    if (override != null) return Math.min(terrain.moveCostLand, override);
+    return terrain.moveCostLand;
+  }
+
+  /**
+   * Movement cost (in points) to take ONE step from a tile described by
+   * `originTerrain`/`originHasRoad` onto a tile described by `destTerrain`,
+   * or IMPASSABLE if the destination can't be entered at all.
+   *
+   * COST vs. PASSABILITY are answered from DIFFERENT tiles, on purpose
+   * (2026-08-03, user-directed -- this replaced a model where both were
+   * destination-based):
+   *
+   *   - PASSABILITY ("can I physically be on this tile?") is about the
+   *     DESTINATION. A land unit can't walk onto deep ocean no matter how
+   *     easy the tile it's leaving is -- that can never depend on approach
+   *     direction, so this half is unchanged from before.
+   *
+   *   - COST ("how much of my movement does this step use?") is charged for
+   *     LEAVING the ORIGIN tile. Moving out of a Forest costs 2 no matter how
+   *     open the tile you're stepping onto is; moving out of Plains costs 1
+   *     even into a Forest. The discount for a unit standing on a road
+   *     (originHasRoad) is likewise about the tile you're leaving -- see
+   *     ROAD_MOVE_COST's own comment.
+   *
+   * Callers (buildMoveRules' costFn, pioneerRoadStep, findFleeTile) all
+   * derive originTerrain/originHasRoad from whichever tile the unit is
+   * ACTUALLY stepping off of for that hop -- see pathfinding.js's `fromIdx`,
+   * which is what makes that tile available mid-search rather than just at
+   * the unit's turn-start position.
+   */
+  function getMoveCost(originTerrain, destTerrain, unitData, unit, originHasRoad) {
     // Flying units "move over all terrain" (see units.js's flying doc comment) --
     // flat cost regardless of water/mountains/land movement penalties, ignoring
     // every other rule below (naval cost, tunneling, terrain overrides, roads --
@@ -1701,16 +1798,22 @@ window.GameEngine = window.GameEngine || {};
     // Flight) when available, falling back to the base data's flying flag
     // otherwise.
     if (unit ? window.GameEngine.combat.isFlying(unit) : unitData.flying) return 1;
-    if (unitData.isNaval) return terrain.moveCostNaval ?? window.GameData.IMPASSABLE; // roads are a land-only feature
-    if (hasRoad) return ROAD_MOVE_COST;
+
     const mods = unit && unit._moveMods;
-    // Tech-unlocked mountain tunneling: otherwise-impassable terrain becomes traversable
-    if (terrain.id === "mountains" && terrain.moveCostLand === window.GameData.IMPASSABLE && mods?.canTunnel) {
-      return 3; // slow but passable
+
+    if (unitData.isNaval) {
+      // Roads are a land-only feature. Passability is the DESTINATION
+      // water's (a ship can't sail onto land); cost is the ORIGIN water's.
+      if ((destTerrain.moveCostNaval ?? window.GameData.IMPASSABLE) === window.GameData.IMPASSABLE) return window.GameData.IMPASSABLE;
+      return originTerrain.moveCostNaval ?? window.GameData.IMPASSABLE;
     }
-    const override = mods?.terrainOverride?.[terrain.id];
-    if (override != null) return Math.min(terrain.moveCostLand, override);
-    return terrain.moveCostLand;
+
+    // Land unit: can the destination even be entered?
+    if (landCostForTerrain(destTerrain, mods) === window.GameData.IMPASSABLE) return window.GameData.IMPASSABLE;
+
+    // It can -- charge for leaving the origin.
+    if (originHasRoad) return ROAD_MOVE_COST;
+    return landCostForTerrain(originTerrain, mods);
   }
 
   /**
@@ -1958,18 +2061,29 @@ window.GameEngine = window.GameEngine || {};
    * actually land/stop on any occupied tile, which is what the separate
    * canLandOn test enforces using the full occupancy set instead.
    */
-  function buildMoveRules(unit, civs) {
+  function buildMoveRules(unit, civs, map) {
     const baseUnit = window.GameData.getUnit(unit.typeId);
     const flying = window.GameEngine.combat.isFlying(unit);
     const occupied = flying ? buildFlyingBlockSet(civs, unit) : buildOccupancySet(civs, unit);
     const fullOccupied = flying ? buildOccupancySet(civs, unit) : occupied;
 
-    const costFn = (nx, ny, tile) => {
+    // `fromIdx` (the ORIGIN tile's index for this hop) is threaded through by
+    // pathfinding.js's findPath as costFn's 4th argument, and by
+    // computeReachableTiles' own hand-rolled search below -- both know which
+    // tile they're stepping FROM at each hop, which is what getMoveCost's
+    // cost half now needs (see its doc comment). Falls back to the unit's
+    // own current tile when omitted; the only caller that ever omits it is
+    // canLandOn's `!flying` branch just below, which never actually executes
+    // (canLandOn is only ever invoked when `flying` is true) -- the fallback
+    // exists purely so that dead branch still resolves to something sane.
+    const costFn = (nx, ny, tile, fromIdx) => {
       if (occupied.has(`${nx},${ny}`)) return window.GameData.IMPASSABLE;
       if (isEnemyStructureBlockingTile(tile, unit)) return window.GameData.IMPASSABLE;
       if (isEnemyCityBlockingTile(civs, nx, ny, unit)) return window.GameData.IMPASSABLE;
-      const terrain = window.GameData.TERRAIN[tile.terrain];
-      return getMoveCost(terrain, baseUnit, unit, tile.hasRoad);
+      const destTerrain = window.GameData.TERRAIN[tile.terrain];
+      const originTile = fromIdx != null ? map.tiles[fromIdx] : map.tiles[unit.y * map.width + unit.x];
+      const originTerrain = window.GameData.TERRAIN[originTile.terrain];
+      return getMoveCost(originTerrain, destTerrain, baseUnit, unit, originTile.hasRoad);
     };
 
     // A flier crossing OVER an enemy wall is fine; landing on it isn't --
@@ -1989,7 +2103,7 @@ window.GameEngine = window.GameEngine || {};
 
   function spendMovement(unit, targetX, targetY, map, civs) {
     if (unit.movesRemaining == null) unit.movesRemaining = computeMovementBudget(unit, map, civs);
-    const rules = buildMoveRules(unit, civs);
+    const rules = buildMoveRules(unit, civs, map);
     const { flying, costFn } = rules;
 
     // Full route via A*, not a per-step greedy hill-climb -- this is what lets a unit
@@ -2064,7 +2178,7 @@ window.GameEngine = window.GameEngine || {};
     const reachable = new Map();
     if (!(budget > 0)) return reachable;
 
-    const rules = buildMoveRules(unit, civs);
+    const rules = buildMoveRules(unit, civs, map);
     const bestCost = new Map([[`${unit.x},${unit.y}`, 0]]);
     // Small frontier (bounded by the movement budget, not the map), so a
     // linear extract-min is cheaper here than a heap's bookkeeping.
@@ -2075,17 +2189,31 @@ window.GameEngine = window.GameEngine || {};
       for (let i = 1; i < frontier.length; i++) if (frontier[i].cost < frontier[bi].cost) bi = i;
       const cur = frontier.splice(bi, 1)[0];
       if (cur.cost > (bestCost.get(`${cur.x},${cur.y}`) ?? Infinity)) continue;
+      // "Always able to move at least one more tile" (2026-08-03,
+      // user-directed): a unit with ANY movement left (cur.cost < budget,
+      // i.e. arriving at `cur` didn't already exhaust it) may always
+      // complete one more hop even if THAT hop's own cost overshoots what's
+      // left -- see the uncapped `total` below, and spendMovement's matching
+      // per-step loop, which has always allowed movesRemaining to go
+      // negative on exactly one hop. What stops that from chaining into a
+      // SECOND overshoot hop is this check right here: a node whose cost
+      // already reached/exceeded budget cannot be expanded further, exactly
+      // mirroring spendMovement's own `movesRemaining <= 0` guard.
+      if (cur.cost >= budget) continue;
 
+      const fromIdx = cur.y * map.width + cur.x;
       for (let dy = -1; dy <= 1; dy++) {
         for (let dx = -1; dx <= 1; dx++) {
           if (dx === 0 && dy === 0) continue;
           const nx = cur.x + dx, ny = cur.y + dy;
           if (nx < 0 || nx >= map.width || ny < 0 || ny >= map.height) continue;
           const tile = map.tiles[ny * map.width + nx];
-          const stepCost = rules.costFn(nx, ny, tile);
+          const stepCost = rules.costFn(nx, ny, tile, fromIdx);
           if (stepCost === IMPASSABLE || !(stepCost >= 0)) continue;
           const total = cur.cost + stepCost;
-          if (total > budget) continue; // out of movement -- can't reach this turn
+          // No budget cap here -- see the "always able to move" comment
+          // above; `cur.cost >= budget` already guarantees this branch is
+          // only reached when the unit truly had movement left to spend.
           const key = `${nx},${ny}`;
           if (total >= (bestCost.get(key) ?? Infinity)) continue;
           bestCost.set(key, total);
@@ -2175,22 +2303,24 @@ window.GameEngine = window.GameEngine || {};
     return null;
   }
 
-  /** Any in-bounds, non-water tile adjacent to (x,y), chosen at random --
-   *  used for a bonus unit spawn (see spawnUnitInCity's Goblin Miscreant
-   *  handling) that shouldn't just stack onto the city's own tile. Returns
-   *  null if every neighbor is water (rare, but possible on a tiny island). */
-  function findRandomAdjacentLandTile(x, y, map) {
-    const TERRAIN = window.GameData.TERRAIN;
-    const candidates = [];
-    for (let dy = -1; dy <= 1; dy++) {
-      for (let dx = -1; dx <= 1; dx++) {
-        if (dx === 0 && dy === 0) continue;
-        const nx = x + dx, ny = y + dy;
-        if (nx < 0 || nx >= map.width || ny < 0 || ny >= map.height) continue;
-        if (!TERRAIN[map.tiles[ny * map.width + nx].terrain].isWater) candidates.push({ x: nx, y: ny });
-      }
+  /** Closest open tile to (x,y) a unit could be directly PLACED on --
+   *  orthogonal neighbors (true distance 1) checked before diagonal ones
+   *  (distance ~1.41), so this is genuinely "closest," not just "some
+   *  neighbor." Returns null if all 8 are blocked (occupied, impassable, or
+   *  an enemy structure/city -- see isOpenPlacementTile). Used everywhere a
+   *  unit needs to appear next to a specific tile without stacking on
+   *  whatever's already there: spawnUnitInCity's main spawn and its Goblin
+   *  Miscreant bonus, and civ creation's starting units (main.js) --
+   *  2026-08-03, user-reported (both spawning and starting units used to
+   *  stack unconditionally onto the anchor tile). */
+  function findClosestOpenPlacementTile(x, y, map, civs, occupied, civId) {
+    const ORTHOGONAL = [[0, -1], [0, 1], [-1, 0], [1, 0]];
+    const DIAGONAL = [[-1, -1], [-1, 1], [1, -1], [1, 1]];
+    for (const [dx, dy] of [...ORTHOGONAL, ...DIAGONAL]) {
+      const nx = x + dx, ny = y + dy;
+      if (isOpenPlacementTile(nx, ny, map, civs, occupied, civId)) return { x: nx, y: ny };
     }
-    return candidates.length > 0 ? candidates[Math.floor(Math.random() * candidates.length)] : null;
+    return null;
   }
 
   function isCoastalTile(map, x, y) {
@@ -2400,6 +2530,65 @@ window.GameEngine = window.GameEngine || {};
     const power = window.GameData.unitPower(unitId);
     const rate = raceUnitBuildRate(civ);
     return Math.max(1, Math.round((power / rate) * BUILD_SLOWNESS));
+  }
+
+  /** Turns to build `buildingId` for `civ` under the modern multi-resource
+   *  cost model (see GameData.buildingBuildCost) -- same shape as
+   *  unitBuildTurns, reusing the SAME BUILD_SLOWNESS constant so the two
+   *  feel like comparable-weight commitments. Keyed on industriousness
+   *  alone rather than unitBuildTurns' full raceUnitBuildRate, which also
+   *  folds in militarism -- irrelevant here, a civilian building isn't a
+   *  military production decision (the same reasoning cities.js's own
+   *  fill-rate and this file's raceUnitBuildRate already document for
+   *  industriousness as a trait). minBuildTurns (currently only
+   *  wall_section, which never reaches this function anyway since it has no
+   *  unlocking tech) is honored as a hard floor for consistency with the
+   *  legacy model, in case a future building ever combines the two. */
+  function buildingBuildTurns(civ, buildingId) {
+    const building = window.GameData.getBuilding(buildingId);
+    const race = window.GameData.getRace(civ.raceId);
+    const industriousness = race.industriousness ?? 0.5;
+    const total = building.coinCost || 0;
+    const turns = Math.max(1, Math.round((total / industriousness) * BUILD_SLOWNESS));
+    return building.minBuildTurns ? Math.max(turns, building.minBuildTurns) : turns;
+  }
+
+  /**
+   * One buildable-building OPTION for `civ`: the modern multi-resource cost
+   * (GameData.buildingBuildCost) plus a fixed turn countdown when the
+   * building's unlocking tech defines a cost split, else the legacy flat
+   * coinCost (accumulated from the city's own coin income over time instead
+   * -- see progressBuildQueue). Same null-fallback shape buildUnitOption
+   * already established for units; `slots` is each caller's own job to
+   * attach (placement legality differs between availableBuilds' full-scan
+   * and chooseBuildAction's single-slot AI check), so this only decides cost.
+   */
+  function buildingOption(civ, buildingId) {
+    const b = window.GameData.getBuilding(buildingId);
+    const cost = window.GameData.buildingBuildCost(buildingId);
+    if (!cost) return { kind: "building", id: buildingId, label: b.label, coinCost: b.coinCost };
+    return { kind: "building", id: buildingId, label: b.label, cost, turns: buildingBuildTurns(civ, buildingId) };
+  }
+
+  /**
+   * Completes a building's construction: places the structure (honoring a
+   * human player's chosen tile, see orders.js's queueBuild) and logs the
+   * outcome. Shared by BOTH of progressBuildQueue's cost models -- the
+   * modern paid-up-front countdown and the legacy coin-accumulation path --
+   * so a building's actual placement/logging logic exists in exactly one
+   * place regardless of which payment model got it there.
+   */
+  function completeBuildingStructure(civ, city, gameState, item, log) {
+    const placed = window.GameEngine.cities.placeStructure(
+      city, civ, gameState.map, item.id, gameState.civs, item.placeAt);
+    if (placed) {
+      const offSpot = item.placeAt && (placed.x !== item.placeAt.x || placed.y !== item.placeAt.y);
+      log.push(`Build complete: ${city.name} raised ${item.id} at (${placed.x},${placed.y})`
+        + (offSpot ? ` (chosen tile ${item.placeAt.x},${item.placeAt.y} was no longer available)` : ""));
+    } else {
+      // No valid adjacent slot (all occupied/blocked) -- abandon this build.
+      log.push(`Build canceled: ${city.name} has no open slot for ${item.id}`);
+    }
   }
 
   /** Units whose real value is an unlocked MECHANIC rather than their own
@@ -2712,30 +2901,44 @@ window.GameEngine = window.GameEngine || {};
 
     // Buildings: this race's roster, minus what this city already has, minus
     // anything with nowhere legal to stand.
+    //
+    // BUG FIX (2026-08-03, user-reported): this used to gate on `b.techId`,
+    // a field that is never actually set on any entry in buildings.js -- the
+    // check was permanently a no-op, so every one of a race's 4 buildings was
+    // offered to the player regardless of research. The real record of what's
+    // been unlocked is civ.unlockedBuildings (populated by tech.js's
+    // unlock_building effect), which is exactly what the AI's own build
+    // chooser (chooseBuildAction, below) already keys off -- this just brings
+    // the player-facing picker in line with it.
+    // Cost: the modern multi-resource model (GameData.buildingBuildCost) when
+    // this building's unlocking tech defines a split, paid up front from the
+    // stockpile -- so, unlike the legacy coinCost model it replaces for most
+    // buildings, affordability has to be checked HERE rather than always
+    // being true (a wall or any tech-less building still just accrues
+    // progress from city income over time regardless of the civ's current
+    // stockpile, same as always).
     for (const buildingId of window.GameData.buildingsForRace(civ.raceId)) {
+      if (!(civ.unlockedBuildings && civ.unlockedBuildings.has(buildingId))) continue;
       if (window.GameEngine.cities.cityHasStructure(city, buildingId)) continue;
-      const b = window.GameData.getBuilding(buildingId);
-      if (b.techId && !(civ.completedTechs && civ.completedTechs.has(b.techId))) continue;
       const slots = window.GameEngine.cities.validStructureSlots(city, civ, map, buildingId, civs);
       if (!slots.length) continue;
-      out.push({
-        kind: "building", id: buildingId, label: b.label,
-        coinCost: b.coinCost, slots, affordable: true,
-      });
+      const option = buildingOption(civ, buildingId);
+      const affordable = option.cost ? canAffordBuildCost(civ, option.cost) : true;
+      out.push({ ...option, slots, affordable });
     }
 
     // Walls are not part of the race roster and can be built repeatedly, so
     // they're enumerated separately -- once per distinct wall building that
-    // still has somewhere to go.
+    // still has somewhere to go. Never gated by unlockedBuildings (universal,
+    // every race) and never on the modern cost model (no unlocking tech, so
+    // GameData.buildingBuildCost always returns null for these -- see
+    // buildingOption's own fallback).
     for (const wallId of Object.keys(window.GameData.BUILDINGS || {})) {
       const b = window.GameData.getBuilding(wallId);
       if (!b || !b.isWall) continue;
       const slots = window.GameEngine.cities.validStructureSlots(city, civ, map, wallId, civs);
       if (!slots.length) continue;
-      out.push({
-        kind: "building", id: wallId, label: b.label,
-        coinCost: b.coinCost, slots, affordable: true,
-      });
+      out.push({ ...buildingOption(civ, wallId), slots, affordable: true });
     }
 
     return out;
@@ -3384,8 +3587,15 @@ window.GameEngine = window.GameEngine || {};
         // bigger pathfinding-integration ask, deliberately out of scope here) --
         // just enough that a civ with the tech actually builds one.
         const deepGateBonus = bId === "deep_gate" ? 15 : 0;
-        options.push({ kind: "building", id: bId, coinCost: building.coinCost,
-          score: industriousness * 9 + 10 + influenceValue + deepGateBonus });
+        // Modern multi-resource cost (see buildingOption) when this
+        // building's unlocking tech defines one -- has to be affordable
+        // RIGHT NOW to even be proposed, since maybeBuildInCities pays it up
+        // front from the stockpile; the legacy coinCost model this replaces
+        // never needed that check (it just accrues from city income over
+        // time regardless of current balance).
+        const option = buildingOption(civ, bId);
+        if (option.cost && !canAffordBuildCost(civ, option.cost)) continue;
+        options.push({ ...option, score: industriousness * 9 + 10 + influenceValue + deepGateBonus });
       }
     }
 
@@ -3496,14 +3706,28 @@ window.GameEngine = window.GameEngine || {};
    *  power-based fixed-turn-timer path. */
   function spawnUnitInCity(civ, city, unitId, gameState, extra = {}) {
     const unitData = window.GameData.getUnit(unitId);
+    const { map, civs } = gameState;
     let spawnX = city.x, spawnY = city.y;
     if (unitData.isNaval) {
       // Naval units must spawn on a water tile; expand search if nothing is directly adjacent
-      const waterSpot = findAdjacentWater(city.x, city.y, gameState.map)
-        || findNearestCoastalWaterFor(city.x, city.y, gameState.map, 10);
+      const waterSpot = findAdjacentWater(city.x, city.y, map)
+        || findNearestCoastalWaterFor(city.x, city.y, map, 10);
       if (waterSpot) { spawnX = waterSpot.x; spawnY = waterSpot.y; }
       // If still no water found, defer completion — don't strand galley on land
       if (spawnX === city.x && spawnY === city.y) return false;
+    } else {
+      // Land unit: the city's own tile is the default spawn point, but if
+      // another unit is already standing there (a garrison, a unit that
+      // just arrived this turn, ...) the new unit appears on the CLOSEST
+      // open adjacent tile instead of stacking on top of it (2026-08-03,
+      // user-reported). Falls back to the city tile anyway (accepting the
+      // stack) only if literally every neighbor is also blocked -- same
+      // last-resort convention the Goblin Miscreant bonus spawn below uses.
+      const occupied = buildOccupancySet(civs, null);
+      if (occupied.has(`${spawnX},${spawnY}`)) {
+        const openSpot = findClosestOpenPlacementTile(spawnX, spawnY, map, civs, occupied, civ.id);
+        if (openSpot) { spawnX = openSpot.x; spawnY = openSpot.y; }
+      }
     }
     // `extra` merges in any caller-supplied fields (2026-07-22, user-
     // directed: progressBuildQueue passes `_useClosestSpotSettle` through
@@ -3514,16 +3738,20 @@ window.GameEngine = window.GameEngine || {};
     window.GameEngine.combat.initUnitHP(newUnit, civ);
     civ.units.push(newUnit);
     // Orc "Goblin Miscreant" (2026-07-15, user-directed): building one
-    // actually produces two -- the second spawns on a random adjacent LAND
-    // tile to the city (not naval, and not stacked onto the same tile as
-    // the first), falling back to the city's own tile if every neighbor is
-    // water. Cost/upkeep/build-time are unaffected -- a pure 2-for-1 bonus,
-    // matching the unit's identity as Orc's cheap, disposable gap-filler
-    // (see units.js's `cheap` flag doc). Baked directly onto the unit by
-    // typeId, same convention as Bog Witch's curseOnDeath, rather than a
-    // tech-effect flag, since Goblin Miscreant only has the one unlock tech.
+    // actually produces two -- the second spawns on the closest open
+    // adjacent tile to the city (not naval, and not stacked onto the same
+    // tile as the first -- recomputed fresh AFTER newUnit above was already
+    // pushed, so it correctly avoids that tile too), falling back to the
+    // city's own tile if no neighbor is open at all. Cost/upkeep/build-time
+    // are unaffected -- a pure 2-for-1 bonus, matching the unit's identity
+    // as Orc's cheap, disposable gap-filler (see units.js's `cheap` flag
+    // doc). Baked directly onto the unit by typeId, same convention as Bog
+    // Witch's curseOnDeath, rather than a tech-effect flag, since Goblin
+    // Miscreant only has the one unlock tech.
     if (unitId === "goblin_miscreant") {
-      const bonusSpot = findRandomAdjacentLandTile(city.x, city.y, gameState.map) || { x: city.x, y: city.y };
+      const bonusOccupied = buildOccupancySet(civs, null);
+      const bonusSpot = findClosestOpenPlacementTile(city.x, city.y, map, civs, bonusOccupied, civ.id)
+        || { x: city.x, y: city.y };
       const bonusUnit = { typeId: unitId, civId: civ.id, x: bonusSpot.x, y: bonusSpot.y, homeCityName: city.name };
       window.GameEngine.combat.initUnitHP(bonusUnit, civ);
       civ.units.push(bonusUnit);
@@ -3537,15 +3765,21 @@ window.GameEngine = window.GameEngine || {};
   function progressBuildQueue(civ, city, gameState, log) {
     const item = city.buildQueue;
 
-    // Power-based unit/influence build (see buildUnitOption/unitBuildTurns
-    // and chooseBuildAction's Cultural Influence option): the cost was
-    // already paid up front in maybeBuildInCities, so this is purely a
-    // countdown independent of the city's income.
+    // Power-based unit/building/influence build (see buildUnitOption/
+    // unitBuildTurns, buildingOption/buildingBuildTurns, and
+    // chooseBuildAction's Cultural Influence option): the cost was already
+    // paid up front in maybeBuildInCities, so this is purely a countdown
+    // independent of the city's income.
     if (item.turnsRemaining !== undefined) {
       item.turnsRemaining--;
       if (item.turnsRemaining > 0) return;
       if (item.kind === "influence") {
         performClaimInfluenceTile(city, gameState.map, log);
+        city.buildQueue = null;
+        return;
+      }
+      if (item.kind === "building") {
+        completeBuildingStructure(civ, city, gameState, item, log);
         city.buildQueue = null;
         return;
       }
@@ -3575,20 +3809,12 @@ window.GameEngine = window.GameEngine || {};
         log.push(`Build complete: ${city.name} produced ${item.id}`);
       } else {
         // Buildings are external structures placed on a tile adjacent to the
-        // city. item.placeAt is the tile a human player picked when they
-        // queued this (see orders.js's queueBuild) -- honored if it's still
-        // legal by now, otherwise placeStructure falls back to its own
-        // automatic slot pick, which is what the AI always uses.
-        const placed = window.GameEngine.cities.placeStructure(
-          city, civ, gameState.map, item.id, gameState.civs, item.placeAt);
-        if (placed) {
-          const offSpot = item.placeAt && (placed.x !== item.placeAt.x || placed.y !== item.placeAt.y);
-          log.push(`Build complete: ${city.name} raised ${item.id} at (${placed.x},${placed.y})`
-            + (offSpot ? ` (chosen tile ${item.placeAt.x},${item.placeAt.y} was no longer available)` : ""));
-        } else {
-          // No valid adjacent slot (all occupied/blocked) — abandon this build
-          log.push(`Build canceled: ${city.name} has no open slot for ${item.id}`);
-        }
+        // city -- item.placeAt is the tile a human player picked when they
+        // queued this (see orders.js's queueBuild), honored if still legal.
+        // Shared with the paid-up-front countdown branch above (2026-08-03)
+        // so this placement/logging logic exists in exactly one place
+        // regardless of which cost model got the building here.
+        completeBuildingStructure(civ, city, gameState, item, log);
       }
       city.buildQueue = null;
     }
@@ -3657,6 +3883,11 @@ window.GameEngine = window.GameEngine || {};
     const TERRAIN = window.GameData.TERRAIN;
     const unitData = window.GameData.getUnit(unit.typeId);
     const curDist = window.GameEngine.influence.chebyshev(unit.x, unit.y, threat.x, threat.y);
+    // Every candidate here is one hop FROM the unit's own current tile, so
+    // that's the fixed origin for all of them -- see getMoveCost's doc
+    // comment for why origin/destination are no longer the same tile.
+    const originTile = map.tiles[unit.y * map.width + unit.x];
+    const originTerrain = TERRAIN[originTile.terrain];
     let best = null, bestDist = curDist;
     for (let dy = -1; dy <= 1; dy++) {
       for (let dx = -1; dx <= 1; dx++) {
@@ -3664,7 +3895,7 @@ window.GameEngine = window.GameEngine || {};
         const nx = unit.x + dx, ny = unit.y + dy;
         if (nx < 0 || nx >= map.width || ny < 0 || ny >= map.height) continue;
         const tile = map.tiles[ny * map.width + nx];
-        if (getMoveCost(TERRAIN[tile.terrain], unitData, unit, tile.hasRoad) === window.GameData.IMPASSABLE) continue;
+        if (getMoveCost(originTerrain, TERRAIN[tile.terrain], unitData, unit, originTile.hasRoad) === window.GameData.IMPASSABLE) continue;
         if (Object.values(civs).some((c) => c.units.some((u) => u.x === nx && u.y === ny))) continue;
         const d = window.GameEngine.influence.chebyshev(nx, ny, threat.x, threat.y);
         if (d > bestDist) { bestDist = d; best = { x: nx, y: ny }; }
@@ -6124,10 +6355,7 @@ window.GameEngine = window.GameEngine || {};
     const dirs = [[-1, -1], [-1, 0], [-1, 1], [0, -1], [0, 1], [1, -1], [1, 0], [1, 1]].sort(() => Math.random() - 0.5);
     for (const [dx, dy] of dirs) {
       const nx = casterUnit.x + dx, ny = casterUnit.y + dy;
-      if (nx < 0 || nx >= map.width || ny < 0 || ny >= map.height) continue;
-      if (occupied.has(`${nx},${ny}`)) continue;
-      const terrain = window.GameData.TERRAIN[map.tiles[ny * map.width + nx].terrain];
-      if (terrain.isWater || terrain.moveCostLand === window.GameData.IMPASSABLE) continue;
+      if (!isOpenPlacementTile(nx, ny, map, civs, occupied, civ.id)) continue;
       const newUnit = { typeId: unitId, civId: civ.id, x: nx, y: ny, _summonedByDruid: casterUnit };
       window.GameEngine.combat.initUnitHP(newUnit, civ);
       civ.units.push(newUnit);
@@ -7919,12 +8147,7 @@ window.GameEngine = window.GameEngine || {};
         for (let dx = -1; dx <= 1; dx++) {
           if (dx === 0 && dy === 0) continue;
           const nx = unit.x + dx, ny = unit.y + dy;
-          if (nx < 0 || nx >= map.width || ny < 0 || ny >= map.height) continue;
-          if (occupied.has(`${nx},${ny}`)) continue;
-          const tile = map.tiles[ny * map.width + nx];
-          if (!tile) continue;
-          const terrain = window.GameData.TERRAIN[tile.terrain];
-          if (terrain.isWater || terrain.moveCostLand === window.GameData.IMPASSABLE) continue;
+          if (!isOpenPlacementTile(nx, ny, map, civs, occupied, civ.id)) continue;
           const cargo = unit.carries;
           cargo.carriedBy = null;
           cargo.x = nx; cargo.y = ny;
@@ -7979,10 +8202,7 @@ window.GameEngine = window.GameEngine || {};
           for (let dx = -1; dx <= 1; dx++) {
             if (dx === 0 && dy === 0) continue;
             const nx = unit.x + dx, ny = unit.y + dy;
-            if (nx < 0 || nx >= map.width || ny < 0 || ny >= map.height) continue;
-            if (occupied.has(`${nx},${ny}`)) continue;
-            const terrain = window.GameData.TERRAIN[map.tiles[ny * map.width + nx].terrain];
-            if (terrain.isWater || terrain.moveCostLand === window.GameData.IMPASSABLE) continue;
+            if (!isOpenPlacementTile(nx, ny, map, civs, occupied, civ.id)) continue;
             cargo.carriedBy = null;
             cargo.x = nx; cargo.y = ny;
             snapVisualPos(cargo, nx, ny);
@@ -8135,10 +8355,7 @@ window.GameEngine = window.GameEngine || {};
       for (let dx = -1; dx <= 1; dx++) {
         if (dx === 0 && dy === 0) continue;
         const nx = carrier.x + dx, ny = carrier.y + dy;
-        if (nx < 0 || nx >= map.width || ny < 0 || ny >= map.height) continue;
-        if (occupied.has(`${nx},${ny}`)) continue;
-        const terrain = window.GameData.TERRAIN[map.tiles[ny * map.width + nx].terrain];
-        if (terrain.isWater || terrain.moveCostLand === window.GameData.IMPASSABLE) continue;
+        if (!isOpenPlacementTile(nx, ny, map, civs, occupied, civ.id)) continue;
         unit.carriedBy = null;
         carrier.carries = null;
         unit.x = nx; unit.y = ny;
@@ -10119,13 +10336,16 @@ window.GameEngine = window.GameEngine || {};
 
   const CURSE_DURATION = 3;
 
-  // Violent Momentum: +2 movement for a unit that killed an enemy the
-  // PREVIOUS turn. tickConditions runs at the START of runAITurn, so a
-  // condition set during turn T (after that turn's own tick already ran)
-  // survives untouched through turn T+1's movement and only expires at the
-  // T+2 tick, giving exactly one full subsequent turn of the bonus, matching
-  // "the previous turn".
+  // Violent Momentum: +2 movement, +10% First Strike, +10% Double Strike
+  // (2026-08-03, user-directed: added the latter two) for a unit that
+  // killed an enemy the PREVIOUS turn. tickConditions runs at the START of
+  // runAITurn, so a condition set during turn T (after that turn's own tick
+  // already ran) survives untouched through turn T+1's movement/combat and
+  // only expires at the T+2 tick, giving exactly one full subsequent turn of
+  // the bonus, matching "the previous turn".
   const VIOLENT_MOMENTUM_MOVE_BONUS = 2;
+  const VIOLENT_MOMENTUM_FIRST_STRIKE_BONUS = 0.10;
+  const VIOLENT_MOMENTUM_DOUBLE_STRIKE_BONUS = 0.10;
   const VIOLENT_MOMENTUM_DURATION = 2;
 
   /**
@@ -10133,11 +10353,12 @@ window.GameEngine = window.GameEngine || {};
    * exchange in resolveRound: Bog Witch's curse-on-death (whoever lands the
    * kill on her is cursed), Malefic Malediction (any hit she lands curses the
    * target, kill or not -- requires the tech), and Violent Momentum (the
-   * attacker gets a temporary movement buff if this hit killed the defender
-   * -- requires the tech). All CONDITIONS (see combat.js) -- read via
-   * unit.conditions.curse/killMomentum by combat.js's effectiveAttack and
-   * ai.js's moveUnitToward; expiry is cleared once per civ-turn in runAITurn
-   * via tickConditions.
+   * attacker gets a temporary movement/First Strike/Double Strike buff if
+   * this hit killed the defender -- requires the tech). All CONDITIONS (see
+   * combat.js) -- read via unit.conditions.curse/killMomentum by
+   * combat.js's effectiveAttack/effectiveFirstStrikePct/
+   * effectiveDoubleStrikePct and ai.js's moveUnitToward; expiry is cleared
+   * once per civ-turn in runAITurn via tickConditions.
    */
   function applyOrcCombatMechanics(attackerUnit, attackerCiv, defenderUnit, defenderCiv, result, gameState) {
     const turn = gameState.turnNumber || 0;
@@ -10161,11 +10382,16 @@ window.GameEngine = window.GameEngine || {};
         attackerCiv.unlockedMechanics && attackerCiv.unlockedMechanics.has("malefic_malediction")) {
       setCondition(defenderUnit, "curse", { attackMult: 0.5, moveMult: 0.5, expiresAtTurn: turn + CURSE_DURATION });
     }
-    // Violent Momentum: the attacker gets +2 movement next turn if this hit
-    // actually killed the defender.
+    // Violent Momentum: the attacker gets +2 movement, +10% First Strike and
+    // +10% Double Strike next turn if this hit actually killed the defender.
     if (attackerCiv.unlockedMechanics && attackerCiv.unlockedMechanics.has("violent_momentum")
         && defenderUnit.hp <= 0 && !result.fullNegated) {
-      setCondition(attackerUnit, "killMomentum", { moveBonus: VIOLENT_MOMENTUM_MOVE_BONUS, expiresAtTurn: turn + VIOLENT_MOMENTUM_DURATION });
+      setCondition(attackerUnit, "killMomentum", {
+        moveBonus: VIOLENT_MOMENTUM_MOVE_BONUS,
+        firstStrikePctBonus: VIOLENT_MOMENTUM_FIRST_STRIKE_BONUS,
+        doubleStrikePctBonus: VIOLENT_MOMENTUM_DOUBLE_STRIKE_BONUS,
+        expiresAtTurn: turn + VIOLENT_MOMENTUM_DURATION,
+      });
     }
   }
 
@@ -10282,6 +10508,7 @@ window.GameEngine = window.GameEngine || {};
     runUnitTurn,
     findAdjacentWater,
     findNearestCoastalWaterFor,
+    findClosestOpenPlacementTile,
     aggressivenessFor,
     minAcceptableWinProbability,
     estimateWinProbability,

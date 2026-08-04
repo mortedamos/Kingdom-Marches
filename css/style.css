@@ -615,6 +615,24 @@ html, body {
   cursor: pointer;
 }
 .next-unit-btn:hover { background: var(--accent); color: #1a1a1a; }
+/* Persistent research entry point (see sidebar.js's footer) -- muted/dashed
+   border rather than next-unit-btn's solid accent border, since this is
+   informational as often as it's actionable (shows current research %, or
+   why nothing's pickable yet) and shouldn't visually compete with the far
+   more urgent "units still need orders" cycler right above it. */
+.research-btn {
+  width: 100%;
+  padding: 7px 8px;
+  margin-bottom: 8px;
+  background: var(--bg-panel-raised);
+  border: 1px dashed var(--border);
+  border-radius: 4px;
+  color: var(--text-main);
+  font-family: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.research-btn:hover { border-color: var(--accent); color: var(--accent); }
 .all-units-moved {
   text-align: center;
   color: var(--text-dim);
