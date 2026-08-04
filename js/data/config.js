@@ -257,16 +257,21 @@ window.GameConfig = {
     xpKillBase: 3,
     xpKillPowerMult: 0.5,
 
-    /** Per-level bonus for each of the four upgrade paths a leveling unit
+    /** Per-level bonus for each of the five upgrade paths a leveling unit
      *  can pick. Attack/Defense are flat +1 (meaningful on this game's small
-     *  integer stat scale). Siege/First Strike are percentage-point bonuses,
-     *  kept deliberately smaller per level: siegePct only applies against
-     *  structures, and firstStrikePct compounds every round of a fight. */
+     *  integer stat scale). Siege/First Strike/Double Strike are
+     *  percentage-point bonuses, kept deliberately smaller per level:
+     *  siegePct only applies against structures, firstStrikePct compounds
+     *  every round of a fight, and doubleStrikePct (2026-08-03,
+     *  user-directed) is worth roughly a whole extra attack's chance to
+     *  land, so 3% per level was chosen to feel comparable to the other two
+     *  percentage paths rather than to Attack/Defense's flat weight. */
     bonusValues: {
       attack: 1,
       defense: 1,
       siegePct: 0.10,
       firstStrikePct: 0.01,
+      doubleStrikePct: 0.03,
     },
   },
 

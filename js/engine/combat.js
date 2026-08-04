@@ -247,6 +247,9 @@ window.GameEngine = window.GameEngine || {};
     // Orc "Violent Momentum": same temporary bump as First Strike above,
     // same source condition -- see ai.js's applyOrcCombatMechanics.
     pct += unit.conditions?.killMomentum?.doubleStrikePctBonus || 0;
+    // Veteran leveling -- see LEVELING section below (2026-08-03,
+    // user-directed: added as a 5th upgrade path).
+    pct += unit.levelBonuses?.doubleStrikePct || 0;
     // A reanimated or befuddled unit can't manage a second swing, for the
     // same reason it loses First Strike -- overrides every source above.
     if (unit.conditions?.zombie) return 0;
@@ -259,11 +262,12 @@ window.GameEngine = window.GameEngine || {};
    * XP, capped at MAX_UNIT_LEVEL. Distinct from tech-granted unitOverrides
    * (civ-wide, per unit TYPE) and from CONDITIONS below (temporary): a level
    * bonus is permanent and belongs to this one unit instance only, stored in
-   * unit.levelBonuses (a plain {attack, defense, siegePct, firstStrikePct}
-   * bag, same shape convention as unit.conditions) and read additively by
-   * effectiveAttack/effectiveDefense/effectiveSiegePct/effectiveFirstStrikePct
-   * above/below, stacking on top of every other source exactly the way
-   * ov.attack/ov.defense and the aura bonuses already do.
+   * unit.levelBonuses (a plain {attack, defense, siegePct, firstStrikePct,
+   * doubleStrikePct} bag, same shape convention as unit.conditions) and read
+   * additively by effectiveAttack/effectiveDefense/effectiveSiegePct/
+   * effectiveFirstStrikePct/effectiveDoubleStrikePct above/below, stacking
+   * on top of every other source exactly the way ov.attack/ov.defense and
+   * the aura bonuses already do.
    *
    * XP is granted only at REAL combat call sites (ai.js's attack/attackCity/
    * attackStructure handlers), never inside resolveRound itself -- resolveRound
@@ -284,17 +288,21 @@ window.GameEngine = window.GameEngine || {};
   // stays a real achievement reserved for genuine long-game veterans.
   const XP_LEVEL_THRESHOLDS = LVL_CFG.xpThresholds;
 
-  // Per-level stat bonus for each of the 4 player/AI-chosen upgrade paths.
+  // Per-level stat bonus for each of the 5 player/AI-chosen upgrade paths.
   // Attack/Defense are flat +1 (meaningful on this game's small integer stat
   // scale -- see project design notes) matching every other flat stat bonus
-  // in the game (ov.attack, crusadeAura.attackBonus, etc). Siege/First Strike
-  // are percentage-point bonuses (both already stored as 0-1 fractions
-  // everywhere else in the codebase) kept deliberately smaller per-level than
-  // Attack/Defense's proportional impact: siegePct only ever applies against
-  // structures, and firstStrikePct compounds every round of a fight (see
-  // project_first_strike_redesign memory for why those values are already
-  // ~10x smaller than they used to be) -- a Paladin's base 6% would nearly
-  // triple by level 5 at +2%/level, so this is capped at +1%/level instead.
+  // in the game (ov.attack, crusadeAura.attackBonus, etc). Siege/First
+  // Strike/Double Strike are percentage-point bonuses (all already stored as
+  // 0-1 fractions everywhere else in the codebase) kept deliberately smaller
+  // per-level than Attack/Defense's proportional impact: siegePct only ever
+  // applies against structures, firstStrikePct compounds every round of a
+  // fight (see project_first_strike_redesign memory for why those values are
+  // already ~10x smaller than they used to be) -- a Paladin's base 6% would
+  // nearly triple by level 5 at +2%/level, so this is capped at +1%/level
+  // instead -- and doubleStrikePct (2026-08-03, user-directed) is a whole
+  // extra swing's worth of value per point, so 3%/level was picked to land
+  // in the same rough per-level weight class as the other two, not scaled to
+  // Attack/Defense's flat-point convention.
   const LEVEL_BONUS_VALUES = LVL_CFG.bonusValues;
   const LEVEL_UP_STATS = Object.keys(LEVEL_BONUS_VALUES);
 

@@ -477,6 +477,7 @@ window.UI = window.UI || {};
     if (levelBonuses.defense) bonusParts.push(`+${levelBonuses.defense} defense`);
     if (levelBonuses.siegePct) bonusParts.push(`+${Math.round(levelBonuses.siegePct * 100)}% siege`);
     if (levelBonuses.firstStrikePct) bonusParts.push(`+${Math.round(levelBonuses.firstStrikePct * 100)}% first strike`);
+    if (levelBonuses.doubleStrikePct) bonusParts.push(`+${Math.round(levelBonuses.doubleStrikePct * 100)}% double strike`);
     if (bonusParts.length) properties.push(`Veteran bonuses: ${bonusParts.join(', ')}`);
 
     // Veteran leveling: level 0-MAX_UNIT_LEVEL, progress toward the next

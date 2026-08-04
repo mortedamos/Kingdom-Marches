@@ -10074,31 +10074,33 @@ window.GameEngine = window.GameEngine || {};
     return false;
   }
 
-  // Cold-start floors for Siege/First Strike's proportional-growth score
-  // below -- NOT an eligibility gate (every unit can pick up either from
-  // zero; see chooseLevelUpStat's doc comment). Chosen so a unit with NONE
-  // of that property yet scores comparably to a typical Attack/Defense pick
-  // (~0.15-0.3 for a mid-tier unit) instead of the ~1.0+ blowout a near-zero
-  // denominator would otherwise produce: 0.10 siege bonus / 0.5 floor = 0.2,
-  // 0.01 FS bonus / 0.05 floor = 0.2 -- both landing in that same
+  // Cold-start floors for Siege/First Strike/Double Strike's proportional-
+  // growth score below -- NOT an eligibility gate (every unit can pick up
+  // any of the three from zero; see chooseLevelUpStat's doc comment).
+  // Chosen so a unit with NONE of that property yet scores comparably to a
+  // typical Attack/Defense pick (~0.15-0.3 for a mid-tier unit) instead of
+  // the ~1.0+ blowout a near-zero denominator would otherwise produce:
+  // 0.10 siege bonus / 0.5 floor = 0.2, 0.01 FS bonus / 0.05 floor = 0.2,
+  // 0.03 DS bonus / 0.15 floor = 0.2 -- all three landing in that same
   // competitive-but-not-automatically-dominant range. 0.5 sits at the low
   // end of the roster's real siegePct values (Ogre); 0.05 sits just above
   // the lowest real firstStrikePct values (Cavalry/Knight/Paladin's
-  // 0.03-0.06).
-  const COLD_START_FLOOR = { siegePct: 0.5, firstStrikePct: 0.05 };
+  // 0.03-0.06); 0.15 sits below the doubleStrikePct values units.js hands
+  // out as a base (2026-08-03, user-directed addition).
+  const COLD_START_FLOOR = { siegePct: 0.5, firstStrikePct: 0.05, doubleStrikePct: 0.15 };
 
   /**
-   * Which of the 4 stat-bonus paths a unit spends a pending level-up on
+   * Which of the 5 stat-bonus paths a unit spends a pending level-up on
    * (see combat.js's LEVELING section). Every stat is always a candidate --
-   * including Siege/First Strike for a unit with none of that property
-   * yet, "purchasing" a new specialty from scratch, not just reinforcing an
-   * existing one.
+   * including Siege/First Strike/Double Strike for a unit with none of that
+   * property yet, "purchasing" a new specialty from scratch, not just
+   * reinforcing an existing one.
    *
    * Heuristic: proportional growth, not absolute value -- every LEVEL_BONUS_
    * VALUES entry is a small FIXED constant, so scoring by raw value alone
    * would always crown Attack/Defense (1 point each) over Siege/First
-   * Strike (0.6-equivalent at militaryValue's own *6/*60 weighting) for
-   * every single unit, forever. Instead this scores each candidate as
+   * Strike/Double Strike (0.6-equivalent at militaryValue's own *6/*60
+   * weighting) for every single unit, forever. Instead this scores each candidate as
    * bonus/currentEffectiveValue: whichever stat is currently SMALLEST for
    * this unit gets the biggest proportional lift, so a lopsided unit (e.g.
    * a glass-cannon high-attack/low-defense skirmisher) tends to round out
@@ -10141,6 +10143,7 @@ window.GameEngine = window.GameEngine || {};
       defense: combat.effectiveDefense(unit, civ, {}),
       siegePct: combat.effectiveSiegePct(unit, civ),
       firstStrikePct: combat.effectiveFirstStrikePct(unit, civ),
+      doubleStrikePct: combat.effectiveDoubleStrikePct(unit, civ),
     };
     let bestStat = null, bestScore = -Infinity;
     for (const stat of combat.LEVEL_UP_STATS) {
