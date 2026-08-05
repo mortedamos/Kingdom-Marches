@@ -434,7 +434,18 @@
    *  thing on the splash screen -- there's nothing behind it to lose. */
   function setupLaunchOptionsOverlay() {
     const overlay = $("launch-options-overlay");
-    const open = () => { overlay.style.display = "flex"; };
+    const open = () => {
+      overlay.style.display = "flex";
+      // Start title music the moment "Begin" is clicked (2026-08-05, user-
+      // directed) -- it used to only ever start from the modal's own "Play
+      // Title Music" button, an easy-to-miss manual step. A click IS a real
+      // user gesture, so this satisfies the browser's autoplay-permission
+      // requirement the same way a direct button press would; playTitleMusic
+      // (not toggleTitleMusic) since re-opening this modal on a later click
+      // should never STOP music that's already playing -- play() on an
+      // already-playing element is already a harmless no-op.
+      playTitleMusic();
+    };
     const close = () => { overlay.style.display = "none"; };
 
     $("title-options-btn").addEventListener("click", open);
