@@ -2,8 +2,12 @@
  * TECH TREE DATA
  * --------------
  * Shared shape: every race's tree is 5 LAYERS deep across 3 columns —
- * Civic, Building, Military. Layers are the unit of "power": cost
- * scales ~1.4x per layer, and a layer can hold more than one node (a
+ * Civic, Building, Military. Layers are the unit of "power": every tech's
+ * real Lore cost is PURE tier-based (GameData.effectiveTechCost, doubling
+ * per layer -- see GameConfig.research's own doc comment), not read from
+ * the individual `cost` field still authored on each node below (inert
+ * data now, kept rather than mechanically stripped from every entry). A
+ * layer can hold more than one node (a
  * Building and a Civic tech may share a layer; Military may fork into two
  * choices at a layer). The one hard rule: a race's 4 buildings never share
  * a layer with EACH OTHER (each of the 4 sits on its own layer, L2-L5).
@@ -57,16 +61,31 @@
 window.GameData = window.GameData || {};
 
 window.GameData.TECHS = {
-  // --- Shared infrastructure (still used by the 3 races whose trees haven't
-  // been redesigned yet). Excluded for Human, Orc, and Halfellow -- their
-  // full trees (below) are complete replacements, and Human gets Scout for
-  // free at civ creation instead (main.js), same as Pioneer/Galley.
-  // (Worker/toolcraft removed entirely -- Worker is deprecated, folded into
-  // Pioneer's canImprove.) ---
-  beast_sense: {
-    id: "beast_sense", label: "Beast-Sense", category: "economy", layer: 1, cost: 10,
-    prereqs: [], excludedRaces: ["human", "orc", "halfellow"],
-    effects: [{ type: "unlock_unit", unit: "scout" }],
+  // --- TIER 0: shared starting infrastructure (2026-08-04, user-directed).
+  // One tech, every race, no raceOnly/excludedRaces -- unlocks Pioneer,
+  // Galley, Scout, and Wall uniformly. Auto-completed for every civ at
+  // creation (main.js's createNewGame), the same mechanism race.startingTech
+  // used to get, EXCEPT race.startingTech is no longer auto-completed --
+  // only Tier 0 is free now. A civ's own signature combat unit (Raider,
+  // Spearguard, etc., via that race's real Layer-1 startingTech) must
+  // actually be researched like anything else; Scout is deliberately the
+  // civ's only quasi-"combat" capability until that finishes. Replaces the
+  // old beast_sense (Dwarf/Undead only, cost 10 Lore) and the hardcoded
+  // Human/Elf-only free-Scout grant that used to sit in main.js -- both were
+  // patches over the same underlying gap this tech now covers uniformly for
+  // every race, no per-race exceptions left. layer: 0.5 (not 0) -- see
+  // GameConfig.research's doc comment: keeps this tech inside the same
+  // Math.pow(rate, layer) premium formulas every other tech/unit already
+  // uses, rather than needing a zero/negative-exponent special case. ---
+  shared_infrastructure: {
+    id: "shared_infrastructure", label: "Shared Infrastructure", category: "economy", layer: 0.5, cost: 10,
+    prereqs: [],
+    effects: [
+      { type: "unlock_unit", unit: "pioneer" },
+      { type: "unlock_unit", unit: "galley" },
+      { type: "unlock_unit", unit: "scout" },
+      { type: "unlock_building", building: "wall_section" },
+    ],
   },
 
   // --- Shared civic trunk: fallback for races not yet promoted to their own
@@ -225,12 +244,11 @@ window.GameData.TECHS = {
     // tech has no prereqs of its own, and every tech that depends on IT
     // (freezing_touch/flight at L3, dungeon_delve/mage_college_tech/
     // teleportation at L4) stays strictly later, so the chain is still
-    // valid. `cost`/`costBreakdown` deliberately left as-is -- the layer
-    // change alone already cuts the EFFECTIVE research cost via
-    // techLayerPremium (1.15^(layer-1): ~1.32x at L3 down to 1.15x at L2),
-    // plus the Wizard unit's own build-cost/upkeep layer premiums (which
-    // key off this tech's layer too) -- retuning the raw sticker cost on
-    // top of that is a separate balance lever the user didn't ask for.
+    // valid. `cost`/`costBreakdown` below are inert now (2026-08-04, see
+    // GameData.effectiveTechCost) -- this tech's REAL Lore cost is purely
+    // its layer, so the L3->L2 move alone already halves it (tierGrowth's
+    // 2.0x per layer), plus the Wizard unit's own build-cost/upkeep layer
+    // premiums (which key off this tech's layer too).
     id: "wizardry", label: "Wizardry", category: "military", layer: 2, cost: 45,
     prereqs: [], raceOnly: "human",
     description: "Unlocks the Wizard (Ranged 2).",
@@ -1680,42 +1698,23 @@ window.GameData.getTech = function (techId) {
   return tech;
 };
 
-// Each tech's own `cost` is hand-authored per node (design intent documented
-// at the top of this file: "cost scales ~1.4x per layer"), not derived from
-// a formula -- so a race's later layers were already somewhat more expensive
-// by construction, but only as much as whoever wrote that particular node
-// happened to tune it. This is a SEPARATE, engine-level multiplier on top of
-// that hand-authored cost, applied uniformly to every tech regardless of
-// race, so higher layers take meaningfully longer to research everywhere,
-// not just wherever a node happened to be priced steeply. Mirrors
-// unitUpkeepLayerPremium's shape (compounds per layer past 1) but is its own
-// independent rate -- tech research time and unit upkeep are tuned for
-// different goals and shouldn't be forced to move together.
-const TECH_LAYER_PREMIUM_RATE = window.GameConfig.research.layerPremiumRate;
-
-/** Multiplier on a tech's authored `cost`, purely from how deep its layer
- *  is -- L1 pays none, L5 pays roughly (1.15)^4 =~1.75x on top of whatever
- *  that tech's own authored cost already reflects. */
-window.GameData.techLayerPremium = function (layer) {
-  return Math.pow(1 + TECH_LAYER_PREMIUM_RATE, Math.max(0, (layer || 1) - 1));
-};
-
-// Pacing experiment (2026-07-12): global 20% cut to research time, on top
-// of (not instead of) the per-layer premium above -- applied as a flat
-// multiplier here rather than touching TECH_LAYER_PREMIUM_RATE or any
-// individual tech's authored `cost`, so the RELATIVE cost curve (cheap
-// early techs vs. expensive late ones) is preserved exactly, just
-// compressed in absolute time. See project_pacing_experiment memory.
-const TECH_RESEARCH_TIME_MULT = window.GameConfig.research.researchTimeMult;
-
-/** The REAL Lore cost to complete a tech -- authored `cost` times
- *  techLayerPremium times TECH_RESEARCH_TIME_MULT. Every consumer that
- *  cares how much Lore a tech actually takes (the research engine's own
- *  completion check, and any UI showing a tech's cost or research progress
- *  %) should read this instead of `tech.cost` directly, or they'll
- *  under-count how long research actually takes / show a stale cost number. */
+// PURE TIER-BASED COST (2026-08-04, user-directed): every tech's REAL Lore
+// price is now derived entirely from its layer, not from the individually
+// hand-authored `cost` field still sitting on each tech definition above --
+// those numbers are inert data now, kept in place rather than mechanically
+// stripped from ~150 entries for no functional gain. See
+// GameConfig.research's own doc comment for the exact formula and the
+// reasoning for picking baseCost/tierGrowth. Paired with tech.js's
+// chooseResearch/researchTurns: the FULL cost is paid up front from the
+// civ's stockpile the moment research starts (same one-time-purchase model
+// GameData.unitBuildCost/buildingBuildCost already use for units and
+// buildings), and researchTurns derives a turn-count timer from this same
+// cost -- cost and time are two independent formulas fed by the same tier
+// number, exactly mirroring how a unit's build cost and build time both
+// derive from unitPower without one being computed from the other.
 window.GameData.effectiveTechCost = function (tech) {
-  return tech.cost * window.GameData.techLayerPremium(tech.layer) * TECH_RESEARCH_TIME_MULT;
+  const cfg = window.GameConfig.research;
+  return cfg.baseCost * Math.pow(cfg.tierGrowth, tech.layer || 1);
 };
 
 /** Techs available to a given race: shared (no raceOnly) + that race's own raceOnly nodes,
@@ -1774,10 +1773,11 @@ window.GameData.unitPower = function (unitId) {
 
 /** Which tech first grants a given unit id (via unlock_unit or, for a
  *  replacement unit like Knight/Longbowman/Trebuchet, replace_unit's `to`),
- *  scanned once across every tech's effects. null for the 3 units that were
- *  never tech-gated at all -- Pioneer, Galley, and Human's free Scout (every
- *  other race's Scout comes from beast_sense, which IS a tech, but has no
- *  costBreakdown to derive a resource mix from -- see unitBuildCost below). */
+ *  scanned once across every tech's effects. Pioneer, Galley, and Scout all
+ *  resolve to shared_infrastructure (2026-08-04) -- the Tier 0 tech every
+ *  civ starts with already completed -- which has no costBreakdown, so
+ *  unitBuildCost below still falls back to the legacy flat-coinCost model
+ *  for these 3 even though they're technically tech-gated now. */
 window.GameData._TECH_FOR_UNIT = (() => {
   const map = {};
   for (const tech of Object.values(window.GameData.TECHS)) {
@@ -1795,52 +1795,55 @@ window.GameData.techForUnit = function (unitId) {
 /** Tech-tree depth the unit was FIRST unlocked at (the unlocking tech's own
  *  `layer`, e.g. Wizard staying at whatever layer originally unlocked it
  *  even after later techs buff its stats via unitOverrides -- an upgrade
- *  doesn't relocate the unit in the tree). 1 for the 3 legacy units with no
- *  associated tech (Pioneer/Galley/Human's free Scout), same fallback
- *  unitBuildCost already uses. */
+ *  doesn't relocate the unit in the tree). 1 is now only a defensive
+ *  fallback for malformed data -- every real unit resolves to a real tech
+ *  since Tier 0's shared_infrastructure (2026-08-04) covers Pioneer, Galley,
+ *  and Scout, the last 3 that used to have none at all. */
 window.GameData.unitTechLayer = function (unitId) {
   const techId = window.GameData.techForUnit(unitId);
   if (!techId) return 1;
   return window.GameData.TECHS[techId].layer || 1;
 };
 
-// Deliberately smaller than the tech tree's own ~1.4x/layer cost growth
-// (see the file-header comment above) -- unit power already trends up with
-// layer on its own (deeper units tend to have better stats), so this is a
-// second, thinner "sophistication tax" layered on top of that, not a
-// restatement of it. Compounds per layer past 1; the tree tops out at
-// layer 5, so a layer-5 unit (Dragon-tier) lands at roughly (1.18)^4 =~2x
-// a layer-1 unit of identical power -- enough to actually feel expensive
-// without the curve running away, since 4 layer-steps is the whole range.
+// Deliberately smaller than the tech tree's own cost growth (see
+// GameConfig.research's own doc comment) -- unit power already trends up
+// with layer on its own (deeper units tend to have better stats), so this is
+// a second, thinner "sophistication tax" layered on top of that, not a
+// restatement of it. Exponent is the RAW layer now, not layer-1
+// (2026-08-04, user-directed, matching effectiveTechCost's own convention
+// change) -- Layer 1 is no longer a free/no-premium baseline; a layer-5 unit
+// (Dragon-tier) now lands at roughly (1.18)^5 =~2.3x a layer-1 unit of
+// identical power (was ~2x under the old layer-1 exponent).
 const LAYER_PREMIUM_RATE = window.GameConfig.units.buildLayerPremiumRate;
 
 /** Multiplier applied to unitBuildCost (the one-time purchase) for how deep
- *  in the tech tree a unit sits -- an L1 unit (or a legacy one) pays no
- *  premium; an L3 unit pays roughly (1.18)^2, an L5 unit (Dragon-tier)
- *  roughly (1.18)^4 =~2x. Makes late-tree units expensive to actually build
- *  on top of (not instead of) their raw power already making them pricey. */
+ *  in the tech tree a unit sits. Makes late-tree units expensive to actually
+ *  build on top of (not instead of) their raw power already making them
+ *  pricey. */
 window.GameData.unitLayerPremium = function (unitId) {
   const layer = window.GameData.unitTechLayer(unitId);
-  return Math.pow(1 + LAYER_PREMIUM_RATE, Math.max(0, layer - 1));
+  return Math.pow(1 + LAYER_PREMIUM_RATE, layer);
 };
 
 // Deliberately much steeper than LAYER_PREMIUM_RATE above -- a one-time
 // purchase only limits how FAST a civ can amass an elite army, but ongoing
 // upkeep is what determines whether it can actually be SUSTAINED turn after
-// turn. At this rate a layer-5 unit's upkeep runs roughly (1.40)^4 =~3.8x a
-// layer-1 unit's, for identical raw power -- steep enough that fielding an
-// entire army of top-tier units (not just a few, on top of a mixed-tier
-// core) should bankrupt the economy that's paying for it, rather than merely
-// costing more the way the one-time build price does.
+// turn. At this rate a layer-5 unit's upkeep runs roughly (1.40)^5 =~5.4x a
+// layer-1 unit's (raw layer exponent now, not layer-1 -- see
+// unitLayerPremium's own comment), for identical raw power -- steep enough
+// that fielding an entire army of top-tier units (not just a few, on top of
+// a mixed-tier core) should bankrupt the economy that's paying for it,
+// rather than merely costing more the way the one-time build price does.
 const UPKEEP_LAYER_PREMIUM_RATE = window.GameConfig.units.upkeepLayerPremiumRate;
 
-/** Same shape as unitLayerPremium above, but at UPKEEP_LAYER_PREMIUM_RATE --
- *  used ONLY by unitUpkeep, never unitBuildCost. Kept as a separate function
- *  (not a shared helper parameterized by rate) so each call site's intent
- *  reads directly from its own name at the call site. */
+/** Same shape as unitLayerPremium above (raw layer as the exponent, not
+ *  layer-1), but at UPKEEP_LAYER_PREMIUM_RATE -- used ONLY by unitUpkeep,
+ *  never unitBuildCost. Kept as a separate function (not a shared helper
+ *  parameterized by rate) so each call site's intent reads directly from
+ *  its own name at the call site. */
 window.GameData.unitUpkeepLayerPremium = function (unitId) {
   const layer = window.GameData.unitTechLayer(unitId);
-  return Math.pow(1 + UPKEEP_LAYER_PREMIUM_RATE, Math.max(0, layer - 1));
+  return Math.pow(1 + UPKEEP_LAYER_PREMIUM_RATE, layer);
 };
 
 /** Power-based build cost for a unit with an associated tech -- null falls

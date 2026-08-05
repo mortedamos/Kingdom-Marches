@@ -1163,7 +1163,11 @@ window.GameEngine = window.GameEngine || {};
     if (race.noHealing) {
       // Undead only heal when standing on a ruin tile
       if (race.ruinHeal && tile && tile.isRuin) {
-        const healAmount = Math.round((unit.maxHp * 2 * roll3d6()) / 100);
+        // Minimum 1 HP (2026-08-03, user-directed): a percentage-of-maxHp
+        // roll can round to 0 on a small unit/low roll, which reads as
+        // "healing did nothing" -- every heal that actually triggers should
+        // visibly do SOMETHING.
+        const healAmount = Math.max(1, Math.round((unit.maxHp * 2 * roll3d6()) / 100));
         const before = unit.hp;
         unit.hp = Math.min(unit.maxHp, unit.hp + healAmount);
         window.GameEngine.floatingText.spawnHealGain(unit, unit.hp - before);
@@ -1189,7 +1193,10 @@ window.GameEngine = window.GameEngine || {};
     // only caller that passes a non-default extraMult).
     multiplier *= extraMult;
     const pct = multiplier * roll3d6();
-    const healAmount = Math.round((unit.maxHp * pct) / 100);
+    // Minimum 1 HP (2026-08-03, user-directed) -- a low roll on a small unit
+    // (e.g. a 3-maxHP Scout resting at the 2x field rate) could round this to
+    // 0, which reads as Rest having silently done nothing at all.
+    const healAmount = Math.max(1, Math.round((unit.maxHp * pct) / 100));
     const before = unit.hp;
     unit.hp = Math.min(unit.maxHp, unit.hp + healAmount);
     window.GameEngine.floatingText.spawnHealGain(unit, unit.hp - before);
@@ -1410,15 +1417,21 @@ window.GameEngine = window.GameEngine || {};
    * AND its structural integrity. An ungarrisoned city can be attacked
    * directly (garrisoned defenders are fought as normal units first -- the
    * caller in ai.js enforces this by only reaching here once the tile has no
-   * defender). Unlike unit combat, this is a single probabilistic roll per
-   * attack, not a multi-round fight -- a city never counterattacks, so there
-   * is no attrition to simulate, just "did this attack breach the walls."
-   * A win knocks the city down one level; a level-1 city that's breached is
-   * destroyed outright rather than dropping to a nonsensical level 0.
+   * defender). A city now carries a real HP pool (2026-08-04, user-directed
+   * -- replaces the old single probabilistic win/lose roll): each attack
+   * deals mitigatedDamage(atk, cityDefenseValue) straight off city.hp, same
+   * formula and shape attackStructure already uses. When hp hits 0, the city
+   * drops one population level and hp refills to the new (smaller) max --
+   * no overkill carryover into that fresh pool, same as a unit or structure
+   * dying doesn't cleave onto whatever's next. A level-1 city that hits 0 hp
+   * is destroyed outright rather than dropping to a nonsensical level 0. A
+   * city never counterattacks on its own (Rouse the People/Ramparts/Spikes
+   * below are the only exceptions, same as before).
    */
   const CITY_BASE_DEFENSE = CFG.cityBaseDefense;
   const CITY_DEFENSE_PER_LEVEL = CFG.cityDefensePerLevel;
   const CITY_DEFENSE_PER_STRUCTURE = CFG.cityDefensePerStructure;
+  const CITY_HP_PER_LEVEL = CFG.cityHpPerLevel;
 
   /** Higher for a bigger, more built-up city -- deliberately has no defender
    *  garrison bonus of its own (that's the job of an actual defending unit;
@@ -1429,13 +1442,26 @@ window.GameEngine = window.GameEngine || {};
       + city.structures.length * CITY_DEFENSE_PER_STRUCTURE;
   }
 
-  /** Pure (non-mutating) win-probability preview, for AI scoring/threshold
-   *  checks before committing to an attack. Siege-property units and the
-   *  isSiege context already boost `atk` via effectiveAttack -- but only
-   *  when the attacker is actually adjacent to the city (see
-   *  attackStructure's matching comment and its `siegeAtRange` exception),
-   *  since attackCity below reuses this same function for its real roll, not
-   *  just the AI's preview. */
+  /** A city's max HP: purely population-based (CITY_HP_PER_LEVEL per level),
+   *  no structure bonus -- that's what cityDefenseValue is for. Derived, not
+   *  stored, so it always reflects the city's CURRENT population with no
+   *  separate field to keep in sync when population changes elsewhere
+   *  (growth, starvation). */
+  function cityMaxHp(city) {
+    return CITY_HP_PER_LEVEL * Math.max(1, Math.floor(city.population));
+  }
+
+  /** AI scoring/threshold heuristic (2026-08-04): no longer a literal win
+   *  probability now that every attack lands for real damage (mitigated,
+   *  floored at 1, same as any other attack in the game) rather than a
+   *  binary hit/miss -- kept as the same atk/(atk+def) ratio anyway, since
+   *  it's still a valid 0-1 "how favorable is this matchup" signal for
+   *  ai.js's scoring and minAcceptableWinProbability threshold checks, just
+   *  no longer literally interpreted as "chance this attack does anything."
+   *  Siege-property units and the isSiege context already boost `atk` via
+   *  effectiveAttack -- but only when the attacker is actually adjacent to
+   *  the city (see attackStructure's matching comment and its
+   *  `siegeAtRange` exception). */
   function cityAttackWinProbability(unit, city, attackerCiv, defenderCivId) {
     const isAdjacent = Math.max(Math.abs(unit.x - city.x), Math.abs(unit.y - city.y)) <= 1;
     const isSiege = isAdjacent || !!window.GameData.getUnit(unit.typeId).siegeAtRange;
@@ -1445,25 +1471,34 @@ window.GameEngine = window.GameEngine || {};
   }
 
   /**
-   * Resolves one attack against an ungarrisoned city. Mutates city.population
-   * on a win. Returns { won, winProb, destroyed, counterDamage, militiaSpawned }.
-   * When destroyed is true, the caller is responsible for removing the city
-   * (window.GameEngine.cities.destroyCity) and re-checking that civ's
-   * elimination status -- this function only knows about the single city,
-   * not the wider game state. `defenderCiv`/`gameState` are optional -- only
-   * needed to evaluate Halfellow's "Rouse the People" or Human's "Ramparts"
-   * (see attackStructure).
+   * Resolves one attack against an ungarrisoned city. Mutates city.hp (and
+   * city.population/city.hp again on a population loss). Returns
+   * { damage, populationLost, destroyed, counterDamage, militiaSpawned,
+   * hp, maxHp }. When destroyed is true, the caller is responsible for
+   * removing the city (window.GameEngine.cities.destroyCity) and re-
+   * checking that civ's elimination status -- this function only knows
+   * about the single city, not the wider game state. `defenderCiv`/
+   * `gameState` are optional -- only needed to evaluate Halfellow's "Rouse
+   * the People" or Human's "Ramparts" (see attackStructure).
    */
   function attackCity(unit, city, attackerCiv, defenderCiv, gameState) {
-    const winProb = cityAttackWinProbability(unit, city, attackerCiv, defenderCiv && defenderCiv.id);
-    const won = Math.random() < winProb;
-    let destroyed = false;
-    if (won) {
+    const isAdjacent = Math.max(Math.abs(unit.x - city.x), Math.abs(unit.y - city.y)) <= 1;
+    const isSiege = isAdjacent || !!window.GameData.getUnit(unit.typeId).siegeAtRange;
+    const atk = effectiveAttack(unit, attackerCiv, { isSiege, opposingCivId: defenderCiv && defenderCiv.id });
+    const def = cityDefenseValue(city);
+    const dmg = mitigatedDamage(atk, def);
+    if (city.hp == null) city.hp = cityMaxHp(city); // defensive -- a city from an older save may predate this field
+    city.hp -= dmg;
+    let destroyed = false, populationLost = false;
+    if (city.hp <= 0) {
       const level = Math.floor(city.population);
       if (level <= 1) {
         destroyed = true;
       } else {
         city.population = level - 1;
+        city.harvestSurplus = 0; // same reset starvation already applies on a population loss
+        city.hp = cityMaxHp(city); // fresh pool at the new, smaller max -- no overkill carryover
+        populationLost = true;
       }
     }
     let counterDamage = 0, militiaSpawned = null;
@@ -1475,7 +1510,7 @@ window.GameEngine = window.GameEngine || {};
     } else if (defenderCiv && spikesAttackRating(defenderCiv) > 0) {
       counterDamage = spikesCounterattack(city, defenderCiv, unit, attackerCiv, spikesAttackRating(defenderCiv));
     }
-    return { won, winProb, destroyed, counterDamage, militiaSpawned };
+    return { damage: dmg, populationLost, destroyed, counterDamage, militiaSpawned, hp: Math.max(0, city.hp), maxHp: cityMaxHp(city) };
   }
 
   /**
@@ -1554,6 +1589,7 @@ window.GameEngine = window.GameEngine || {};
     attackStructure,
     applySplashDamage,
     cityDefenseValue,
+    cityMaxHp,
     cityAttackWinProbability,
     attackCity,
     maybeSpawnMilitia,

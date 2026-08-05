@@ -134,6 +134,21 @@ window.UI = window.UI || {};
       // happened" is indistinguishable from a broken button.
       viewState.orderHint = acted ? null
         : { text: preview.reason || "No valid order here", until: performance.now() + 2000 };
+      // Follow the unit onto its new tile after a move (2026-08-04, user-
+      // reported): viewState.selection is keyed on a fixed (x,y), not the
+      // unit itself -- resolveSelection rebuilds its tab list from
+      // buildTileTabs(sel.x, sel.y) every redraw (see its own SELECTION
+      // MODEL doc comment), so leaving selection pointed at the tile the
+      // unit just left meant the very next redraw found no unit there at
+      // all and fell back to whatever tab WAS on that now-empty tile
+      // (Terrain, usually) -- the sidebar silently lost the unit the player
+      // just gave an order to, forcing a re-click to do anything else with
+      // it. An attack doesn't relocate the attacker, so this only fires for
+      // a real move (preview.kind === "move" and it actually happened).
+      if (acted && preview.kind === "move" && viewState.selection) {
+        viewState.selection.x = unit.x;
+        viewState.selection.y = unit.y;
+      }
       onChange();
     });
 

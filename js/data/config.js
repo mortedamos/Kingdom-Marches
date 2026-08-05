@@ -45,6 +45,23 @@
 window.GameConfig = {
 
   // =========================================================================
+  // PACING  (js/engine/ai.js, js/engine/tech.js)
+  // =========================================================================
+  pacing: {
+    /** Universal turns-to-complete rate (2026-08-04, user-directed): one
+     *  shared knob for every timed queue in the game -- ai.js's
+     *  unitBuildTurns/buildingBuildTurns AND tech.js's researchTurns all
+     *  read this now, instead of each subsystem keeping its own separate
+     *  rate (units/buildings used to run at 0.24, research at 0.12 -- a 2x
+     *  mismatch with no real justification). Formula shape is the same
+     *  everywhere: turns = round((cost or power) / rate * slowness), min 1.
+     *  Set to the FASTER of the two old values, so unit/building pacing
+     *  roughly doubles in speed to match research rather than the other way
+     *  around. */
+    slowness: 0.12,
+  },
+
+  // =========================================================================
   // INFLUENCE & TERRITORY  (js/engine/influence.js)
   // How fast borders spread, and what it takes to actually own ground.
   // =========================================================================
@@ -160,13 +177,19 @@ window.GameConfig = {
     upkeepSplitMagical: { harvest: 0.50, coin: 0.25, lore: 0.25 },
     magicalUnitIds: ["wizard", "bog_witch", "dragon", "paladin"],
 
-    /** Compounding premium per tech-tree layer past 1.
+    /** Compounding premium per tech-tree layer -- exponent is the RAW layer
+     *  now, not layer-1 (2026-08-04, user-directed): Layer 1 used to be a
+     *  free/no-premium baseline (exponent 0); now every layer, including
+     *  Tier 0 (layer: 0.5, techs.js's shared_infrastructure) carries a real
+     *  premium, just a smaller one the lower the layer. Deliberately raises
+     *  cost/upkeep across the board.
      *
-     *  buildLayerPremiumRate is the ONE-TIME purchase: (1.18)^4 ~= 2x for a
-     *  layer-5 unit. Deliberately thinner than the tech tree's own cost
-     *  growth, since unit power already trends up with layer on its own.
+     *  buildLayerPremiumRate is the ONE-TIME purchase: (1.18)^5 ~= 2.3x for a
+     *  layer-5 unit (was ~2x at layer-1 exponent). Deliberately thinner than
+     *  the tech tree's own cost growth, since unit power already trends up
+     *  with layer on its own.
      *
-     *  upkeepLayerPremiumRate is much steeper: (1.40)^4 ~= 3.8x. A one-time
+     *  upkeepLayerPremiumRate is much steeper: (1.40)^5 ~= 5.4x. A one-time
      *  price only limits how FAST a civ can amass an elite army; ongoing
      *  upkeep is what decides whether it can be SUSTAINED. At this rate an
      *  army made entirely of top-tier units should bankrupt the economy
@@ -197,15 +220,25 @@ window.GameConfig = {
   // RESEARCH  (js/data/techs.js)
   // =========================================================================
   research: {
-    /** Compounding multiplier on a tech's authored cost per layer past 1 --
-     *  L5 pays roughly (1.20)^4 ~= 2x. Separate from the unit premiums above
-     *  because research time and army upkeep are tuned for different goals. */
-    layerPremiumRate: 0.2,
-
-    /** Flat global multiplier on research time, applied on top of the layer
-     *  premium. Compresses absolute research time without disturbing the
-     *  RELATIVE cost curve between cheap early and expensive late techs. */
-    researchTimeMult: 0.80,
+    /** PURE TIER-BASED COST (2026-08-04, user-directed): replaces the old
+     *  scheme of ~150 individually hand-authored `cost` fields in techs.js
+     *  (each then multiplied by a layer premium) with a single formula --
+     *  GameData.effectiveTechCost(tech) = baseCost * tierGrowth^layer. Every
+     *  tech at the same layer now costs exactly the same; the old per-tech
+     *  `cost` fields are no longer read by effectiveTechCost at all (left in
+     *  techs.js as inert data rather than mechanically stripped from ~150
+     *  entries for zero functional gain).
+     *
+     *  Exponent is the RAW layer, not layer-1 (2026-08-04, user-directed) --
+     *  every layer-based premium in the game (this, unitLayerPremium,
+     *  unitUpkeepLayerPremium) dropped its old "-1" so Layer 1 is no longer
+     *  a free/no-premium baseline, and Tier 0's layer: 0.5 (techs.js's
+     *  shared_infrastructure) participates in the exact same formula with no
+     *  separate zero/negative-exponent case to special-case. Deliberately
+     *  raises cost across every tier, Tier 0 included -- tierGrowth: 2.0
+     *  gives Tier0=14, L1=20, L2=40, L3=80, L4=160, L5=320. */
+    baseCost: 10,
+    tierGrowth: 2.0,
   },
 
   // =========================================================================
@@ -236,6 +269,18 @@ window.GameConfig = {
     cityBaseDefense: 4,
     cityDefensePerLevel: 2.5,
     cityDefensePerStructure: 1.5,
+
+    /** City HP (2026-08-04, user-directed): a city now has a real, damage-
+     *  accumulating HP pool instead of attackCity's old single win/lose roll
+     *  -- maxHp = this * population level, same mitigatedDamage formula
+     *  every other attack in the game already uses (see combat.js's
+     *  attackStructure for the near-identical pattern this mirrors). When HP
+     *  hits 0, population drops by 1 and HP refills to the new (smaller)
+     *  max -- no overkill carryover into the next pool, same as a unit or
+     *  structure dying doesn't cleave onto whatever's next. A level-1 city
+     *  that hits 0 HP is destroyed outright rather than dropping to a
+     *  nonsensical level 0. */
+    cityHpPerLevel: 5,
   },
 
   // =========================================================================

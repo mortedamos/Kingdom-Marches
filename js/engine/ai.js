@@ -976,8 +976,13 @@ window.GameEngine = window.GameEngine || {};
   function maybeChooseResearch(civ, weights, log) {
     if (civ.currentResearch) return;
     const best = scoreNextResearch(civ, weights);
-    if (best) {
-      window.GameEngine.tech.chooseResearch(civ, best);
+    // chooseResearch can now fail on affordability alone (2026-08-04): the
+    // full Lore cost is paid up front, so a civ whose stockpile hasn't
+    // caught up yet just tries again next turn -- self-healing, same as a
+    // human player would see "can't afford" and wait. Only log on an
+    // actual success; this used to log "started" unconditionally, which
+    // would have claimed a research that never actually began.
+    if (best && window.GameEngine.tech.chooseResearch(civ, best)) {
       log.push(`Research: started ${best}`);
     }
   }
@@ -2500,15 +2505,19 @@ window.GameEngine = window.GameEngine || {};
     return 1 + excessRatio * strainRate;
   }
 
-  // Global pacing knob for the power-based unit build-time formula below --
-  // raise it to slow the whole game's military buildup down, lower it to
-  // speed it up, without touching any race's relative build rate. Cut 20%
-  // (0.30 -> 0.24) as part of the 2026-07-12 pacing experiment -- see
-  // project_pacing_experiment memory. Only affects units built through the
-  // power-based system (i.e. anything with an associated tech -- every
-  // real combat unit across every race); Pioneer/Galley/Scout still use
-  // the separate legacy flat-coinCost path and are untouched by this.
-  const BUILD_SLOWNESS = 0.24;
+  // Universal pacing knob (2026-08-04, user-directed) -- GameConfig.pacing.
+  // slowness is now shared with tech.js's researchTurns instead of this file
+  // keeping its own separate rate (was 0.24 here vs 0.12 for research, a 2x
+  // mismatch with no real justification). Raise it to slow the whole game's
+  // build/research pace down, lower it to speed everything up together.
+  // Only affects units built through the power-based system (i.e. anything
+  // whose unlocking tech has a costBreakdown to derive a resource split
+  // from -- every real combat unit across every race). Pioneer/Galley/
+  // Scout have a real unlocking tech now too (Tier 0's shared_infrastructure)
+  // but it has no costBreakdown, so unitBuildCost still returns null for
+  // them and they stay on the separate flat-coinCost accumulation path,
+  // same as wall_section -- untouched by this constant either way.
+  const BUILD_SLOWNESS = window.GameConfig.pacing.slowness;
 
   /** How fast this civ turns unit power into finished units -- industriousness
    *  (the same trait that drives building speed and tile fill-in rate) plus
@@ -5860,7 +5869,7 @@ window.GameEngine = window.GameEngine || {};
         const attackerRace = window.GameData.getRace(civ.raceId);
         if (attackerRace.healOnKillPct && unit.hp > 0) {
           const beforeKillHeal = unit.hp;
-          unit.hp = Math.min(unit.maxHp, unit.hp + Math.round(unit.maxHp * attackerRace.healOnKillPct / 100));
+          unit.hp = Math.min(unit.maxHp, unit.hp + Math.max(1, Math.round(unit.maxHp * attackerRace.healOnKillPct / 100)));
           window.GameEngine.floatingText.spawnHealGain(unit, unit.hp - beforeKillHeal);
         }
         if (target.carries) {
@@ -5930,7 +5939,7 @@ window.GameEngine = window.GameEngine || {};
    *  the World). */
   function performNaturesGrace(civ, caster, target, log) {
     const healPct = 0.10 + Math.random() * 0.20;
-    const healAmount = Math.round(target.maxHp * healPct);
+    const healAmount = Math.max(1, Math.round(target.maxHp * healPct)); // minimum 1 HP, 2026-08-03 user-directed
     const before = target.hp;
     target.hp = Math.min(target.maxHp, target.hp + healAmount);
     window.GameEngine.floatingText.spawnHealGain(target, target.hp - before);
@@ -9769,7 +9778,7 @@ window.GameEngine = window.GameEngine || {};
         // Undead heal on kill
         if (attackerRace.healOnKillPct && unit.hp > 0) {
           const beforeKillHeal = unit.hp;
-          unit.hp = Math.min(unit.maxHp, unit.hp + Math.round(unit.maxHp * attackerRace.healOnKillPct / 100));
+          unit.hp = Math.min(unit.maxHp, unit.hp + Math.max(1, Math.round(unit.maxHp * attackerRace.healOnKillPct / 100)));
           window.GameEngine.floatingText.spawnHealGain(unit, unit.hp - beforeKillHeal);
         }
         // Orc plunder on kill: stockpile bonus (tech "Spoils of War" bonus)
@@ -9838,9 +9847,10 @@ window.GameEngine = window.GameEngine || {};
     if (opts.forcedTarget) return false;
 
     // No worthwhile unit fight — consider attacking an ungarrisoned enemy
-    // CITY directly, within this unit's range (destroys it outright at level
-    // 1, otherwise knocks it down a level -- see combat.js attackCity), or
-    // razing a structure to strip its influence/economy bonus. Both require
+    // CITY directly, within this unit's range (a real HP pool now -- see
+    // combat.js's attackCity/cityMaxHp -- destroys it outright at level 1,
+    // otherwise chips its HP down and knocks it a level once that pool
+    // empties), or razing a structure to strip its influence/economy bonus. Both require
     // the target tile to have no defender -- the garrison must be dealt with
     // first via the normal unit-targeting pass above. A city is scored well
     // above any single structure (it's the whole influence source, not one
@@ -9850,7 +9860,7 @@ window.GameEngine = window.GameEngine || {};
     // isSiege context (the same mechanism attackStructure already uses) --
     // but only when actually adjacent (see cityAttackWinProbability): a
     // Ranged attack from further away never gets the siege boost.
-    let bestCity = null, bestCityScore = -Infinity, bestCityWinProb = 0;
+    let bestCity = null, bestCityScore = -Infinity;
     for (let dy = -range; dy <= range; dy++) {
       for (let dx = -range; dx <= range; dx++) {
         if (dx === 0 && dy === 0) continue;
@@ -9872,7 +9882,7 @@ window.GameEngine = window.GameEngine || {};
           let score = winProb * 50 * (weights.attack || 1.0) + level * 5;
           if (winProb < minAcceptableWinProbability(civ)) score *= 0.1; // heavily suppressed, not zeroed
           if (score > bestCityScore) {
-            bestCityScore = score; bestCityWinProb = winProb;
+            bestCityScore = score;
             bestCity = { city: targetCity, civ: otherCiv };
           }
         }
@@ -9962,21 +9972,21 @@ window.GameEngine = window.GameEngine || {};
           log.push(`${bestCity.civ.id} has been eliminated!`);
         }
         unit.currentMission = `Razed ${bestCity.civ.id}'s city to the ground`;
-      } else if (result.won) {
-        log.push(`Siege: ${civ.id}'s ${describeUnit(unit)} breached ${bestCity.civ.id}'s city, knocking it to level ${Math.floor(bestCity.city.population)}`);
+      } else if (result.populationLost) {
+        log.push(`Siege: ${civ.id}'s ${describeUnit(unit)} broke ${bestCity.civ.id}'s city's defenses, knocking it to level ${Math.floor(bestCity.city.population)} (${result.hp}/${result.maxHp} hp)`);
         unit.currentMission = `Besieging ${bestCity.civ.id}'s city at (${bestCity.city.x},${bestCity.city.y})`;
       } else {
-        log.push(`Siege: ${civ.id}'s ${describeUnit(unit)} failed to breach ${bestCity.civ.id}'s city (${Math.round(bestCityWinProb * 100)}% odds)`);
+        log.push(`Siege: ${civ.id}'s ${describeUnit(unit)} damaged ${bestCity.civ.id}'s city (${result.hp}/${result.maxHp} hp)`);
         unit.currentMission = `Besieging ${bestCity.civ.id}'s city at (${bestCity.city.x},${bestCity.city.y})`;
       }
       unit.usedThisTurn = true;
-      // Veteran leveling: no per-hit damage number for a city siege (it's a
-      // probabilistic level-knockdown, not HP attrition -- see combat.js's
-      // attackCity), so XP is a flat participation/won/destroyed scale
-      // instead of xpForCombatAction's damage-based formula.
+      // Veteran leveling: city damage IS a real number now (2026-08-04 --
+      // see combat.js's attackCity), same damage-scaled xpForCombatAction
+      // formula attackStructure's caller already uses, plus flat bonuses
+      // for knocking a level off / destroying the city outright.
       if (unit.hp > 0) {
-        let cityXP = window.GameEngine.combat.xpForCombatAction({});
-        if (result.won) cityXP += 5;
+        let cityXP = window.GameEngine.combat.xpForCombatAction({ damage: result.damage });
+        if (result.populationLost) cityXP += 5;
         if (result.destroyed) cityXP += 9;
         grantXPAndAutoLevel(unit, civ, cityXP);
       }
@@ -10177,6 +10187,14 @@ window.GameEngine = window.GameEngine || {};
     if (!wasMaxed && xpAmount > 0) {
       window.GameEngine.floatingText.spawnFloatingText(unit, `+${Math.round(xpAmount)} XP`, "xp");
     }
+    // Human player's own unit (2026-08-04, user-reported): chooseLevelUpStat
+    // is an AI heuristic, and it was being applied to the human player's
+    // units too with no say in the matter. Leave the level-up PENDING
+    // (combat.pendingLevelUps(unit) stays > 0, same XP-vs-threshold math
+    // either way) instead of auto-resolving it -- sidebar.js's
+    // levelUpActions prompts the player to spend it themselves next time
+    // they select the unit, via main.js's handleChooseLevelUp.
+    if (civ.isHuman) return;
     let pending = combat.pendingLevelUps(unit);
     while (pending > 0) {
       combat.applyLevelUp(unit, chooseLevelUpStat(unit, civ));

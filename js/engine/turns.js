@@ -731,7 +731,10 @@ window.GameEngine = window.GameEngine || {};
           if (window.GameEngine.influence.chebyshev(paladin.x, paladin.y, ally.x, ally.y) > 1) continue;
           healed.add(ally);
           const crusadeBefore = ally.hp;
-          ally.hp = Math.min(ally.maxHp, ally.hp + Math.round(ally.maxHp * 0.10));
+          // Minimum 1 HP (2026-08-03, user-directed) -- brings this in line
+          // with the Heavy Metal/Wellspring Grove auras just below, which
+          // already floored their own smaller 5% heals the same way.
+          ally.hp = Math.min(ally.maxHp, ally.hp + Math.max(1, Math.round(ally.maxHp * 0.10)));
           window.GameEngine.floatingText.spawnHealGain(ally, ally.hp - crusadeBefore);
           window.GameEngine.combat.setCondition(ally, "crusadeAura", {
             expiresAtTurn: (gameState.turnNumber || 0) + 1, attackBonus: 2, defenseBonus: 1, siegePctBonus: 0.25,
@@ -812,6 +815,18 @@ window.GameEngine = window.GameEngine || {};
       }
     }
 
+    // Tech: lore_per_city (e.g. Human "Common Tongue") -- flat lore scaling
+    // with city count. Applied to civ.resources BEFORE the stockpile sweep
+    // just below (2026-08-04, fixed alongside the research redesign): this
+    // used to run AFTER the stockpile already pulled from civ.resources,
+    // so the bonus reached tickResearch's old loreThisTurn argument but
+    // never actually landed in the stockpile itself. Harmless under the old
+    // income-accumulation research model (tickResearch read the argument
+    // directly), but research now spends ONLY from the stockpile (see
+    // tech.js's chooseResearch) -- left in the old order, this bonus tech
+    // would have gone completely inert.
+    if (civ.lorePerCity) civ.resources.lore += civ.lorePerCity * civ.cities.length;
+
     // Running stockpile: accumulate production, then deduct unit upkeep
     civ.stockpile = civ.stockpile || { harvest: 0, coin: 0, lore: 0 };
     civ.stockpile.harvest += civ.resources.harvest;
@@ -836,6 +851,10 @@ window.GameEngine = window.GameEngine || {};
       if (city.population > 1) {
         city.population -= 1;
         city.harvestSurplus = 0;
+        // Clamp (not refill) -- starvation is a decline, not a level-up, so
+        // this only matters if hp was sitting above the new, smaller max
+        // (see combat.js's cityMaxHp, which scales with population).
+        city.hp = Math.min(city.hp, window.GameEngine.combat.cityMaxHp(city));
       }
       const disbandable = civ.units.filter(u => u.typeId !== "pioneer" && !u.carriedBy);
       if (disbandable.length > 0) {
@@ -849,13 +868,13 @@ window.GameEngine = window.GameEngine || {};
     civ.stockpile.coin    = Math.max(0, civ.stockpile.coin);
     civ.stockpile.lore    = Math.max(0, civ.stockpile.lore);
 
-    // Tech: lore_per_city (e.g. Human "Common Tongue") -- flat lore scaling with city count
-    if (civ.lorePerCity) civ.resources.lore += civ.lorePerCity * civ.cities.length;
-
-    const totalLore = civ.resources.lore;
     const totalLoreTrickleInfluence = civ.cities.reduce((sum, c) => sum + (c.loreInfluenceTrickle || 0), 0);
     civ.lastLoreTrickleInfluence = totalLoreTrickleInfluence;
-    const finishedTechId = window.GameEngine.tech.tickResearch(civ, totalLore);
+    // No longer fed this turn's Lore income directly (2026-08-04) -- see
+    // tech.js's own doc comment: research now pays its full cost up front
+    // from the stockpile when chosen, so this is purely a turn-count
+    // countdown with nothing left for beginCivTurn to hand it each turn.
+    const finishedTechId = window.GameEngine.tech.tickResearch(civ);
     if (finishedTechId) civ.lastCompletedTech = finishedTechId; // for music "discovery" trigger
 
     let aiTurnState = null;

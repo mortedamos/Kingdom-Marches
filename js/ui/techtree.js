@@ -65,6 +65,7 @@ window.UI = window.UI || {};
       <div class="panel">
         <h2>${escapeHtml(race.label)} — Tech Tree</h2>
         <div class="stat-row"><span>Cities</span><span>${civ.cities.length}</span></div>
+        ${isPlayerCiv ? `<div class="stat-row"><span>Lore</span><span>${((civ.stockpile && civ.stockpile.lore) || 0).toFixed(0)}</span></div>` : ''}
         ${isPlayerCiv && !civ.currentResearch
           ? '<div class="techtree-prompt">Nothing is being researched. Click any available tech to start.</div>'
           : ''}
@@ -77,40 +78,99 @@ window.UI = window.UI || {};
     const researching = civ.currentResearch === tech.id;
     const isNextPick = !completed && !researching && tech.id === nextPick;
     const cityGateOk = window.GameEngine.tech.meetsCityGate(civ, tech);
-    const prereqsOk = tech.prereqs.every((p) => civ.completedTechs.has(p));
+    const missingPrereqs = tech.prereqs.filter((p) => !civ.completedTechs.has(p));
+    const prereqsOk = missingPrereqs.length === 0;
     const locked = !completed && !researching && (!cityGateOk || !prereqsOk);
 
     const effectiveCost = window.GameData.effectiveTechCost(tech);
+    // Up-front affordability (2026-08-04, user-directed research redesign):
+    // chooseResearch now pays this tech's full Lore cost from the stockpile
+    // the instant it's picked, same one-time-purchase model a unit/building
+    // queue already uses -- so a tech whose gates are satisfied but that the
+    // civ can't yet AFFORD needs its own state, not a "Click to research"
+    // button that would silently fail (chooseResearch returning false with
+    // nothing else telling the player why).
+    const haveLore = (civ.stockpile && civ.stockpile.lore) || 0;
+    const affordable = haveLore >= effectiveCost;
     let stateClass = "available";
     let tag = "Available";
     if (completed) { stateClass = "completed"; tag = "Purchased"; }
     else if (researching) {
       stateClass = "researching";
-      const pct = Math.min(100, Math.floor(100 * (civ.researchProgress || 0) / effectiveCost));
-      tag = `Researching (${pct}%)`;
+      const pct = civ.researchTotalTurns
+        ? Math.min(100, Math.floor(100 * (civ.researchTotalTurns - civ.researchTurnsRemaining) / civ.researchTotalTurns))
+        : 0;
+      tag = `Researching -- ${civ.researchTurnsRemaining} turn${civ.researchTurnsRemaining === 1 ? "" : "s"} left (${pct}%)`;
     } else if (isNextPick) { stateClass = "next-pick"; tag = "AI intends to research next"; }
     else if (locked) {
       stateClass = "locked";
-      tag = !cityGateOk ? `Needs ${tech.layer} ${tech.layer === 1 ? "city" : "cities"}` : "Needs prerequisite";
+      // Names the actual missing prereq(s) by label instead of a bare "Needs
+      // prerequisite" (2026-08-04, user-reported: that message gave no way
+      // to tell WHICH tech was missing without cross-referencing the tree by
+      // eye). Both gates can be unmet at once -- rare, but shown together
+      // rather than silently dropping one -- since meetsCityGate and the
+      // prereq check are independent conditions, not an if/else in
+      // tech.js's own chooseResearch gate.
+      const reasons = [];
+      if (!cityGateOk) reasons.push(`Needs ${tech.layer} ${tech.layer === 1 ? "city" : "cities"}`);
+      if (!prereqsOk) {
+        const names = missingPrereqs.map((p) => window.GameData.getTech(p).label).join(", ");
+        reasons.push(`Needs: ${names}`);
+      }
+      tag = reasons.join(" · ");
+    } else if (!affordable) {
+      // Gates are satisfied but the up-front payment isn't affordable yet --
+      // distinct from "locked" (that's about city count/prereqs, not Lore).
+      stateClass = "locked";
+      tag = "Not enough Lore banked yet";
     }
 
-    // Clickable only in the player's own tree, and only for a node that
+    // Clickable only in the player's own tree, and only for a node
     // chooseResearch would actually accept: not done, not already underway,
-    // prereqs and city gate satisfied. Switching targets mid-research is
-    // allowed -- researchProgress is a single shared pool (see tech.js's
-    // tickResearch), so nothing is lost by changing your mind.
-    const selectable = isPlayerCiv && !completed && !researching && !locked;
+    // gates satisfied, AND affordable up front. Switching targets while
+    // something is already in progress now FORFEITS whatever Lore was paid
+    // for it (see tech.js's chooseResearch doc comment) -- no longer the
+    // free, lossless switch the old income-accumulation model allowed.
+    const selectable = isPlayerCiv && !completed && !researching && !locked && affordable;
     if (selectable) tag = "Click to research";
+
+    const costColor = affordable ? "#6fbf6f" : "#d9695f";
+
+    // Turns-to-complete (2026-08-04): no longer an income-derived estimate --
+    // researchTurns is now a FIXED number the instant a tech is chosen (see
+    // tech.js), so this can show the real total for any node that isn't
+    // already locked/completed, not just the one currently in progress.
+    let turnsTag = "";
+    if (!completed && !locked && !researching) {
+      const turns = window.GameEngine.tech.researchTurns(civ, tech);
+      turnsTag = ` (${turns} turn${turns === 1 ? "" : "s"})`;
+    }
 
     const body = `<div class="techtree-node-name">${escapeHtml(tech.label)}</div>
       ${tech.description ? `<div class="techtree-node-desc">${escapeHtml(tech.description)}</div>` : ''}
-      <div class="techtree-node-tag">${escapeHtml(tag)} · ${Math.round(effectiveCost)} Lore</div>`;
+      <div class="techtree-node-tag">${escapeHtml(tag)} · <span style="color:${costColor}">${Math.round(effectiveCost)} Lore</span>${escapeHtml(turnsTag)}</div>`;
+
+    // Extra fade for tiers that are genuinely FAR off (2026-08-04, user-
+    // directed): a tech only 1 city away from unlocking is worth reading now
+    // to plan toward; one 3+ cities away is pure noise at the current game
+    // stage and was competing visually with the near-term ones at the same
+    // flat 0.5 opacity every locked node got before this. Graduated by how
+    // many additional cities are needed (tech.layer - civ.cities.length),
+    // not by whether the OTHER gate -- prereqs -- is unmet, since a prereq
+    // gap is usually one tech away, not a stage of the game away. Always
+    // reaches full clarity on hover (see the .techtree-node-far:hover CSS
+    // rule) so nothing is ever permanently unreadable, just deprioritized.
+    let extraFadeClass = "";
+    if (!cityGateOk) {
+      const citiesAway = tech.layer - civ.cities.length;
+      if (citiesAway >= 2) extraFadeClass = " techtree-node-far";
+    }
 
     if (selectable) {
       return `<button class="techtree-node ${stateClass} techtree-node-selectable"
         data-tech-id="${escapeHtml(tech.id)}">${body}</button>`;
     }
-    return `<div class="techtree-node ${stateClass}">${body}</div>`;
+    return `<div class="techtree-node ${stateClass}${extraFadeClass}">${body}</div>`;
   }
 
   function escapeHtml(s) {

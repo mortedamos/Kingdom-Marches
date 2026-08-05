@@ -1,8 +1,13 @@
 /**
  * TECH RESEARCH ENGINE
  * --------------------
- * Tracks per-civ research progress (spent in Lore) and applies tech
- * effects on completion. See techs.js for the node data and effect types.
+ * A tech's full Lore cost (GameData.effectiveTechCost -- pure tier-based,
+ * see techs.js) is paid up front from the civ's stockpile the moment
+ * chooseResearch picks it, then civ.researchTurnsRemaining counts down a
+ * fixed timer (researchTurns, derived from that same cost) until it
+ * completes and applyTechEffects fires -- the same one-time-purchase-plus-
+ * timer model GameData.unitBuildCost/ai.js's unitBuildTurns already use for
+ * units and buildings. See techs.js for the node data and effect types.
  */
 
 window.GameEngine = window.GameEngine || {};
@@ -47,21 +52,38 @@ window.GameEngine = window.GameEngine || {};
     return lowest;
   }
 
-  /** Spends this turn's Lore income on the civ's current research target */
-  function tickResearch(civ, loreThisTurn) {
-    if (!civ.currentResearch) return null;
-    civ.researchProgress = (civ.researchProgress || 0) + loreThisTurn;
-    const tech = window.GameData.getTech(civ.currentResearch);
-    // effectiveTechCost, not tech.cost directly -- see techs.js's
-    // TECH_LAYER_PREMIUM_RATE for why a higher-layer tech's real cost runs
-    // above its authored one.
+  // Same rate shape as ai.js's buildingBuildTurns (industriousness alone --
+  // research is a civilian pursuit, not a military one, so militarism
+  // doesn't factor in the way it does for raceUnitBuildRate). Shares
+  // GameConfig.pacing.slowness with ai.js's BUILD_SLOWNESS now (2026-08-04,
+  // user-directed) -- one universal pacing knob for every timed queue in
+  // the game, not a separate rate per subsystem.
+  function researchTurns(civ, tech) {
+    const race = window.GameData.getRace(civ.raceId);
+    const industriousness = race.industriousness ?? 0.5;
     const cost = window.GameData.effectiveTechCost(tech);
-    if (civ.researchProgress >= cost) {
-      civ.researchProgress -= cost;
+    return Math.max(1, Math.round((cost / industriousness) * window.GameConfig.pacing.slowness));
+  }
+
+  /** Counts down one turn on the civ's in-progress research (2026-08-04,
+   *  user-directed redesign: research now pays its FULL Lore cost up front
+   *  via chooseResearch below -- same one-time-purchase model as a unit or
+   *  building queue -- rather than accumulating progress from Lore income
+   *  turn by turn, so this is now purely a turn-count timer with nothing
+   *  left to spend here. Lore income still fills civ.stockpile.lore exactly
+   *  as before (turns.js's beginCivTurn) -- that's what funds the NEXT
+   *  tech's up-front payment, just no longer wired directly into this
+   *  function. */
+  function tickResearch(civ) {
+    if (!civ.currentResearch) return null;
+    civ.researchTurnsRemaining = Math.max(0, (civ.researchTurnsRemaining || 0) - 1);
+    if (civ.researchTurnsRemaining <= 0) {
+      const tech = window.GameData.getTech(civ.currentResearch);
       civ.completedTechs.add(tech.id);
       applyTechEffects(civ, tech);
       const finishedId = civ.currentResearch;
       civ.currentResearch = null;
+      civ.researchTotalTurns = 0;
       return finishedId;
     }
     return null;
@@ -223,14 +245,32 @@ window.GameEngine = window.GameEngine || {};
     }
   }
 
-  /** Sets a civ's research target if not already researching something */
+  /** Sets a civ's research target -- gated on affordability now, not just
+   *  city/prereq gates (2026-08-04, user-directed): the tech's full Lore
+   *  cost is paid up front from civ.stockpile.lore the moment this
+   *  succeeds, same as queueBuild pays a unit/building's cost up front.
+   *  Returns false (no-op, nothing charged) if the civ can't afford it yet.
+   *
+   *  Switching targets while something is already in progress FORFEITS
+   *  whatever Lore was paid for the abandoned tech -- no refund -- same
+   *  no-refund policy orders.js's cancelBuild already documents for an
+   *  abandoned unit/building queue. This is a real behavior change from the
+   *  old income-accumulation model, where researchProgress was one shared
+   *  pool and switching targets lost nothing; paying up front means a
+   *  switch now has a real cost, matching how changing your mind about a
+   *  queued build already worked. */
   function chooseResearch(civ, techId) {
     if (civ.completedTechs.has(techId)) return false;
     const tech = window.GameData.getTech(techId);
     if (!meetsCityGate(civ, tech)) return false;
     if (!tech.prereqs.every((p) => civ.completedTechs.has(p))) return false;
+    const cost = window.GameData.effectiveTechCost(tech);
+    civ.stockpile = civ.stockpile || { harvest: 0, coin: 0, lore: 0 };
+    if (civ.stockpile.lore < cost) return false;
+    civ.stockpile.lore -= cost;
     civ.currentResearch = techId;
-    civ.researchProgress = civ.researchProgress || 0;
+    civ.researchTotalTurns = researchTurns(civ, tech);
+    civ.researchTurnsRemaining = civ.researchTotalTurns;
     return true;
   }
 
@@ -240,6 +280,7 @@ window.GameEngine = window.GameEngine || {};
     tickResearch,
     applyTechEffects,
     chooseResearch,
+    researchTurns,
     meetsCityGate,
   };
 })();

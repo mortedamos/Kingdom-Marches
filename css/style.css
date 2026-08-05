@@ -587,6 +587,21 @@ html, body {
 }
 .build-progress-fill { height: 100%; background: var(--accent); }
 
+/* HP-style meter (2026-08-04, user-reported): structures and city population,
+   both places where a chunk of remaining "how much punishment is left"
+   matters at a glance and previously only had a bare number. Same visual
+   shape as .build-progress above (thin bar, rounded, panel-raised track) but
+   its own class since the fill color is dynamic (green/yellow/red by
+   remaining fraction) rather than always the accent color. */
+.hp-bar {
+  height: 5px;
+  background: var(--bg-panel-raised);
+  border-radius: 3px;
+  overflow: hidden;
+  margin: 3px 0 8px 0;
+}
+.hp-bar-fill { height: 100%; }
+
 /* Structure placement is a modal cursor mode -- the banner has to be
    impossible to miss, since left-click means something different while it's up. */
 .placement-banner {
@@ -762,6 +777,23 @@ html, body {
   font-size: 12px;
   line-height: 1.35;
 }
+/* A selectable node is a real <button>, unlike every other (div) node state
+   -- without an explicit background/color it fell back to the BROWSER's
+   default button chrome (near-white), and .techtree-node-name's light
+   var(--text-main) on top of that was nearly unreadable (2026-08-03,
+   user-reported). Reset it to the same dark panel look every other node
+   already has, then let the existing .completed/.researching/.next-pick/
+   .locked overrides layer on top exactly as before. */
+.techtree-node-selectable {
+  display: block;
+  width: 100%;
+  background: var(--bg-panel-raised);
+  color: var(--text-main);
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.techtree-node-selectable:hover { border-color: var(--accent); }
 .techtree-node-name { font-weight: bold; color: var(--text-main); }
 .techtree-node-desc { color: var(--text-dim); font-size: 11px; margin-top: 2px; }
 .techtree-node-tag { font-size: 10px; text-transform: uppercase; letter-spacing: 0.4px; margin-top: 3px; display: inline-block; }
@@ -773,6 +805,12 @@ html, body {
 .techtree-node.next-pick .techtree-node-tag { color: #6aa0e0; }
 .techtree-node.locked { opacity: 0.5; }
 .techtree-node.locked .techtree-node-tag { color: #b05555; }
+/* Far-future tiers (2026-08-04, user-directed): dimmed further than a
+   regular locked node, full clarity on hover so it's never permanently
+   unreadable -- just out of the way until you're actually planning that far
+   ahead. transition makes the hover reveal a deliberate act, not a flicker. */
+.techtree-node.techtree-node-far { opacity: 0.22; transition: opacity 0.15s ease; }
+.techtree-node.techtree-node-far:hover { opacity: 1; }
 
 .reports-modal { width: min(800px, 94vw); }
 .reports-legend {
@@ -907,6 +945,37 @@ html, body {
 .game-dialog-actions { display: flex; justify-content: flex-end; gap: 8px; }
 .game-dialog-primary { background: var(--accent); border-color: var(--accent); color: #1a1a1a; }
 .game-dialog-primary:hover { background: var(--accent-hover); }
+/* Destructive confirm (2026-08-04, user-directed) -- e.g. Disband Unit --
+   same red as .action-btn-danger's text, but filled, so the dialog's own
+   weight signals "this is the dangerous one" the way action-btn-primary's
+   gold fill already does for the recommended one. */
+.game-dialog-danger { background: #d9695f; border-color: #d9695f; color: #1a1a1a; }
+.game-dialog-danger:hover { background: #e07d73; }
+
+/* AI turn-processing banner (2026-08-04, user-directed): End Turn used to
+   resolve the whole round in one blocking synchronous pass with nothing
+   painted until it was over -- however long that took, the player just sat
+   looking at their last move with no indication anything was happening.
+   advanceTurn() now yields between civs (see main.js) specifically so this
+   can actually paint. A floating banner, not a modal overlay -- this is
+   status, not something requiring acknowledgement, and shouldn't block
+   input during the brief per-civ pause. */
+.turn-progress-banner {
+  position: fixed;
+  top: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 500;
+  padding: 10px 22px;
+  background: rgba(20, 22, 27, 0.92);
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  color: var(--accent);
+  font-size: 14px;
+  font-weight: bold;
+  letter-spacing: 0.3px;
+  pointer-events: none;
+}
 /* --- Launch options modal (reuses .techtree-overlay for the backdrop) --- */
 .launch-options-modal {
   width: min(460px, 94vw);

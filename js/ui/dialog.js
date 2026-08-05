@@ -9,6 +9,7 @@
  *
  *   { kind: "foundCity", x, y, suggested, onAnswer(nameOrNull) }
  *   { kind: "confirmEndTurn", items[], onAnswer(bool) }
+ *   { kind: "confirm", title, text, confirmLabel, danger, onAnswer(bool) }
  *   { kind: "message", title, text, onDismiss() }
  *
  * Every kind rendered here needs a matching branch in main.js's
@@ -43,7 +44,20 @@ window.UI = window.UI || {};
       // "undefined" (dialog.text doesn't exist on this kind) above an OK
       // button that wireDialogButtons never wired -- clicking it did nothing
       // and the modal could not be dismissed at all.
-      const items = (dialog.items || []).map((t) => `<li>${escapeHtml(t)}</li>`).join("");
+      //
+      // Each item optionally carries a tile to jump to (2026-08-04, user-
+      // directed) -- same .tile-link markup/convention as sidebar.js's own
+      // tileLink, wired by wireDialogButtons rather than the sidebar's usual
+      // global querySelectorAll pass, since that pass already ran earlier in
+      // THIS SAME redraw() call, before the dialog's innerHTML (and these
+      // buttons) existed.
+      const items = (dialog.items || []).map((item) => {
+        const label = escapeHtml(item.text);
+        const link = Number.isFinite(item.x) && Number.isFinite(item.y)
+          ? ` <button class="tile-link" data-tile-x="${item.x}" data-tile-y="${item.y}"${item.tabKind ? ` data-tile-tab="${escapeHtml(item.tabKind)}"` : ""}>Go to</button>`
+          : "";
+        return `<li>${label}${link}</li>`;
+      }).join("");
       return `
         <h2>End Turn?</h2>
         <p>There's still work you can do this turn:</p>
@@ -51,6 +65,23 @@ window.UI = window.UI || {};
         <div class="game-dialog-actions">
           <button class="menu-dropdown-btn" id="game-dialog-cancel-btn">Keep Playing</button>
           <button class="menu-dropdown-btn game-dialog-primary" id="game-dialog-confirm-btn">End Turn</button>
+        </div>`;
+    }
+    if (dialog.kind === "confirm") {
+      // Generic yes/no confirm (2026-08-04, user-directed): first consumer is
+      // Disband Unit -- an irreversible action that, unlike Found City, had
+      // no confirmation at all and sat in the sidebar one text-color away
+      // from Rest/Defend. Reuses foundCity's own button ids/wiring shape
+      // (see wireDialogButtons) rather than introducing a third pattern.
+      // `danger` swaps the primary button to the same red action-btn-danger
+      // treatment the sidebar itself uses for destructive actions, so the
+      // dialog's own visual weight matches what's being confirmed.
+      return `
+        <h2>${escapeHtml(dialog.title)}</h2>
+        <p>${escapeHtml(dialog.text)}</p>
+        <div class="game-dialog-actions">
+          <button class="menu-dropdown-btn" id="game-dialog-cancel-btn">Cancel</button>
+          <button class="menu-dropdown-btn ${dialog.danger ? "game-dialog-danger" : "game-dialog-primary"}" id="game-dialog-confirm-btn">${escapeHtml(dialog.confirmLabel || "Confirm")}</button>
         </div>`;
     }
     // "message" -- single-button dismiss, e.g. a victory announcement.

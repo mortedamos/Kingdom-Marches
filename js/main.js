@@ -465,6 +465,7 @@
       fogMode: "off", fogCivIds: new Set(Object.keys(gameState.civs)), // spectator-only; see setupFogControls
       tileScoreCivId: null, // Interface menu's Tile City Score overlay -- available in both spectator and human modes
       dialog: null, // in-game confirm/prompt/alert replacement -- see js/ui/dialog.js
+      turnBanner: null, // "<Race> Kingdom Taking Its Turn..." -- see advanceTurn()
     };
 
     stopTitleMusic();
@@ -616,22 +617,38 @@
     let landmassIdx = 0;
     for (const raceId of raceIds) {
       const civId = raceId.toUpperCase();
-      const race = window.GameData.getRace(raceId);
       const civ = {
         id: civId, raceId, cities: [], units: [], eliminated: false,
-        completedTechs: new Set(), currentResearch: null, researchProgress: 0,
+        // isHuman (2026-08-04, user-reported): the only human/AI marker
+        // readable from deep inside ai.js's combat-resolution call sites
+        // (grantXPAndAutoLevel/applyComputedXP), which never receive
+        // viewState.humanCivId the way the UI/orders.js layer does -- see
+        // applyComputedXP's use of it to skip auto-picking a human unit's
+        // veteran bonus. humanCivId (this closure's own copy) is already
+        // set by startGame() before createNewGame runs; null in spectator
+        // mode, which correctly makes isHuman false for every civ.
+        isHuman: civId === humanCivId,
+        completedTechs: new Set(), currentResearch: null,
         doctrine: null, // grand-strategy layer -- see engine/strategy.js
         // Each race's 4 buildings are now gated by that race's tech tree (see techs.js
         // building-column nodes) rather than unlocked at civ creation.
-        unlockedUnits: new Set(["pioneer", "galley"]), // Worker deprecated -- folded into Pioneer
+        // unlockedUnits/unlockedBuildings start EMPTY now (2026-08-04) --
+        // Pioneer/Galley/Scout/Wall all come from shared_infrastructure's
+        // effects just below instead of a hardcoded starting set.
+        unlockedUnits: new Set(),
         unlockedBuildings: new Set(),
         civicInfluenceBonus: 0, radiusBonus: 0, usedCityNames: [],
       };
-      civ.completedTechs.add(race.startingTech);
-      window.GameEngine.tech.applyTechEffects(civ, window.GameData.getTech(race.startingTech));
-      // Human's tech tree fully replaces the shared trunk (no toolcraft/beast_sense) --
-      // Scout is granted free at creation instead, same treatment as Pioneer/Galley.
-      if (raceId === "human") civ.unlockedUnits.add("scout");
+      // TIER 0 (2026-08-04, user-directed): the only tech ever auto-
+      // completed for free at creation now -- see techs.js's
+      // shared_infrastructure for the full reasoning. Notably,
+      // race.startingTech (each race's own signature Layer-1 combat unit --
+      // Raider, Spearguard, etc.) is deliberately NOT auto-completed here
+      // anymore; it's now a normal tech that has to actually be researched,
+      // same as everything else at its layer. Scout is the civ's only
+      // quasi-combat capability until that finishes.
+      civ.completedTechs.add("shared_infrastructure");
+      window.GameEngine.tech.applyTechEffects(civ, window.GameData.getTech("shared_infrastructure"));
       // Registered in `civs` now rather than at the end of this loop
       // (2026-08-03) so buildOccupancySet/findClosestOpenPlacementTile
       // below can see THIS civ's own starting units as they're placed one
@@ -1244,6 +1261,12 @@
     humanCivId = payload.humanCivId;
     spectatorMode = payload.spectatorMode;
     aiDifficulty = payload.aiDifficulty;
+    // Recomputed rather than trusted from the save file itself (2026-08-04):
+    // civ.isHuman didn't exist before this fix, so a save made prior to it
+    // would otherwise load with the flag missing on every civ, silently
+    // breaking the level-up picker below. Cheap to just derive it fresh from
+    // humanCivId every load instead of treating it as save-worthy state.
+    for (const civ of Object.values(gameState.civs)) civ.isHuman = civ.id === humanCivId;
 
     for (const k of Object.keys(viewState)) delete viewState[k];
     Object.assign(viewState, {
@@ -1253,7 +1276,7 @@
       // this now (see input.js's SELECTION MODEL).
       selection: null,
       fogMode: "off", fogCivIds: new Set(Object.keys(gameState.civs)),
-      tileScoreCivId: null, dialog: null,
+      tileScoreCivId: null, dialog: null, turnBanner: null,
     });
 
     clearInterval(autoplayTimer);
@@ -1318,7 +1341,16 @@
   }
 
   /** Things the player very likely still wants to do this turn. Empty means
-   *  End Turn goes straight through with no confirm. */
+   *  End Turn goes straight through with no confirm. Each item is
+   *  { text, x, y, tabKind } (2026-08-04, user-directed: x/y/tabKind let
+   *  the dialog render a tile-link jump-and-select button next to the text,
+   *  same as sidebar.js's own tileLink -- x/y are omitted for "No research
+   *  selected", which isn't tied to any one tile). Cities are listed
+   *  individually (there are rarely more than a handful) so each gets its
+   *  own jump link; units stay a single aggregate line -- the count is
+   *  routinely double digits by the midgame, and one line per idle unit
+   *  would turn the dialog into a scrollable unit roster -- linked to
+   *  whichever one Next Unit would land on first. */
   function collectUnresolvedTurnWork() {
     if (!humanCivId) return [];
     const civ = gameState.civs[humanCivId];
@@ -1327,12 +1359,15 @@
 
     const waiting = window.GameEngine.orders.unitsNeedingOrders(gameState, humanCivId);
     if (waiting.length) {
-      items.push(`${waiting.length} unit${waiting.length === 1 ? "" : "s"} still able to move or act`);
+      const first = waiting[0];
+      items.push({
+        text: `${waiting.length} unit${waiting.length === 1 ? "" : "s"} still able to move or act`,
+        x: first.x, y: first.y, tabKind: "unit",
+      });
     }
-    if (!civ.currentResearch) items.push("No research selected");
-    const idleCities = civ.cities.filter((c) => !c.buildQueue);
-    if (idleCities.length) {
-      items.push(`${idleCities.length} cit${idleCities.length === 1 ? "y is" : "ies are"} not building anything`);
+    if (!civ.currentResearch) items.push({ text: "No research selected" });
+    for (const c of civ.cities) {
+      if (!c.buildQueue) items.push({ text: `${c.name} is not building anything`, x: c.x, y: c.y, tabKind: "city" });
     }
     return items;
   }
@@ -1476,11 +1511,36 @@
    * runs synchronously with no yield back to the browser, only the final
    * state actually paints -- no mid-loop flicker.)
    */
+  /** Turn-progress banner (2026-08-04, user-directed): End Turn used to
+   *  resolve every other civ's whole turn synchronously in one blocking
+   *  pass -- nothing painted until it was over, however long that took, so
+   *  the player just sat looking at their last move with no feedback that
+   *  anything was happening. Still resolves each CIV's own units in one
+   *  tight synchronous batch (unchanged -- no per-unit pause, that would
+   *  make a big army's turn crawl), but now yields via setTimeout at each
+   *  civ BOUNDARY specifically so the "<Race> Kingdom Taking Its Turn..."
+   *  banner set just before the yield actually gets a chance to paint.
+   *  Skips announcing the human civ's own (already-acted) segment. */
   function advanceTurn() {
-    let stepResult;
-    do {
-      stepResult = advanceOneStep();
-    } while (!stepResult.roundComplete);
+    let announcedCivId = null;
+    function processBatch() {
+      let stepResult;
+      do {
+        stepResult = advanceOneStep();
+        if (stepResult.roundComplete) {
+          viewState.turnBanner = null;
+          redraw();
+          return;
+        }
+      } while (!stepResult.steppedCivId || stepResult.steppedCivId === announcedCivId || stepResult.steppedCivId === humanCivId);
+      announcedCivId = stepResult.steppedCivId;
+      const civ = gameState.civs[announcedCivId];
+      const race = window.GameData.getRace(civ.raceId);
+      viewState.turnBanner = `${race.label} Kingdom Taking Its Turn...`;
+      redraw();
+      setTimeout(processBatch, 260);
+    }
+    processBatch();
   }
 
   /** True while an interactive control (a <select> or <input>) inside
@@ -1538,6 +1598,10 @@
     if (startFishingBtn) startFishingBtn.onclick = () => handleStartChannel("fishing");
     const cancelChannelBtn = $("cancel-channel-btn");
     if (cancelChannelBtn) cancelChannelBtn.onclick = handleCancelChannel;
+    const goHiddenBtn = $("go-hidden-btn");
+    if (goHiddenBtn) goHiddenBtn.onclick = handleGoHidden;
+    const cancelHiddenBtn = $("cancel-hidden-btn");
+    if (cancelHiddenBtn) cancelHiddenBtn.onclick = handleCancelHidden;
     const nextUnitBtn = $("next-unit-btn");
     if (nextUnitBtn) nextUnitBtn.onclick = handleNextUnit;
     const openResearchBtn = $("open-research-btn");
@@ -1562,6 +1626,9 @@
     };
     for (const btn of document.querySelectorAll(".build-option")) {
       btn.onclick = () => handleChooseBuild(Number(btn.dataset.buildIndex));
+    }
+    for (const btn of document.querySelectorAll(".level-up-btn")) {
+      btn.onclick = () => handleChooseLevelUp(btn.dataset.levelUpStat);
     }
 
     // Tile-inspector tabs, plus the in-panel shortcuts that jump to one (the
@@ -1668,6 +1735,16 @@
       lastRenderedDialog = null;
       if (dialogOverlay) dialogOverlay.style.display = "none";
     }
+
+    const turnBanner = $("turn-progress-banner");
+    if (turnBanner) {
+      if (viewState.turnBanner) {
+        turnBanner.textContent = viewState.turnBanner;
+        turnBanner.style.display = "block";
+      } else {
+        turnBanner.style.display = "none";
+      }
+    }
   }
 
   /** Wires the buttons for whichever dialog kind was just rendered into
@@ -1706,6 +1783,30 @@
       };
       if (confirmBtn) confirmBtn.onclick = () => finish(true);
       if (cancelBtn) cancelBtn.onclick = () => finish(false);
+      // Per-item "Go to" links (2026-08-04, user-directed) -- jumping to fix
+      // the thing the dialog just flagged means the player isn't ending the
+      // turn after all, so this dismisses the dialog exactly like "Keep
+      // Playing" (finish(false)) rather than leaving it open over the map.
+      const modal = $("game-dialog-modal");
+      if (modal) {
+        for (const btn of modal.querySelectorAll(".tile-link")) {
+          btn.onclick = () => {
+            finish(false);
+            goToTile(Number(btn.dataset.tileX), Number(btn.dataset.tileY), btn.dataset.tileTab || null);
+          };
+        }
+      }
+    } else if (dialog.kind === "confirm") {
+      const confirmBtn = $("game-dialog-confirm-btn");
+      const cancelBtn = $("game-dialog-cancel-btn");
+      const finish = (ok) => {
+        viewState.dialog = null;
+        lastRenderedDialog = null;
+        dialog.onAnswer(ok);
+        redraw();
+      };
+      if (confirmBtn) confirmBtn.onclick = () => finish(true);
+      if (cancelBtn) cancelBtn.onclick = () => finish(false);
     } else if (dialog.kind === "message") {
       const okBtn = $("game-dialog-ok-btn");
       if (okBtn) okBtn.onclick = () => {
@@ -1736,6 +1837,32 @@
     if (unit.usedThisTurn) return;
     window.GameEngine.combat.setCondition(unit, "defending", { expiresAtTurn: (gameState.turnNumber || 0) + 1 });
     unit.usedThisTurn = true;
+    redraw();
+  }
+
+  // Hidden/stealth (2026-08-03, user-reported): the engine mechanic
+  // (combat.js's canGoHidden/enterHidden/revealHidden) existed with only AI
+  // call sites -- see sidebar.js's stealthActions for the button gating.
+  // Entering is a full-turn action, same contract enterHidden documents for
+  // every AI call site; canceling early is free (the tech's own "voluntarily
+  // cancellable early" wording) and reuses revealHidden, which still applies
+  // the standard 1-turn forced-visible cooldown before re-hiding -- same as
+  // any other way Hidden ends.
+  function handleGoHidden() {
+    if (!humanCivId || !viewState.selectedUnit) return;
+    const unit = viewState.selectedUnit;
+    const civ = gameState.civs[humanCivId];
+    if (unit.usedThisTurn) return;
+    if (!window.GameEngine.combat.canGoHidden(unit, civ, gameState.civs)) return;
+    window.GameEngine.combat.enterHidden(unit, gameState.turnNumber || 0);
+    unit.usedThisTurn = true;
+    redraw();
+  }
+
+  function handleCancelHidden() {
+    if (!humanCivId || !viewState.selectedUnit) return;
+    const unit = viewState.selectedUnit;
+    window.GameEngine.combat.revealHidden(unit, gameState.turnNumber || 0);
     redraw();
   }
 
@@ -1798,6 +1925,19 @@
         redraw();
       },
     };
+    redraw();
+  }
+
+  /** Spends one pending level-up on `stat` for the currently selected unit
+   *  (2026-08-04, user-reported): the player-facing counterpart to ai.js's
+   *  chooseLevelUpStat -- see sidebar.js's levelUpActions for the button
+   *  markup and ai.js's applyComputedXP for why a human-controlled unit's
+   *  level-up is left pending instead of auto-resolved in the first place. */
+  function handleChooseLevelUp(stat) {
+    if (!humanCivId || !viewState.selectedUnit) return;
+    const unit = viewState.selectedUnit;
+    if (unit.civId !== humanCivId) return;
+    window.GameEngine.combat.applyLevelUp(unit, stat);
     redraw();
   }
 
@@ -1870,32 +2010,50 @@
     redraw();
   }
 
+  /** Disband is the only permanent, no-undo action a unit's own action list
+   *  offers (2026-08-04, user-reported) -- it used to fire immediately on
+   *  click, one text-color away from Rest/Defend in the same button list,
+   *  while Found City (fully reversible -- you just don't get a city) asked
+   *  for confirmation. Gated behind the same generic confirm dialog Found
+   *  City itself uses (see js/ui/dialog.js's "confirm" kind), `danger: true`
+   *  for the matching red fill. */
   function handleDisbandUnit() {
     if (!humanCivId || !viewState.selectedUnit) return;
-    const humanCiv = gameState.civs[humanCivId];
     const unit = viewState.selectedUnit;
-    // If this unit is carrying something, drop the cargo at its position
-    if (unit.carries) {
-      unit.carries.carriedBy = null;
-      unit.carries.x = unit.x;
-      unit.carries.y = unit.y;
-      unit.carries = null;
-    }
-    // If this unit is being carried, detach from carrier
-    if (unit.carriedBy) {
-      unit.carriedBy.carries = null;
-      unit.carriedBy = null;
-    }
-    humanCiv.units = humanCiv.units.filter(u => u !== unit);
-    // Drop the tab's pin on this now-deleted unit. Without this, the next
-    // resolveSelection would still be hunting for it by reference; it falls
-    // back gracefully either way, but clearing the ref lets it pick the
-    // tile's remaining content cleanly instead of matching on kind alone.
-    viewState.selectedUnit = null;
-    if (viewState.selection) {
-      viewState.selection.activeRef = null;
-      viewState.selection.activeKind = null;
-    }
+    const baseUnit = window.GameData.getUnit(unit.typeId);
+    viewState.dialog = {
+      kind: "confirm",
+      title: "Disband Unit?",
+      text: `Disband this ${baseUnit.label}${unit.name ? ` (${unit.name})` : ""}? This cannot be undone.`,
+      confirmLabel: "Disband",
+      danger: true,
+      onAnswer: (ok) => {
+        if (!ok) return;
+        const humanCiv = gameState.civs[humanCivId];
+        // If this unit is carrying something, drop the cargo at its position
+        if (unit.carries) {
+          unit.carries.carriedBy = null;
+          unit.carries.x = unit.x;
+          unit.carries.y = unit.y;
+          unit.carries = null;
+        }
+        // If this unit is being carried, detach from carrier
+        if (unit.carriedBy) {
+          unit.carriedBy.carries = null;
+          unit.carriedBy = null;
+        }
+        humanCiv.units = humanCiv.units.filter(u => u !== unit);
+        // Drop the tab's pin on this now-deleted unit. Without this, the next
+        // resolveSelection would still be hunting for it by reference; it falls
+        // back gracefully either way, but clearing the ref lets it pick the
+        // tile's remaining content cleanly instead of matching on kind alone.
+        viewState.selectedUnit = null;
+        if (viewState.selection) {
+          viewState.selection.activeRef = null;
+          viewState.selection.activeKind = null;
+        }
+      },
+    };
     redraw();
   }
 

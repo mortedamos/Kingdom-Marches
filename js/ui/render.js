@@ -746,7 +746,10 @@ window.UI = window.UI || {};
         drawPreviewLabel(ctx, `${Math.round(preview.odds * 100)}%`, cx, screenY - 2, color);
       }
     } else if (preview.kind === "move") {
-      drawPreviewLabel(ctx, `${preview.cost} mp`, cx, screenY - 2, color);
+      // Spelled out (2026-08-04, user-reported): "mp" read as a cryptic
+      // abbreviation floating on the map with nothing nearby to decode it
+      // from, unlike H/C/L which the sidebar spells out elsewhere first.
+      drawPreviewLabel(ctx, `${preview.cost} movement point${preview.cost === 1 ? "" : "s"}`, cx, screenY - 2, color);
     } else {
       // Blocked: a slash through the tile, plus why.
       ctx.beginPath();

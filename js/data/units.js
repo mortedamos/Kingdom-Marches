@@ -237,13 +237,13 @@ window.GameData.UNITS = {
   },
   catapult: {
     id: "catapult", label: "Catapult", symbol: "⚙", category: "military", raceOnly: "human", range: 2,
-    attack: 7, defense: 3, movement: 1, visionRadius: 2, siegePct: 1.50, siegeAtRange: true, attackChars: ["🪨", "☄"],
+    attack: 7, defense: 3, movement: 2, visionRadius: 2, siegePct: 1.50, siegeAtRange: true, attackChars: ["🪨", "☄"],
     coinCost: 28, biggerPct: .5,
     nameSpecial: true, // a machine, not a person -- see unit-names.js
   },
   trebuchet: {
     id: "trebuchet", label: "Trebuchet", symbol: "⚙", category: "military", raceOnly: "human", range: 2,
-    attack: 8, defense: 4, movement: 1, visionRadius: 2, siegePct: 2.00, siegeAtRange: true, // replaces Catapult
+    attack: 8, defense: 4, movement: 2, visionRadius: 2, siegePct: 2.00, siegeAtRange: true, // replaces Catapult
     coinCost: 40, attackChars: ["🪨", "☄"], biggerPct: .6,
     nameSpecial: true, // a machine, not a person -- see unit-names.js
   },
@@ -329,7 +329,7 @@ window.GameData.UNITS = {
   // the Titan.
   awakened_oak: {
     id: "awakened_oak", label: "Awakened Oak", symbol: "♣", category: "military", raceOnly: "elf",
-    attack: 11, defense: 11, movement: 1, visionRadius: 3, siegePct: 1.5,
+    attack: 11, defense: 11, movement: 2, visionRadius: 3, siegePct: 1.5,
     coinCost: 65, biggerPct: 1.0, attackChars: ["🌳", "💥"],
     rare: true, neverExplores: true,
     nameSpecial: true, // a living tree, not a person -- see unit-names.js
@@ -388,7 +388,7 @@ window.GameData.UNITS = {
   },
   musketeer: {
     id: "musketeer", label: "Musketeer", symbol: "⌐", category: "military", raceOnly: "dwarf",
-    attack: 5, defense: 3, movement: 1, visionRadius: 3, range: 2,
+    attack: 5, defense: 3, movement: 2, visionRadius: 3, range: 2,
     coinCost: 22, attackChars: ["💥", "●"],
   },
   // Pinnacle unit -- a slow, near-indestructible city-crusher rather than a
@@ -412,7 +412,7 @@ window.GameData.UNITS = {
     // ordinary attacker" false in practice and causing the Resilient
     // Spirit/Unyielding death-save to fire on hits that were never supposed
     // to be anywhere near lethal against a full-health Titan).
-    attack: 10, defense: 32, movement: 1, visionRadius: 2, siegePct: 3.50,
+    attack: 10, defense: 32, movement: 2, visionRadius: 2, siegePct: 3.50,
     coinCost: 60, biggerPct: 1.2, attackChars: ["🪨", "💥"],
     veryRare: true, neverExplores: true, siegeTarget: true,
     nameSpecial: true, // a construct, not a person -- see unit-names.js
@@ -436,7 +436,7 @@ window.GameData.UNITS = {
   },
   raider: {
     id: "raider", label: "Raider", symbol: "⚔", category: "military", raceOnly: "orc",
-    attack: 3, defense: 1, movement: 1, visionRadius: 2,
+    attack: 3, defense: 1, movement: 2, visionRadius: 2,
     coinCost: 15, attackChars: ["🪓", "🔪", "𓌜"],
   },
   // A beast, not a real fighter -- its value is the "hunt" AI behavior
@@ -452,7 +452,7 @@ window.GameData.UNITS = {
   },
   impaler: {
     id: "impaler", label: "Impaler", symbol: "▲", category: "military", raceOnly: "orc",
-    attack: 4, defense: 3, movement: 1, visionRadius: 2, attackChars: ["𐃆"],
+    attack: 4, defense: 3, movement: 2, visionRadius: 2, attackChars: ["𐃆"],
     coinCost: 18,
   },
   wolf_rider: {
@@ -472,7 +472,7 @@ window.GameData.UNITS = {
   },
   battering_ram: {
     id: "battering_ram", label: "Battering Ram", symbol: "⚙", category: "military", raceOnly: "orc",
-    attack: 6, defense: 3, movement: 1, visionRadius: 2, siegePct: 1.75,
+    attack: 6, defense: 3, movement: 2, visionRadius: 2, siegePct: 1.75,
     coinCost: 30, biggerPct: .5, attackChars: ["💥"],
     nameSpecial: true, // a machine, not a person -- see unit-names.js
   },

@@ -130,6 +130,10 @@ window.GameEngine = window.GameEngine || {};
     return {
       x, y, civId, name, isPort,
       population: 1.0,
+      // City HP (2026-08-04, user-directed): CITY_HP_PER_LEVEL at level 1 --
+      // see combat.js's cityMaxHp for the general (population-derived)
+      // formula this stays in sync with as population changes later.
+      hp: window.GameConfig.combat.cityHpPerLevel,
       harvestSurplus: 0.0,
       coinBanked: 0.0,
       influenceRadius: BASE_INFLUENCE_RADIUS,
@@ -520,6 +524,10 @@ window.GameEngine = window.GameEngine || {};
       if (city.harvestSurplus >= threshold) {
         city.harvestSurplus -= threshold;
         city.population += 1.0;
+        // Growing a level raises maxHp (combat.js's cityMaxHp scales with
+        // population) -- refilled to the new full, same convention a unit
+        // leveling up doesn't leave it sitting below its new max HP either.
+        city.hp = window.GameEngine.combat.cityMaxHp(city);
       }
     }
 
@@ -561,7 +569,11 @@ window.GameEngine = window.GameEngine || {};
     if (civ.unlockedMechanics && civ.unlockedMechanics.has("hedge_walls")) {
       for (const s of city.structures) {
         const b = window.GameData.getBuilding(s.id);
-        if (b.isWall) s.hp = Math.min(s.maxHp, s.hp + s.maxHp * 0.05);
+        // Math.round + minimum 1 HP (2026-08-03, user-directed) -- this used
+        // to add the raw fractional 5% directly (no rounding at all), which
+        // both left structure HP as a non-integer and could add less than 1
+        // on a low-maxHp wall.
+        if (b.isWall) s.hp = Math.min(s.maxHp, s.hp + Math.max(1, Math.round(s.maxHp * 0.05)));
       }
     }
 

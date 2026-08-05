@@ -63,7 +63,13 @@ window.UI = window.UI || {};
       let researchLabel = "Choose Research";
       if (civ && civ.currentResearch) {
         const tech = window.GameData.getTech(civ.currentResearch);
-        const pct = Math.min(100, Math.floor(100 * (civ.researchProgress || 0) / window.GameData.effectiveTechCost(tech)));
+        // Turn-count progress now, not a Lore-income threshold (2026-08-04):
+        // research pays up front and counts down a fixed timer -- see
+        // tech.js's chooseResearch/tickResearch -- same shape as
+        // buildQueuePct's turnsRemaining/totalTurns math just below.
+        const pct = civ.researchTotalTurns
+          ? Math.min(100, Math.floor(100 * (civ.researchTotalTurns - civ.researchTurnsRemaining) / civ.researchTotalTurns))
+          : 0;
         researchLabel = `Researching: ${tech.label} (${pct}%)`;
       } else if (civ && civ.cities.length === 0) {
         // Explains WHY nothing's pickable yet (see tech.js's meetsCityGate --
@@ -101,6 +107,13 @@ window.UI = window.UI || {};
     const y = city.lastYield || { harvest: 0, coin: 0, lore: 0 };
     const pop = Math.floor(city.population);
     const maxPop = window.GameEngine.cities.MAX_CITY_POPULATION || 6;
+    // City HP (2026-08-04, user-directed): a real damage-accumulating pool
+    // now -- see combat.js's attackCity/cityMaxHp -- population-per-level,
+    // refilled on growth, clamped on starvation, reset to the new (smaller)
+    // max when a hit empties it and knocks off a level. cityHp falls back
+    // to a full pool for a city from an older save that predates this field.
+    const cityMaxHp = window.GameEngine.combat.cityMaxHp(city);
+    const cityHp = city.hp != null ? Math.max(0, city.hp) : cityMaxHp;
     const atCap = pop >= maxPop;
     const growthThreshold = pop * pop * (window.GameEngine.cities.GROWTH_THRESHOLD_PER_POP || 400.0);
     const growthPct = atCap ? 100 : Math.min(100, Math.floor(100 * city.harvestSurplus / growthThreshold));
@@ -138,6 +151,8 @@ window.UI = window.UI || {};
       <div class="panel">
         <h2>${escapeHtml(city.name)}${portTag}</h2>
         ${race ? `<div class="stat-row"><span>Race</span><span>${escapeHtml(race.label)}</span></div>` : ''}
+        <div class="stat-row"><span>HP</span><span>${cityHp} / ${cityMaxHp}</span></div>
+        ${hpBarHtml(cityHp, cityMaxHp)}
         <div class="stat-row"><span>Population</span><span>${pop} / ${maxPop}</span></div>
         <div class="stat-row"><span>Growth</span><span>${atCap ? 'Max size' : `${city.harvestSurplus.toFixed(1)} / ${growthThreshold.toFixed(0)} (${growthPct}%)`}</span></div>
         <div class="stat-row"><span>Influence Radius</span><span>${city.influenceRadius}</span></div>
@@ -152,7 +167,7 @@ window.UI = window.UI || {};
         ${city.structures.length
           ? city.structures.map(s => {
               const b = window.GameData.getBuilding(s.id);
-              return `<div class="stat-row"><span>${escapeHtml(b.label)}</span><span>${Math.max(0, s.hp)}/${s.maxHp} hp</span></div>`;
+              return `<div class="stat-row"><span>${escapeHtml(b.label)}</span><span>${Math.max(0, s.hp)}/${s.maxHp} hp</span></div>${hpBarHtml(s.hp, s.maxHp)}`;
             }).join("")
           : '<div class="stat-row"><em>None built</em></div>'}
         ${garrisonHtml}
@@ -206,16 +221,39 @@ window.UI = window.UI || {};
     const units = options.filter((o) => o.kind === "unit");
     const buildings = options.filter((o) => o.kind === "building");
 
+    // Stockpile readout + per-resource cost coloring (2026-08-04, user-
+    // directed): a build's cost used to be the ONLY number on screen --
+    // reading "unaffordable" meant trusting the greyed-out state and
+    // guessing which resource(s) were short and by how much, with no way to
+    // check the actual stockpile without leaving this picker for the
+    // Kingdom tab. Each cost token is now colored green/red against
+    // civ.stockpile (same convention as sidebar's own HP-bar meter --
+    // hpBarHtml's colors), and the stockpile itself is shown right above the
+    // list so "green/red against WHAT" is never a mystery.
+    const stock = civ.stockpile || { harvest: 0, coin: 0, lore: 0 };
+    const RESOURCE_LABEL = { harvest: "Harvest", coin: "Coin", lore: "Lore" };
+    const costTokenHtml = (key, amount) => {
+      const have = stock[key] || 0;
+      const color = have >= amount ? "#6fbf6f" : "#d9695f";
+      const short = have >= amount ? "" : ` title="Short ${(amount - have).toFixed(0)} ${RESOURCE_LABEL[key]} (have ${have.toFixed(0)})"`;
+      return `<span style="color:${color}"${short}>${amount}${key[0].toUpperCase()}</span>`;
+    };
+    const stockpileHtml = `<div class="stat-row"><span>Stockpile (H / C / L)</span>`
+      + `<span>${stock.harvest.toFixed(0)} / ${stock.coin.toFixed(0)} / ${stock.lore.toFixed(0)}</span></div>`;
+
     const row = (o, i) => {
-      const price = o.cost
-        ? Object.entries(o.cost).map(([k, v]) => `${v}${k[0].toUpperCase()}`).join(" ")
-        : `${o.coinCost || 0}C`;
-      const time = o.turns ? `${o.turns}t` : "";
+      const priceHtml = o.cost
+        ? Object.entries(o.cost).map(([k, v]) => costTokenHtml(k, v)).join(" ")
+        : costTokenHtml("coin", o.coinCost || 0);
+      // Spelled out, not "Nt" (2026-08-04, user-reported): a bare "2t" sat
+      // directly next to the H/C/L-style resource tokens above and read as
+      // a fourth resource abbreviation rather than a turn count.
+      const time = o.turns ? `${o.turns} turn${o.turns === 1 ? "" : "s"}` : "";
       const needsPlacement = o.kind === "building";
       return `<button class="build-option${o.affordable ? "" : " build-option-unaffordable"}"
           data-build-index="${i}" ${o.affordable ? "" : "disabled"}>
         <span>${escapeHtml(o.label)}${needsPlacement ? " ⌂" : ""}</span>
-        <span>${escapeHtml(`${price} ${time}`.trim())}</span>
+        <span>${priceHtml}${time ? ` · ${escapeHtml(time)}` : ""}</span>
       </button>`;
     };
 
@@ -226,6 +264,7 @@ window.UI = window.UI || {};
     const buildingRows = indexed.filter(({ o }) => o.kind === "building").map(({ o, i }) => row(o, i)).join("");
 
     return `<h3>Choose Production</h3>
+      ${stockpileHtml}
       ${units.length ? `<div class="build-group-label">Units</div>${unitRows}` : ""}
       ${buildings.length ? `<div class="build-group-label">Buildings <span style="opacity:0.6">⌂ = pick a tile</span></div>${buildingRows}` : ""}
       <button id="close-build-picker-btn" class="action-btn">Cancel</button>`;
@@ -329,6 +368,7 @@ window.UI = window.UI || {};
         <div class="stat-row"><span>Race</span><span>${escapeHtml(race.label)}</span></div>
         <div class="stat-row"><span>Owner City</span><span>${escapeHtml(sel.city.name)}</span></div>
         <div class="stat-row"><span>HP</span><span>${Math.max(0, rec.hp)} / ${rec.maxHp}</span></div>
+        ${hpBarHtml(rec.hp, rec.maxHp)}
         <div class="stat-row"><span>Position</span><span>(${rec.x}, ${rec.y})</span></div>
         <h3>Effect</h3>
         <div class="stat-row">${effects.length ? escapeHtml(effects.join(", ")) : "<em>—</em>"}</div>
@@ -409,6 +449,26 @@ window.UI = window.UI || {};
       }
     }
 
+    // Hidden/stealth (2026-08-03, user-reported): Halfellow's "Sneaking
+    // Around", Elf's "Shadowed Hush, Unseen", and the two unit-specific
+    // variants (Human Wizard's Invisibility, Halfellow Trouble Maker's
+    // Making Trouble) all fed a real engine mechanic (combat.js's
+    // canGoHidden/enterHidden/revealHidden) that only ever had AI call
+    // sites -- researching any of these techs unlocked the ABILITY with no
+    // way for a human player to actually use it. A full-turn action to
+    // enter Hidden, matching enterHidden's own contract; canceling early is
+    // free (see the tech's own "voluntarily cancellable early" wording) and
+    // reuses revealHidden, the same path a forced reveal takes -- both route
+    // through the same 1-turn "forced visible" cooldown before re-hiding.
+    let stealthActions = "";
+    if (isHumanUnit && gameState) {
+      if (unit.conditions?.hidden) {
+        stealthActions = `<h3>Actions</h3><button id="cancel-hidden-btn" class="action-btn">Cancel Hidden</button>`;
+      } else if (!unit.usedThisTurn && window.GameEngine.combat.canGoHidden(unit, civ, gameState.civs)) {
+        stealthActions = `<h3>Actions</h3><button id="go-hidden-btn" class="action-btn">Go Hidden</button>`;
+      }
+    }
+
     const carriedByTag = unit.carriedBy
       ? `<div class="stat-row"><span>Status</span><span>Aboard ${escapeHtml(window.GameData.getUnit(unit.carriedBy.typeId).label)}</span></div>`
       : '';
@@ -431,6 +491,41 @@ window.UI = window.UI || {};
     const firstStrikePct = window.GameEngine.combat.effectiveFirstStrikePct(unit, civ);
     const doubleStrikePct = window.GameEngine.combat.effectiveDoubleStrikePct(unit, civ);
     const siegePct = window.GameEngine.combat.effectiveSiegePct(unit, civ);
+
+    // Player-facing level-up picker (2026-08-04, user-reported): ai.js's
+    // applyComputedXP now leaves a human-controlled unit's level-up PENDING
+    // (see combat.js's pendingLevelUps) rather than auto-spending it via the
+    // AI's own chooseLevelUpStat heuristic. Shown at the very top of the
+    // panel, above even HP, so it can't be missed the next time this unit is
+    // selected -- and each button applies one level immediately, looping
+    // back here (via redraw) if more than one point is still pending (a big
+    // single XP grant, e.g. a signature kill, can vault more than one
+    // threshold at once).
+    let levelUpActions = "";
+    if (isHumanUnit) {
+      const combat = window.GameEngine.combat;
+      const pendingCount = combat.pendingLevelUps(unit);
+      if (pendingCount > 0) {
+        const LEVEL_UP_LABELS = {
+          attack: "Attack", defense: "Defense", siegePct: "Siege",
+          firstStrikePct: "First Strike", doubleStrikePct: "Double Strike",
+        };
+        const currentValue = { attack: effAttack, defense: effDefense, siegePct, firstStrikePct, doubleStrikePct };
+        const isPct = (stat) => stat === "siegePct" || stat === "firstStrikePct" || stat === "doubleStrikePct";
+        const fmt = (stat, v) => isPct(stat) ? `${Math.round(v * 100)}%` : Math.round(v);
+        const buttons = combat.LEVEL_UP_STATS.map((stat) => {
+          const bonus = combat.LEVEL_BONUS_VALUES[stat];
+          return `<button class="action-btn action-btn-primary level-up-btn" data-level-up-stat="${stat}">`
+            + `${LEVEL_UP_LABELS[stat]} (${fmt(stat, currentValue[stat])} &rarr; ${fmt(stat, currentValue[stat] + bonus)})</button>`;
+        }).join("");
+        levelUpActions = `<div class="placement-banner">
+          <strong>Level Up!${pendingCount > 1 ? ` (${pendingCount} pending)` : ''}</strong>
+          <div>Choose a veteran bonus:</div>
+          ${buttons}
+        </div>`;
+      }
+    }
+
     const isFlying = window.GameEngine.combat.isFlying(unit);
     const canCarry = window.GameEngine.combat.getUnitProperty(unit, civ, "canCarryUnit", false);
     const effVision = (baseUnit.visionRadius || 3) + (civ.unitOverrides?.[unit.typeId]?.visionRadius || 0)
@@ -531,6 +626,7 @@ window.UI = window.UI || {};
     return `
       <div class="panel">
         <h2>${escapeHtml(baseUnit.label)}</h2>
+        ${levelUpActions}
         ${unit.name ? `<div class="stat-row" style="font-style:italic;opacity:0.85"><span>${escapeHtml(unit.name)}</span></div>` : ''}
         <div class="stat-row"><span>Race</span><span>${escapeHtml(race.label)}</span></div>
         ${missionTag}
@@ -547,6 +643,7 @@ window.UI = window.UI || {};
         ${turnStatus}
         ${pioneerActions}
         ${channelActions}
+        ${stealthActions}
         ${restBtn}
         ${defendBtn}
         ${disbandBtn}
@@ -579,7 +676,9 @@ window.UI = window.UI || {};
     let researchHtml = "<em>None selected</em>";
     if (civ.currentResearch) {
       const tech = window.GameData.getTech(civ.currentResearch);
-      const pct = Math.min(100, Math.floor(100 * (civ.researchProgress || 0) / window.GameData.effectiveTechCost(tech)));
+      const pct = civ.researchTotalTurns
+        ? Math.min(100, Math.floor(100 * (civ.researchTotalTurns - civ.researchTurnsRemaining) / civ.researchTotalTurns))
+        : 0;
       researchHtml = `${escapeHtml(tech.label)} (${pct}%)`;
     }
 
@@ -694,6 +793,19 @@ window.UI = window.UI || {};
     return Object.entries(bonus)
       .map(([k, v]) => `+${v} ${k.charAt(0).toUpperCase()}${k.slice(1)}`)
       .join(", ");
+  }
+
+  /** Renders a small HP-style meter (2026-08-04, user-reported): color
+   *  shifts green -> yellow -> red as the remaining fraction drops, same
+   *  traffic-light convention most strategy games use for "how much is left
+   *  before this is gone." `cur` is clamped at 0 for the fraction (a
+   *  just-destroyed structure can carry a negative hp mid-resolution) so a
+   *  bar that's actually hit 0 always renders fully drained, never a
+   *  leftover sliver. */
+  function hpBarHtml(cur, max) {
+    const pct = max > 0 ? Math.max(0, Math.min(100, Math.round((100 * Math.max(0, cur)) / max))) : 0;
+    const color = pct > 50 ? "#6fbf6f" : pct > 25 ? "#e0c05a" : "#d9695f";
+    return `<div class="hp-bar"><div class="hp-bar-fill" style="width:${pct}%;background:${color}"></div></div>`;
   }
 
   function escapeHtml(s) {
