@@ -330,7 +330,7 @@ window.GameData.TECHS = {
 
   // --- Layer 4 ---
   dungeon_delve: {
-    id: "dungeon_delve", label: "Dungeon Delve", category: "civic", layer: 4, cost: 40,
+    id: "dungeon_delve", label: "Dungeon Delve", category: "civic", layer: 3, cost: 40,
     prereqs: ["wizardry"], raceOnly: "human",
     description: "A Wizard on a Ruin may start Delving it: a full-turn action that continues automatically (no move/attack) until cancelled, gradually claiming the 1-tile radius around itself just like a city fills in its own tiles (counts toward territorial victory like any owned tile), and yielding +3 lore/+3 coin per turn. Instantly loses everything it was claiming/generating if cancelled, the Wizard moves off the Ruin, or it dies.",
     costBreakdown: { lore: 26, coin: 14 },
