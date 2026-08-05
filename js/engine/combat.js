@@ -1489,6 +1489,10 @@ window.GameEngine = window.GameEngine || {};
     const dmg = mitigatedDamage(atk, def);
     if (city.hp == null) city.hp = cityMaxHp(city); // defensive -- a city from an older save may predate this field
     city.hp -= dmg;
+    // Growth pause (2026-08-06, user-directed): a city attacked this round
+    // earns no growth toward its next population level on its own next
+    // tick -- see cities.js's tickCity, which checks and clears this flag.
+    city.attackedThisTurn = true;
     let destroyed = false, populationLost = false;
     if (city.hp <= 0) {
       const level = Math.floor(city.population);

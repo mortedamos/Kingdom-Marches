@@ -186,15 +186,18 @@ window.GameData.BUILDINGS = {
     coinCost: 15, maxHp: 40, defense: 8,
     // Hard floor on build time (see ai.js buildingBuildTurns, which honors
     // this even under the modern up-front-payment cost model as of
-    // 2026-08-06) -- a wealthy city can't just insta-build a wall. 14 turns
-    // comfortably exceeds how long a typical non-siege
-    // attacker (attack ~7-9 vs this wall's defense 8, ~3-4 dmg/hit after
-    // mitigation) takes to tear one down (~10-12 turns), so a wall is never
-    // finished faster than an ordinary enemy could destroy an existing one.
-    // Dedicated siege units (Catapult/Trebuchet, already the intentional
-    // hard-counter to structures via siegePct) still break through faster --
-    // that's their established identity, not something this is meant to stop.
-    minBuildTurns: 14,
+    // 2026-08-06) -- a wealthy city can't just insta-build a wall. Trimmed
+    // from 14 to 10 (2026-08-06, user-directed: 14 played too slow) -- 10
+    // still lands at the SHORT end of a typical non-siege attacker's own
+    // teardown time on an existing wall (attack ~7-9 vs this wall's defense
+    // 8, ~3-4 dmg/hit after mitigation, ~10-12 turns to fully destroy it),
+    // so a wall still isn't finished meaningfully faster than an ordinary
+    // enemy could tear an existing one down, just no longer padded well
+    // past that benchmark. Dedicated siege units (Catapult/Trebuchet,
+    // already the intentional hard-counter to structures via siegePct)
+    // still break through faster -- that's their established identity, not
+    // something this is meant to stop.
+    minBuildTurns: 10,
   },
 };
 

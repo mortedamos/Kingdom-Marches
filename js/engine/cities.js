@@ -519,7 +519,14 @@ window.GameEngine = window.GameEngine || {};
     const netHarvest = Math.max(0, totalHarvest * (race.growthMult || 1.0) - upkeep);
     city.harvestSurplus += netHarvest;
 
-    if (city.population < MAX_CITY_POPULATION) {
+    // Growth pause (2026-08-06, user-directed): a city attacked since its
+    // last tick earns no growth this tick -- harvestSurplus still
+    // accumulates normally (just not converted into a population level),
+    // so the growth isn't lost, only deferred to the following tick. See
+    // combat.js's attackCity, which sets this flag.
+    const attacked = !!city.attackedThisTurn;
+    city.attackedThisTurn = false;
+    if (city.population < MAX_CITY_POPULATION && !attacked) {
       const threshold = city.population * city.population * GROWTH_THRESHOLD_PER_POP;
       if (city.harvestSurplus >= threshold) {
         city.harvestSurplus -= threshold;

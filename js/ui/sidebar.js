@@ -196,10 +196,22 @@ window.UI = window.UI || {};
       const turnsTag = item.turnsRemaining !== undefined
         ? `${item.turnsRemaining} turn${item.turnsRemaining === 1 ? "" : "s"} left`
         : `${buildQueuePct(item)}%`;
+      // "Select Next City's Production" (2026-08-06, user-directed): once
+      // THIS city's production is set, jump straight to the next city that
+      // still needs one instead of leaving the player to hunt for it via
+      // the Kingdom tab or the End Turn nag -- same "needs production"
+      // criteria collectUnresolvedTurnWork already uses (no queue, and at
+      // least one option it can actually afford right now).
+      const nextCity = isOwnCity ? civ.cities.find((c) => c !== city && !c.buildQueue
+        && window.GameEngine.ai.availableBuilds(civ, c, gameState).some((o) => o.affordable)) : null;
+      const nextCityBtn = nextCity
+        ? `<button id="next-city-production-btn" class="action-btn" data-city-key="${escapeHtml(cityKey(nextCity))}">Select Next City's Production</button>`
+        : "";
       return `<h3>Building</h3>
         <div class="stat-row"><span>${escapeHtml(label)}${placeTag}</span><span>${escapeHtml(turnsTag)}</span></div>
         <div class="build-progress"><div class="build-progress-fill" style="width:${buildQueuePct(item)}%"></div></div>
-        ${isOwnCity ? `<button id="cancel-build-btn" class="action-btn action-btn-danger">Cancel Build</button>` : ""}`;
+        ${isOwnCity ? `<button id="cancel-build-btn" class="action-btn action-btn-danger">Cancel Build</button>` : ""}
+        ${nextCityBtn}`;
     }
 
     if (!isOwnCity) return `<h3>Building</h3><div class="stat-row"><em>Nothing queued</em></div>`;
@@ -455,7 +467,11 @@ window.UI = window.UI || {};
         // player can choose collect-and-stop vs. just-abandon.
         channelActions += `<button id="claim-channel-btn" class="action-btn">Claim Gathered Resources</button>`;
         channelActions += `<button id="cancel-channel-btn" class="action-btn action-btn-danger">Cancel ${CHANNEL_LABELS[unit.channeling]}</button>`;
-      } else if (!unit.usedThisTurn) {
+      } else if (!unit.usedThisTurn && !unit.channeling) {
+        // !unit.channeling here excludes "garrison" (2026-08-06) -- it isn't
+        // in CHANNEL_LABELS above, so without this it would fall through to
+        // these resource-channel start buttons instead of showing none, the
+        // same way a unit mid-hunt/prospect correctly shows none.
         const onVein = tile.resource === "gold" || tile.resource === "iron";
         const onGame = tile.resource === "game";
         const onFertile = tile.resource === "fertile";
@@ -590,7 +606,13 @@ window.UI = window.UI || {};
     if (heavyMetalAura) properties.push(`Heavy Metal Aura (+${heavyMetalAura.defenseBonus} defense, +${Math.round(heavyMetalAura.siegePctBonus * 100)}% siege, 5% heal/turn)`);
     const powerMetalAura = unit.conditions?.powerMetalAura;
     if (powerMetalAura) properties.push(`Power Metal Aura (+${powerMetalAura.attackBonus} attack, +${Math.round(powerMetalAura.firstStrikePctBonus * 100)}% first strike)`);
-    if (unit.conditions?.defending) properties.push('Defending (x2 defense until next turn)');
+    // Garrison (2026-08-06, user-directed) reads the label differently even
+    // though it's the SAME "defending" condition underneath -- Garrison's
+    // whole point is that it does NOT lapse "until next turn" the way a
+    // plain Defend click does.
+    if (unit.conditions?.defending) {
+      properties.push(unit.channeling === "garrison" ? 'Garrisoned (x2 defense)' : 'Defending (x2 defense until next turn)');
+    }
 
     // Veteran leveling (see combat.js's LEVELING section) -- permanent,
     // player/AI-chosen stat bonuses earned through combat XP, distinct from
@@ -638,6 +660,17 @@ window.UI = window.UI || {};
     // already acted this turn).
     const canDefend = isHumanUnit && !unit.usedThisTurn;
     const defendBtn = canDefend ? `<button id="defend-unit-btn" class="action-btn">Defend</button>` : '';
+    // Garrison (2026-08-06, user-directed): the channeled twin of Defend --
+    // same x2 defense, but stays braced turn after turn with no re-prompt
+    // (see main.js's handleGarrisonUnit/turns.js's finishCivTurn refresh)
+    // until Cancel Garrison or any other order ends it. Only offered while
+    // standing in one of this civ's own cities.
+    const inOwnCityForGarrison = isHumanUnit && gameState
+      && civ.cities.some((c) => c.x === unit.x && c.y === unit.y);
+    const garrisonBtn = unit.channeling === "garrison"
+      ? `<button id="cancel-garrison-btn" class="action-btn action-btn-danger">Cancel Garrison</button>`
+      : (inOwnCityForGarrison && !unit.usedThisTurn && !unit.channeling)
+        ? `<button id="garrison-unit-btn" class="action-btn">Garrison</button>` : '';
     const disbandBtn = isHumanUnit ? `<button id="disband-unit-btn" class="action-btn action-btn-danger">Disband Unit</button>` : '';
     // Stop Order (2026-08-06, user-directed): a sidebar-reachable twin of
     // the context menu's own "Stop" entry (right-click the unit's own
@@ -722,6 +755,7 @@ window.UI = window.UI || {};
         ${stopOrderBtn}
         ${restBtn}
         ${defendBtn}
+        ${garrisonBtn}
         ${automateBtn}
         ${disbandBtn}
       </div>`;

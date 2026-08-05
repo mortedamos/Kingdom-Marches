@@ -939,6 +939,28 @@ window.GameEngine = window.GameEngine || {};
         window.GameEngine.ai.appendAIActionLog(gameState, civ.id, civ.lastAILog);
       }
     } else {
+      // Condition expiry (2026-08-06, user-directed bug fix): tickConditions
+      // is what actually removes an expired unit.conditions entry (Defend's
+      // x2-defense brace, Frozen, Befuddled, ...) once its expiresAtTurn is
+      // reached -- previously called ONLY from beginAITurn (skipped
+      // entirely for the human civ, right below) or primeUnitForAutomation
+      // (only for a human unit that's specifically automated), so a regular
+      // human-controlled unit's own Defend click never actually expired --
+      // it silently stayed doubled forever instead of lapsing "until the
+      // start of this unit's own next turn" as documented/intended. Mirrors
+      // beginAITurn's own per-unit loop, minus the AI-only heuristic resets
+      // (_seekingInvasion/_seekingLandmassId) that have no meaning for a
+      // player-directed unit.
+      const turnNumber = gameState.turnNumber || 0;
+      for (const u of civ.units) {
+        window.GameEngine.combat.tickConditions(u, turnNumber, map);
+        // Same as beginAITurn: a condition can expire lethally (e.g. Human
+        // Flight over water) -- remove the unit immediately rather than
+        // leaving a 0-hp corpse standing around for something else to trip
+        // over later this same turn.
+        if (u.hp <= 0) civ.units = civ.units.filter((x) => x !== u);
+      }
+
       // The human civ skips beginAITurn entirely -- but city production is
       // NOT an AI behavior, it's a rule of the game, and it used to be
       // trapped inside that skipped call (ai.js's maybeBuildInCities). A
@@ -1076,6 +1098,26 @@ window.GameEngine = window.GameEngine || {};
           console.error(`Goto-order error for unit ${unit.id} (${civ.id}):`, err);
           unit.gotoTarget = null;
         }
+      }
+    }
+
+    // Garrison (2026-08-06, user-directed): a standing "defending" brace
+    // (see main.js's handleGarrisonUnit) that must be kept alive every turn
+    // without asking the player -- re-stamps the condition fresh each round
+    // so it never lapses to its nominal 1-turn expiry on its own. Ends
+    // itself automatically if the unit is no longer standing in one of this
+    // civ's own cities (carried off, or some future forced-move effect),
+    // same "auto-cancel if the precondition breaks" convention the resource
+    // channels' onAnchor gate above uses for moving off a vein/ruin.
+    if (turnCtx && civ.id === turnCtx.humanCivId) {
+      for (const unit of civ.units) {
+        if (unit.channeling !== "garrison") continue;
+        if (!civ.cities.some((c) => c.x === unit.x && c.y === unit.y)) {
+          unit.channeling = null;
+          window.GameEngine.combat.clearCondition(unit, "defending");
+          continue;
+        }
+        window.GameEngine.combat.setCondition(unit, "defending", { expiresAtTurn: (gameState.turnNumber || 0) + 1 });
       }
     }
 

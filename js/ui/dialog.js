@@ -15,6 +15,7 @@
  *   { kind: "techResearched", techLabel, techDescription, unlockedLabels[], onChooseResearch(), onDismiss() }
  *   { kind: "unitBuilt", cityName, unitLabel, unitProperName, onGoToCity(), onGoToUnit(), onDismiss() }
  *   { kind: "confirmAutomatedAction", unitLabel, actionLabel, onConfirm(), onDecline() }
+ *   { kind: "attackNotice", unitLabel, onGoTo(), onSkip() }
  *
  * Every kind rendered here needs a matching branch in main.js's
  * wireDialogButtons -- the markup below only names the buttons, it doesn't
@@ -152,6 +153,21 @@ window.UI = window.UI || {};
         <div class="game-dialog-actions">
           <button class="menu-dropdown-btn" id="game-dialog-cancel-btn">Not Now</button>
           <button class="menu-dropdown-btn game-dialog-primary" id="game-dialog-confirm-btn">Confirm</button>
+        </div>`;
+    }
+    if (dialog.kind === "attackNotice") {
+      // Off-screen attack notice (2026-08-06, user-directed): fires the
+      // instant a human-owned unit or city takes damage (or is destroyed)
+      // while its tile isn't currently on screen -- see main.js's
+      // detectHumanAttack/advanceTurn, which pauses turn processing right
+      // here until answered. Reuses the generic "confirm" kind's button
+      // ids/wiring, danger-styled since this is inherently bad news.
+      return `
+        <h2>Under Attack!</h2>
+        <p>${escapeHtml(dialog.unitLabel)} is being attacked.</p>
+        <div class="game-dialog-actions">
+          <button class="menu-dropdown-btn" id="game-dialog-cancel-btn">Skip</button>
+          <button class="menu-dropdown-btn game-dialog-danger" id="game-dialog-confirm-btn">Go to Attack</button>
         </div>`;
     }
     // "message" -- single-button dismiss, e.g. a victory announcement.

@@ -2025,7 +2025,7 @@ window.GameEngine = window.GameEngine || {};
     // modifiers (curse/hidden/frozen) below.
     if (unit.conditions?.killMomentum) movement += unit.conditions.killMomentum.moveBonus;
 
-    // Human "Flight": a unit granted temporary flight also gets +2 movement
+    // Human "Flight": a unit granted temporary flight also gets +3 movement
     // for the duration (see performWizardGrantFlight) -- additive, same as
     // Violent Momentum above.
     if (unit.conditions?.flying) movement += unit.conditions.flying.moveBonus || 0;
@@ -2560,11 +2560,20 @@ window.GameEngine = window.GameEngine || {};
    *  scaled by BUILD_SLOWNESS, rounded to the nearest whole turn (minimum 1
    *  -- a build always takes at least one turn, however cheap). See
    *  GameData.unitPower for what "power" means (base stats only, no tech
-   *  bonuses) and buildUnitOption for where this timer starts counting down. */
+   *  bonuses) and buildUnitOption for where this timer starts counting down.
+   *  `unit.minBuildTurns` (2026-08-06, user-directed), currently only
+   *  Pioneer/Scout/Galley, is honored as a hard floor the same way
+   *  buildingBuildTurns already honors wall_section's -- a Level 0 unit's
+   *  low base stats put it right at unitPower's floor for EVERY race
+   *  regardless of build rate, so it was finishing in a flat, unvarying 1
+   *  turn no matter how the race/city numbers played out; this makes it a
+   *  real (if still short) wait like everything built after it. */
   function unitBuildTurns(civ, unitId) {
+    const baseUnit = window.GameData.getUnit(unitId);
     const power = window.GameData.unitPower(unitId);
     const rate = raceUnitBuildRate(civ);
-    return Math.max(1, Math.round((power / rate) * BUILD_SLOWNESS));
+    const turns = Math.max(1, Math.round((power / rate) * BUILD_SLOWNESS));
+    return baseUnit.minBuildTurns ? Math.max(turns, baseUnit.minBuildTurns) : turns;
   }
 
   /** Turns to build `buildingId` for `civ` under the modern multi-resource
@@ -4885,11 +4894,11 @@ window.GameEngine = window.GameEngine || {};
   }
 
   const FLIGHT_DURATION = 5;
-  const FLIGHT_MOVE_BONUS = 2;
-  const FLIGHT_VISION_BONUS = 2;
+  const FLIGHT_MOVE_BONUS = 3;
+  const FLIGHT_VISION_BONUS = 3;
 
-  /** Grants `target` the Flying property (see combat.js's isFlying), +2
-   *  movement (see moveUnitToward's flying-condition check), and +2 vision
+  /** Grants `target` the Flying property (see combat.js's isFlying), +3
+   *  movement (see moveUnitToward's flying-condition check), and +3 vision
    *  (see turns.js's refreshVisibility) for FLIGHT_DURATION turns via a
    *  temporary condition -- does not touch unitOverrides since this targets
    *  one specific unit instance, not every unit of its type civ-wide. Costs

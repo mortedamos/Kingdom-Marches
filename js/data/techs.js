@@ -240,9 +240,9 @@ window.GameData.TECHS = {
   trade_roads: {
     id: "trade_roads", label: "Trade Roads", category: "civic", layer: 2, cost: 40,
     prereqs: ["homestead"], raceOnly: "human",
-    description: "+1 coin per road tile within a city's radius.",
+    description: "+1 coin, +0.2 lore per road tile within a city's radius.",
     costBreakdown: { coin: 40 },
-    effects: [{ type: "unlock_feature_bonus", feature: "road", bonus: { coin: 1 } }],
+    effects: [{ type: "unlock_feature_bonus", feature: "road", bonus: { coin: 1, lore: 0.2 } }],
   },
   make_way: {
     id: "make_way", label: "Make Way", category: "civic", layer: 2, cost: 22,

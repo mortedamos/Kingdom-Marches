@@ -190,16 +190,24 @@ window.GameData.UNITS = {
     id: "pioneer", label: "Pioneer", symbol: "⌂", category: "civilian",
     attack: 0, defense: 2, movement: 2, visionRadius: 3,
     canFoundCity: true, canBuildRoad: true, canImprove: true, canProspect: true,
+    // Hard floor on build time (2026-08-06, user-directed) -- see ai.js's
+    // unitBuildTurns, which honors this the same way buildingBuildTurns
+    // already honors wall_section's. Every Level 0 unit's low base stats put
+    // it right at unitPower's rounding floor for every race, so without
+    // this it always finished in 1 flat turn no matter what.
+    minBuildTurns: 3,
   },
   scout: {
     id: "scout", label: "Tracker", symbol: "⊙", category: "civilian",
     attack: 1, defense: 1, movement: 3, visionRadius: 3, range: 2,
     canExplore: true, canProspect: true, attackChars: ["➵", "➳"],
+    minBuildTurns: 3, // see pioneer's own minBuildTurns comment above
   },
   galley: {
     id: "galley", label: "Galley", symbol: "⛵", category: "military",
     attack: 1, defense: 2, movement: 4, visionRadius: 4, range: 1,
     isNaval: true, canCarryUnit: true, biggerPct: .5,
+    minBuildTurns: 3, // see pioneer's own minBuildTurns comment above
     // A ship, not a person -- see unit-names.js's UNIT_TYPE_PROPER_NAMES doc.
     nameSpecial: true,
     // Opts out of Boomerang's civ-wide Ranged-2 floor (combat.js

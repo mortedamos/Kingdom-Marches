@@ -366,7 +366,9 @@ window.GameEngine = window.GameEngine || {};
       if (unit.channeling && CHANNEL_LABELS[unit.channeling]) {
         options.push({ kind: "claimChannel", label: "Claim Gathered Resources" });
         options.push({ kind: "cancelChannel", label: `Cancel ${CHANNEL_LABELS[unit.channeling]}`, danger: true });
-      } else if (!unit.usedThisTurn) {
+      } else if (!unit.usedThisTurn && !unit.channeling) {
+        // !unit.channeling excludes "garrison" (2026-08-06) -- see
+        // sidebar.js's matching gate for why.
         const onVein = tile.resource === "gold" || tile.resource === "iron";
         const onGame = tile.resource === "game";
         const onFertile = tile.resource === "fertile";
@@ -398,6 +400,12 @@ window.GameEngine = window.GameEngine || {};
       if (!unit.usedThisTurn) {
         options.push({ kind: "rest", label: "Rest" });
         options.push({ kind: "defend", label: "Defend" });
+      }
+      // Garrison -- sidebar.js's garrisonBtn/cancel-garrison-btn.
+      if (unit.channeling === "garrison") {
+        options.push({ kind: "cancelGarrison", label: "Cancel Garrison", danger: true });
+      } else if (!unit.usedThisTurn && !unit.channeling && civ.cities.some((c) => c.x === unit.x && c.y === unit.y)) {
+        options.push({ kind: "garrison", label: "Garrison" });
       }
       options.push({ kind: "disband", label: "Disband Unit", danger: true });
       return options;

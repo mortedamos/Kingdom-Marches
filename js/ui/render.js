@@ -623,6 +623,10 @@ window.UI = window.UI || {};
       }
     }
 
+    // "Next Unit" flash (2026-08-06, user-directed): drawn above cities/units
+    // so it reads clearly regardless of what's standing on the tile.
+    drawFlashTile(ctx, viewState, offsetX, offsetY, ts, now);
+
     // Path preview last-but-one: it must read clearly over units and terrain
     // alike, since the whole point is showing a route THROUGH them.
     drawOrderPreview(ctx, gameState, viewState, offsetX, offsetY, ts);
@@ -710,6 +714,37 @@ window.UI = window.UI || {};
       ctx.lineWidth = isHovered ? 3 : 1.5;
       ctx.strokeRect(screenX + 1, screenY + 1, ts - 2, ts - 2);
     }
+  }
+
+  const FLASH_TILE_MS = 900;
+
+  /** "Next Unit" flash (2026-08-06, user-directed): a brief, brightening-
+   *  then-fading ring drawn on whichever tile main.js's handleNextUnit just
+   *  jumped to, so a click that recenters the map onto a unit the player
+   *  wasn't already looking at actually draws the eye there instead of
+   *  landing silently. viewState.flashTile = { x, y, startTime } is set
+   *  once per jump and self-clears here once FLASH_TILE_MS has elapsed --
+   *  no separate timer in main.js needed, same "just stop drawing it"
+   *  approach drawPlacementOverlay's own pulse uses for its animation. */
+  function drawFlashTile(ctx, viewState, offsetX, offsetY, ts, now) {
+    const flash = viewState.flashTile;
+    if (!flash) return;
+    const elapsed = now - flash.startTime;
+    if (elapsed >= FLASH_TILE_MS) { viewState.flashTile = null; return; }
+
+    const t = elapsed / FLASH_TILE_MS; // 0 (just jumped) -> 1 (about to clear)
+    const screenX = flash.x * ts + offsetX;
+    const screenY = flash.y * ts + offsetY;
+    // Two quick pulses rather than one slow fade -- more eye-catching for
+    // something meant to be noticed in under a second.
+    const pulse = 0.5 + 0.5 * Math.sin(t * Math.PI * 4);
+    const alpha = (1 - t) * pulse;
+
+    ctx.save();
+    ctx.strokeStyle = `rgba(255, 235, 90, ${0.35 + 0.65 * alpha})`;
+    ctx.lineWidth = 3 + 3 * alpha;
+    ctx.strokeRect(screenX + 2, screenY + 2, ts - 4, ts - 4);
+    ctx.restore();
   }
 
   /** The hovered tile's order preview: an attack reticle with odds, a move

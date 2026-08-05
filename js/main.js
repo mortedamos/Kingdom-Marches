@@ -34,7 +34,7 @@
   // instant one of these is first shown. Deliberately excludes the purely
   // informational kinds (message/techResearched/unitBuilt) and the N-way
   // "chooseTech" picker.
-  const CONFIRM_ACTION_DIALOG_KINDS = new Set(["confirm", "confirmEndTurn", "foundCity", "confirmAutomatedAction"]);
+  const CONFIRM_ACTION_DIALOG_KINDS = new Set(["confirm", "confirmEndTurn", "foundCity", "confirmAutomatedAction", "attackNotice"]);
 
   // --- Title screen music ---
   // Place your track at assets/music/title.mp3.
@@ -567,7 +567,7 @@
     window.GameEngine.turns.refreshVisibility(gameState);
     updateMapSeedLabel();
     viewState = {
-      scrollX: 0, scrollY: 0, zoomLevel: 1.0, showInfluence: false, showGrid: true,
+      scrollX: 0, scrollY: 0, zoomLevel: 1.0, showInfluence: true, showGrid: true,
       selectedUnit: null, selectedCity: null, selectedTile: null, humanCivId,
       // Tabbed tile inspector -- the selected* fields above are derived from
       // this now (see input.js's SELECTION MODEL).
@@ -679,6 +679,7 @@
     setupTileScoreControls();
     updateSpeedMenuVisibility();
     updateFogMenuVisibility();
+    updateAiReportsMenuVisibility();
 
     if (spectatorMode) startAutoplay();
 
@@ -1101,6 +1102,17 @@
     $("fog-of-war-panel").style.display = spectatorMode ? "" : "none";
   }
 
+  /** Shows/hides the "AI Actions"/"AI Tech Trees" Report menu items --
+   *  spectator-only (2026-08-06, user-directed): both reports expose an
+   *  opponent's decision-making/tech progress, which is spectator-mode
+   *  observability, not something a single-player human should be able to
+   *  peek at about their own opponents. Same call-site convention as
+   *  updateSpeedMenuVisibility/updateFogMenuVisibility above. */
+  function updateAiReportsMenuVisibility() {
+    $("report-ai-actions-btn").style.display = spectatorMode ? "" : "none";
+    $("report-ai-tech-trees-btn").style.display = spectatorMode ? "" : "none";
+  }
+
   /** Wires the Fog of War panel's mode radios once per page load. Actual
    *  state reset (radio selection, race checkbox list) happens in
    *  resetFogControls, called here and again on every new game/load since
@@ -1388,7 +1400,7 @@
 
     for (const k of Object.keys(viewState)) delete viewState[k];
     Object.assign(viewState, {
-      scrollX: 0, scrollY: 0, zoomLevel: 1.0, showInfluence: false, showGrid: true,
+      scrollX: 0, scrollY: 0, zoomLevel: 1.0, showInfluence: true, showGrid: true,
       selectedUnit: null, selectedCity: null, selectedTile: null, humanCivId,
       // Tabbed tile inspector -- the selected* fields above are derived from
       // this now (see input.js's SELECTION MODEL).
@@ -1409,6 +1421,7 @@
     centerViewOnStart();
     updateSpeedMenuVisibility();
     updateFogMenuVisibility();
+    updateAiReportsMenuVisibility();
     if (spectatorMode) startAutoplay();
     redraw();
   }
@@ -1444,18 +1457,14 @@
         kind: "confirmEndTurn", items: unresolved,
         onAnswer: (ok) => {
           viewState.dialog = null;
-          if (ok) offerHumanSettling(() => advanceTurn());
+          if (ok) advanceTurn();
           else redraw();
         },
       };
       redraw();
       return;
     }
-    // Before ending, any human Settler standing on a valid founding tile
-    // gets a chance to found -- in-game dialog (see js/ui/dialog.js), one
-    // pioneer at a time since this is now asynchronous (waits on a modal
-    // button click) rather than the old blocking confirm()/prompt() pair.
-    offerHumanSettling(() => advanceTurn());
+    advanceTurn();
   }
 
   /** Things the player very likely still wants to do this turn. Empty means
@@ -1501,39 +1510,14 @@
     return items;
   }
 
-  function offerHumanSettling(onDone) {
-    if (!humanCivId) { onDone(); return; }
-    const civ = gameState.civs[humanCivId];
-    // Automated pioneers (2026-08-06, user-directed) are excluded here --
-    // they get their OWN founding confirmation, staged as unit.pendingIntent
-    // by ai.js's maybeFoundCity and drained one at a time by
-    // offerNextPendingIntent (see finishRoundBookkeeping), so this
-    // end-of-turn sweep doesn't double-prompt the same pioneer through two
-    // different dialog flows in a row.
-    const eligible = civ.units.filter((u) => u.typeId === "pioneer" && !u.automated
-      && window.GameEngine.cities.canFoundCityAt(gameState.map, gameState.civs, u.x, u.y, civ.raceId).ok);
-    offerNextSettler(civ, eligible, 0, onDone);
-  }
-
-  /** Walks `eligible` one pioneer at a time, showing a found-city dialog for
-   *  each and only calling onDone() once every offer's been answered
-   *  (accepted or skipped) -- see offerHumanSettling. */
-  function offerNextSettler(civ, eligible, idx, onDone) {
-    if (idx >= eligible.length) { onDone(); return; }
-    const unit = eligible[idx];
-    // Re-check validity: founding an earlier pioneer in this same batch may
-    // have changed what's valid nearby (city-spacing rules).
-    const check = window.GameEngine.cities.canFoundCityAt(gameState.map, gameState.civs, unit.x, unit.y, civ.raceId);
-    if (!check.ok) { offerNextSettler(civ, eligible, idx + 1, onDone); return; }
-
-    openFoundCityDialog(civ, unit, () => offerNextSettler(civ, eligible, idx + 1, onDone));
-  }
-
   /** Opens the name-and-confirm dialog for `unit` founding on its own tile,
-   *  and does the founding itself if the player accepts. Shared by the
-   *  end-turn settler sweep (offerNextSettler) and the unit panel's own
-   *  "Found City" button (handleFoundCity) so the two can't diverge.
-   *  `onDone` runs once the dialog is answered either way. */
+   *  and does the founding itself if the player accepts. Reachable only via
+   *  the unit panel's own "Found City" button (handleFoundCity) -- there is
+   *  deliberately no automatic end-of-turn settler sweep anymore (2026-08-06,
+   *  user-directed: never auto-prompt to found a city just because a
+   *  pioneer happens to be standing on a valid tile; the player uses the
+   *  button when they actually want to). `onDone` runs once the dialog is
+   *  answered either way. */
   function openFoundCityDialog(civ, unit, onDone) {
     const suggested = window.GameData.getNextCityName(civ.raceId, civ.usedCityNames || []);
     viewState.dialog = {
@@ -1600,6 +1584,26 @@
    *  Founding used to be reachable ONLY through the end-turn settler sweep,
    *  which meant a player who wanted a city right now had no way to ask for
    *  one -- the panel just told them to end their turn. */
+  /** Manual order supersedes automation/pathing/garrison (2026-08-06, user-
+   *  directed): any command the player issues to a unit ends whatever it
+   *  was doing on its own -- an Automate Actions proposal/toggle, a multi-
+   *  turn goto order, or a standing Garrison -- with no separate Stop
+   *  Order/Stop Automating/Cancel Garrison click needed first. Idempotent
+   *  (a plain unit with none of these set is untouched), so safe to call
+   *  unconditionally at the top of every order-issuing handler below. Stop
+   *  Order/Cancel Garrison themselves are deliberately NOT among those
+   *  callers -- each stays scoped to undoing just its own thing, same as
+   *  "Stop Automating" stays scoped to just automation. Only the "garrison"
+   *  channel value is cleared here -- a resource channel (hunting,
+   *  prospecting, ...) has its own forfeit-the-stash cancel path
+   *  (handleCancelChannel) and isn't touched by this generic helper. */
+  function endAutomationAndGoto(unit) {
+    unit.automated = false;
+    unit.pendingIntent = null;
+    unit.gotoTarget = null;
+    if (unit.channeling === "garrison") unit.channeling = null;
+  }
+
   function handleFoundCity() {
     if (!humanCivId || !viewState.selectedUnit) return;
     const unit = viewState.selectedUnit;
@@ -1607,7 +1611,7 @@
     if (!civ || unit.civId !== humanCivId) return;
     if (!window.GameData.getUnit(unit.typeId).canFoundCity) return;
     if (!window.GameEngine.cities.canFoundCityAt(gameState.map, gameState.civs, unit.x, unit.y, civ.raceId).ok) return;
-    unit.gotoTarget = null; // a fresh order supersedes any queued goto (2026-08-06)
+    endAutomationAndGoto(unit);
     openFoundCityDialog(civ, unit, () => redraw());
   }
 
@@ -1669,15 +1673,21 @@
    *  OTHER tech in this civ's race tree that named `techId` as a
    *  prerequisite -- "here's what just opened up" -- plus a shortcut
    *  straight into the tech tree. `onDone` runs once the dialog is
-   *  answered either way (same chaining convention offerNextSettler/
-   *  offerNextUnitBuiltNotice use), so finishRoundBookkeeping can queue the
+   *  answered either way (same chaining convention offerNextUnitBuiltNotice
+   *  uses), so finishRoundBookkeeping can queue the
    *  unit-built notices right behind it. */
   function openTechResearchedDialog(civ, techId, onDone) {
     const tech = window.GameData.getTech(techId);
     if (!tech) { if (onDone) onDone(); return; }
+    // "Cultural Influence" (2026-08-06, user-directed) is excluded from this
+    // list -- it's the tech-tree capstone, gated on nearly every OTHER tech
+    // rather than genuinely "unlocked by" any single one of them, so naming
+    // it here on every last prerequisite read like noise rather than a
+    // meaningful "here's what just opened up" callout.
     const unlockedLabels = window.GameData.techsForRace(civ.raceId)
       .filter((id) => window.GameData.getTech(id).prereqs.includes(techId))
-      .map((id) => window.GameData.getTech(id).label);
+      .map((id) => window.GameData.getTech(id).label)
+      .filter((label) => label !== "Cultural Influence");
     window.SfxSystem.playResearchComplete();
     viewState.dialog = {
       kind: "techResearched",
@@ -1782,6 +1792,68 @@
   }
 
   /**
+   * Off-screen attack notice (2026-08-06, user-directed): a snapshot/diff
+   * pair, NOT a hook threaded into combat.js/ai.js -- takes a cheap
+   * before-picture of the human civ's own units'/cities' hp+position right
+   * before a single enemy unit-step runs (see advanceTurn's processBatch
+   * below), then compares after. Deliberately doesn't care WHY the hp
+   * dropped (or the unit/city vanished) -- any of it reads as "this got
+   * attacked," which is exactly what the player needs to hear about,
+   * without this file needing to know anything about siege/splash/counter-
+   * attack/spikes/wall-defense/etc mechanics or keep that list in sync as
+   * new ones are added.
+   */
+  function snapshotHumanDefense() {
+    if (!humanCivId) return null;
+    const civ = gameState.civs[humanCivId];
+    if (!civ) return null;
+    return {
+      units: civ.units.map((u) => ({ ref: u, hp: u.hp, x: u.x, y: u.y, typeId: u.typeId, name: u.name })),
+      cities: civ.cities.map((c) => ({ ref: c, hp: c.hp, x: c.x, y: c.y, name: c.name })),
+    };
+  }
+
+  /** Compares `before` (see snapshotHumanDefense) against the CURRENT state.
+   *  Returns the first unit or city that lost hp or was destroyed since the
+   *  snapshot was taken, as { x, y, label }, or null if nothing changed. */
+  function detectHumanAttack(before) {
+    if (!before || !humanCivId) return null;
+    const civ = gameState.civs[humanCivId];
+    if (!civ) return null;
+    for (const snap of before.units) {
+      const stillAlive = civ.units.includes(snap.ref);
+      if (!stillAlive || snap.ref.hp < snap.hp) {
+        const baseUnit = window.GameData.getUnit(snap.typeId);
+        return { x: snap.x, y: snap.y, label: snap.name || baseUnit.label };
+      }
+    }
+    for (const snap of before.cities) {
+      const stillStanding = civ.cities.includes(snap.ref);
+      if (!stillStanding || snap.ref.hp < snap.hp) {
+        return { x: snap.x, y: snap.y, label: snap.name };
+      }
+    }
+    return null;
+  }
+
+  /** Shows the "X is being attacked" modal (see js/ui/dialog.js's
+   *  "attackNotice" kind) and pauses turn processing until it's answered.
+   *  "Go to" jumps/centers the camera on the attack (via goToTile) before
+   *  resuming; "Skip" resumes without moving the camera -- either way the
+   *  attack itself already happened (this fires AFTER the fact, see
+   *  detectHumanAttack), `onDone` is what actually continues processing
+   *  the rest of the turn (advanceTurn's processBatch). */
+  function offerAttackNotice(notice, onDone) {
+    viewState.dialog = {
+      kind: "attackNotice",
+      unitLabel: notice.label,
+      onGoTo: () => { goToTile(notice.x, notice.y); onDone(); },
+      onSkip: () => { onDone(); },
+    };
+    redraw();
+  }
+
+  /**
    * Advances exactly ONE unit's turn (per gameState.turnOrder/turnStepIndex/
    * _civTurnCtx -- see turns.js's advanceOneUnitStep), redraws, and runs the
    * once-per-round bookkeeping once the round actually completes. This is
@@ -1834,10 +1906,25 @@
     function processBatch() {
       let stepResult;
       do {
+        // Off-screen attack notice (2026-08-06, user-directed): checked
+        // around every single unit-step, not just once per civ/round, so an
+        // attack pauses the batch the moment it happens rather than after
+        // however many more units act first. Skipped on the step that
+        // completes the round -- finishRoundBookkeeping's own tech/unit-
+        // built/pendingIntent dialog chain already claims viewState.dialog
+        // for that step, and round-end is rare enough as the exact instant
+        // of an attack that this is an acceptable gap.
+        const preAttackSnap = snapshotHumanDefense();
         stepResult = advanceOneStep();
         if (stepResult.roundComplete) {
           viewState.turnBanner = null;
           redraw();
+          return;
+        }
+        const notice = detectHumanAttack(preAttackSnap);
+        if (notice && !window.UI.render.isTileOnScreen(notice.x, notice.y, $("map-canvas"), gameState, viewState)) {
+          redraw();
+          offerAttackNotice(notice, processBatch);
           return;
         }
       } while (!stepResult.steppedCivId || stepResult.steppedCivId === announcedCivId || stepResult.steppedCivId === humanCivId);
@@ -1898,6 +1985,10 @@
     if (restBtn) restBtn.onclick = handleRestUnit;
     const defendBtn = $("defend-unit-btn");
     if (defendBtn) defendBtn.onclick = handleDefendUnit;
+    const garrisonBtn = $("garrison-unit-btn");
+    if (garrisonBtn) garrisonBtn.onclick = handleGarrisonUnit;
+    const cancelGarrisonBtn = $("cancel-garrison-btn");
+    if (cancelGarrisonBtn) cancelGarrisonBtn.onclick = handleCancelGarrison;
     const stopOrderBtn = $("stop-order-btn");
     if (stopOrderBtn) stopOrderBtn.onclick = handleStopOrder;
     const automateBtn = $("automate-actions-btn");
@@ -1940,6 +2031,18 @@
     if (cancelBuildBtn) cancelBuildBtn.onclick = () => {
       const city = viewState.selectedCity;
       if (city) window.GameEngine.orders.cancelBuild(city);
+      redraw();
+    };
+    // "Select Next City's Production" (2026-08-06, user-directed) --
+    // sidebar.js's renderBuildSection computes WHICH city (data-city-key,
+    // same "x,y" format main.js already uses for buildPickerCityId
+    // elsewhere), this just jumps there and opens its picker directly so
+    // the player lands ready to choose, not one extra click short of it.
+    const nextCityProductionBtn = $("next-city-production-btn");
+    if (nextCityProductionBtn) nextCityProductionBtn.onclick = () => {
+      const [x, y] = nextCityProductionBtn.dataset.cityKey.split(",").map(Number);
+      goToTile(x, y, "city");
+      viewState.buildPickerCityId = nextCityProductionBtn.dataset.cityKey;
       redraw();
     };
     for (const btn of document.querySelectorAll(".build-option")) {
@@ -2126,8 +2229,8 @@
   /** Wires the buttons for whichever dialog kind was just rendered into
    *  #game-dialog-modal (see redraw()'s dialog block / js/ui/dialog.js).
    *  Each answer clears viewState.dialog before invoking its callback, so a
-   *  callback that immediately opens the NEXT dialog (offerNextSettler's
-   *  founding-one-pioneer-at-a-time chain) still gets its own fresh render. */
+   *  callback that immediately opens the NEXT dialog (offerNextPendingIntent's
+   *  one-automated-unit-at-a-time chain) still gets its own fresh render. */
   function wireDialogButtons(dialog) {
     if (dialog.kind === "foundCity") {
       const input = $("game-dialog-name-input");
@@ -2236,6 +2339,17 @@
       };
       if (confirmBtn) confirmBtn.onclick = () => finish(true);
       if (cancelBtn) cancelBtn.onclick = () => finish(false);
+    } else if (dialog.kind === "attackNotice") {
+      const goToBtn = $("game-dialog-confirm-btn");
+      const skipBtn = $("game-dialog-cancel-btn");
+      const finish = (goTo) => {
+        viewState.dialog = null;
+        lastRenderedDialog = null;
+        if (goTo) dialog.onGoTo(); else dialog.onSkip();
+        redraw();
+      };
+      if (goToBtn) goToBtn.onclick = () => finish(true);
+      if (skipBtn) skipBtn.onclick = () => finish(false);
     }
   }
 
@@ -2243,7 +2357,7 @@
     if (!humanCivId || !viewState.selectedUnit) return;
     const unit = viewState.selectedUnit;
     if (unit.usedThisTurn) return;
-    unit.gotoTarget = null; // a fresh order supersedes any queued goto (2026-08-06)
+    endAutomationAndGoto(unit);
     unit.resting = true;
     unit.usedThisTurn = true;
     redraw();
@@ -2284,9 +2398,50 @@
     if (!humanCivId || !viewState.selectedUnit) return;
     const unit = viewState.selectedUnit;
     if (unit.usedThisTurn) return;
-    unit.gotoTarget = null; // a fresh order supersedes any queued goto (2026-08-06)
+    endAutomationAndGoto(unit);
     window.GameEngine.combat.setCondition(unit, "defending", { expiresAtTurn: (gameState.turnNumber || 0) + 1 });
     unit.usedThisTurn = true;
+    redraw();
+  }
+
+  /** Garrison (2026-08-06, user-directed): the same x2-defense "defending"
+   *  condition as Defend just above, but CHANNELED -- started once, then
+   *  kept alive automatically every turn (see turns.js's finishCivTurn,
+   *  which re-applies the condition for any human unit with
+   *  unit.channeling === "garrison" so it never lapses on its own) instead
+   *  of asking the player to re-click Defend every single turn. Reuses the
+   *  unit.channeling field/isSpent exclusion the resource channels
+   *  (hunting, prospecting, ...) already use, with a distinct value and no
+   *  stash of its own. Only offered while standing in one of this civ's own
+   *  cities. Ends via Cancel Garrison (handleCancelGarrison) or any other
+   *  manual order (endAutomationAndGoto). */
+  function handleGarrisonUnit() {
+    if (!humanCivId || !viewState.selectedUnit) return;
+    const unit = viewState.selectedUnit;
+    const civ = gameState.civs[humanCivId];
+    if (!civ || unit.civId !== humanCivId) return;
+    if (unit.usedThisTurn || unit.channeling) return;
+    if (!civ.cities.some((c) => c.x === unit.x && c.y === unit.y)) return;
+    endAutomationAndGoto(unit);
+    unit.channeling = "garrison";
+    window.GameEngine.combat.setCondition(unit, "defending", { expiresAtTurn: (gameState.turnNumber || 0) + 1 });
+    unit.usedThisTurn = true;
+    unit.resting = true;
+    redraw();
+  }
+
+  /** Ends a standing Garrison (see handleGarrisonUnit) -- free, same as
+   *  Cancel Channel/Cancel Hidden, since there's no stash to forfeit and
+   *  nothing irreversible about stepping down from a brace. Drops the
+   *  "defending" condition immediately rather than letting it linger to its
+   *  nominal expiry, so the bonus visibly ends the instant the player asks
+   *  it to. */
+  function handleCancelGarrison() {
+    if (!humanCivId || !viewState.selectedUnit) return;
+    const unit = viewState.selectedUnit;
+    if (unit.channeling !== "garrison") return;
+    unit.channeling = null;
+    window.GameEngine.combat.clearCondition(unit, "defending");
     redraw();
   }
 
@@ -2304,6 +2459,7 @@
     const civ = gameState.civs[humanCivId];
     if (unit.usedThisTurn) return;
     if (!window.GameEngine.combat.canGoHidden(unit, civ, gameState.civs)) return;
+    endAutomationAndGoto(unit);
     window.GameEngine.combat.enterHidden(unit, gameState.turnNumber || 0);
     unit.usedThisTurn = true;
     redraw();
@@ -2325,7 +2481,7 @@
     if (!humanCivId || !viewState.selectedUnit) return;
     const unit = viewState.selectedUnit;
     if (unit.usedThisTurn || unit.channeling) return;
-    unit.gotoTarget = null; // a fresh order supersedes any queued goto (2026-08-06)
+    endAutomationAndGoto(unit);
     unit.channeling = kind;
     unit.resting = true;
     unit.usedThisTurn = true;
@@ -2349,6 +2505,7 @@
     switch (kind) {
       case "moveTo":
       case "buildRoadTo":
+        endAutomationAndGoto(unit); // supersede before staging the NEW goto order
         window.GameEngine.orders.startGotoOrder(unit, gameState, menu.x, menu.y, kind === "buildRoadTo");
         // Follow the unit onto wherever it actually ended up this turn
         // (2026-08-04 behavior, carried over from the old immediate-move
@@ -2362,6 +2519,7 @@
         }
         break;
       case "attack": {
+        endAutomationAndGoto(unit);
         const target = window.GameEngine.orders.attackTargetAt(unit, gameState, menu.x, menu.y, humanCivId);
         window.GameEngine.orders.attack(unit, gameState, target, humanCivId);
         break;
@@ -2389,6 +2547,12 @@
         break;
       case "defend":
         handleDefendUnit();
+        break;
+      case "garrison":
+        handleGarrisonUnit();
+        break;
+      case "cancelGarrison":
+        handleCancelGarrison();
         break;
       case "disband":
         handleDisbandUnit();
@@ -2431,6 +2595,8 @@
     const unit = viewState.selectedUnit;
     const civ = gameState.civs[humanCivId];
     if (!civ || !unit.channeling) return;
+    unit.automated = false;
+    unit.pendingIntent = null;
     unit.channeling = null;
     window.GameEngine.turns.bankChannelStash(unit, civ);
     unit.resting = true;
@@ -2511,6 +2677,9 @@
       if (idx >= 0) window.UI.input.setActiveTab(gameState, viewState, idx);
     }
     centerViewOn(next.x, next.y);
+    // Flash the tile (2026-08-06, user-directed) -- see render.js's
+    // drawFlashTile, driven by the existing per-frame animation loop.
+    viewState.flashTile = { x: next.x, y: next.y, startTime: performance.now() };
     redraw();
   }
 
@@ -2551,7 +2720,7 @@
     if (!humanCivId || !viewState.selectedUnit) return;
     const unit = viewState.selectedUnit;
     if (unit.typeId !== "pioneer" || unit.usedThisTurn) return;
-    unit.gotoTarget = null; // a fresh order supersedes any queued goto (2026-08-06)
+    endAutomationAndGoto(unit);
     const tile = gameState.map.tiles[unit.y * gameState.map.width + unit.x];
     if (!tile.hasRoad) {
       tile.hasRoad = true;
