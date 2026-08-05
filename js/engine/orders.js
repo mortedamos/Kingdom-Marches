@@ -21,6 +21,15 @@
  * (unit.usedThisTurn). Moving spends only movement; attacking, Rest, Defend,
  * Build Road, founding, and starting a channel consume the action. This
  * module enforces that split for the player -- the AI enforces it for itself.
+ *
+ * RIGHT-CLICK CONTEXT MENU (2026-08-06, user-directed): js/ui/input.js's
+ * contextmenu handler no longer issues a move/attack immediately -- it
+ * opens a menu built from contextMenuOptions below, and the player's pick
+ * dispatches through main.js's handleContextMenuAction. A destination out
+ * of this turn's movement range is no longer just refused -- "Move to This
+ * Tile"/"Build Road to This Tile" start a persisted gotoTarget order (see
+ * startGotoOrder/advanceGotoOrder) that keeps making progress automatically
+ * every turn until it arrives or gets blocked.
  */
 
 window.GameEngine = window.GameEngine || {};
@@ -37,10 +46,22 @@ window.GameEngine = window.GameEngine || {};
   }
 
   /** True once a unit has nothing useful left to do this turn -- drives both
-   *  the map's spent-unit dimming and the "next unit needing orders" cycler. */
+   *  the map's spent-unit dimming and the "next unit needing orders" cycler.
+   *  A unit with a pending gotoTarget order (2026-08-06, user-directed --
+   *  see startGotoOrder) counts as spent too: it's already been given
+   *  orders and will keep executing them automatically turn after turn, so
+   *  it shouldn't keep interrupting Next Unit or the End Turn reminder
+   *  until it arrives (gotoTarget clears) or its order gets cancelled
+   *  (blocked path, or a new order overriding it). */
   function isSpent(unit, gameState) {
     if (unit.usedThisTurn) return true;
     if (unit.channeling) return true;
+    if (unit.gotoTarget) return true;
+    // Automate Actions (2026-08-06, user-directed): an automated unit is
+    // "already ordered" by definition -- same exclusion goto orders already
+    // get from the Next Unit/End Turn nagging cycle (a pendingIntent still
+    // gets its own blocking confirmation modal, just not this nag).
+    if (unit.automated) return true;
     const budget = unit.movesRemaining != null
       ? unit.movesRemaining
       : window.GameEngine.ai.computeMovementBudget(unit, gameState.map, gameState.civs);
@@ -187,6 +208,216 @@ window.GameEngine = window.GameEngine || {};
   }
 
   /**
+   * MULTI-TURN GOTO ORDERS (2026-08-06, user-directed)
+   * ---------------------------------------------------
+   * A unit that can't reach its destination in one turn used to just be
+   * refused ("Can't reach this turn" -- see previewOrder's `move` branch,
+   * fed by reachableTiles' single-turn budget). unit.gotoTarget = { x, y,
+   * buildRoad } is a persisted order that survives across turns: set once
+   * (startGotoOrder), then re-advanced by exactly one turn's worth of
+   * progress each time advanceGotoOrder is called -- once immediately when
+   * the order is issued (so a same-turn-reachable destination completes
+   * instantly, identical to the old one-shot move), and once automatically
+   * per turn after that for every human unit with a pending order (see
+   * turns.js's beginCivTurn, which calls this in the human civ's branch
+   * before the player gets to act that turn -- same "already decided,
+   * player can still override with a fresh order" spirit AI units get from
+   * their own per-turn re-decision).
+   *
+   * Two shapes:
+   *   - Plain move (buildRoad: false): identical to moveTo/spendMovement --
+   *     walks as far as the unit's movement budget allows this turn.
+   *   - "Build road to this tile" (buildRoad: true): walks the path ONE
+   *     step at a time, but the INSTANT it would enter a tile with no road
+   *     already on it, stops there and builds the road (an instant action,
+   *     same as the standalone "Build Road Here" button) -- ending this
+   *     turn's progress even if movement remains. Guarantees a fully
+   *     connected road with no gaps: already-roaded ground along the way
+   *     is crossed at full speed with no stopping, but only one NEW
+   *     segment can go down per turn (building is always a whole action,
+   *     regardless of the unit's raw movement stat).
+   *
+   * Blocked-path handling (2026-08-06, user-directed: "stop and wait for
+   * new orders", not auto-reroute/auto-fight like an AI unit): if a call
+   * makes literally NO progress at all (didn't move, didn't build), the
+   * order is cancelled outright rather than left to spin forever making
+   * zero progress every future turn too.
+   */
+  function startGotoOrder(unit, gameState, x, y, buildRoad) {
+    unit.gotoTarget = { x, y, buildRoad: !!buildRoad };
+    advanceGotoOrder(unit, gameState);
+  }
+
+  function stopGotoOrder(unit) {
+    unit.gotoTarget = null;
+  }
+
+  function advanceGotoOrder(unit, gameState) {
+    const target = unit.gotoTarget;
+    if (!target) return;
+    if (unit.x === target.x && unit.y === target.y) { unit.gotoTarget = null; return; }
+
+    const { map, civs } = gameState;
+    let progressed = false;
+
+    if (target.buildRoad) {
+      if (unit.movesRemaining == null) {
+        unit.movesRemaining = window.GameEngine.ai.computeMovementBudget(unit, map, civs);
+      }
+      const rules = window.GameEngine.ai.buildMoveRules(unit, civs, map);
+      const path = window.GameEngine.pathfinding.findPath(unit.x, unit.y, target.x, target.y, map, rules.costFn);
+      if (path) {
+        for (const step of path) {
+          if (unit.movesRemaining <= 0) break;
+          unit.x = step.x;
+          unit.y = step.y;
+          unit.movesRemaining -= step.cost;
+          progressed = true;
+          const tile = map.tiles[unit.y * map.width + unit.x];
+          if (!tile.hasRoad) {
+            if (!unit.usedThisTurn) { tile.hasRoad = true; unit.usedThisTurn = true; }
+            break; // one new road segment per turn -- stop here regardless of leftover movement
+          }
+        }
+        if (progressed) window.GameEngine.turns.refreshVisibility(gameState);
+      }
+    } else {
+      // moveTo does its own canCommand check -- passing the unit's own
+      // civId as `humanCivId` there is safe (not a security hole): a
+      // gotoTarget is only ever SET through human-triggered UI code in the
+      // first place, so this is just reusing moveTo's existing signature,
+      // not bypassing a real permission check.
+      progressed = moveTo(unit, gameState, target.x, target.y, unit.civId);
+    }
+
+    if (unit.x === target.x && unit.y === target.y) {
+      unit.gotoTarget = null;
+      return;
+    }
+    if (!progressed) {
+      unit.gotoTarget = null;
+      unit.currentMission = "Order cancelled — path blocked";
+      return;
+    }
+    unit.currentMission = target.buildRoad
+      ? `Building a road to (${target.x},${target.y})`
+      : `Moving to (${target.x},${target.y})`;
+  }
+
+  /**
+   * CONTEXT MENU (2026-08-06, user-directed)
+   * -----------------------------------------
+   * Every action available for `unit` if the player right-clicks tile
+   * (x,y) -- replaces the old immediate-move/attack right-click (see
+   * js/ui/input.js) with a menu the player picks from every time, no
+   * exceptions for "simple" in-range moves. Two shapes:
+   *   - Own tile: the FULL action list (2026-08-06, user-directed --
+   *     previously a curated subset), i.e. every button
+   *     sidebar.js's renderUnitPanel would show for this exact unit right
+   *     now: Found City, Build Road, every channel start/claim/cancel
+   *     variant, Go Hidden/Cancel Hidden, Stop (a pending goto order),
+   *     Rest, Defend, Disband. The CONDITIONS below are transcribed
+   *     directly from sidebar.js's pioneerActions/channelActions/
+   *     stealthActions blocks -- kept as a second copy rather than a
+   *     shared extraction (sidebar.js also interleaves non-actionable
+   *     status lines -- "Cannot found here: X", turnsIn counters -- that
+   *     have no equivalent here, so a full merge would be a much larger,
+   *     riskier rendering refactor for comparatively little gain). If you
+   *     change one of these gates, change the other.
+   *   - Any other tile: "Attack" if something targetable sits there and is
+   *     in range, else "Move to This Tile" (always) and "Build Road to
+   *     This Tile" (if the unit canBuildRoad and the destination doesn't
+   *     already have one) -- both start a gotoTarget order via
+   *     startGotoOrder rather than a same-turn-only move.
+   * Each option is {kind, label, danger?} -- `kind` is a stable string
+   * main.js's handleContextMenuAction dispatches on; `danger` just carries
+   * the same red-styling hint sidebar.js's action-btn-danger class gives
+   * Cancel/Disband. Pure/non-mutating, re-derived fresh every time the menu
+   * needs to render or a click needs resolving (same "recompute, don't
+   * cache a closure" convention availableBuilds/handleChooseBuild already
+   * use).
+   */
+  function contextMenuOptions(unit, gameState, x, y, humanCivId) {
+    const options = [];
+    if (!canCommand(unit, gameState, humanCivId)) return options;
+    const civ = gameState.civs[unit.civId];
+    const baseUnit = window.GameData.getUnit(unit.typeId);
+    const tile = gameState.map.tiles[y * gameState.map.width + x];
+    const onOwnTile = unit.x === x && unit.y === y;
+
+    if (onOwnTile) {
+      // Found City / Build Road -- sidebar.js's pioneerActions.
+      if ((baseUnit.canFoundCity || baseUnit.canBuildRoad) && !unit.usedThisTurn) {
+        if (baseUnit.canFoundCity
+            && window.GameEngine.cities.canFoundCityAt(gameState.map, gameState.civs, unit.x, unit.y, civ.raceId).ok) {
+          options.push({ kind: "foundCity", label: "Found City" });
+        }
+        if (baseUnit.canBuildRoad && !tile.hasRoad) {
+          options.push({ kind: "buildRoadHere", label: "Build Road Here" });
+        }
+      }
+
+      // Channeled actions -- sidebar.js's channelActions. Same
+      // CHANNEL_LABELS/gating as that block, including the "hunting"/
+      // "farming" vs. Dwarf's "prospecting" naming split -- see that
+      // file's own doc comment for why they're deliberately distinct
+      // unit.channeling values.
+      const CHANNEL_LABELS = { prospecting: "Prospecting", delving: "Delving", fishing: "Fishing", hunting: "Hunting", farming: "Farming" };
+      if (unit.channeling && CHANNEL_LABELS[unit.channeling]) {
+        options.push({ kind: "claimChannel", label: "Claim Gathered Resources" });
+        options.push({ kind: "cancelChannel", label: `Cancel ${CHANNEL_LABELS[unit.channeling]}`, danger: true });
+      } else if (!unit.usedThisTurn) {
+        const onVein = tile.resource === "gold" || tile.resource === "iron";
+        const onGame = tile.resource === "game";
+        const onFertile = tile.resource === "fertile";
+        if (civ.raceId === "dwarf" && civ.unlockedMechanics && civ.unlockedMechanics.has("prospectors_claim") && onVein) {
+          options.push({ kind: "startChannel:prospecting", label: "Start Prospecting" });
+        } else if (unit.typeId === "wizard" && civ.unlockedMechanics && civ.unlockedMechanics.has("dungeon_delve") && tile.isRuin) {
+          options.push({ kind: "startChannel:delving", label: "Start Delving" });
+        } else if (unit.typeId === "galley" && !unit.carries && tile.resource === "fish") {
+          options.push({ kind: "startChannel:fishing", label: "Start Fishing" });
+        } else if (baseUnit.canProspect && onGame && civ.unlockedMechanics && civ.unlockedMechanics.has("hunt_game")) {
+          options.push({ kind: "startChannel:hunting", label: "Hunt Game" });
+        } else if (baseUnit.canProspect && onFertile && civ.unlockedMechanics && civ.unlockedMechanics.has("farm_soil")) {
+          options.push({ kind: "startChannel:farming", label: "Farm Soil" });
+        }
+      }
+
+      // Hidden/stealth -- sidebar.js's stealthActions.
+      if (unit.conditions?.hidden) {
+        options.push({ kind: "cancelHidden", label: "Cancel Hidden" });
+      } else if (!unit.usedThisTurn && window.GameEngine.combat.canGoHidden(unit, civ, gameState.civs)) {
+        options.push({ kind: "goHidden", label: "Go Hidden" });
+      }
+
+      // Goto order (2026-08-06) -- not in sidebar.js's original 3 blocks,
+      // added alongside gotoTarget itself; see sidebar.js's own
+      // stopOrderBtn for the equivalent sidebar button.
+      if (unit.gotoTarget) options.push({ kind: "stopOrder", label: "Stop Order", danger: true });
+
+      if (!unit.usedThisTurn) {
+        options.push({ kind: "rest", label: "Rest" });
+        options.push({ kind: "defend", label: "Defend" });
+      }
+      options.push({ kind: "disband", label: "Disband Unit", danger: true });
+      return options;
+    }
+
+    const target = attackTargetAt(unit, gameState, x, y, humanCivId);
+    if (target) {
+      const preview = previewOrder(unit, gameState, x, y, humanCivId);
+      if (preview.kind === "attack") options.push({ kind: "attack", label: "Attack" });
+      return options;
+    }
+
+    options.push({ kind: "moveTo", label: "Move to This Tile" });
+    if (baseUnit.canBuildRoad && !tile.hasRoad) {
+      options.push({ kind: "buildRoadTo", label: "Build Road to This Tile" });
+    }
+    return options;
+  }
+
+  /**
    * Starts a build in `city`. `option` is one entry from
    * ai.js's availableBuilds; `placeAt` ({x,y}) is the tile the player chose
    * for a building, stored on the queue item and honored at completion (see
@@ -199,10 +430,11 @@ window.GameEngine = window.GameEngine || {};
    * buildings both split across these two the same way now (2026-08-03):
    * whichever ones have an unlocking tech with a costBreakdown use the
    * modern model (see GameData.unitBuildCost/buildingBuildCost) -- as of
-   * 2026-08-05 that's every unit, including Pioneer/Galley/Scout (via
-   * shared_infrastructure's own costBreakdown); wall_section is the only
-   * thing left on the legacy path (explicitly excluded from
-   * buildingBuildCost's tech resolution -- see buildings.js).
+   * 2026-08-06 that's EVERY unit and building, including Pioneer/Galley/
+   * Scout (each via its own Level 0 tech) and wall_section (via
+   * pioneer_infrastructure's costBreakdown) -- nothing is left on the
+   * legacy path any more, though the branch itself stays as a defensive
+   * fallback (see buildings.js's _TECH_FOR_BUILDING doc comment).
    */
   function queueBuild(city, civ, gameState, option, placeAt) {
     if (!option || !city || civ.id !== gameState.civs[civ.id]?.id) return false;
@@ -236,19 +468,6 @@ window.GameEngine = window.GameEngine || {};
     return true;
   }
 
-  /** The single entry point the UI calls for a right-click: works out whether
-   *  the player meant "move here" or "attack that" and does it. */
-  function issueOrderAt(unit, gameState, x, y, humanCivId) {
-    const preview = previewOrder(unit, gameState, x, y, humanCivId);
-    if (preview.kind === "attack") {
-      return { acted: attack(unit, gameState, preview.target, humanCivId), preview };
-    }
-    if (preview.kind === "move") {
-      return { acted: moveTo(unit, gameState, x, y, humanCivId), preview };
-    }
-    return { acted: false, preview };
-  }
-
   window.GameEngine.orders = {
     canCommand,
     isSpent,
@@ -259,7 +478,10 @@ window.GameEngine = window.GameEngine || {};
     previewOrder,
     moveTo,
     attack,
-    issueOrderAt,
+    startGotoOrder,
+    advanceGotoOrder,
+    stopGotoOrder,
+    contextMenuOptions,
     queueBuild,
     cancelBuild,
   };

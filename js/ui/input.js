@@ -114,13 +114,14 @@ window.UI = window.UI || {};
       onChange();
     });
 
-    // ORDERS (2026-08-01, user-directed): left-click inspects, right-click
-    // commands. Left-click already means "open this tile's tabbed inspector,"
-    // and overloading it with "or move here, depending on an overlay" is
-    // exactly the ambiguity that makes tile-based UIs frustrating -- so the
-    // two verbs get two buttons. Right-click on a reachable tile moves; on an
-    // enemy in range, attacks. See js/engine/orders.js for what each resolves
-    // to; this handler only decides WHERE the player clicked.
+    // CONTEXT MENU (2026-08-06, user-directed rewrite -- previously right-
+    // click issued a move/attack immediately, same-turn range only). Every
+    // right-click now opens a menu of context-relevant actions at the
+    // clicked tile (see orders.js's contextMenuOptions for what's offered
+    // and why, main.js's redraw()/handleContextMenuAction for how it's
+    // rendered and dispatched) -- this handler only decides WHERE the
+    // player clicked and stores that, same "decide where, not what" split
+    // the old handler had.
     canvas.addEventListener("contextmenu", (e) => {
       e.preventDefault(); // suppress the browser menu, always -- even on a no-op
       if (dragMoved) return;
@@ -128,27 +129,16 @@ window.UI = window.UI || {};
       if (!tilePos) return;
       const unit = viewState.selectedUnit;
       if (!window.GameEngine.orders.canCommand(unit, gameState, viewState.humanCivId)) return;
-      const { acted, preview } = window.GameEngine.orders.issueOrderAt(
-        unit, gameState, tilePos.x, tilePos.y, viewState.humanCivId);
-      // Surface a refusal rather than silently doing nothing -- "nothing
-      // happened" is indistinguishable from a broken button.
-      viewState.orderHint = acted ? null
-        : { text: preview.reason || "No valid order here", until: performance.now() + 2000 };
-      // Follow the unit onto its new tile after a move (2026-08-04, user-
-      // reported): viewState.selection is keyed on a fixed (x,y), not the
-      // unit itself -- resolveSelection rebuilds its tab list from
-      // buildTileTabs(sel.x, sel.y) every redraw (see its own SELECTION
-      // MODEL doc comment), so leaving selection pointed at the tile the
-      // unit just left meant the very next redraw found no unit there at
-      // all and fell back to whatever tab WAS on that now-empty tile
-      // (Terrain, usually) -- the sidebar silently lost the unit the player
-      // just gave an order to, forcing a re-click to do anything else with
-      // it. An attack doesn't relocate the attacker, so this only fires for
-      // a real move (preview.kind === "move" and it actually happened).
-      if (acted && preview.kind === "move" && viewState.selection) {
-        viewState.selection.x = unit.x;
-        viewState.selection.y = unit.y;
+      const options = window.GameEngine.orders.contextMenuOptions(unit, gameState, tilePos.x, tilePos.y, viewState.humanCivId);
+      if (!options.length) {
+        // Nothing legal here -- surface a refusal rather than popping an
+        // empty menu, same "nothing happened is indistinguishable from a
+        // broken button" reasoning the old immediate-order handler had.
+        viewState.orderHint = { text: "No valid actions here", until: performance.now() + 2000 };
+        onChange();
+        return;
       }
+      viewState.contextMenu = { x: tilePos.x, y: tilePos.y, screenX: e.clientX, screenY: e.clientY };
       onChange();
     });
 
@@ -230,6 +220,25 @@ window.UI = window.UI || {};
   function resolveSelection(gameState, viewState) {
     const sel = viewState.selection;
     if (!sel) { syncLegacySelection(viewState); return []; }
+
+    // Follow a selected unit that moved on its OWN since the last redraw
+    // (2026-08-06, user-directed): a queued multi-turn move/build-road
+    // order (see orders.js's advanceGotoOrder) can relocate the selected
+    // unit turn after turn with no player click in between -- previously
+    // the only way a human unit ever moved was a direct player action,
+    // which the click handler itself already re-pointed selection for
+    // (see main.js's handleContextMenuAction). buildTileTabs below only
+    // ever looks AT sel.x/y, so without this, a unit that walked off that
+    // tile on its own would simply vanish from the tab strip instead of
+    // being followed. Confirms the unit is still actually alive/on the
+    // roster (not a stale reference to something disbanded/killed) before
+    // trusting its position.
+    if (sel.activeKind === "unit" && sel.activeRef
+        && (sel.activeRef.x !== sel.x || sel.activeRef.y !== sel.y)
+        && Object.values(gameState.civs).some((c) => c.units.includes(sel.activeRef))) {
+      sel.x = sel.activeRef.x;
+      sel.y = sel.activeRef.y;
+    }
 
     const tabs = buildTileTabs(gameState, sel.x, sel.y);
     sel.tabs = tabs;

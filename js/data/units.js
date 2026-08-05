@@ -171,11 +171,12 @@
  * (see techs.js's unitUpkeep/unitPower), NOT its build cost.
  * `coinCost` here only matters for a unit whose unlocking tech has no
  * costBreakdown -- see ai.js's buildUnitOption's legacy-flat-coin fallback.
- * As of 2026-08-05 every unit, including Pioneer/Galley/Scout (via
- * shared_infrastructure's own costBreakdown), resolves to the modern
- * power-derived multi-resource cost instead, so no unit currently carries
- * a `coinCost` field any more -- the fallback machinery is kept only as a
- * defensive path for a future tech authored without one.
+ * As of 2026-08-06 every unit, including Pioneer/Galley/Scout (each via its
+ * own Level 0 tech's costBreakdown -- pioneer_infrastructure/
+ * distant_shores/distant_horizons), resolves to the modern power-derived
+ * multi-resource cost instead, so no unit currently carries a `coinCost`
+ * field any more -- the fallback machinery is kept only as a defensive
+ * path for a future tech authored without one.
  */
 
 

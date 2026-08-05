@@ -953,7 +953,11 @@ window.GameEngine = window.GameEngine || {};
       }
     }
 
-    return { aiTurnState };
+    // humanCivId threaded onto the returned turnCtx purely so finishCivTurn
+    // (which doesn't otherwise receive it) can tell whether THIS civ is the
+    // human one -- see finishCivTurn's own multi-turn-goto-orders comment
+    // for why that step has to live there, not here.
+    return { aiTurnState, humanCivId };
   }
 
   /**
@@ -1044,6 +1048,54 @@ window.GameEngine = window.GameEngine || {};
     // memory): a fresh turn means the persisted leftover-movement budget
     // from last turn is stale and must be lazily recomputed on first use.
     for (const unit of civ.units) { unit.usedThisTurn = false; unit.resting = false; unit.movesRemaining = null; }
+
+    // Multi-turn goto orders (2026-08-06, user-directed): MUST run here,
+    // after the reset immediately above, not in beginCivTurn (tried first,
+    // and wrong -- see the 2026-08-06 fix note below). The human civ plays
+    // via direct UI clicks at any point while the game is sitting idle
+    // between End Turn presses, which is BEFORE this civ's own
+    // beginCivTurn/finishCivTurn pair for the round ever runs -- those
+    // only fire once the player actually clicks End Turn and the round-
+    // robin reaches this civ's slot. So by the time THIS code runs, the
+    // units' usedThisTurn/movesRemaining already reflect whatever the
+    // player just did by hand, not a fresh budget -- advancing a goto
+    // order here, BEFORE that reset, kept finding movesRemaining already
+    // spent and immediately cancelling the order as "blocked" the very
+    // first time it should have continued. Reset FIRST, then continue,
+    // fixes it: this now runs with a genuinely fresh budget, consumes some
+    // of it automatically, and leaves whatever's left for the player's own
+    // next round of clicks -- same moment an AI unit gets re-decided every
+    // round. See orders.js's advanceGotoOrder for what "one turn's worth
+    // of progress" means.
+    if (turnCtx && civ.id === turnCtx.humanCivId) {
+      for (const unit of civ.units) {
+        if (!unit.gotoTarget) continue;
+        try {
+          window.GameEngine.orders.advanceGotoOrder(unit, gameState);
+        } catch (err) {
+          console.error(`Goto-order error for unit ${unit.id} (${civ.id}):`, err);
+          unit.gotoTarget = null;
+        }
+      }
+    }
+
+    // Automate Actions (2026-08-06, user-directed): same lifecycle slot as
+    // the goto-order continuation just above, and for the same reason -- a
+    // fresh usedThisTurn/movesRemaining budget must exist before an
+    // automated unit's AI-reused decision logic runs. Units already mid
+    // multi-turn goto/channel, or already holding a pendingIntent awaiting
+    // player confirmation, are skipped by runAutomatedUnitTurn itself.
+    if (turnCtx && civ.id === turnCtx.humanCivId) {
+      const log = civ.lastAILog || [];
+      for (const unit of civ.units) {
+        if (!unit.automated) continue;
+        try {
+          window.GameEngine.ai.runAutomatedUnitTurn(civ, unit, gameState, log);
+        } catch (err) {
+          console.error(`Automate Actions error for unit ${unit.id} (${civ.id}):`, err);
+        }
+      }
+    }
   }
 
   /**

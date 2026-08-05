@@ -65,67 +65,66 @@
 window.GameData = window.GameData || {};
 
 window.GameData.TECHS = {
-  // --- TIER 0: shared starting infrastructure (2026-08-04, user-directed).
-  // One tech, every race, no raceOnly/excludedRaces -- unlocks Pioneer,
-  // Galley, Scout, and Wall uniformly. Auto-completed for every civ at
-  // creation (main.js's createNewGame), the same mechanism race.startingTech
-  // used to get, EXCEPT race.startingTech is no longer auto-completed --
-  // only Tier 0 is free now. A civ's own signature combat unit (Raider,
-  // Spearguard, etc., via that race's real Layer-1 startingTech) must
-  // actually be researched like anything else; Scout is deliberately the
-  // civ's only quasi-"combat" capability until that finishes. Replaces the
-  // old beast_sense (Dwarf/Undead only, cost 10 Lore) and the hardcoded
-  // Human/Elf-only free-Scout grant that used to sit in main.js -- both were
-  // patches over the same underlying gap this tech now covers uniformly for
-  // every race, no per-race exceptions left. layer: 0.5 (not 0) -- see
-  // GameConfig.research's doc comment: keeps this tech inside the same
-  // Math.pow(rate, layer) premium formulas every other tech/unit already
-  // uses, rather than needing a zero/negative-exponent special case. ---
-  shared_infrastructure: {
-    id: "shared_infrastructure", label: "Shared Infrastructure", category: "economy", layer: 0.5, cost: 10,
+  // --- LEVEL 0: shared starting infrastructure (2026-08-06, user-directed
+  // rewrite of the old single "Shared Infrastructure" tech). Five techs,
+  // every race, no raceOnly/excludedRaces, layer: 0 (a real integer now --
+  // the old layer: 0.5 fudge existed only to dodge a `tech.layer || 1`
+  // falsy-zero bug in a few call sites; those are now fixed to treat 0
+  // correctly -- see effectiveTechCost/unitTechLayer below and
+  // techtree.js's own layer-bucketing). ALL FIVE are auto-completed for
+  // every civ at creation (main.js's createNewGame) -- nothing at Level 0
+  // is ever actually researched/paid for. A civ's own signature combat
+  // unit (Raider, Spearguard, etc., via that race's real Level 1
+  // startingTech) must still actually be researched like anything else;
+  // Scout is deliberately the civ's only quasi-"combat" capability until
+  // that finishes. ---
+  pioneer_infrastructure: {
+    id: "pioneer_infrastructure", label: "Pioneer", category: "civic", layer: 0, cost: 10,
     prereqs: [],
-    // costBreakdown (2026-08-05, user-directed): gives Pioneer/Galley/Scout
-    // the same power-derived, multi-resource build-cost MODEL every other
-    // teched unit already uses (see techs.js's unitBuildCost) instead of
-    // their old flat units.js coinCost -- that field has been removed from
-    // all 3 now that this makes them resolve to a real cost object. Ratio
-    // only (not absolute numbers, same as every other tech's
-    // costBreakdown) -- coin-weighted over harvest since these were
-    // coin-only units before, just no longer 100% coin. Deliberately no
-    // `lore` component -- Pioneer/Scout/Galley aren't scholarly units.
-    // NOT inherited by wall_section's building cost despite sharing this
-    // same tech's unlock -- see buildings.js's _TECH_FOR_BUILDING, which
-    // explicitly excludes wall_section from this resolution so its cost
-    // model doesn't change as a side effect of this.
+    // costBreakdown (2026-08-05, originally shared_infrastructure's):
+    // gives Pioneer the same power-derived, multi-resource build-cost
+    // MODEL every other teched unit already uses (see techs.js's
+    // unitBuildCost) instead of the old flat units.js coinCost. Ratio only
+    // (not absolute numbers) -- coin-weighted over harvest since this was
+    // a coin-only unit before, just no longer 100% coin. No `lore`
+    // component -- Pioneer isn't a scholarly unit. Also this tech's ratio
+    // for wall_section's building cost (2026-08-06, user-directed: walls
+    // now pay up front from the stockpile too, like every unit/tech/
+    // building) -- bundled onto Pioneer rather than a separate Level 0
+    // tech since the user's 3-way split only named Pioneer/Scout/Galley,
+    // and a wall is civic/defensive infrastructure same as this tech.
     costBreakdown: { harvest: 2, coin: 3 },
     effects: [
       { type: "unlock_unit", unit: "pioneer" },
-      { type: "unlock_unit", unit: "galley" },
-      { type: "unlock_unit", unit: "scout" },
       { type: "unlock_building", building: "wall_section" },
     ],
   },
-
-  // --- TIER 0: Pioneer/Scout resource actions (2026-08-05, user-directed).
-  // Two small, shared (no raceOnly), free-to-attempt-from-turn-0 techs --
-  // layer: 0.5, same reasoning as shared_infrastructure just above (and see
-  // engine/tech.js's meetsCityGate, which treats any layer < 1 as needing 0
-  // cities so these are researchable before a civ's first city exists,
-  // unlike a real Layer 1 tech). Unlike shared_infrastructure these are NOT
-  // auto-completed -- a civ has to actually spend Lore on them, same as any
-  // other tech, they just don't need a city first. Each unlocks one half of
-  // what used to be a single free `canProspect`/"surveying" channeled
-  // action (js/ui/sidebar.js's channelActions, js/engine/turns.js) -- split
-  // in two so the button/tech naming can be resource-specific ("Hunt Game"
-  // / "Farm Soil") instead of the generic "Start Prospecting". ---
+  distant_horizons: {
+    id: "distant_horizons", label: "Distant Horizons", category: "military", layer: 0, cost: 10,
+    prereqs: [],
+    costBreakdown: { harvest: 2, coin: 3 },
+    effects: [{ type: "unlock_unit", unit: "scout" }],
+  },
+  distant_shores: {
+    id: "distant_shores", label: "Distant Shores", category: "military", layer: 0, cost: 10,
+    prereqs: [],
+    costBreakdown: { harvest: 2, coin: 3 },
+    effects: [{ type: "unlock_unit", unit: "galley" }],
+  },
+  // Pioneer/Scout resource actions (2026-08-05, user-directed; auto-granted
+  // 2026-08-06). Each unlocks one half of what used to be a single free
+  // `canProspect`/"surveying" channeled action (js/ui/sidebar.js's
+  // channelActions, js/engine/turns.js) -- split in two so the button/tech
+  // naming can be resource-specific ("Hunt Game"/"Farm Soil") instead of
+  // the generic "Start Prospecting".
   hunt_game: {
-    id: "hunt_game", label: "Hunt Game", category: "civic", layer: 0.5, cost: 10,
+    id: "hunt_game", label: "Hunt Game", category: "civic", layer: 0, cost: 10,
     prereqs: [],
     description: "Pioneers and Trackers can hunt Game tiles for bonus Harvest.",
     effects: [{ type: "unlock_mechanic", mechanic: "hunt_game" }],
   },
   farm_soil: {
-    id: "farm_soil", label: "Farm Soil", category: "civic", layer: 0.5, cost: 10,
+    id: "farm_soil", label: "Farm Soil", category: "civic", layer: 0, cost: 10,
     prereqs: [],
     description: "Pioneers and Trackers can farm Fertile Soil tiles for bonus Harvest.",
     effects: [{ type: "unlock_mechanic", mechanic: "farm_soil" }],
@@ -1755,9 +1754,16 @@ window.GameData.getTech = function (techId) {
 // cost -- cost and time are two independent formulas fed by the same tier
 // number, exactly mirroring how a unit's build cost and build time both
 // derive from unitPower without one being computed from the other.
+// `?? 1`, not `|| 1` (2026-08-06, user-directed): a real Level 0 tech's
+// `layer` is literally 0, which `||` treats as falsy and would wrongly
+// substitute 1 -- `??` only substitutes on null/undefined, so an explicit
+// 0 passes through correctly (Level 0 tech tree items are all
+// auto-completed and never actually pay this, but the tree still DISPLAYS
+// this number, and unitTechLayer/unitLayerPremium below read layer the
+// same way for a Level 0 unit's real build cost).
 window.GameData.effectiveTechCost = function (tech) {
   const cfg = window.GameConfig.research;
-  return cfg.baseCost * Math.pow(cfg.tierGrowth, tech.layer || 1);
+  return cfg.baseCost * Math.pow(cfg.tierGrowth, tech.layer ?? 1);
 };
 
 // Tech cost mix (2026-08-05, user-directed): every tech's cost used to be
@@ -1766,8 +1772,7 @@ window.GameData.effectiveTechCost = function (tech) {
 // Harvest (labor/population-driven), Building leans Coin (construction),
 // Military splits Coin/Lore evenly (drilling + doctrine) with a smaller
 // Harvest slice (provisioning). Categories outside the 3 real columns
-// (e.g. shared_infrastructure/hunt_game/farm_soil's "economy"/"civic") fall
-// back to Civic's ratio -- same fallback techtree.js's own columnFor
+// fall back to Civic's ratio -- same fallback techtree.js's own columnFor
 // already uses for display. The TOTAL magnitude is unchanged
 // (effectiveTechCost's own pure-layer formula) -- only how it's split
 // across resources changes.
@@ -1852,12 +1857,14 @@ window.GameData.unitPower = function (unitId) {
 
 /** Which tech first grants a given unit id (via unlock_unit or, for a
  *  replacement unit like Knight/Longbowman/Trebuchet, replace_unit's `to`),
- *  scanned once across every tech's effects. Pioneer, Galley, and Scout all
- *  resolve to shared_infrastructure (2026-08-04) -- the Tier 0 tech every
- *  civ starts with already completed -- which now carries its own
- *  costBreakdown (2026-08-05), so unitBuildCost below prices these 3 the
- *  same power-derived, multi-resource way as every other teched unit;
- *  their old units.js flat coinCost field has been removed. */
+ *  scanned once across every tech's effects. Pioneer, Galley, and Scout
+ *  each resolve to their own Level 0 tech (pioneer_infrastructure/
+ *  distant_shores/distant_horizons, 2026-08-06 -- previously bundled into
+ *  one "shared_infrastructure" tech) -- the Level 0 techs every civ starts
+ *  with already completed -- each of which carries its own costBreakdown
+ *  (2026-08-05), so unitBuildCost below prices these 3 the same
+ *  power-derived, multi-resource way as every other teched unit; their old
+ *  units.js flat coinCost field has been removed. */
 window.GameData._TECH_FOR_UNIT = (() => {
   const map = {};
   for (const tech of Object.values(window.GameData.TECHS)) {
@@ -1877,12 +1884,16 @@ window.GameData.techForUnit = function (unitId) {
  *  even after later techs buff its stats via unitOverrides -- an upgrade
  *  doesn't relocate the unit in the tree). 1 is now only a defensive
  *  fallback for malformed data -- every real unit resolves to a real tech
- *  since Tier 0's shared_infrastructure (2026-08-04) covers Pioneer, Galley,
- *  and Scout, the last 3 that used to have none at all. */
+ *  since Level 0's own techs (2026-08-06) cover Pioneer, Galley, and Scout,
+ *  the last 3 that used to have none at all. `?? 1`, not `|| 1` -- a
+ *  Level 0 unit's real layer is 0, which `||` would wrongly treat as
+ *  missing and substitute 1 for, silently overcharging unitLayerPremium
+ *  below (Math.pow(1.18, 1) instead of the correct Math.pow(1.18, 0) = 1,
+ *  i.e. no premium at all -- exactly what a Level 0 unit should get). */
 window.GameData.unitTechLayer = function (unitId) {
   const techId = window.GameData.techForUnit(unitId);
   if (!techId) return 1;
-  return window.GameData.TECHS[techId].layer || 1;
+  return window.GameData.TECHS[techId].layer ?? 1;
 };
 
 // Deliberately smaller than the tech tree's own cost growth (see

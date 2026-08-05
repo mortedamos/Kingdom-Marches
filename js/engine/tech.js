@@ -16,13 +16,16 @@ window.GameEngine = window.GameEngine || {};
 
 (function () {
   /** City gate: a layer-L tech requires the civ to own at least L cities.
-   *  Math.floor (2026-08-05, user-directed): Tier 0's fractional layer
-   *  (0.5, e.g. hunt_game/farm_soil) needs to pass this gate at ZERO
-   *  cities -- floor(0.5) = 0, so `0 >= 0` holds even for a brand-new civ,
-   *  matching Tier 0's own "before your first city" flavor. Every real
-   *  layer is already a whole number, so this is a no-op for them. */
+   *  Level 0 techs (layer: 0, e.g. hunt_game/farm_soil) pass this at ZERO
+   *  cities -- `0 >= 0` holds even for a brand-new civ, matching Level 0's
+   *  "before your first city" flavor (moot for the always-auto-completed
+   *  ones, but real for hunt_game/farm_soil if ever re-researched after
+   *  losing the mechanic somehow). `?? 0`, not `|| 0` -- both happen to
+   *  agree when layer is exactly 0 (0 || 0 === 0 ?? 0), but `??` is the
+   *  correct operator on principle, matching every other layer-fallback
+   *  fix in techs.js (2026-08-06). */
   function meetsCityGate(civ, tech) {
-    return civ.cities.length >= Math.floor(tech.layer || 0);
+    return civ.cities.length >= (tech.layer ?? 0);
   }
 
   function availableTechs(civ) {
@@ -32,6 +35,21 @@ window.GameEngine = window.GameEngine || {};
       const tech = window.GameData.getTech(id);
       if (!meetsCityGate(civ, tech)) return false;
       return tech.prereqs.every((p) => civ.completedTechs.has(p));
+    });
+  }
+
+  /** True if there's at least one tech the civ could actually start
+   *  researching RIGHT NOW -- gates/prereqs met (availableTechs) AND
+   *  affordable from the current stockpile (effectiveTechCostBreakdown).
+   *  Used by main.js's end-turn "unresolved work" guard (2026-08-05,
+   *  user-directed) so a civ that simply can't afford anything yet isn't
+   *  nagged with "No research selected" every turn -- there's nothing it
+   *  could actually do about that right now. */
+  function hasAffordableResearch(civ) {
+    const stock = civ.stockpile || { harvest: 0, coin: 0, lore: 0 };
+    return availableTechs(civ).some((id) => {
+      const cost = window.GameData.effectiveTechCostBreakdown(window.GameData.getTech(id));
+      return cost.harvest <= (stock.harvest || 0) && cost.coin <= (stock.coin || 0) && cost.lore <= (stock.lore || 0);
     });
   }
 
@@ -295,9 +313,9 @@ window.GameEngine = window.GameEngine || {};
    *  offered as a free choice the moment a civ founds its FIRST city (see
    *  cities.js's foundCity for the AI grant, main.js's openFoundCityDialog
    *  for the human dialog). Deliberately layer === 1 exactly, not <=1 --
-   *  Tier 0's own techs (shared_infrastructure, hunt_game, farm_soil) are
-   *  either already auto-completed or freely researchable from turn 0
-   *  regardless, so there's nothing for this free grant to add there. */
+   *  every Level 0 tech is already auto-completed at civ creation (see
+   *  main.js's createNewGame), so there's nothing for this free grant to
+   *  add there. */
   function firstCityTechChoices(civ) {
     return window.GameData.techsForRace(civ.raceId).filter((id) => {
       if (civ.completedTechs.has(id)) return false;
@@ -307,8 +325,8 @@ window.GameEngine = window.GameEngine || {};
 
   /** Grants `techId` for free -- bypasses meetsCityGate/prereqs/Lore cost
    *  entirely, the same one-time "force complete" pathway main.js's civ
-   *  creation already uses for shared_infrastructure. Caller's
-   *  responsibility to only pass a real, not-yet-completed tech id (see
+   *  creation already uses for every Level 0 tech. Caller's responsibility
+   *  to only pass a real, not-yet-completed tech id (see
    *  firstCityTechChoices). */
   function grantFreeTech(civ, techId) {
     civ.completedTechs.add(techId);
@@ -336,6 +354,7 @@ window.GameEngine = window.GameEngine || {};
 
   window.GameEngine.tech = {
     availableTechs,
+    hasAffordableResearch,
     nextGatedTechLayer,
     tickResearch,
     applyTechEffects,

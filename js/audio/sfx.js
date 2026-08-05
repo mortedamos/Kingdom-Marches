@@ -3,7 +3,11 @@
  * ----------
  * Per-unit, per-action sound effects: assets/sfx/<race>_<unitId>_<action>_<n>.mp3
  * (see js/data/sfx-actions.js for the naming convention and the full set of
- * combinations that should exist).
+ * combinations that should exist). Also a small set of race/unit-independent
+ * SYSTEM sfx (button clicks, confirm-action prompts, research-complete
+ * stings -- see playButtonClick/playConfirmAction/playResearchComplete near
+ * the bottom) that reuse this same preload/voice machinery directly rather
+ * than going through the manifest-driven model.
  *
  * Deliberately UNLIKE music.js: there is no fallback chain. Music always
  * wants *something* mood-appropriate playing, so it falls back through
@@ -259,6 +263,63 @@ window.SfxSystem = (function () {
     if (!loaded.has(key)) loaded.set(key, voice);
   }
 
+  // SYSTEM SFX (2026-08-06, user-directed): UI sounds -- a button click, a
+  // tech-researched sting -- that aren't tied to any race/unit/action combo
+  // the manifest-driven model above covers. Deliberately NOT folded into
+  // that model (there's no "system" race and no unit to key off), but reuses
+  // its low-level plumbing directly: preloadClip/acquireVoice/clipPath are
+  // already generic on an arbitrary string key (clipPath's
+  // `assets/sfx/${key}.mp3` needs nothing race/unit-shaped), so
+  // "system_button_click" and "system_research_complete_1/2/3" work as
+  // literal keys with zero new machinery. Preloaded alongside everything
+  // else in init() below so they're warm the first time they're needed, same
+  // "no cold-load lag" reasoning as the rest of this file.
+  const SYSTEM_BUTTON_CLICK_KEY = "system_button_click";
+  const SYSTEM_CONFIRM_ACTION_KEY = "system_confirm_action";
+  const SYSTEM_RESEARCH_COMPLETE_VARIANTS = 3;
+  let lastResearchCompleteVariant = null;
+
+  function systemKeys() {
+    const keys = [SYSTEM_BUTTON_CLICK_KEY, SYSTEM_CONFIRM_ACTION_KEY];
+    for (let n = 1; n <= SYSTEM_RESEARCH_COMPLETE_VARIANTS; n++) keys.push(`system_research_complete_${n}`);
+    return keys;
+  }
+
+  /** Plays a single already-preloaded (or lazily-loaded) system clip by its
+   *  literal key -- shared tail end for both public functions below. */
+  function playSystemKey(key) {
+    const voice = acquireVoice(key);
+    voice.playbackRate = 1;
+    voice.volume = effectiveVolume();
+    const played = voice.play();
+    if (played && played.catch) played.catch(() => {});
+    if (!loaded.has(key)) loaded.set(key, voice);
+  }
+
+  /** Public: every player button click (see main.js's global click listener). */
+  function playButtonClick() {
+    playSystemKey(SYSTEM_BUTTON_CLICK_KEY);
+  }
+
+  /** Public: the player is being presented with a confirm-an-action prompt
+   *  (Disband Unit, Found City, End Turn with unresolved work, an Automate
+   *  Actions proposal, ... -- see main.js's redraw(), which fires this once
+   *  per freshly-opened confirm-style dialog). */
+  function playConfirmAction() {
+    playSystemKey(SYSTEM_CONFIRM_ACTION_KEY);
+  }
+
+  /** Public: a tech finished researching (see main.js's tech-researched
+   *  modal). No-immediate-repeat across the 3 variants, same convention
+   *  playAction/music.js's pickVariant both use for variety. */
+  function playResearchComplete() {
+    const variants = [1, 2, 3];
+    const pool = variants.filter((v) => v !== lastResearchCompleteVariant);
+    const choice = pool[Math.floor(Math.random() * pool.length)];
+    lastResearchCompleteVariant = choice;
+    playSystemKey(`system_research_complete_${choice}`);
+  }
+
   function setMasterVolume(v) { masterVolume = Math.max(0, Math.min(1, v)); }
   /** Public: the Audio menu's Sound Effects slider. Only affects clips
    *  started AFTER this call -- an in-flight clip is a few hundred ms long,
@@ -290,8 +351,12 @@ window.SfxSystem = (function () {
     loaded = new Map();
     voices = new Map();
     lastVariantPlayed = {};
+    lastResearchCompleteVariant = null;
 
-    const keys = clipKeysForRaces(racesInPlay);
+    // System sfx (button click, research-complete stings) are race-
+    // independent -- always queued here regardless of which races are in
+    // play, unlike clipKeysForRaces' per-race slice below.
+    const keys = [...systemKeys(), ...clipKeysForRaces(racesInPlay)];
     const total = keys.length;
     if (!total) { if (onProgress) onProgress(1, 1); return; }
 
@@ -309,6 +374,9 @@ window.SfxSystem = (function () {
     init,
     hasClip,
     playAction,
+    playButtonClick,
+    playConfirmAction,
+    playResearchComplete,
     setMasterVolume,
     setSfxVolume,
     setMuted,

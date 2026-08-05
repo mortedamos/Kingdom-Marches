@@ -179,10 +179,12 @@ window.GameConfig = {
 
     /** Compounding premium per tech-tree layer -- exponent is the RAW layer
      *  now, not layer-1 (2026-08-04, user-directed): Layer 1 used to be a
-     *  free/no-premium baseline (exponent 0); now every layer, including
-     *  Tier 0 (layer: 0.5, techs.js's shared_infrastructure) carries a real
-     *  premium, just a smaller one the lower the layer. Deliberately raises
-     *  cost/upkeep across the board.
+     *  free/no-premium baseline (exponent 0); now every layer above 0
+     *  carries a real premium, just a smaller one the lower the layer.
+     *  Level 0 (layer: 0, techs.js's pioneer_infrastructure/
+     *  distant_horizons/distant_shores) sits at exponent 0 -- genuinely NO
+     *  premium, the one true free-baseline layer now. Deliberately raises
+     *  cost/upkeep across every OTHER tier.
      *
      *  buildLayerPremiumRate is the ONE-TIME purchase: (1.18)^5 ~= 2.3x for a
      *  layer-5 unit (was ~2x at layer-1 exponent). Deliberately thinner than
@@ -232,11 +234,14 @@ window.GameConfig = {
      *  Exponent is the RAW layer, not layer-1 (2026-08-04, user-directed) --
      *  every layer-based premium in the game (this, unitLayerPremium,
      *  unitUpkeepLayerPremium) dropped its old "-1" so Layer 1 is no longer
-     *  a free/no-premium baseline, and Tier 0's layer: 0.5 (techs.js's
-     *  shared_infrastructure) participates in the exact same formula with no
-     *  separate zero/negative-exponent case to special-case. Deliberately
-     *  raises cost across every tier, Tier 0 included -- tierGrowth: 2.0
-     *  gives Tier0=14, L1=20, L2=40, L3=80, L4=160, L5=320. */
+     *  a free/no-premium baseline. Level 0 (layer: 0, as of 2026-08-06 a
+     *  real integer, not the old layer: 0.5 fudge -- see
+     *  GameData.effectiveTechCost/unitTechLayer's own `?? 1` fallback,
+     *  fixed to treat 0 correctly instead of needing to dodge it) sits at
+     *  exponent 0, i.e. genuinely free of this premium -- moot in practice
+     *  since every Level 0 tech is auto-completed and never actually pays
+     *  it, but still the number the tree DISPLAYS. tierGrowth: 2.0 gives
+     *  Level0=10, L1=20, L2=40, L3=80, L4=160, L5=320. */
     baseCost: 10,
     tierGrowth: 2.0,
   },

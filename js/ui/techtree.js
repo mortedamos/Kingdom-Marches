@@ -1,17 +1,21 @@
 /**
  * TECH TREE VIEWER
  * ----------------
- * The full tech tree for a chosen civ, laid out by layer (rows) and column
- * (civic/building/military), with each node's status -- completed, currently
- * researching (with progress %), the AI's intended next pick (via ai.js's
- * previewNextResearch, a non-mutating preview), locked (city-gate or prereqs
- * unmet), or simply available.
+ * The full tech tree for a chosen civ, laid out by layer (rows, Level 0
+ * through Level 5) and column (civic/building/military), with each node's
+ * status -- completed, currently researching (with progress %), the AI's
+ * intended next pick (via ai.js's previewNextResearch, a non-mutating
+ * preview), locked (city-gate or prereqs unmet), or simply available.
  *
  * Read-only for every civ EXCEPT the human player's own (2026-08-01,
  * user-directed): before this the player had no way to pick research at all,
  * because chooseResearch was only ever called from ai.js, which turns.js
  * skips for the human civ -- a human game sat at "Research: None selected"
  * forever. Available nodes in your own tree are now buttons.
+ *
+ * Every layer row (2026-08-06, user-directed) is collapsible -- click the
+ * "Level N" label to toggle, wired in main.js against the `expandedState`
+ * object this module's render() is passed (see render's own doc comment).
  */
 
 window.UI = window.UI || {};
@@ -27,7 +31,22 @@ window.UI = window.UI || {};
     return COLUMNS.includes(tech.category) ? tech.category : "civic";
   }
 
-  function render(civ, isPlayerCiv) {
+  /**
+   * `expandedState` (2026-08-06, user-directed): the collapse/expand state
+   * for each layer row, `{ [civId]: { [layer]: true|false } }` -- OWNED by
+   * main.js as part of viewState (this module stays a pure render
+   * function, same split as every other UI module) and passed in by
+   * reference so a click on a layer header can mutate it directly and
+   * force a rebuild. A layer's entry is populated with its DEFAULT the
+   * first time it's ever rendered (expanded if the civ already meets that
+   * layer's city-count gate, collapsed if not -- "not yet researchable
+   * because of too few cities" per the user's own wording) and never
+   * recomputed after that, so a manual toggle sticks even if the civ's
+   * city count later changes -- same "collapsed by default, not forced
+   * collapsed" spirit as everything else in this tree that only ever
+   * gates the very first render.
+   */
+  function render(civ, isPlayerCiv, expandedState) {
     const race = window.GameData.getRace(civ.raceId);
     // The AI's "intends to research next" hint is meaningless for the human's
     // own tree -- nothing is going to pick for them, that's the whole point.
@@ -35,39 +54,34 @@ window.UI = window.UI || {};
 
     const techIds = window.GameData.techsForRace(civ.raceId);
     const byLayer = {};
-    let maxLayer = 1;
+    let maxLayer = 0;
     for (const id of techIds) {
       const tech = window.GameData.getTech(id);
-      const layer = tech.layer || 1;
+      // `?? 1`, not `|| 1` (2026-08-06) -- a real Level 0 tech's layer is
+      // literally 0, which `||` would treat as missing and wrongly bucket
+      // into Level 1 instead of its own Level 0 row.
+      const layer = tech.layer ?? 1;
       maxLayer = Math.max(maxLayer, layer);
       byLayer[layer] = byLayer[layer] || { civic: [], building: [], military: [] };
       byLayer[layer][columnFor(tech)].push(tech);
     }
 
-    // Tier 0 (2026-08-05, user-directed): shared_infrastructure/hunt_game/
-    // farm_soil all sit at layer 0.5, a step BELOW the "L1..maxLayer"
-    // integer loop below -- that loop starts at 1 and only ever increments
-    // by whole numbers, so it would never visit a 0.5 bucket on its own.
-    // Rendered as its own row, ahead of everything else, same renderNode
-    // used for every other layer.
+    const civExpanded = expandedState[civ.id] = expandedState[civ.id] || {};
+
     let rows = "";
-    const tier0 = byLayer[0.5];
-    if (tier0) {
-      rows += `<div class="techtree-layer">
-        <div class="techtree-layer-label">T0</div>
-        ${COLUMNS.map((col) => `<div class="techtree-column">${
-          tier0[col].map((tech) => renderNode(civ, tech, nextPick, isPlayerCiv)).join("") || ""
-        }</div>`).join("")}
-      </div>`;
-    }
-    for (let layer = 1; layer <= maxLayer; layer++) {
+    for (let layer = 0; layer <= maxLayer; layer++) {
       const cols = byLayer[layer];
       if (!cols) continue;
+      if (civExpanded[layer] === undefined) civExpanded[layer] = civ.cities.length >= layer;
+      const expanded = civExpanded[layer];
       rows += `<div class="techtree-layer">
-        <div class="techtree-layer-label">L${layer}</div>
-        ${COLUMNS.map((col) => `<div class="techtree-column">${
+        <div class="techtree-layer-label techtree-layer-toggle" data-toggle-layer="${layer}">
+          <span class="techtree-arrow${expanded ? " techtree-arrow-expanded" : ""}">▸</span>
+          <span>Level ${layer}</span>
+        </div>
+        ${expanded ? COLUMNS.map((col) => `<div class="techtree-column">${
           cols[col].map((tech) => renderNode(civ, tech, nextPick, isPlayerCiv)).join("") || ""
-        }</div>`).join("")}
+        }</div>`).join("") : ""}
       </div>`;
     }
 

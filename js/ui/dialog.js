@@ -12,6 +12,9 @@
  *   { kind: "confirm", title, text, confirmLabel, danger, onAnswer(bool) }
  *   { kind: "message", title, text, onDismiss() }
  *   { kind: "chooseTech", title, text, options: [{id,label,description}], onAnswer(techId) }
+ *   { kind: "techResearched", techLabel, techDescription, unlockedLabels[], onChooseResearch(), onDismiss() }
+ *   { kind: "unitBuilt", cityName, unitLabel, unitProperName, onGoToCity(), onGoToUnit(), onDismiss() }
+ *   { kind: "confirmAutomatedAction", unitLabel, actionLabel, onConfirm(), onDecline() }
  *
  * Every kind rendered here needs a matching branch in main.js's
  * wireDialogButtons -- the markup below only names the buttons, it doesn't
@@ -100,6 +103,56 @@ window.UI = window.UI || {};
         <h2>${escapeHtml(dialog.title)}</h2>
         <p>${escapeHtml(dialog.text)}</p>
         <div class="game-dialog-choices">${options}</div>`;
+    }
+    if (dialog.kind === "techResearched") {
+      // Tech-researched announcement (2026-08-06, user-directed): fires once
+      // per completed tech (see main.js's finishRoundBookkeeping). Lists
+      // every OTHER tech this one was a prerequisite for -- "here's what
+      // just opened up" -- alongside a direct shortcut into the tech tree so
+      // picking the next one doesn't need a separate menu hunt.
+      const unlocked = (dialog.unlockedLabels || []).length
+        ? `<p class="game-dialog-unlocked-label">Unlocks:</p>
+           <ul class="game-dialog-list">${dialog.unlockedLabels.map((l) => `<li>${escapeHtml(l)}</li>`).join("")}</ul>`
+        : "";
+      return `
+        <h2>Research Complete</h2>
+        <p class="game-dialog-tech-name">${escapeHtml(dialog.techLabel)}</p>
+        ${dialog.techDescription ? `<p>${escapeHtml(dialog.techDescription)}</p>` : ""}
+        ${unlocked}
+        <div class="game-dialog-actions">
+          <button class="menu-dropdown-btn" id="game-dialog-ok-btn">OK</button>
+          <button class="menu-dropdown-btn game-dialog-primary" id="game-dialog-confirm-btn">Choose Next Research</button>
+        </div>`;
+    }
+    if (dialog.kind === "unitBuilt") {
+      // Unit-built announcement (2026-08-06, user-directed): fires once per
+      // completed unit (see main.js's finishRoundBookkeeping, which queues
+      // one of these per unit if more than one city finishes the same
+      // round -- see offerNextUnitBuiltNotice). Two shortcuts: back to the
+      // city to queue something new, or straight to the new unit to give it
+      // orders.
+      return `
+        <h2>Unit Built</h2>
+        <p>${escapeHtml(dialog.cityName)} has built ${escapeHtml(dialog.unitProperName)}, a ${escapeHtml(dialog.unitLabel)}.</p>
+        <div class="game-dialog-actions">
+          <button class="menu-dropdown-btn" id="game-dialog-cancel-btn">Go to City</button>
+          <button class="menu-dropdown-btn game-dialog-primary" id="game-dialog-confirm-btn">Go to Unit</button>
+        </div>`;
+    }
+    if (dialog.kind === "confirmAutomatedAction") {
+      // Automate Actions confirmation (2026-08-06, user-directed): the
+      // blocking, one-at-a-time gate an automated unit's staged
+      // pendingIntent waits behind before it's actually allowed to found a
+      // city, spend resources, or start a fight -- see main.js's
+      // offerNextPendingIntent and the unit.automated && !opts.forcedX gates
+      // in ai.js. Reuses the generic "confirm" kind's button ids/wiring.
+      return `
+        <h2>${escapeHtml(dialog.unitLabel)} — Automated Action</h2>
+        <p>${escapeHtml(dialog.actionLabel)}</p>
+        <div class="game-dialog-actions">
+          <button class="menu-dropdown-btn" id="game-dialog-cancel-btn">Not Now</button>
+          <button class="menu-dropdown-btn game-dialog-primary" id="game-dialog-confirm-btn">Confirm</button>
+        </div>`;
     }
     // "message" -- single-button dismiss, e.g. a victory announcement.
     return `

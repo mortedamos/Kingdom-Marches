@@ -184,9 +184,10 @@ window.GameData.BUILDINGS = {
   wall_section: {
     id: "wall_section", label: "Wall", symbol: "▬", isWall: true,
     coinCost: 15, maxHp: 40, defense: 8,
-    // Hard floor on build time, independent of the city's coin income (see
-    // ai.js progressBuildQueue) -- a wealthy city can't just insta-build a
-    // wall. 14 turns comfortably exceeds how long a typical non-siege
+    // Hard floor on build time (see ai.js buildingBuildTurns, which honors
+    // this even under the modern up-front-payment cost model as of
+    // 2026-08-06) -- a wealthy city can't just insta-build a wall. 14 turns
+    // comfortably exceeds how long a typical non-siege
     // attacker (attack ~7-9 vs this wall's defense 8, ~3-4 dmg/hit after
     // mitigation) takes to tear one down (~10-12 turns), so a wall is never
     // finished faster than an ordinary enemy could destroy an existing one.
@@ -232,20 +233,18 @@ window.GameData.buildingsForRace = function (raceId) {
  */
 
 /** Which tech first grants a given building id (via unlock_building),
- *  scanned once across every tech's effects. Deliberately excludes
- *  wall_section even though shared_infrastructure's own effects DO include
- *  an unlock_building for it (2026-08-04) -- wall_section is meant to stay
- *  universal and never gated by research (see this file's own header
- *  comment on walls), so it's carved out here rather than left to
- *  incidentally pick up shared_infrastructure's costBreakdown (added
- *  2026-08-05 for Pioneer/Galley/Scout's own build cost) as an unrelated
- *  side effect -- callers fall back to the legacy flat-coinCost model for
- *  it, same as they always have. */
+ *  scanned once across every tech's effects. wall_section resolves to
+ *  pioneer_infrastructure (2026-08-06, user-directed: walls now pay up
+ *  front like every unit/tech/building, reversing the 2026-08-05 exclusion
+ *  that kept them on the legacy flat-coinCost model -- see
+ *  pioneer_infrastructure's own doc comment in techs.js) -- it's still
+ *  universal/never research-GATED (unlockedBuildings never checks it, see
+ *  this file's own header comment on walls), only its COST model changed. */
 window.GameData._TECH_FOR_BUILDING = (() => {
   const map = {};
   for (const tech of Object.values(window.GameData.TECHS)) {
     for (const effect of tech.effects || []) {
-      if (effect.type === "unlock_building" && effect.building !== "wall_section") map[effect.building] = tech.id;
+      if (effect.type === "unlock_building") map[effect.building] = tech.id;
     }
   }
   return map;
@@ -257,10 +256,13 @@ window.GameData.techForBuilding = function (buildingId) {
 /** A building's one-time cost, split across harvest/coin/lore in the same
  *  ratio as its unlocking tech's own costBreakdown, scaled to the
  *  building's own coinCost total. Returns null when there's no unlocking
- *  tech (wall_section) or that tech has no costBreakdown -- ai.js's
- *  buildingOption falls back to the legacy flat-coinCost model whenever
- *  this returns null, the same convention window.GameData.unitBuildCost
- *  already established for units. */
+ *  tech, or that tech has no costBreakdown -- ai.js's buildingOption falls
+ *  back to the legacy flat-coinCost model whenever this returns null, the
+ *  same convention window.GameData.unitBuildCost already established for
+ *  units (as of 2026-08-06 nothing actually falls back any more -- see
+ *  buildingOption's own doc comment -- kept only as a defensive path for a
+ *  hypothetical future building authored without a costBreakdown-bearing
+ *  unlock). */
 window.GameData.buildingBuildCost = function (buildingId) {
   const techId = window.GameData.techForBuilding(buildingId);
   if (!techId) return null;

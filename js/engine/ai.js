@@ -1038,9 +1038,17 @@ window.GameEngine = window.GameEngine || {};
     }, null).c;
   }
 
-  function maybeFoundCity(civ, gameState, weights, difficulty, log) {
+  /** `unitFilter` (2026-08-06, user-directed, optional): scopes this whole
+   *  pass to a SUBSET of the civ's pioneers -- added for Automate Actions,
+   *  which needs to drive exactly ONE automated pioneer through this same
+   *  logic (movement, idle-stall recovery, embark decisions, founding)
+   *  without also dragging every OTHER pioneer the human player still
+   *  controls directly through it. Every full-AI civ call site omits it
+   *  (defaults to null = no filter, unchanged "every pioneer" behavior). */
+  function maybeFoundCity(civ, gameState, weights, difficulty, log, unitFilter = null) {
     // Only act on pioneers not currently carried by another unit (e.g. aboard a galley)
-    const pioneers = civ.units.filter((u) => u.typeId === "pioneer" && !u.usedThisTurn && !u.carriedBy);
+    const pioneers = civ.units.filter((u) =>
+      u.typeId === "pioneer" && !u.usedThisTurn && !u.carriedBy && (!unitFilter || unitFilter(u)));
 
     // Halfellow Wanderer / Elf Druid: an ADDITIONAL settler option
     // (canFoundCity, a generic unit-data flag -- not hardcoded to one race's
@@ -1056,7 +1064,8 @@ window.GameEngine = window.GameEngine || {};
     if (pioneers.length === 0 && !civ.units.some((u) => u.typeId === "pioneer")) {
       const idleWanderer = civ.units.find((u) =>
         u.typeId !== "pioneer" && !u.usedThisTurn && !u.carriedBy
-        && window.GameData.getUnit(u.typeId).canFoundCity);
+        && window.GameData.getUnit(u.typeId).canFoundCity
+        && (!unitFilter || unitFilter(u)));
       if (idleWanderer) {
         const militaryUnits = civ.units.filter((u) =>
           window.GameData.getUnit(u.typeId).category === "military" && !u.carriedBy);
@@ -1264,6 +1273,23 @@ window.GameEngine = window.GameEngine || {};
             pioneer.usedThisTurn = true;
             pioneer.currentMission = `Holding at (${pioneer.x},${pioneer.y}) — no escort nearby, waiting before founding in contested land`;
             log.push(`Pioneer holding at (${pioneer.x},${pioneer.y}) — no escort and local threat detected, waiting before founding (${pioneer._escortWaitTurns}/${ESCORT_WAIT_CAP})`);
+            continue;
+          }
+          // Automate Actions (2026-08-06, user-directed): an automated
+          // pioneer never founds on its own -- everything ABOVE this point
+          // (movement, road-gap filling, escort-wait safety) still runs
+          // normally, since none of that spends resources or commits to
+          // anything irreversible; only the actual founding pauses here,
+          // staging the intent for main.js's offerNextPendingIntent to
+          // confirm (which reuses the SAME openFoundCityDialog flow the
+          // player's own "Found City" button already uses, so a confirmed
+          // automated founding gets identical naming/free-tech-choice
+          // treatment to a manual one).
+          if (pioneer.automated) {
+            pioneer.pendingIntent = { kind: "foundCity", label: `Found a city here at (${pioneer.x},${pioneer.y})` };
+            pioneer.usedThisTurn = true;
+            pioneer.currentMission = "Proposing to found a city here — awaiting confirmation";
+            log.push(`Pioneer proposing to found a city at (${pioneer.x},${pioneer.y}) — awaiting player confirmation`);
             continue;
           }
           delete pioneer._escortWaitTurns;
@@ -2512,11 +2538,11 @@ window.GameEngine = window.GameEngine || {};
   // build/research pace down, lower it to speed everything up together.
   // Only affects units built through the power-based system (i.e. anything
   // whose unlocking tech has a costBreakdown to derive a resource split
-  // from -- every real combat unit across every race). Pioneer/Galley/
-  // Scout have a real unlocking tech now too (Tier 0's shared_infrastructure)
-  // but it has no costBreakdown, so unitBuildCost still returns null for
-  // them and they stay on the separate flat-coinCost accumulation path,
-  // same as wall_section -- untouched by this constant either way.
+  // from). As of 2026-08-06 that's EVERY unit and building, including
+  // Pioneer/Galley/Scout (each via its own Level 0 tech --
+  // pioneer_infrastructure/distant_shores/distant_horizons) and
+  // wall_section -- nothing is left on the legacy flat-coinCost
+  // accumulation path any more.
   const BUILD_SLOWNESS = window.GameConfig.pacing.slowness;
 
   /** How fast this civ turns unit power into finished units -- industriousness
@@ -2550,9 +2576,10 @@ window.GameEngine = window.GameEngine || {};
    *  military production decision (the same reasoning cities.js's own
    *  fill-rate and this file's raceUnitBuildRate already document for
    *  industriousness as a trait). minBuildTurns (currently only
-   *  wall_section, which never reaches this function anyway since it has no
-   *  unlocking tech) is honored as a hard floor for consistency with the
-   *  legacy model, in case a future building ever combines the two. */
+   *  wall_section, which DOES reach this function as of 2026-08-06 -- see
+   *  buildings.js's _TECH_FOR_BUILDING) is honored as a hard floor so a
+   *  wealthy city still can't insta-build a wall just because it can now
+   *  pay the (small) cost up front in one turn. */
   function buildingBuildTurns(civ, buildingId) {
     const building = window.GameData.getBuilding(buildingId);
     const race = window.GameData.getRace(civ.raceId);
@@ -2769,8 +2796,9 @@ window.GameEngine = window.GameEngine || {};
    *   - Legacy flat coinCost: coin-income-accumulation behavior via
    *     progressBuildQueue. As of 2026-08-05 no unit actually falls back to
    *     this any more -- Pioneer/Galley/Scout (the last 3 that used to)
-   *     now resolve to shared_infrastructure's own costBreakdown, same as
-   *     every other unit -- kept only as a defensive path for a
+   *     now resolve to their own Level 0 tech's costBreakdown
+   *     (pioneer_infrastructure/distant_shores/distant_horizons, 2026-08-06),
+   *     same as every other unit -- kept only as a defensive path for a
    *     hypothetical future tech authored without a costBreakdown.
    * `unitCostMult` is the war-economy discount (e.g. Orc War Camp),
    * applied up front here instead of retroactively.
@@ -2942,15 +2970,20 @@ window.GameEngine = window.GameEngine || {};
     // Walls are not part of the race roster and can be built repeatedly, so
     // they're enumerated separately -- once per distinct wall building that
     // still has somewhere to go. Never gated by unlockedBuildings (universal,
-    // every race) and never on the modern cost model (no unlocking tech, so
-    // GameData.buildingBuildCost always returns null for these -- see
-    // buildingOption's own fallback).
+    // every race), but AS OF 2026-08-06 (user-directed) walls DO use the
+    // modern up-front-payment cost model, same as everything else -- see
+    // buildingOption/GameData.buildingBuildCost, and buildings.js's
+    // _TECH_FOR_BUILDING doc comment for why wall_section now resolves to
+    // pioneer_infrastructure's costBreakdown. affordable is computed exactly
+    // like the race-roster loop above (no longer hardcoded true).
     for (const wallId of Object.keys(window.GameData.BUILDINGS || {})) {
       const b = window.GameData.getBuilding(wallId);
       if (!b || !b.isWall) continue;
       const slots = window.GameEngine.cities.validStructureSlots(city, civ, map, wallId, civs);
       if (!slots.length) continue;
-      out.push({ ...buildingOption(civ, wallId), slots, affordable: true });
+      const wallOption = buildingOption(civ, wallId);
+      const wallAffordable = wallOption.cost ? canAffordBuildCost(civ, wallOption.cost) : true;
+      out.push({ ...wallOption, slots, affordable: wallAffordable });
     }
 
     return out;
@@ -3664,9 +3697,17 @@ window.GameEngine = window.GameEngine || {};
       const wallMechanicBonus = ["ramparts", "rouse_the_people", "hedge_walls"]
         .filter((m) => civ.unlockedMechanics && civ.unlockedMechanics.has(m)).length;
       const wallMult = 1 + wallMechanicBonus;
-      options.push({ kind: "building", id: "wall_section",
-        coinCost: window.GameData.getBuilding("wall_section").coinCost,
-        score: ((militarism + industriousness) / 2) * 12 * wallMult });
+      // Modern up-front-payment cost (2026-08-06, user-directed) -- routes
+      // through the same buildingOption every other building option in
+      // this function already uses, rather than hardcoding the legacy
+      // coinCost shape directly. Gated on affordability here, same
+      // convention Cultural Influence just below already follows -- an
+      // unaffordable option shouldn't win this slot and then silently fail
+      // to queue.
+      const wallOption = buildingOption(civ, "wall_section");
+      if (!wallOption.cost || canAffordBuildCost(civ, wallOption.cost)) {
+        options.push({ ...wallOption, score: ((militarism + industriousness) / 2) * 12 * wallMult });
+      }
     }
 
     // "Cultural Influence" (2026-07-21, user-directed): the tech-tree
@@ -3726,7 +3767,7 @@ window.GameEngine = window.GameEngine || {};
         || findNearestCoastalWaterFor(city.x, city.y, map, 10);
       if (waterSpot) { spawnX = waterSpot.x; spawnY = waterSpot.y; }
       // If still no water found, defer completion — don't strand galley on land
-      if (spawnX === city.x && spawnY === city.y) return false;
+      if (spawnX === city.x && spawnY === city.y) return null;
     } else {
       // Land unit: the city's own tile is the default spawn point, but if
       // another unit is already standing there (a garrison, a unit that
@@ -3771,7 +3812,28 @@ window.GameEngine = window.GameEngine || {};
     // Pacing: once a civ's first-ever military unit actually completes, the
     // double-speed build bonus (see buildUnitOption) turns off for good.
     if (!civ._firstMilitaryBuilt && unitData.category === "military") civ._firstMilitaryBuilt = true;
-    return true;
+    // Returns the spawned unit itself, not just a bare success flag
+    // (2026-08-06, user-directed) -- progressBuildQueue's two call sites use
+    // it to queue a "Unit Built" notice for the human player (see
+    // civ.pendingUnitBuiltNotices). Every existing caller only ever checked
+    // truthiness (`if (!spawnUnitInCity(...))`), so returning the unit
+    // object here instead of `true` doesn't change any of them.
+    return newUnit;
+  }
+
+  /** Queues a "Unit Built" notice for main.js's finishRoundBookkeeping to
+   *  show the human player (2026-08-06, user-directed) -- an ARRAY, not a
+   *  single `civ.lastBuiltUnit` field, because unlike tech (a civ can only
+   *  ever research one thing at a time) a civ can easily have several
+   *  cities each finish a unit in the SAME round; an array lets every one
+   *  of them get its own modal (see main.js's offerNextUnitBuiltNotice)
+   *  instead of silently dropping all but the last. Set unconditionally for
+   *  every civ (cheap, harmless for AI civs) -- same convention
+   *  civ.lastCompletedTech already uses -- since only main.js's human-civ
+   *  check ever actually reads it. */
+  function queueUnitBuiltNotice(civ, city, unit) {
+    civ.pendingUnitBuiltNotices = civ.pendingUnitBuiltNotices || [];
+    civ.pendingUnitBuiltNotices.push({ cityName: city.name, unit });
   }
 
   function progressBuildQueue(civ, city, gameState, log) {
@@ -3795,20 +3857,24 @@ window.GameEngine = window.GameEngine || {};
         city.buildQueue = null;
         return;
       }
-      if (!spawnUnitInCity(civ, city, item.id, gameState)) return; // naval retry next turn
+      const spawnedUnit = spawnUnitInCity(civ, city, item.id, gameState);
+      if (!spawnedUnit) return; // naval retry next turn
+      queueUnitBuiltNotice(civ, city, spawnedUnit);
       log.push(`Build complete: ${city.name} produced ${item.id}`);
       city.buildQueue = null;
       return;
     }
 
     const coinThisTurn = city.lastYield ? city.lastYield.coin : 0;
-    // minBuildTurns (buildings only, e.g. wall_section) puts a hard floor on
-    // completion time independent of the city's coin income -- a wealthy city
-    // can't just insta-build a wall in one turn. Ordinary buildings (no
-    // minBuildTurns set) are unaffected, advancing at the full coin rate
-    // exactly as before. Any unit still on a legacy flat coinCost (none, as
-    // of 2026-08-05 -- see buildUnitOption's own doc comment) would also
-    // still flow through here, unchanged.
+    // Legacy coin-accumulation branch -- as of 2026-08-06 nothing actually
+    // reaches this any more (wall_section, the last item still on the
+    // legacy flat-coinCost model, now pays up front like every unit/tech/
+    // building -- see buildings.js's _TECH_FOR_BUILDING doc comment).
+    // Left in place as a defensive fallback for a hypothetical future
+    // unit/building authored without a costBreakdown-bearing unlock, same
+    // as buildUnitOption's own now-unreachable coinCost branch. minBuildTurns
+    // would still put a hard floor on completion time independent of coin
+    // income if anything ever did land here again.
     const building = item.kind === "building" ? window.GameData.getBuilding(item.id) : null;
     const progressCap = building && building.minBuildTurns
       ? item.coinCost / building.minBuildTurns
@@ -3817,7 +3883,9 @@ window.GameEngine = window.GameEngine || {};
     if (item.progress >= item.coinCost) {
       if (item.kind === "unit") {
         const extra = item.closestSpot ? { _useClosestSpotSettle: true } : undefined;
-        if (!spawnUnitInCity(civ, city, item.id, gameState, extra)) return; // naval retry next turn
+        const spawnedUnit = spawnUnitInCity(civ, city, item.id, gameState, extra);
+        if (!spawnedUnit) return; // naval retry next turn
+        queueUnitBuiltNotice(civ, city, spawnedUnit);
         log.push(`Build complete: ${city.name} produced ${item.id}`);
       } else {
         // Buildings are external structures placed on a tile adjacent to the
@@ -6395,11 +6463,30 @@ window.GameEngine = window.GameEngine || {};
    *  unitBuildTurns exactly like a city's build queue does (see
    *  progressDruidSummon). Returns true if it started (consumes the Druid's
    *  turn); false if unaffordable. */
-  function startDruidSummon(civ, druid, unitId, gameState, log) {
+  /** `confirmed` (2026-08-06, user-directed, default false): an automated
+   *  Druid never actually spends the civ's stockpile on its own -- see the
+   *  gate just below, which stages the intent (druid.pendingIntent) and
+   *  returns without spending instead. main.js's offerNextPendingIntent
+   *  re-calls this SAME function with confirmed:true once the player
+   *  approves, which skips straight past the gate to the real spend --
+   *  same "propose once, re-invoke to commit" shape the attack gates in
+   *  considerAttackOrGarrison use via opts.forcedTarget. */
+  function startDruidSummon(civ, druid, unitId, gameState, log, confirmed = false) {
     const race = window.GameData.getRace(civ.raceId);
     if (!canAffordUnitUpkeep(civ, unitId, race)) return false;
     const cost = window.GameData.unitBuildCost(unitId);
     if (!cost || !canAffordBuildCost(civ, cost)) return false;
+    if (druid.automated && !confirmed) {
+      druid.pendingIntent = {
+        kind: "summon",
+        label: `Summon a ${unitId}`,
+        summonUnitId: unitId,
+      };
+      druid.usedThisTurn = true;
+      druid.currentMission = `Proposing to summon a ${unitId} — awaiting confirmation`;
+      log.push(`Druid proposing to summon a ${unitId} at (${druid.x},${druid.y}) — awaiting player confirmation`);
+      return true; // consumes the turn either way -- same "decided, just paused" contract as the attack gates
+    }
     civ.stockpile = civ.stockpile || { harvest: 0, coin: 0, lore: 0 };
     for (const [k, v] of Object.entries(cost)) civ.stockpile[k] = Math.max(0, (civ.stockpile[k] || 0) - v);
     const turns = unitBuildTurns(civ, unitId);
@@ -9627,6 +9714,30 @@ window.GameEngine = window.GameEngine || {};
     if (opts.forcedTarget && bestTarget === opts.forcedTarget) bestScore = Infinity;
 
     if (bestTarget && bestScore > 5) {
+      // Automate Actions (2026-08-06, user-directed): an automated unit's
+      // own decision process never fires the attack itself -- it stages
+      // what it WOULD do (unit.pendingIntent) and waits for the player to
+      // confirm via main.js's offerNextPendingIntent, which re-invokes this
+      // exact function with opts.forcedTarget set once confirmed (see
+      // orders.js's attack()) -- that's what the `!opts.forcedTarget` guard
+      // lets through unchanged. Every OTHER caller (a non-automated unit,
+      // or a full AI civ, neither of which ever sets unit.automated) is
+      // completely unaffected.
+      if (unit.automated && !opts.forcedTarget) {
+        unit.pendingIntent = {
+          kind: "attack",
+          label: `Attack ${describeUnit(bestTarget)} at (${bestTarget.x},${bestTarget.y})`,
+          target: { kind: "unit", unit: bestTarget, civ: civs[bestTarget.civId] },
+        };
+        // usedThisTurn stops the outer runUnitTurn loop from also moving/
+        // acting this same turn (its own attacked||usedThisTurn check) --
+        // otherwise the unit could wander off before the player confirms,
+        // stranding a target that's no longer adjacent. Same convention the
+        // maybeFoundCity/startDruidSummon gates below already use.
+        unit.usedThisTurn = true;
+        unit.currentMission = `Proposing to attack ${describeUnit(bestTarget)} — awaiting confirmation`;
+        return false;
+      }
       const defenderCiv = civs[bestTarget.civId];
       const combatContext = {
         attackerGarrisoned: isGarrisoned(unit, civ),
@@ -9934,6 +10045,19 @@ window.GameEngine = window.GameEngine || {};
     }
 
     if (bestCity && bestCityScore >= bestStructScore) {
+      // Automate Actions gate -- see the unit-attack branch above for the
+      // full explanation, same pattern here (opts.forcedCity is the
+      // confirmed-bypass signal, matching orders.js's attack()).
+      if (unit.automated && !opts.forcedCity) {
+        unit.pendingIntent = {
+          kind: "attack",
+          label: `Attack ${bestCity.civ.id}'s city "${bestCity.city.name}" at (${bestCity.city.x},${bestCity.city.y})`,
+          target: { kind: "city", city: bestCity.city, civ: bestCity.civ },
+        };
+        unit.usedThisTurn = true;
+        unit.currentMission = `Proposing to attack "${bestCity.city.name}" — awaiting confirmation`;
+        return false;
+      }
       window.GameEngine.quips.maybeQuip(unit, civ, "attack", gameState);
     window.SfxSystem.playAction(civ.raceId, unit.typeId, "attack", unit.x, unit.y);
       const result = window.GameEngine.combat.attackCity(unit, bestCity.city, civ, bestCity.civ, gameState);
@@ -10014,6 +10138,19 @@ window.GameEngine = window.GameEngine || {};
       return true;
     }
     if (bestStruct) {
+      // Automate Actions gate -- see the unit-attack branch above for the
+      // full explanation, same pattern here (opts.forcedStructure is the
+      // confirmed-bypass signal, matching orders.js's attack()).
+      if (unit.automated && !opts.forcedStructure) {
+        unit.pendingIntent = {
+          kind: "attack",
+          label: `Attack ${bestStruct.s.civ.id}'s ${bestStruct.s.record.id} at (${bestStruct.x},${bestStruct.y})`,
+          target: { kind: "structure", structure: bestStruct.s, civ: bestStruct.s.civ },
+        };
+        unit.usedThisTurn = true;
+        unit.currentMission = `Proposing to attack a ${bestStruct.s.record.id} — awaiting confirmation`;
+        return false;
+      }
       window.GameEngine.quips.maybeQuip(unit, civ, "attack", gameState);
     window.SfxSystem.playAction(civ.raceId, unit.typeId, "attack", unit.x, unit.y);
       const res = window.GameEngine.combat.attackStructure(unit, bestStruct.s.record, civ, bestStruct.s.civ, gameState);
@@ -10524,6 +10661,62 @@ window.GameEngine = window.GameEngine || {};
     return true;
   }
 
+  /**
+   * Automate Actions (2026-08-06, user-directed): lightweight per-unit
+   * priming for a single human-owned unit flagged unit.automated. Deliberately
+   * does NOT run the full beginAITurn (civ-wide strategy/doctrine/invasion
+   * targeting, etc.) -- this is one player-owned unit acting on its own, not
+   * a whole AI civ's turn. Stamps only what runUnitTurn/maybeFoundCity
+   * actually read off the unit or module-level closure state: move mods for
+   * pathfinding, tickConditions, and the currentTurnNumber/currentGameStateRef
+   * refs several combat/quip helpers above read instead of taking a param.
+   */
+  function primeUnitForAutomation(unit, civ, gameState) {
+    unit._moveMods = {
+      terrainOverride: civ.terrainMoveOverride || {},
+      terrainBonus: civ.terrainMoveBonus || {},
+      unitTerrainBonus: civ.unitTerrainMoveBonus || {},
+      unitOverrides: civ.unitOverrides || {},
+      canTunnel: !!civ.canTunnelMountains,
+    };
+    const turnNumber = gameState.turnNumber || 0;
+    currentTurnNumber = turnNumber;
+    currentGameStateRef = gameState;
+    window.GameEngine.combat.tickConditions(unit, turnNumber, gameState.map);
+  }
+
+  /**
+   * Runs one automated (unit.automated) human-owned unit's turn by reusing
+   * the real AI decision logic -- see the unit.automated && !opts.forcedX
+   * confirmation gates threaded into considerAttackOrGarrison/maybeFoundCity/
+   * startDruidSummon, which stage unit.pendingIntent instead of acting when
+   * THIS unit specifically is automated. main.js's offerNextPendingIntent
+   * drains those for a blocking player confirmation. Called once per turn
+   * from turns.js's finishCivTurn, the same lifecycle slot as the goto-order
+   * continuation (after that civ-turn's usedThisTurn/movesRemaining reset).
+   * Pioneers are wholly owned by maybeFoundCity (runUnitTurn explicitly no-
+   * ops for typeId === "pioneer"); canFoundCity non-pioneers (Druid/Wanderer)
+   * fall through to runUnitTurn if maybeFoundCity leaves them unused, same as
+   * the real AI's maybeMoveUnits dispatch does.
+   */
+  function runAutomatedUnitTurn(civ, unit, gameState, log) {
+    if (unit.pendingIntent) return; // still awaiting confirmation from a prior turn
+    if (unit.hp <= 0 || unit.carriedBy) return;
+    if (unit.usedThisTurn || unit.gotoTarget || unit.channeling) return;
+    primeUnitForAutomation(unit, civ, gameState);
+    const weights = racialWeights(civ);
+    const difficulty = "normal";
+    const baseUnit = window.GameData.getUnit(unit.typeId);
+    if (unit.typeId === "pioneer" || baseUnit.canFoundCity) {
+      maybeFoundCity(civ, gameState, weights, difficulty, log, (u) => u === unit);
+      if (unit.typeId !== "pioneer" && !unit.usedThisTurn && civ.units.includes(unit)) {
+        runUnitTurn(civ, unit, gameState, weights, difficulty, log);
+      }
+      return;
+    }
+    runUnitTurn(civ, unit, gameState, weights, difficulty, log);
+  }
+
   window.GameEngine.ai = {
     runAITurn,
     beginAITurn,
@@ -10605,5 +10798,9 @@ window.GameEngine = window.GameEngine || {};
     canAttackUnitNow,
     considerAttackOrGarrison,
     availableBuilds,
+    maybeFoundCity,
+    startDruidSummon,
+    primeUnitForAutomation,
+    runAutomatedUnitTurn,
   };
 })();

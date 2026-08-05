@@ -444,6 +444,16 @@ window.UI = window.UI || {};
         if (turnsIn > 0) {
           channelActions += `<div class="stat-row"><span>${CHANNEL_LABELS[unit.channeling]}</span><span>${turnsIn} turn${turnsIn === 1 ? "" : "s"}</span></div>`;
         }
+        // Claim Gathered Resources (2026-08-06, user-directed): a clean
+        // voluntary stop that BANKS whatever's accumulated in
+        // unit._channelStash into the civ's stockpile -- mirrors ai.js's
+        // maybeCashOutChannel (the AI's own "voluntary stop" path), just
+        // triggered by the player instead of a value/danger heuristic.
+        // Distinct from "Cancel" below, which is a FORCED-style
+        // interruption that forfeits the stash entirely (turns.js's own
+        // documented rule) -- both stay available side by side so the
+        // player can choose collect-and-stop vs. just-abandon.
+        channelActions += `<button id="claim-channel-btn" class="action-btn">Claim Gathered Resources</button>`;
         channelActions += `<button id="cancel-channel-btn" class="action-btn action-btn-danger">Cancel ${CHANNEL_LABELS[unit.channeling]}</button>`;
       } else if (!unit.usedThisTurn) {
         const onVein = tile.resource === "gold" || tile.resource === "iron";
@@ -618,7 +628,7 @@ window.UI = window.UI || {};
       turnStatus = `
         <div class="stat-row"><span>Movement Left</span><span>${escapeHtml(moveText)}</span></div>
         <div class="stat-row"><span>Action</span><span${unit.usedThisTurn ? ' style="opacity:0.6"' : ''}>${actionText}</span></div>
-        <div class="stat-row"><em style="opacity:0.7">Right-click the map to move or attack</em></div>`;
+        <div class="stat-row"><em style="opacity:0.7">Right-click the map for a menu of actions</em></div>`;
     }
 
     const canRest = isHumanUnit && !unit.usedThisTurn;
@@ -629,6 +639,24 @@ window.UI = window.UI || {};
     const canDefend = isHumanUnit && !unit.usedThisTurn;
     const defendBtn = canDefend ? `<button id="defend-unit-btn" class="action-btn">Defend</button>` : '';
     const disbandBtn = isHumanUnit ? `<button id="disband-unit-btn" class="action-btn action-btn-danger">Disband Unit</button>` : '';
+    // Stop Order (2026-08-06, user-directed): a sidebar-reachable twin of
+    // the context menu's own "Stop" entry (right-click the unit's own
+    // tile) -- discoverable without knowing that trick, for a unit
+    // currently mid-way through a queued multi-turn move/build-road order.
+    const stopOrderBtn = (isHumanUnit && unit.gotoTarget)
+      ? `<button id="stop-order-btn" class="action-btn action-btn-danger">Stop Order</button>` : '';
+
+    // Automate Actions (2026-08-06, user-directed): hands this unit's turn-
+    // by-turn decisions to the real AI logic (see ai.js's
+    // runAutomatedUnitTurn/turns.js's finishCivTurn hook), gated only on
+    // "player's own unit" -- no unit-type restriction, same as the pioneer/
+    // combat/summon confirmation gates threaded into the AI functions
+    // themselves. Turning it off also drops any pendingIntent still
+    // awaiting confirmation -- a no-longer-automated unit shouldn't have a
+    // stale proposal hanging over it.
+    const automateBtn = isHumanUnit
+      ? `<button id="automate-actions-btn" class="action-btn${unit.automated ? " action-btn-danger" : ""}">${unit.automated ? "Stop Automating" : "Automate Actions"}</button>`
+      : '';
 
     // Spectator-only: every unit in a spectator game is AI-controlled, so
     // ai.js stamps a human-readable currentMission on it each turn (see
@@ -638,9 +666,37 @@ window.UI = window.UI || {};
     // Coordinates inside the mission text become clickable jumps to that
     // tile -- see linkifyCoords for why this is done on the rendered string
     // rather than by restructuring ai.js's mission strings.
+    // "Order" row (2026-08-06, user-directed): a human unit can now ALSO be
+    // mid-way through a multi-turn goto order (move/build-road-to -- see
+    // orders.js's advanceGotoOrder, which sets currentMission every turn
+    // it advances) that keeps executing automatically with no further
+    // clicks -- distinct label from Spectator's "Mission" above so it
+    // never reads as "this unit is AI-controlled now", just "here's what
+    // it's already been told to do." Only shown while an order is
+    // actually pending; a human unit with nothing queued gets no row at
+    // all (unlike Spectator's permanent "Awaiting orders" fallback --
+    // there's no ambiguity to resolve for a player-directed unit that's
+    // simply idle).
+    // "Intent" row (2026-08-06, user-directed): an automated human unit's
+    // equivalent of Spectator's "Mission" row above -- shows what the real
+    // AI logic decided this unit should do, or (if it just staged a
+    // pendingIntent awaiting confirmation -- see ai.js's unit.automated
+    // gates / main.js's offerNextPendingIntent) that proposal specifically,
+    // so the player can see it's waiting on them even outside the modal.
+    // Ranked below a manual "Order" row: a player-issued goto order on an
+    // automated unit is a deliberate one-off override and takes visible
+    // priority until it finishes, same as it silently does functionally
+    // (advanceGotoOrder runs regardless of unit.automated).
     const missionTag = (!viewState.humanCivId)
       ? `<div class="stat-row"><span>Mission</span><span>${linkifyCoords(unit.currentMission || 'Awaiting orders')}</span></div>`
-      : '';
+      : (isHumanUnit && unit.gotoTarget)
+        ? `<div class="stat-row"><span>Order</span><span>${linkifyCoords(unit.currentMission
+            || (unit.gotoTarget.buildRoad
+              ? `Building a road to (${unit.gotoTarget.x},${unit.gotoTarget.y})`
+              : `Moving to (${unit.gotoTarget.x},${unit.gotoTarget.y})`))}</span></div>`
+        : (isHumanUnit && unit.automated)
+          ? `<div class="stat-row"><span>Intent</span><span>${linkifyCoords(unit.pendingIntent ? unit.pendingIntent.label : (unit.currentMission || 'Awaiting orders'))}</span></div>`
+          : '';
 
     return `
       <div class="panel">
@@ -663,8 +719,10 @@ window.UI = window.UI || {};
         ${pioneerActions}
         ${channelActions}
         ${stealthActions}
+        ${stopOrderBtn}
         ${restBtn}
         ${defendBtn}
+        ${automateBtn}
         ${disbandBtn}
       </div>`;
   }

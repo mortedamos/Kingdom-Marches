@@ -746,7 +746,7 @@ html, body {
 .techtree-close-btn:hover { border-color: var(--accent); }
 .techtree-layer {
   display: grid;
-  grid-template-columns: 40px repeat(3, 1fr);
+  grid-template-columns: 76px repeat(3, 1fr);
   gap: 8px;
   padding: 8px 0;
   border-top: 1px solid var(--border);
@@ -759,6 +759,55 @@ html, body {
   padding-top: 6px;
 }
 .techtree-header { border-top: none; padding-bottom: 4px; }
+/* Collapsible layer rows (2026-08-06, user-directed) -- click "Level N" to
+   toggle; see main.js's data-toggle-layer wiring / techtree.js's render(). */
+.techtree-layer-toggle {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+  user-select: none;
+}
+.techtree-layer-toggle:hover { color: var(--text-main); }
+.techtree-arrow {
+  display: inline-block;
+  font-size: 10px;
+  transition: transform 0.15s ease;
+}
+.techtree-arrow-expanded { transform: rotate(90deg); }
+
+/* Map right-click context menu (2026-08-06, user-directed) -- see
+   js/ui/contextmenu.js. Floating near the cursor, NOT a full-screen
+   overlay like the modal panels (.techtree-overlay etc.). */
+.map-context-menu {
+  position: fixed;
+  z-index: 500;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  background: var(--bg-panel-raised);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 4px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+  min-width: 180px;
+}
+.map-context-menu-item {
+  background: transparent;
+  border: none;
+  color: var(--text-main);
+  text-align: left;
+  padding: 7px 10px;
+  border-radius: 3px;
+  cursor: pointer;
+  font-size: 13px;
+  font-family: inherit;
+}
+.map-context-menu-item:hover { background: var(--bg-panel); border-color: var(--accent); color: var(--accent); }
+/* Danger actions (2026-08-06) -- Cancel*/Disband/Stop Order -- same red as
+   sidebar.js's .action-btn-danger. */
+.map-context-menu-item-danger { color: #d98a8a; }
+.map-context-menu-item-danger:hover { background: var(--bg-panel); color: #d98a8a; }
 .techtree-column-title {
   color: var(--accent);
   font-size: 13px;
@@ -949,6 +998,9 @@ html, body {
 .game-dialog-choices { display: flex; flex-direction: column; gap: 8px; margin: 4px 0 4px 0; }
 .game-dialog-choice-label { font-weight: 600; }
 .game-dialog-choice-desc { font-size: 11px; color: var(--text-dim); margin-top: 2px; }
+/* Tech-researched / unit-built announcements (2026-08-06, user-directed). */
+.game-dialog-tech-name { font-weight: 600; font-size: 14px; color: var(--accent); }
+.game-dialog-unlocked-label { font-weight: 600; margin: 8px 0 2px 0; }
 .game-dialog-primary { background: var(--accent); border-color: var(--accent); color: #1a1a1a; }
 .game-dialog-primary:hover { background: var(--accent-hover); }
 /* Destructive confirm (2026-08-04, user-directed) -- e.g. Disband Unit --

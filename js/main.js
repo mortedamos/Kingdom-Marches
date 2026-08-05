@@ -29,6 +29,13 @@
   let lastRenderedReportKey = null;
   let lastRenderedDialog = null;
 
+  // Dialog kinds that ask "are you sure you want to do this?" -- see
+  // redraw()'s dialog block, which plays system_confirm_action.mp3 the
+  // instant one of these is first shown. Deliberately excludes the purely
+  // informational kinds (message/techResearched/unitBuilt) and the N-way
+  // "chooseTech" picker.
+  const CONFIRM_ACTION_DIALOG_KINDS = new Set(["confirm", "confirmEndTurn", "foundCity", "confirmAutomatedAction"]);
+
   // --- Title screen music ---
   // Place your track at assets/music/title.mp3.
   let titleAudio = null;
@@ -427,6 +434,8 @@
     });
 
     setupLaunchOptionsOverlay();
+    setupContextMenuDismissal();
+    setupButtonClickSfx();
   }
 
   /** Open/close wiring for the launch options modal. Closing is deliberately
@@ -453,6 +462,48 @@
     overlay.addEventListener("mousedown", (e) => { if (e.target === overlay) close(); });
     document.addEventListener("keydown", (e) => {
       if (e.key === "Escape" && overlay.style.display === "flex") close();
+    });
+  }
+
+  /** Dismissal wiring for the map context menu (2026-08-06, user-directed):
+   *  registered ONCE at bootstrap (safe pre-game -- both listeners no-op
+   *  until viewState.contextMenu is actually set), same convention
+   *  setupLaunchOptionsOverlay uses for its own open/close wiring, rather
+   *  than re-registering a fresh document listener every redraw(). A click
+   *  anywhere outside the menu itself, or Escape, closes it without acting
+   *  -- picking an option is the only thing that DOES act (see
+   *  handleContextMenuAction). */
+  function setupContextMenuDismissal() {
+    document.addEventListener("mousedown", (e) => {
+      if (!viewState || !viewState.contextMenu) return;
+      const root = $("map-context-menu-root");
+      if (root && root.contains(e.target)) return; // let the menu's own click-through happen
+      viewState.contextMenu = null;
+      redraw();
+    });
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape" && viewState && viewState.contextMenu) {
+        viewState.contextMenu = null;
+        redraw();
+      }
+    });
+  }
+
+  /** Global "click" sfx (2026-08-06, user-directed): ANY button anywhere in
+   *  the app plays system_button_click.mp3 -- registered ONCE, on `document`,
+   *  using event bubbling, rather than wiring it into every individual
+   *  button's own onclick. This is deliberately the only way to satisfy
+   *  "any time a button is clicked": most buttons here are rebuilt from
+   *  scratch on every innerHTML redraw (sidebar, dialogs, tech tree, the map
+   *  context menu, ...), so a per-button listener would have to be
+   *  re-registered on every single rebuild and would be trivial to miss one
+   *  of. e.target.closest("button") catches a click landing on a button's
+   *  own child element (an icon/span inside it) too, not just the exact
+   *  node. A disabled button never fires a click event at all, so those are
+   *  already excluded for free. */
+  function setupButtonClickSfx() {
+    document.addEventListener("click", (e) => {
+      if (e.target.closest("button")) window.SfxSystem.playButtonClick();
     });
   }
 
@@ -693,22 +744,29 @@
         // Each race's 4 buildings are now gated by that race's tech tree (see techs.js
         // building-column nodes) rather than unlocked at civ creation.
         // unlockedUnits/unlockedBuildings start EMPTY now (2026-08-04) --
-        // Pioneer/Galley/Scout/Wall all come from shared_infrastructure's
+        // Pioneer/Galley/Scout/Wall all come from the Level 0 techs' own
         // effects just below instead of a hardcoded starting set.
         unlockedUnits: new Set(),
         unlockedBuildings: new Set(),
         civicInfluenceBonus: 0, radiusBonus: 0, usedCityNames: [],
       };
-      // TIER 0 (2026-08-04, user-directed): the only tech ever auto-
-      // completed for free at creation now -- see techs.js's
-      // shared_infrastructure for the full reasoning. Notably,
+      // LEVEL 0 (2026-08-06, user-directed): every layer-0 tech for this
+      // race is auto-completed for free at creation -- pioneer_infrastructure/
+      // distant_horizons/distant_shores/hunt_game/farm_soil today, but
+      // computed dynamically (by layer, not a hardcoded id list) so any
+      // future Level 0 tech is automatically free too, matching the design
+      // rule "Level 0 = always granted, never researched." Notably,
       // race.startingTech (each race's own signature Layer-1 combat unit --
-      // Raider, Spearguard, etc.) is deliberately NOT auto-completed here
-      // anymore; it's now a normal tech that has to actually be researched,
-      // same as everything else at its layer. Scout is the civ's only
-      // quasi-combat capability until that finishes.
-      civ.completedTechs.add("shared_infrastructure");
-      window.GameEngine.tech.applyTechEffects(civ, window.GameData.getTech("shared_infrastructure"));
+      // Raider, Spearguard, etc.) is deliberately NOT auto-completed here;
+      // it's a normal tech that has to actually be researched, same as
+      // everything else at its layer. Scout is the civ's only quasi-combat
+      // capability until that finishes.
+      const levelZeroTechs = window.GameData.techsForRace(raceId)
+        .filter((id) => window.GameData.getTech(id).layer === 0);
+      for (const techId of levelZeroTechs) {
+        civ.completedTechs.add(techId);
+        window.GameEngine.tech.applyTechEffects(civ, window.GameData.getTech(techId));
+      }
       // Registered in `civs` now rather than at the end of this loop
       // (2026-08-03) so buildOccupancySet/findClosestOpenPlacementTile
       // below can see THIS civ's own starting units as they're placed one
@@ -1425,9 +1483,20 @@
         x: first.x, y: first.y, tabKind: "unit",
       });
     }
-    if (!civ.currentResearch) items.push({ text: "No research selected" });
+    // Affordability-gated (2026-08-05, user-directed): a civ that simply
+    // can't afford ANY currently-available tech, or a city that can't
+    // afford ANY currently-available build, has nothing it could actually
+    // do about "no research selected"/"not building anything" right now --
+    // nagging about it every turn would just be noise until income catches
+    // up. window.GameEngine.ai.availableBuilds already tags every option
+    // with `affordable` (see its own doc comment).
+    if (!civ.currentResearch && window.GameEngine.tech.hasAffordableResearch(civ)) {
+      items.push({ text: "No research selected" });
+    }
     for (const c of civ.cities) {
-      if (!c.buildQueue) items.push({ text: `${c.name} is not building anything`, x: c.x, y: c.y, tabKind: "city" });
+      if (!c.buildQueue && window.GameEngine.ai.availableBuilds(civ, c, gameState).some((o) => o.affordable)) {
+        items.push({ text: `${c.name} is not building anything`, x: c.x, y: c.y, tabKind: "city" });
+      }
     }
     return items;
   }
@@ -1435,7 +1504,13 @@
   function offerHumanSettling(onDone) {
     if (!humanCivId) { onDone(); return; }
     const civ = gameState.civs[humanCivId];
-    const eligible = civ.units.filter((u) => u.typeId === "pioneer"
+    // Automated pioneers (2026-08-06, user-directed) are excluded here --
+    // they get their OWN founding confirmation, staged as unit.pendingIntent
+    // by ai.js's maybeFoundCity and drained one at a time by
+    // offerNextPendingIntent (see finishRoundBookkeeping), so this
+    // end-of-turn sweep doesn't double-prompt the same pioneer through two
+    // different dialog flows in a row.
+    const eligible = civ.units.filter((u) => u.typeId === "pioneer" && !u.automated
       && window.GameEngine.cities.canFoundCityAt(gameState.map, gameState.civs, u.x, u.y, civ.raceId).ok);
     offerNextSettler(civ, eligible, 0, onDone);
   }
@@ -1532,6 +1607,7 @@
     if (!civ || unit.civId !== humanCivId) return;
     if (!window.GameData.getUnit(unit.typeId).canFoundCity) return;
     if (!window.GameEngine.cities.canFoundCityAt(gameState.map, gameState.civs, unit.x, unit.y, civ.raceId).ok) return;
+    unit.gotoTarget = null; // a fresh order supersedes any queued goto (2026-08-06)
     openFoundCityDialog(civ, unit, () => redraw());
   }
 
@@ -1543,15 +1619,36 @@
   function finishRoundBookkeeping(victoryResult) {
     if (humanCivId) {
       const civ = gameState.civs[humanCivId];
-      if (civ.lastCompletedTech) {
+      const finishedTechId = civ.lastCompletedTech;
+      civ.lastCompletedTech = null;
+      if (finishedTechId) {
         window.MusicSystem.notifySituation("discovery", true);
-        civ.lastCompletedTech = null;
         setTimeout(() => window.MusicSystem.notifyDiscoveryTrackEndedNaturally(), 8000);
       }
       const before = pendingPreUnitCounts ? pendingPreUnitCounts[civ.id] : civ.units.length;
       const dropped = civ.units.length < before;
       window.MusicSystem.notifySituation("combat", dropped);
       if (dropped) setTimeout(() => window.MusicSystem.notifySituation("combat", false), 4000);
+
+      // Tech-researched / Unit-built announcements (2026-08-06, user-
+      // directed): skipped once the game has actually ended THIS round
+      // (below) -- nothing left to research or build toward, and the
+      // Victory dialog takes the one viewState.dialog slot instead. Tech
+      // first, then the unit-built queue (if any) once THAT'S dismissed,
+      // chained rather than raced, so neither silently drops behind the
+      // other if both happen the same round (see openTechResearchedDialog/
+      // offerNextUnitBuiltNotice).
+      if (!victoryResult) {
+        const afterUnitBuilt = () => offerNextPendingIntent(civ);
+        if (finishedTechId) {
+          openTechResearchedDialog(civ, finishedTechId, () => offerNextUnitBuiltNotice(civ, afterUnitBuilt));
+        } else {
+          offerNextUnitBuiltNotice(civ, afterUnitBuilt);
+        }
+      } else {
+        civ.pendingUnitBuiltNotices = [];
+        for (const unit of civ.units) unit.pendingIntent = null;
+      }
     }
 
     if (victoryResult) {
@@ -1565,6 +1662,123 @@
       // normal theme if it doesn't have one yet (see music.js's resolveCurrent).
       window.MusicSystem.notifyVictory(gameState.civs[victoryResult.winner].raceId);
     }
+  }
+
+  /** Tech-researched announcement (2026-08-06, user-directed): opens the
+   *  instant a tech finishes (see finishRoundBookkeeping). Lists every
+   *  OTHER tech in this civ's race tree that named `techId` as a
+   *  prerequisite -- "here's what just opened up" -- plus a shortcut
+   *  straight into the tech tree. `onDone` runs once the dialog is
+   *  answered either way (same chaining convention offerNextSettler/
+   *  offerNextUnitBuiltNotice use), so finishRoundBookkeeping can queue the
+   *  unit-built notices right behind it. */
+  function openTechResearchedDialog(civ, techId, onDone) {
+    const tech = window.GameData.getTech(techId);
+    if (!tech) { if (onDone) onDone(); return; }
+    const unlockedLabels = window.GameData.techsForRace(civ.raceId)
+      .filter((id) => window.GameData.getTech(id).prereqs.includes(techId))
+      .map((id) => window.GameData.getTech(id).label);
+    window.SfxSystem.playResearchComplete();
+    viewState.dialog = {
+      kind: "techResearched",
+      techLabel: tech.label,
+      techDescription: tech.description || "",
+      unlockedLabels,
+      onChooseResearch: () => {
+        viewState.techTreeCivId = civ.id;
+        if (onDone) onDone();
+      },
+      onDismiss: () => { if (onDone) onDone(); },
+    };
+    redraw();
+  }
+
+  /** Unit-built announcements (2026-08-06, user-directed): drains
+   *  civ.pendingUnitBuiltNotices one at a time (ai.js's
+   *  queueUnitBuiltNotice pushes one per completed build -- an ARRAY since,
+   *  unlike tech, more than one city can finish a unit in the same round),
+   *  each its own modal, chained via its own onGoToCity/onGoToUnit answer
+   *  so a second/third completion the same round never gets silently
+   *  dropped behind the first. No-ops straight through if the queue is
+   *  empty. Defensively skips a unit that's somehow already gone (died/
+   *  disbanded) between being built and this notice firing -- shouldn't
+   *  happen within the same round, but redraw()'s dialog rendering assumes
+   *  a live unit. */
+  function offerNextUnitBuiltNotice(civ, onDone) {
+    const notices = civ.pendingUnitBuiltNotices;
+    if (!notices || !notices.length) { if (onDone) onDone(); return; }
+    const { cityName, unit } = notices.shift();
+    if (!civ.units.includes(unit)) { offerNextUnitBuiltNotice(civ, onDone); return; }
+    const baseUnit = window.GameData.getUnit(unit.typeId);
+    const city = civ.cities.find((c) => c.name === cityName) || null;
+    window.SfxSystem.playAction(civ.raceId, unit.typeId, "move");
+    viewState.dialog = {
+      kind: "unitBuilt",
+      cityName,
+      unitLabel: baseUnit.label,
+      unitProperName: unit.name || baseUnit.label,
+      onGoToCity: () => {
+        if (city) {
+          goToTile(city.x, city.y, "city");
+          viewState.buildPickerCityId = `${city.x},${city.y}`;
+        }
+        offerNextUnitBuiltNotice(civ, onDone);
+      },
+      onGoToUnit: () => {
+        goToTile(unit.x, unit.y, "unit");
+        offerNextUnitBuiltNotice(civ, onDone);
+      },
+    };
+    redraw();
+  }
+
+  /** Automate Actions confirmation queue (2026-08-06, user-directed): drains
+   *  civ.units for a pendingIntent one at a time (staged by the
+   *  unit.automated && !opts.forcedX gates in ai.js's considerAttackOrGarrison/
+   *  maybeFoundCity/startDruidSummon), same one-at-a-time blocking-modal
+   *  chaining convention as offerNextUnitBuiltNotice. Confirming re-invokes
+   *  the SAME commit path a manual player action would use -- orders.js's
+   *  attack() for combat, openFoundCityDialog for founding (so a confirmed
+   *  automated founding gets identical naming/free-tech-choice treatment to
+   *  a manual one), ai.js's startDruidSummon(..., confirmed=true) for
+   *  summons. Declining just drops the intent -- the unit already spent its
+   *  turn proposing it (see the usedThisTurn stamped alongside each
+   *  pendingIntent), so it naturally reconsiders fresh next turn. */
+  function offerNextPendingIntent(civ, onDone) {
+    const unit = civ.units.find((u) => u.pendingIntent);
+    if (!unit) { if (onDone) onDone(); return; }
+    const intent = unit.pendingIntent;
+    const baseUnit = window.GameData.getUnit(unit.typeId);
+    const finish = () => { unit.pendingIntent = null; offerNextPendingIntent(civ, onDone); };
+    viewState.dialog = {
+      kind: "confirmAutomatedAction",
+      unitLabel: unit.name || baseUnit.label,
+      actionLabel: intent.label,
+      onConfirm: () => {
+        if (intent.kind === "foundCity") {
+          unit.pendingIntent = null;
+          openFoundCityDialog(civ, unit, () => offerNextPendingIntent(civ, onDone));
+          return;
+        }
+        if (intent.kind === "attack") {
+          // The staging gate stamped usedThisTurn=true so runUnitTurn
+          // wouldn't also move/act this same civ-turn (see
+          // considerAttackOrGarrison) -- orders.js's attack() itself refuses
+          // to fire on a unit already marked used, so that has to be undone
+          // right here, immediately before the real attack call, not any
+          // earlier (undoing it sooner would let something else spend the
+          // unit's turn out from under this pending confirmation).
+          unit.usedThisTurn = false;
+          window.GameEngine.orders.attack(unit, gameState, intent.target, humanCivId);
+        } else if (intent.kind === "summon") {
+          const log = civ.lastAILog || [];
+          window.GameEngine.ai.startDruidSummon(civ, unit, intent.summonUnitId, gameState, log, true);
+        }
+        finish();
+      },
+      onDecline: () => finish(),
+    };
+    redraw();
   }
 
   /**
@@ -1684,6 +1898,10 @@
     if (restBtn) restBtn.onclick = handleRestUnit;
     const defendBtn = $("defend-unit-btn");
     if (defendBtn) defendBtn.onclick = handleDefendUnit;
+    const stopOrderBtn = $("stop-order-btn");
+    if (stopOrderBtn) stopOrderBtn.onclick = handleStopOrder;
+    const automateBtn = $("automate-actions-btn");
+    if (automateBtn) automateBtn.onclick = handleToggleAutomate;
     const startProspectingBtn = $("start-prospecting-btn");
     if (startProspectingBtn) startProspectingBtn.onclick = () => handleStartChannel("prospecting");
     const startHuntingBtn = $("start-hunting-btn");
@@ -1694,6 +1912,8 @@
     if (startDelvingBtn) startDelvingBtn.onclick = () => handleStartChannel("delving");
     const startFishingBtn = $("start-fishing-btn");
     if (startFishingBtn) startFishingBtn.onclick = () => handleStartChannel("fishing");
+    const claimChannelBtn = $("claim-channel-btn");
+    if (claimChannelBtn) claimChannelBtn.onclick = handleClaimChannel;
     const cancelChannelBtn = $("cancel-channel-btn");
     if (cancelChannelBtn) cancelChannelBtn.onclick = handleCancelChannel;
     const goHiddenBtn = $("go-hidden-btn");
@@ -1776,9 +1996,14 @@
       // something, not just once per turn -- otherwise the node they clicked
       // wouldn't visibly become "Researching" until the turn rolled over.
       const civ = gameState.civs[viewState.techTreeCivId];
+      // Collapsible layer rows (2026-08-06, user-directed): owned here (not
+      // techtree.js, which stays a pure render function) so a header click
+      // can mutate it directly -- see techtree.js's render() doc comment
+      // for the exact shape/default-collapse rule.
+      viewState.techTreeExpandedLayers = viewState.techTreeExpandedLayers || {};
       const key = `${viewState.techTreeCivId}:${gameState.turnNumber}:${civ.currentResearch || ""}`;
       if (key !== lastRenderedTechTreeKey) {
-        $("techtree-content").innerHTML = window.UI.techtree.render(civ, isPlayerCiv);
+        $("techtree-content").innerHTML = window.UI.techtree.render(civ, isPlayerCiv, viewState.techTreeExpandedLayers);
         lastRenderedTechTreeKey = key;
       }
       $("techtree-close-btn").onclick = () => { viewState.techTreeCivId = null; redraw(); };
@@ -1787,6 +2012,19 @@
       for (const node of document.querySelectorAll(".techtree-node-selectable")) {
         node.onclick = () => {
           window.GameEngine.tech.chooseResearch(civ, node.dataset.techId);
+          redraw();
+        };
+      }
+      // Layer header click toggles that layer's row -- forces a rebuild
+      // (the identity key above doesn't change on its own from a toggle)
+      // by dropping lastRenderedTechTreeKey before redraw().
+      for (const header of document.querySelectorAll(".techtree-layer-toggle[data-toggle-layer]")) {
+        header.onclick = () => {
+          const civExpanded = viewState.techTreeExpandedLayers[civ.id] || {};
+          const layer = header.dataset.toggleLayer;
+          civExpanded[layer] = !civExpanded[layer];
+          viewState.techTreeExpandedLayers[civ.id] = civExpanded;
+          lastRenderedTechTreeKey = null;
           redraw();
         };
       }
@@ -1827,11 +2065,51 @@
         modal.innerHTML = window.UI.dialog.render(viewState.dialog);
         lastRenderedDialog = viewState.dialog;
         wireDialogButtons(viewState.dialog);
+        // Confirm-action sfx (2026-08-06, user-directed): fires once, right
+        // here, the instant a confirm-an-action prompt is FIRST shown to the
+        // player -- not on the button click that answers it (that's
+        // playButtonClick's job, via main.js's global click listener).
+        // Scoped to dialog kinds that are actually asking "are you sure you
+        // want to do this?" (Disband Unit's generic "confirm", Found City,
+        // the End Turn unresolved-work nag, an Automate Actions proposal) --
+        // NOT the purely informational kinds (message/techResearched/
+        // unitBuilt) or the N-way "chooseTech" picker, neither of which fit
+        // "confirm an action."
+        if (CONFIRM_ACTION_DIALOG_KINDS.has(viewState.dialog.kind)) {
+          window.SfxSystem.playConfirmAction();
+        }
       }
       dialogOverlay.style.display = "flex";
     } else {
       lastRenderedDialog = null;
       if (dialogOverlay) dialogOverlay.style.display = "none";
+    }
+
+    // Map right-click context menu (2026-08-06, user-directed) -- rebuilt
+    // fresh every redraw (unlike the modals above, which gate on an
+    // identity key) since it's a short-lived, cheap-to-rebuild popup, not
+    // worth the bookkeeping. Auto-closes itself if the option list it
+    // would show has gone empty (e.g. the unit died, moved, or already
+    // acted since the menu opened) rather than leaving a stale/broken menu
+    // open. See orders.js's contextMenuOptions for what's offered.
+    const contextMenuRoot = $("map-context-menu-root");
+    if (contextMenuRoot) {
+      if (viewState.contextMenu && humanCivId && viewState.selectedUnit) {
+        const options = window.GameEngine.orders.contextMenuOptions(
+          viewState.selectedUnit, gameState, viewState.contextMenu.x, viewState.contextMenu.y, humanCivId);
+        if (!options.length) {
+          viewState.contextMenu = null;
+          contextMenuRoot.innerHTML = "";
+        } else {
+          contextMenuRoot.innerHTML = window.UI.contextmenu.render(viewState.contextMenu, options);
+          for (const btn of contextMenuRoot.querySelectorAll(".map-context-menu-item")) {
+            btn.onclick = () => handleContextMenuAction(btn.dataset.menuKind);
+          }
+        }
+      } else {
+        viewState.contextMenu = null;
+        contextMenuRoot.innerHTML = "";
+      }
     }
 
     const turnBanner = $("turn-progress-banner");
@@ -1925,6 +2203,39 @@
           };
         }
       }
+    } else if (dialog.kind === "techResearched") {
+      const okBtn = $("game-dialog-ok-btn");
+      const confirmBtn = $("game-dialog-confirm-btn");
+      const finish = (chooseNext) => {
+        viewState.dialog = null;
+        lastRenderedDialog = null;
+        if (chooseNext) dialog.onChooseResearch(); else dialog.onDismiss();
+        redraw();
+      };
+      if (okBtn) okBtn.onclick = () => finish(false);
+      if (confirmBtn) confirmBtn.onclick = () => finish(true);
+    } else if (dialog.kind === "unitBuilt") {
+      const cityBtn = $("game-dialog-cancel-btn"); // "Go to City"
+      const unitBtn = $("game-dialog-confirm-btn"); // "Go to Unit"
+      const finish = (goToUnit) => {
+        viewState.dialog = null;
+        lastRenderedDialog = null;
+        if (goToUnit) dialog.onGoToUnit(); else dialog.onGoToCity();
+        redraw();
+      };
+      if (cityBtn) cityBtn.onclick = () => finish(false);
+      if (unitBtn) unitBtn.onclick = () => finish(true);
+    } else if (dialog.kind === "confirmAutomatedAction") {
+      const confirmBtn = $("game-dialog-confirm-btn");
+      const cancelBtn = $("game-dialog-cancel-btn");
+      const finish = (ok) => {
+        viewState.dialog = null;
+        lastRenderedDialog = null;
+        if (ok) dialog.onConfirm(); else dialog.onDecline();
+        redraw();
+      };
+      if (confirmBtn) confirmBtn.onclick = () => finish(true);
+      if (cancelBtn) cancelBtn.onclick = () => finish(false);
     }
   }
 
@@ -1932,8 +2243,36 @@
     if (!humanCivId || !viewState.selectedUnit) return;
     const unit = viewState.selectedUnit;
     if (unit.usedThisTurn) return;
+    unit.gotoTarget = null; // a fresh order supersedes any queued goto (2026-08-06)
     unit.resting = true;
     unit.usedThisTurn = true;
+    redraw();
+  }
+
+  /** Sidebar twin of the context menu's "Stop" entry (2026-08-06, user-
+   *  directed) -- cancels a unit's in-progress multi-turn goto order
+   *  without needing to know the right-click-your-own-tile trick. Doesn't
+   *  touch usedThisTurn/movesRemaining -- the unit is free to take a
+   *  completely different action with whatever budget it has left this
+   *  turn, same as any other order being superseded by a new one. */
+  function handleStopOrder() {
+    if (!humanCivId || !viewState.selectedUnit) return;
+    const unit = viewState.selectedUnit;
+    window.GameEngine.orders.stopGotoOrder(unit);
+    redraw();
+  }
+
+  /** Automate Actions toggle (2026-08-06, user-directed) -- see sidebar.js's
+   *  automateBtn and ai.js's runAutomatedUnitTurn/turns.js's finishCivTurn
+   *  hook for the actual per-turn behavior this flag switches on. Turning
+   *  it off drops any pendingIntent still waiting on a confirmation the
+   *  player will never see now that the unit isn't automated anymore. */
+  function handleToggleAutomate() {
+    if (!humanCivId || !viewState.selectedUnit) return;
+    const unit = viewState.selectedUnit;
+    if (unit.civId !== humanCivId) return;
+    unit.automated = !unit.automated;
+    if (!unit.automated) unit.pendingIntent = null;
     redraw();
   }
 
@@ -1945,6 +2284,7 @@
     if (!humanCivId || !viewState.selectedUnit) return;
     const unit = viewState.selectedUnit;
     if (unit.usedThisTurn) return;
+    unit.gotoTarget = null; // a fresh order supersedes any queued goto (2026-08-06)
     window.GameEngine.combat.setCondition(unit, "defending", { expiresAtTurn: (gameState.turnNumber || 0) + 1 });
     unit.usedThisTurn = true;
     redraw();
@@ -1985,9 +2325,88 @@
     if (!humanCivId || !viewState.selectedUnit) return;
     const unit = viewState.selectedUnit;
     if (unit.usedThisTurn || unit.channeling) return;
+    unit.gotoTarget = null; // a fresh order supersedes any queued goto (2026-08-06)
     unit.channeling = kind;
     unit.resting = true;
     unit.usedThisTurn = true;
+    redraw();
+  }
+
+  /** Dispatches whichever context-menu entry the player picked (2026-08-06,
+   *  user-directed -- see orders.js's contextMenuOptions for what each
+   *  `kind` means and when it's offered, js/ui/contextmenu.js for how it's
+   *  rendered). Re-reads viewState.contextMenu/selectedUnit fresh rather
+   *  than closing over anything from when the menu was built, same
+   *  "recompute at click time" convention handleChooseBuild already uses
+   *  for the city build picker. */
+  function handleContextMenuAction(kind) {
+    const menu = viewState.contextMenu;
+    viewState.contextMenu = null;
+    if (!menu || !humanCivId) { redraw(); return; }
+    const unit = viewState.selectedUnit;
+    if (!unit) { redraw(); return; }
+
+    switch (kind) {
+      case "moveTo":
+      case "buildRoadTo":
+        window.GameEngine.orders.startGotoOrder(unit, gameState, menu.x, menu.y, kind === "buildRoadTo");
+        // Follow the unit onto wherever it actually ended up this turn
+        // (2026-08-04 behavior, carried over from the old immediate-move
+        // handler) -- viewState.selection is keyed on a fixed (x,y), not
+        // the unit itself, so leaving it pointed at the tile the unit just
+        // left would silently lose the unit from the sidebar on the very
+        // next redraw.
+        if (viewState.selection) {
+          viewState.selection.x = unit.x;
+          viewState.selection.y = unit.y;
+        }
+        break;
+      case "attack": {
+        const target = window.GameEngine.orders.attackTargetAt(unit, gameState, menu.x, menu.y, humanCivId);
+        window.GameEngine.orders.attack(unit, gameState, target, humanCivId);
+        break;
+      }
+      case "buildRoadHere":
+        handleBuildRoad();
+        break;
+      case "foundCity":
+        handleFoundCity();
+        break;
+      case "claimChannel":
+        handleClaimChannel();
+        break;
+      case "cancelChannel":
+        handleCancelChannel();
+        break;
+      case "goHidden":
+        handleGoHidden();
+        break;
+      case "cancelHidden":
+        handleCancelHidden();
+        break;
+      case "rest":
+        handleRestUnit();
+        break;
+      case "defend":
+        handleDefendUnit();
+        break;
+      case "disband":
+        handleDisbandUnit();
+        break;
+      case "stopOrder":
+        handleStopOrder();
+        break;
+      default:
+        // "startChannel:<kind>" (2026-08-06, user-directed full-list mirror)
+        // -- one case per channel type would just repeat this same call
+        // five times, so the channel kind is parsed out of the menu kind
+        // string instead. See orders.js's contextMenuOptions for the exact
+        // list (prospecting/delving/fishing/hunting/farming).
+        if (kind && kind.startsWith("startChannel:")) {
+          handleStartChannel(kind.slice("startChannel:".length));
+        }
+        break;
+    }
     redraw();
   }
 
@@ -1996,6 +2415,26 @@
     const unit = viewState.selectedUnit;
     if (!unit.channeling) return;
     unit.channeling = null;
+    redraw();
+  }
+
+  /** "Claim Gathered Resources" (2026-08-06, user-directed): a clean
+   *  voluntary stop that BANKS unit._channelStash into the civ's stockpile
+   *  before clearing the channel -- mirrors ai.js's maybeCashOutChannel
+   *  (the AI's own voluntary-stop path) exactly, just player-triggered
+   *  instead of value/danger-triggered. Distinct from handleCancelChannel
+   *  just above, which forfeits the stash (turns.js's own documented rule
+   *  for a forced-style interruption) -- this is the "stop and keep it"
+   *  option. */
+  function handleClaimChannel() {
+    if (!humanCivId || !viewState.selectedUnit) return;
+    const unit = viewState.selectedUnit;
+    const civ = gameState.civs[humanCivId];
+    if (!civ || !unit.channeling) return;
+    unit.channeling = null;
+    window.GameEngine.turns.bankChannelStash(unit, civ);
+    unit.resting = true;
+    unit.usedThisTurn = true;
     redraw();
   }
 
@@ -2112,6 +2551,7 @@
     if (!humanCivId || !viewState.selectedUnit) return;
     const unit = viewState.selectedUnit;
     if (unit.typeId !== "pioneer" || unit.usedThisTurn) return;
+    unit.gotoTarget = null; // a fresh order supersedes any queued goto (2026-08-06)
     const tile = gameState.map.tiles[unit.y * gameState.map.width + unit.x];
     if (!tile.hasRoad) {
       tile.hasRoad = true;

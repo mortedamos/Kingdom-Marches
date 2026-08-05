@@ -195,6 +195,11 @@
     <div id="game-dialog-overlay" class="techtree-overlay" style="display:none;">
       <div id="game-dialog-modal" class="techtree-modal game-dialog-modal"></div>
     </div>
+    <!-- Map right-click context menu (2026-08-06, user-directed) -- a bare
+         root, not a full-screen overlay like the modals above: js/ui/
+         contextmenu.js renders the floating menu itself, positioned near
+         the cursor, directly into this container. -->
+    <div id="map-context-menu-root"></div>
     <div id="turn-progress-banner" class="turn-progress-banner" style="display:none;"></div>
   </div>
 
@@ -244,6 +249,7 @@
   <script src="js/ui/techtree.js"></script>
   <script src="js/ui/reports.js"></script>
   <script src="js/ui/dialog.js"></script>
+  <script src="js/ui/contextmenu.js"></script>
   <script src="js/ui/input.js"></script>
 
   <!-- Bootstrap (last) -->
