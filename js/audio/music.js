@@ -237,14 +237,25 @@ window.MusicSystem = (function () {
     return variants;
   }
 
+  /** Sequential round-robin (2026-08-05, user-directed): cycles through
+   *  EVERY available variant in order (1, 2, 3, back to 1...) before any
+   *  one repeats. Replaces the old random-no-immediate-repeat picker, which
+   *  only guaranteed the SAME variant never played twice in a row -- e.g.
+   *  1,3,1,3,1,3... was a perfectly valid random sequence under the old
+   *  rule that never once touched variant 2, which is exactly the
+   *  user-reported symptom ("only one track plays, the others never get
+   *  played"). `lastVariantPlayed` is keyed per race+situation and persists
+   *  across situation changes (module-level, not reset), so returning to
+   *  "default" after a combat/discovery interruption resumes the rotation
+   *  where it left off rather than restarting at variant 1. */
   function pickVariant(race, situation) {
     const pairKey = `${race}_${situation}`;
     const variants = availableVariants(race, situation);
     if (variants.length === 0) return null;
     if (variants.length === 1) return variants[0];
     const last = lastVariantPlayed[pairKey];
-    const pool = variants.filter((v) => v !== last);
-    const choice = pool[Math.floor(Math.random() * pool.length)];
+    const lastIdx = last == null ? -1 : variants.indexOf(last);
+    const choice = variants[(lastIdx + 1) % variants.length];
     lastVariantPlayed[pairKey] = choice;
     return choice;
   }
