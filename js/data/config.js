@@ -58,7 +58,7 @@ window.GameConfig = {
      *  Set to the FASTER of the two old values, so unit/building pacing
      *  roughly doubles in speed to match research rather than the other way
      *  around. */
-    slowness: 0.12,
+    slowness: 0.1,
   },
 
   // =========================================================================
@@ -99,14 +99,14 @@ window.GameConfig = {
      *  population^2 * this. Quadratic deliberately mirrors the worked-tile
      *  AREA also growing quadratically with radius, which is what stops
      *  growth from accelerating away late-game. */
-    growthThresholdPerPop: 400.0,
+    growthThresholdPerPop: 100.0,
 
     /** Cap on NATURAL (population-driven) growth and radius. Tech/building
      *  radius bonuses still stack on top of this, uncapped. */
     maxPopulation: 6,
 
     /** Harvest consumed per population point per turn. */
-    upkeepRatePerPop: 0.5,
+    upkeepRatePerPop: 0.2,
 
     /** Coin and Lore produced per population point per turn. */
     intrinsicCoinRate: 0.1,
@@ -114,15 +114,15 @@ window.GameConfig = {
 
     /** Flat per-city, per-turn yield, before any tiles are worked -- keeps a
      *  brand-new city from producing literally nothing. */
-    flatHarvest: 1,
-    flatCoin: 1,
-    flatLore: 1,
+    flatHarvest: 2,
+    flatCoin: 2,
+    flatLore: 2,
 
     /** Extra influence a city projects per point of Lore it makes per turn. */
-    loreTrickleRate: 0.1,
+    loreTrickleRate: 0.0,
 
     /** Radius a freshly founded (population 1) city starts with. */
-    baseInfluenceRadius: 1,
+    baseInfluenceRadius: 2,
 
     /** FILL-IN: a tile inside a city's radius contributes nothing to
      *  influence OR yield until it has individually "filled in". This delay
@@ -135,7 +135,7 @@ window.GameConfig = {
      *  At the current values that's ~3.4 turns/tile at industriousness 0.3
      *  (Orc) down to ~1.9 at 1.0 (Halfellow). */
     fillThreshold: 3,
-    fillRateBase: 0.5,
+    fillRateBase: 0.75,
     fillRatePerIndustriousness: 0.9,
 
     /** Garrisoning a city speeds its fill-in by (industriousness * this).
