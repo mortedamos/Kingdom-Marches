@@ -80,7 +80,15 @@ window.UI = window.UI || {};
       <div class="panel">
         <h2>${escapeHtml(race.label)} — Tech Tree</h2>
         <div class="stat-row"><span>Cities</span><span>${civ.cities.length}</span></div>
-        ${isPlayerCiv ? `<div class="stat-row"><span>Lore</span><span>${((civ.stockpile && civ.stockpile.lore) || 0).toFixed(0)}</span></div>` : ''}
+        ${isPlayerCiv ? (() => {
+          // Multi-resource stockpile readout (2026-08-05, user-directed):
+          // tech cost used to be pure Lore, so this was a single number --
+          // now every tech's cost draws on harvest/coin/lore (see
+          // GameData.effectiveTechCostBreakdown), same H/C/L convention
+          // sidebar.js's build picker already uses.
+          const s = civ.stockpile || { harvest: 0, coin: 0, lore: 0 };
+          return `<div class="stat-row"><span>Stockpile (H / C / L)</span><span>${s.harvest.toFixed(0)} / ${s.coin.toFixed(0)} / ${s.lore.toFixed(0)}</span></div>`;
+        })() : ''}
         ${isPlayerCiv && !civ.currentResearch
           ? '<div class="techtree-prompt">Nothing is being researched. Click any available tech to start.</div>'
           : ''}
@@ -97,16 +105,19 @@ window.UI = window.UI || {};
     const prereqsOk = missingPrereqs.length === 0;
     const locked = !completed && !researching && (!cityGateOk || !prereqsOk);
 
-    const effectiveCost = window.GameData.effectiveTechCost(tech);
     // Up-front affordability (2026-08-04, user-directed research redesign):
-    // chooseResearch now pays this tech's full Lore cost from the stockpile
+    // chooseResearch now pays this tech's full cost from the stockpile
     // the instant it's picked, same one-time-purchase model a unit/building
     // queue already uses -- so a tech whose gates are satisfied but that the
     // civ can't yet AFFORD needs its own state, not a "Click to research"
     // button that would silently fail (chooseResearch returning false with
-    // nothing else telling the player why).
-    const haveLore = (civ.stockpile && civ.stockpile.lore) || 0;
-    const affordable = haveLore >= effectiveCost;
+    // nothing else telling the player why). Multi-resource (2026-08-05,
+    // user-directed): cost is now split across harvest/coin/lore by
+    // category (see GameData.effectiveTechCostBreakdown) -- ALL THREE must
+    // be affordable.
+    const cost = window.GameData.effectiveTechCostBreakdown(tech);
+    const stock = civ.stockpile || { harvest: 0, coin: 0, lore: 0 };
+    const affordable = cost.harvest <= (stock.harvest || 0) && cost.coin <= (stock.coin || 0) && cost.lore <= (stock.lore || 0);
     let stateClass = "available";
     let tag = "Available";
     if (completed) { stateClass = "completed"; tag = "Purchased"; }
@@ -135,21 +146,32 @@ window.UI = window.UI || {};
       tag = reasons.join(" · ");
     } else if (!affordable) {
       // Gates are satisfied but the up-front payment isn't affordable yet --
-      // distinct from "locked" (that's about city count/prereqs, not Lore).
+      // distinct from "locked" (that's about city count/prereqs, not
+      // resources).
       stateClass = "locked";
-      tag = "Not enough Lore banked yet";
+      tag = "Not enough resources banked yet";
     }
 
     // Clickable only in the player's own tree, and only for a node
     // chooseResearch would actually accept: not done, not already underway,
     // gates satisfied, AND affordable up front. Switching targets while
-    // something is already in progress now FORFEITS whatever Lore was paid
-    // for it (see tech.js's chooseResearch doc comment) -- no longer the
-    // free, lossless switch the old income-accumulation model allowed.
+    // something is already in progress now FORFEITS whatever was paid for
+    // it (see tech.js's chooseResearch doc comment) -- no longer the free,
+    // lossless switch the old income-accumulation model allowed.
     const selectable = isPlayerCiv && !completed && !researching && !locked && affordable;
     if (selectable) tag = "Click to research";
 
-    const costColor = affordable ? "#6fbf6f" : "#d9695f";
+    // Per-resource cost tokens (2026-08-05, user-directed), same "10H 15C"
+    // convention and green/red-vs-stockpile coloring as sidebar.js's build
+    // picker -- zero-cost components are omitted rather than shown as a
+    // bare "0X".
+    const costHtml = Object.entries(cost)
+      .filter(([, v]) => v > 0)
+      .map(([k, v]) => {
+        const have = stock[k] || 0;
+        const color = have >= v ? "#6fbf6f" : "#d9695f";
+        return `<span style="color:${color}">${v}${k[0].toUpperCase()}</span>`;
+      }).join(" ");
 
     // Turns-to-complete (2026-08-04): no longer an income-derived estimate --
     // researchTurns is now a FIXED number the instant a tech is chosen (see
@@ -163,7 +185,7 @@ window.UI = window.UI || {};
 
     const body = `<div class="techtree-node-name">${escapeHtml(tech.label)}</div>
       ${tech.description ? `<div class="techtree-node-desc">${escapeHtml(tech.description)}</div>` : ''}
-      <div class="techtree-node-tag">${escapeHtml(tag)} · <span style="color:${costColor}">${Math.round(effectiveCost)} Lore</span>${escapeHtml(turnsTag)}</div>`;
+      <div class="techtree-node-tag">${escapeHtml(tag)} · ${costHtml}${escapeHtml(turnsTag)}</div>`;
 
     // Extra fade for tiers that are genuinely FAR off (2026-08-04, user-
     // directed): a tech only 1 city away from unlocking is worth reading now

@@ -3,11 +3,14 @@
  * --------------
  * Shared shape: every race's tree is 5 LAYERS deep across 3 columns —
  * Civic, Building, Military. Layers are the unit of "power": every tech's
- * real Lore cost is PURE tier-based (GameData.effectiveTechCost, doubling
+ * real TOTAL cost is PURE tier-based (GameData.effectiveTechCost, doubling
  * per layer -- see GameConfig.research's own doc comment), not read from
  * the individual `cost` field still authored on each node below (inert
- * data now, kept rather than mechanically stripped from every entry). A
- * layer can hold more than one node (a
+ * data now, kept rather than mechanically stripped from every entry). That
+ * total is then split across harvest/coin/lore by the node's OWN column
+ * (2026-08-05, user-directed -- see GameData.TECH_COST_RATIO/
+ * effectiveTechCostBreakdown): Civic leans Harvest, Building leans Coin,
+ * Military splits Coin/Lore evenly. A layer can hold more than one node (a
  * Building and a Civic tech may share a layer; Military may fork into two
  * choices at a layer). The one hard rule: a race's 4 buildings never share
  * a layer with EACH OTHER (each of the 4 sits on its own layer, L2-L5).
@@ -52,10 +55,11 @@
  *   universal_range_grant   { value }        floor on every unit's effective Ranged value (civ-wide,
  *                                            Math.max against the unit's own range -- never lowers it)
  *
- * `costBreakdown` on race-tree nodes is a PROPOSED multi-resource cost
- * (lore/coin/harvest) for review. The research engine currently only
- * spends Lore (the `cost` field) — costBreakdown is not yet wired in;
- * see the tech-tree design doc for the pending decision on that change.
+ * `costBreakdown` on race-tree nodes is UNRELATED to what the node itself
+ * costs to research (see above) -- it's the resource-type MIX used to
+ * price whatever UNIT/BUILDING that node unlocks (GameData.unitBuildCost/
+ * buildingBuildCost), only present on nodes with an unlock_unit/
+ * unlock_building effect worth pricing that way.
  */
 
 window.GameData = window.GameData || {};
@@ -1754,6 +1758,42 @@ window.GameData.getTech = function (techId) {
 window.GameData.effectiveTechCost = function (tech) {
   const cfg = window.GameConfig.research;
   return cfg.baseCost * Math.pow(cfg.tierGrowth, tech.layer || 1);
+};
+
+// Tech cost mix (2026-08-05, user-directed): every tech's cost used to be
+// paid entirely in Lore -- now split across harvest/coin/lore by column,
+// each ratio reflecting what that kind of research draws on: Civic leans
+// Harvest (labor/population-driven), Building leans Coin (construction),
+// Military splits Coin/Lore evenly (drilling + doctrine) with a smaller
+// Harvest slice (provisioning). Categories outside the 3 real columns
+// (e.g. shared_infrastructure/hunt_game/farm_soil's "economy"/"civic") fall
+// back to Civic's ratio -- same fallback techtree.js's own columnFor
+// already uses for display. The TOTAL magnitude is unchanged
+// (effectiveTechCost's own pure-layer formula) -- only how it's split
+// across resources changes.
+window.GameData.TECH_COST_RATIO = {
+  civic: { harvest: 0.5, coin: 0.2, lore: 0.3 },
+  building: { harvest: 0.1, coin: 0.6, lore: 0.3 },
+  military: { harvest: 0.2, coin: 0.4, lore: 0.4 },
+};
+
+window.GameData.techCostRatio = function (tech) {
+  return window.GameData.TECH_COST_RATIO[tech.category] || window.GameData.TECH_COST_RATIO.civic;
+};
+
+/** A tech's real cost, split across harvest/coin/lore by techCostRatio --
+ *  paid up front from the civ's stockpile the moment chooseResearch picks
+ *  it (see tech.js), same one-time-purchase model as unitBuildCost/
+ *  buildingBuildCost. Rounds each component independently, same convention
+ *  those two already use. */
+window.GameData.effectiveTechCostBreakdown = function (tech) {
+  const total = window.GameData.effectiveTechCost(tech);
+  const ratio = window.GameData.techCostRatio(tech);
+  return {
+    harvest: Math.round(total * ratio.harvest),
+    coin: Math.round(total * ratio.coin),
+    lore: Math.round(total * ratio.lore),
+  };
 };
 
 /** Techs available to a given race: shared (no raceOnly) + that race's own raceOnly nodes,

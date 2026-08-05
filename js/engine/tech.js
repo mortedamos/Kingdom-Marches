@@ -1,13 +1,15 @@
 /**
  * TECH RESEARCH ENGINE
  * --------------------
- * A tech's full Lore cost (GameData.effectiveTechCost -- pure tier-based,
- * see techs.js) is paid up front from the civ's stockpile the moment
- * chooseResearch picks it, then civ.researchTurnsRemaining counts down a
- * fixed timer (researchTurns, derived from that same cost) until it
- * completes and applyTechEffects fires -- the same one-time-purchase-plus-
- * timer model GameData.unitBuildCost/ai.js's unitBuildTurns already use for
- * units and buildings. See techs.js for the node data and effect types.
+ * A tech's full cost -- split across harvest/coin/lore by its column (see
+ * GameData.effectiveTechCostBreakdown), with the TOTAL magnitude pure
+ * tier-based (GameData.effectiveTechCost, see techs.js) -- is paid up front
+ * from the civ's stockpile the moment chooseResearch picks it, then
+ * civ.researchTurnsRemaining counts down a fixed timer (researchTurns,
+ * derived from that same total) until it completes and applyTechEffects
+ * fires -- the same one-time-purchase-plus-timer model
+ * GameData.unitBuildCost/ai.js's unitBuildTurns already use for units and
+ * buildings. See techs.js for the node data and effect types.
  */
 
 window.GameEngine = window.GameEngine || {};
@@ -71,13 +73,15 @@ window.GameEngine = window.GameEngine || {};
   }
 
   /** Counts down one turn on the civ's in-progress research (2026-08-04,
-   *  user-directed redesign: research now pays its FULL Lore cost up front
+   *  user-directed redesign: research now pays its FULL cost up front
    *  via chooseResearch below -- same one-time-purchase model as a unit or
-   *  building queue -- rather than accumulating progress from Lore income
-   *  turn by turn, so this is now purely a turn-count timer with nothing
-   *  left to spend here. Lore income still fills civ.stockpile.lore exactly
-   *  as before (turns.js's beginCivTurn) -- that's what funds the NEXT
-   *  tech's up-front payment, just no longer wired directly into this
+   *  building queue -- rather than accumulating progress from income turn
+   *  by turn, so this is now purely a turn-count timer with nothing left
+   *  to spend here. Harvest/coin/lore income still fills civ.stockpile
+   *  exactly as before (turns.js's beginCivTurn) -- that's what funds the
+   *  NEXT tech's up-front payment (2026-08-05: now split across all 3, not
+   *  just Lore -- see GameData.effectiveTechCostBreakdown), just no longer
+   *  wired directly into this
    *  function. */
   function tickResearch(civ) {
     if (!civ.currentResearch) return null;
@@ -251,13 +255,19 @@ window.GameEngine = window.GameEngine || {};
   }
 
   /** Sets a civ's research target -- gated on affordability now, not just
-   *  city/prereq gates (2026-08-04, user-directed): the tech's full Lore
-   *  cost is paid up front from civ.stockpile.lore the moment this
-   *  succeeds, same as queueBuild pays a unit/building's cost up front.
-   *  Returns false (no-op, nothing charged) if the civ can't afford it yet.
+   *  city/prereq gates (2026-08-04, user-directed): the tech's full cost is
+   *  paid up front from civ.stockpile the moment this succeeds, same as
+   *  queueBuild pays a unit/building's cost up front. Returns false (no-op,
+   *  nothing charged) if the civ can't afford it yet.
+   *
+   *  Multi-resource (2026-08-05, user-directed): a tech's cost used to be
+   *  pure Lore; now split across harvest/coin/lore by category (see
+   *  GameData.effectiveTechCostBreakdown) -- ALL THREE must be affordable,
+   *  not just Lore, same all-or-nothing convention chooseResearch's
+   *  city/prereq gates already use.
    *
    *  Switching targets while something is already in progress FORFEITS
-   *  whatever Lore was paid for the abandoned tech -- no refund -- same
+   *  whatever was paid for the abandoned tech -- no refund -- same
    *  no-refund policy orders.js's cancelBuild already documents for an
    *  abandoned unit/building queue. This is a real behavior change from the
    *  old income-accumulation model, where researchProgress was one shared
@@ -269,10 +279,12 @@ window.GameEngine = window.GameEngine || {};
     const tech = window.GameData.getTech(techId);
     if (!meetsCityGate(civ, tech)) return false;
     if (!tech.prereqs.every((p) => civ.completedTechs.has(p))) return false;
-    const cost = window.GameData.effectiveTechCost(tech);
+    const cost = window.GameData.effectiveTechCostBreakdown(tech);
     civ.stockpile = civ.stockpile || { harvest: 0, coin: 0, lore: 0 };
-    if (civ.stockpile.lore < cost) return false;
-    civ.stockpile.lore -= cost;
+    if (civ.stockpile.harvest < cost.harvest || civ.stockpile.coin < cost.coin || civ.stockpile.lore < cost.lore) return false;
+    civ.stockpile.harvest -= cost.harvest;
+    civ.stockpile.coin -= cost.coin;
+    civ.stockpile.lore -= cost.lore;
     civ.currentResearch = techId;
     civ.researchTotalTurns = researchTurns(civ, tech);
     civ.researchTurnsRemaining = civ.researchTotalTurns;
