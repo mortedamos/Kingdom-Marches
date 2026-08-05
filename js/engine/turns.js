@@ -693,6 +693,57 @@ window.GameEngine = window.GameEngine || {};
       }
     }
 
+    // Pioneer/Scout "Hunt Game"/"Farm Soil" (2026-08-05, user-directed):
+    // two Tier 0 tech-gated channeled actions (techs.js's hunt_game/
+    // farm_soil) for ANY Pioneer or Scout (any race, gated on the
+    // canProspect unit-data flag) -- explicitly started via the player's
+    // own "Hunt Game"/"Farm Soil" actions (no AI counterpart yet, same as
+    // Pioneer's Build Road). Same shape as Galley Fishing just above: a
+    // flat +3 harvest per turn while it stays on its resource tile and
+    // keeps channeling, no graduated tiers and no territorial claim. Ends
+    // the instant it's no longer on a qualifying tile, the tech is no
+    // longer unlocked (shouldn't normally happen -- defense in depth, same
+    // check the sidebar button is already gated on), or the resource
+    // exhausts (same RESOURCE_EXHAUSTION_CHANCE used above). Internally
+    // keyed "hunting"/"farming" (not "prospecting") to stay distinct from
+    // Dwarf's Prospector's Claim, a different mechanic keyed
+    // unit.channeling === "prospecting" -- see that block's own doc
+    // comment above and sidebar.js's CHANNEL_LABELS.
+    for (const unit of civ.units) {
+      if (!window.GameData.getUnit(unit.typeId).canProspect || unit.channeling !== "hunting") continue;
+      const tile = map.tiles[unit.y * map.width + unit.x];
+      const hasTech = civ.unlockedMechanics && civ.unlockedMechanics.has("hunt_game");
+      if (!tile || tile.resource !== "game" || !hasTech) {
+        unit.channeling = null;
+        delete unit._channelStash;
+        continue;
+      }
+      accumulateChannelStash(unit, { harvest: 3 });
+      if (Math.random() < RESOURCE_EXHAUSTION_CHANCE) {
+        tile.resource = null;
+        window.GameEngine.floatingText.spawnFloatingText(unit, "Game Depleted!", "warning");
+        unit.channeling = null;
+        bankChannelStash(unit, civ);
+      }
+    }
+    for (const unit of civ.units) {
+      if (!window.GameData.getUnit(unit.typeId).canProspect || unit.channeling !== "farming") continue;
+      const tile = map.tiles[unit.y * map.width + unit.x];
+      const hasTech = civ.unlockedMechanics && civ.unlockedMechanics.has("farm_soil");
+      if (!tile || tile.resource !== "fertile" || !hasTech) {
+        unit.channeling = null;
+        delete unit._channelStash;
+        continue;
+      }
+      accumulateChannelStash(unit, { harvest: 3 });
+      if (Math.random() < RESOURCE_EXHAUSTION_CHANCE) {
+        tile.resource = null;
+        window.GameEngine.floatingText.spawnFloatingText(unit, "Soil Exhausted!", "warning");
+        unit.channeling = null;
+        bankChannelStash(unit, civ);
+      }
+    }
+
     // Orc "Pillage and Loot": any Orc unit standing within an enemy city's
     // radius (raiding range) generates +1 harvest/+1 coin/+1 lore for EACH
     // tile where it actually suppressed enemy influence this turn (see

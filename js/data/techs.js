@@ -80,12 +80,51 @@ window.GameData.TECHS = {
   shared_infrastructure: {
     id: "shared_infrastructure", label: "Shared Infrastructure", category: "economy", layer: 0.5, cost: 10,
     prereqs: [],
+    // costBreakdown (2026-08-05, user-directed): gives Pioneer/Galley/Scout
+    // the same power-derived, multi-resource build-cost MODEL every other
+    // teched unit already uses (see techs.js's unitBuildCost) instead of
+    // their old flat units.js coinCost -- that field has been removed from
+    // all 3 now that this makes them resolve to a real cost object. Ratio
+    // only (not absolute numbers, same as every other tech's
+    // costBreakdown) -- coin-weighted over harvest since these were
+    // coin-only units before, just no longer 100% coin. Deliberately no
+    // `lore` component -- Pioneer/Scout/Galley aren't scholarly units.
+    // NOT inherited by wall_section's building cost despite sharing this
+    // same tech's unlock -- see buildings.js's _TECH_FOR_BUILDING, which
+    // explicitly excludes wall_section from this resolution so its cost
+    // model doesn't change as a side effect of this.
+    costBreakdown: { harvest: 2, coin: 3 },
     effects: [
       { type: "unlock_unit", unit: "pioneer" },
       { type: "unlock_unit", unit: "galley" },
       { type: "unlock_unit", unit: "scout" },
       { type: "unlock_building", building: "wall_section" },
     ],
+  },
+
+  // --- TIER 0: Pioneer/Scout resource actions (2026-08-05, user-directed).
+  // Two small, shared (no raceOnly), free-to-attempt-from-turn-0 techs --
+  // layer: 0.5, same reasoning as shared_infrastructure just above (and see
+  // engine/tech.js's meetsCityGate, which treats any layer < 1 as needing 0
+  // cities so these are researchable before a civ's first city exists,
+  // unlike a real Layer 1 tech). Unlike shared_infrastructure these are NOT
+  // auto-completed -- a civ has to actually spend Lore on them, same as any
+  // other tech, they just don't need a city first. Each unlocks one half of
+  // what used to be a single free `canProspect`/"surveying" channeled
+  // action (js/ui/sidebar.js's channelActions, js/engine/turns.js) -- split
+  // in two so the button/tech naming can be resource-specific ("Hunt Game"
+  // / "Farm Soil") instead of the generic "Start Prospecting". ---
+  hunt_game: {
+    id: "hunt_game", label: "Hunt Game", category: "civic", layer: 0.5, cost: 10,
+    prereqs: [],
+    description: "Pioneers and Trackers can hunt Game tiles for bonus Harvest.",
+    effects: [{ type: "unlock_mechanic", mechanic: "hunt_game" }],
+  },
+  farm_soil: {
+    id: "farm_soil", label: "Farm Soil", category: "civic", layer: 0.5, cost: 10,
+    prereqs: [],
+    description: "Pioneers and Trackers can farm Fertile Soil tiles for bonus Harvest.",
+    effects: [{ type: "unlock_mechanic", mechanic: "farm_soil" }],
   },
 
   // --- Shared civic trunk: fallback for races not yet promoted to their own
@@ -1775,9 +1814,10 @@ window.GameData.unitPower = function (unitId) {
  *  replacement unit like Knight/Longbowman/Trebuchet, replace_unit's `to`),
  *  scanned once across every tech's effects. Pioneer, Galley, and Scout all
  *  resolve to shared_infrastructure (2026-08-04) -- the Tier 0 tech every
- *  civ starts with already completed -- which has no costBreakdown, so
- *  unitBuildCost below still falls back to the legacy flat-coinCost model
- *  for these 3 even though they're technically tech-gated now. */
+ *  civ starts with already completed -- which now carries its own
+ *  costBreakdown (2026-08-05), so unitBuildCost below prices these 3 the
+ *  same power-derived, multi-resource way as every other teched unit;
+ *  their old units.js flat coinCost field has been removed. */
 window.GameData._TECH_FOR_UNIT = (() => {
   const map = {};
   for (const tech of Object.values(window.GameData.TECHS)) {

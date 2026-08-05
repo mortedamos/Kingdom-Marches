@@ -11,6 +11,7 @@
  *   { kind: "confirmEndTurn", items[], onAnswer(bool) }
  *   { kind: "confirm", title, text, confirmLabel, danger, onAnswer(bool) }
  *   { kind: "message", title, text, onDismiss() }
+ *   { kind: "chooseTech", title, text, options: [{id,label,description}], onAnswer(techId) }
  *
  * Every kind rendered here needs a matching branch in main.js's
  * wireDialogButtons -- the markup below only names the buttons, it doesn't
@@ -83,6 +84,22 @@ window.UI = window.UI || {};
           <button class="menu-dropdown-btn" id="game-dialog-cancel-btn">Cancel</button>
           <button class="menu-dropdown-btn ${dialog.danger ? "game-dialog-danger" : "game-dialog-primary"}" id="game-dialog-confirm-btn">${escapeHtml(dialog.confirmLabel || "Confirm")}</button>
         </div>`;
+    }
+    if (dialog.kind === "chooseTech") {
+      // Free first-city tech pick (2026-08-05, user-directed): an N-way
+      // choice, unlike every other dialog kind here which tops out at 2
+      // buttons -- each option is its own full-width button (reuses
+      // .menu-dropdown-btn, already left-aligned) rather than trying to
+      // force a variable-length list into .game-dialog-actions' row layout.
+      const options = (dialog.options || []).map((o) => `
+        <button class="menu-dropdown-btn game-dialog-choice" data-tech-id="${escapeHtml(o.id)}">
+          <div class="game-dialog-choice-label">${escapeHtml(o.label)}</div>
+          ${o.description ? `<div class="game-dialog-choice-desc">${escapeHtml(o.description)}</div>` : ""}
+        </button>`).join("");
+      return `
+        <h2>${escapeHtml(dialog.title)}</h2>
+        <p>${escapeHtml(dialog.text)}</p>
+        <div class="game-dialog-choices">${options}</div>`;
     }
     // "message" -- single-button dismiss, e.g. a victory announcement.
     return `

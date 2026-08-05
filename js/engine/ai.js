@@ -2766,9 +2766,12 @@ window.GameEngine = window.GameEngine || {};
    *     same all-or-nothing convention canAffordUnitUpkeep already uses
    *     elsewhere in this function, so the option just doesn't appear this
    *     turn rather than the civ going into debt for it.
-   *   - Legacy flat coinCost (Pioneer, Galley, Human's free Scout -- the 3
-   *     units with no associated tech, see GameData.techForUnit): unchanged
-   *     coin-income-accumulation behavior via progressBuildQueue.
+   *   - Legacy flat coinCost: coin-income-accumulation behavior via
+   *     progressBuildQueue. As of 2026-08-05 no unit actually falls back to
+   *     this any more -- Pioneer/Galley/Scout (the last 3 that used to)
+   *     now resolve to shared_infrastructure's own costBreakdown, same as
+   *     every other unit -- kept only as a defensive path for a
+   *     hypothetical future tech authored without a costBreakdown.
    * `unitCostMult` is the war-economy discount (e.g. Orc War Camp),
    * applied up front here instead of retroactively.
    */
@@ -3803,9 +3806,9 @@ window.GameEngine = window.GameEngine || {};
     // completion time independent of the city's coin income -- a wealthy city
     // can't just insta-build a wall in one turn. Ordinary buildings (no
     // minBuildTurns set) are unaffected, advancing at the full coin rate
-    // exactly as before. Units with a legacy flat coinCost (Pioneer, Galley,
-    // Human's free Scout -- see GameData.techForUnit) also still flow
-    // through here, unchanged.
+    // exactly as before. Any unit still on a legacy flat coinCost (none, as
+    // of 2026-08-05 -- see buildUnitOption's own doc comment) would also
+    // still flow through here, unchanged.
     const building = item.kind === "building" ? window.GameData.getBuilding(item.id) : null;
     const progressCap = building && building.minBuildTurns
       ? item.coinCost / building.minBuildTurns

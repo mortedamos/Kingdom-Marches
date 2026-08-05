@@ -1469,7 +1469,41 @@
           window.GameEngine.orders.invalidateReachCache();
           window.GameEngine.turns.refreshVisibility(gameState);
           window.SfxSystem.playAction(civ.raceId, unit.typeId, "found", unit.x, unit.y);
+          // Free first-city tech (2026-08-05, user-directed): mirrors
+          // cities.js foundCity's own civ.cities.length === 1 grant for AI
+          // civs -- this path duplicates that check since it never calls
+          // that function. Interactive for the human player instead of an
+          // auto-pick: opens a SECOND dialog immediately, chaining into
+          // `onDone` only once that one is answered too.
+          if (civ.cities.length === 1) {
+            openChooseTechDialog(civ, onDone);
+            return;
+          }
         }
+        if (onDone) onDone();
+      },
+    };
+    redraw();
+  }
+
+  /** Free first-city tech choice (2026-08-05, user-directed): opens right
+   *  after a civ's FIRST city is founded (see openFoundCityDialog above),
+   *  offering every Layer-1 tech for its race as a free pick -- see
+   *  tech.js's firstCityTechChoices/grantFreeTech. No-ops straight to
+   *  onDone if the race somehow has no Layer-1 techs left to offer. */
+  function openChooseTechDialog(civ, onDone) {
+    const choices = window.GameEngine.tech.firstCityTechChoices(civ);
+    if (choices.length === 0) { if (onDone) onDone(); return; }
+    viewState.dialog = {
+      kind: "chooseTech",
+      title: "Choose a Free Tech",
+      text: "Founding your first city grants one Tier 1 tech, free.",
+      options: choices.map((id) => {
+        const tech = window.GameData.getTech(id);
+        return { id, label: tech.label, description: tech.description || "" };
+      }),
+      onAnswer: (techId) => {
+        if (techId) window.GameEngine.tech.grantFreeTech(civ, techId);
         if (onDone) onDone();
       },
     };
@@ -1641,6 +1675,10 @@
     if (defendBtn) defendBtn.onclick = handleDefendUnit;
     const startProspectingBtn = $("start-prospecting-btn");
     if (startProspectingBtn) startProspectingBtn.onclick = () => handleStartChannel("prospecting");
+    const startHuntingBtn = $("start-hunting-btn");
+    if (startHuntingBtn) startHuntingBtn.onclick = () => handleStartChannel("hunting");
+    const startFarmingBtn = $("start-farming-btn");
+    if (startFarmingBtn) startFarmingBtn.onclick = () => handleStartChannel("farming");
     const startDelvingBtn = $("start-delving-btn");
     if (startDelvingBtn) startDelvingBtn.onclick = () => handleStartChannel("delving");
     const startFishingBtn = $("start-fishing-btn");
@@ -1864,6 +1902,18 @@
         if (dialog.onDismiss) dialog.onDismiss();
         redraw();
       };
+    } else if (dialog.kind === "chooseTech") {
+      const modal = $("game-dialog-modal");
+      if (modal) {
+        for (const btn of modal.querySelectorAll(".game-dialog-choice")) {
+          btn.onclick = () => {
+            viewState.dialog = null;
+            lastRenderedDialog = null;
+            dialog.onAnswer(btn.dataset.techId);
+            redraw();
+          };
+        }
+      }
     }
   }
 

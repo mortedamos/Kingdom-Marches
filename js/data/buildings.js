@@ -232,15 +232,20 @@ window.GameData.buildingsForRace = function (raceId) {
  */
 
 /** Which tech first grants a given building id (via unlock_building),
- *  scanned once across every tech's effects. null for wall_section, which
- *  is universal and never gated by research (see this file's own header
- *  comment on walls) -- callers fall back to the legacy flat-coinCost model
- *  for it, same as they always have. */
+ *  scanned once across every tech's effects. Deliberately excludes
+ *  wall_section even though shared_infrastructure's own effects DO include
+ *  an unlock_building for it (2026-08-04) -- wall_section is meant to stay
+ *  universal and never gated by research (see this file's own header
+ *  comment on walls), so it's carved out here rather than left to
+ *  incidentally pick up shared_infrastructure's costBreakdown (added
+ *  2026-08-05 for Pioneer/Galley/Scout's own build cost) as an unrelated
+ *  side effect -- callers fall back to the legacy flat-coinCost model for
+ *  it, same as they always have. */
 window.GameData._TECH_FOR_BUILDING = (() => {
   const map = {};
   for (const tech of Object.values(window.GameData.TECHS)) {
     for (const effect of tech.effects || []) {
-      if (effect.type === "unlock_building") map[effect.building] = tech.id;
+      if (effect.type === "unlock_building" && effect.building !== "wall_section") map[effect.building] = tech.id;
     }
   }
   return map;

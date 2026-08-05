@@ -13,9 +13,14 @@
 window.GameEngine = window.GameEngine || {};
 
 (function () {
-  /** City gate: a layer-L tech requires the civ to own at least L cities. */
+  /** City gate: a layer-L tech requires the civ to own at least L cities.
+   *  Math.floor (2026-08-05, user-directed): Tier 0's fractional layer
+   *  (0.5, e.g. hunt_game/farm_soil) needs to pass this gate at ZERO
+   *  cities -- floor(0.5) = 0, so `0 >= 0` holds even for a brand-new civ,
+   *  matching Tier 0's own "before your first city" flavor. Every real
+   *  layer is already a whole number, so this is a no-op for them. */
   function meetsCityGate(civ, tech) {
-    return civ.cities.length >= (tech.layer || 0);
+    return civ.cities.length >= Math.floor(tech.layer || 0);
   }
 
   function availableTechs(civ) {
@@ -274,6 +279,49 @@ window.GameEngine = window.GameEngine || {};
     return true;
   }
 
+  /** Layer-1 techs available to civ's race, not yet completed -- the pool
+   *  offered as a free choice the moment a civ founds its FIRST city (see
+   *  cities.js's foundCity for the AI grant, main.js's openFoundCityDialog
+   *  for the human dialog). Deliberately layer === 1 exactly, not <=1 --
+   *  Tier 0's own techs (shared_infrastructure, hunt_game, farm_soil) are
+   *  either already auto-completed or freely researchable from turn 0
+   *  regardless, so there's nothing for this free grant to add there. */
+  function firstCityTechChoices(civ) {
+    return window.GameData.techsForRace(civ.raceId).filter((id) => {
+      if (civ.completedTechs.has(id)) return false;
+      return window.GameData.getTech(id).layer === 1;
+    });
+  }
+
+  /** Grants `techId` for free -- bypasses meetsCityGate/prereqs/Lore cost
+   *  entirely, the same one-time "force complete" pathway main.js's civ
+   *  creation already uses for shared_infrastructure. Caller's
+   *  responsibility to only pass a real, not-yet-completed tech id (see
+   *  firstCityTechChoices). */
+  function grantFreeTech(civ, techId) {
+    civ.completedTechs.add(techId);
+    applyTechEffects(civ, window.GameData.getTech(techId));
+  }
+
+  /** AI's pick among firstCityTechChoices for the free first-city tech
+   *  grant -- a light "most immediately impactful" heuristic (most
+   *  effects), not ai.js's full doctrine-weighted scoreNextResearch, since
+   *  this fires the instant a civ's first city exists, often before
+   *  strategy.js has settled on that civ's doctrine. Returns null if the
+   *  civ's race has no Layer-1 techs left to offer (shouldn't happen in
+   *  practice -- every race has several -- but keeps this safe to call
+   *  unconditionally). */
+  function pickFreeTierOneTech(civ) {
+    const candidates = firstCityTechChoices(civ);
+    if (candidates.length === 0) return null;
+    let best = null, bestScore = -Infinity;
+    for (const id of candidates) {
+      const score = window.GameData.getTech(id).effects.length;
+      if (score > bestScore) { bestScore = score; best = id; }
+    }
+    return best;
+  }
+
   window.GameEngine.tech = {
     availableTechs,
     nextGatedTechLayer,
@@ -282,5 +330,8 @@ window.GameEngine = window.GameEngine || {};
     chooseResearch,
     researchTurns,
     meetsCityGate,
+    firstCityTechChoices,
+    grantFreeTech,
+    pickFreeTierOneTech,
   };
 })();

@@ -856,6 +856,17 @@ window.GameEngine = window.GameEngine || {};
     // memory for why this mattered.
     civ.cityEvents = civ.cityEvents || [];
     civ.cityEvents.push({ turn: gameState.turnNumber || 0, type: "founded" });
+    // Free first-city tech (2026-08-05, user-directed): the moment a civ's
+    // FIRST city exists, it picks one Layer-1 tech for free -- a jumpstart
+    // so early strategy isn't purely "whatever's cheapest to research."
+    // Human civs get an interactive choice instead of this auto-pick -- see
+    // main.js's openFoundCityDialog/openChooseTechDialog, which duplicates
+    // this same civ.cities.length === 1 check since the human founding path
+    // never calls this function (see that file's own doc comment on why).
+    if (civ.cities.length === 1) {
+      const freeTechId = window.GameEngine.tech.pickFreeTierOneTech(civ);
+      if (freeTechId) window.GameEngine.tech.grantFreeTech(civ, freeTechId);
+    }
     return city;
   }
 

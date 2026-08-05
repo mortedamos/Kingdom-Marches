@@ -44,7 +44,22 @@ window.UI = window.UI || {};
       byLayer[layer][columnFor(tech)].push(tech);
     }
 
+    // Tier 0 (2026-08-05, user-directed): shared_infrastructure/hunt_game/
+    // farm_soil all sit at layer 0.5, a step BELOW the "L1..maxLayer"
+    // integer loop below -- that loop starts at 1 and only ever increments
+    // by whole numbers, so it would never visit a 0.5 bucket on its own.
+    // Rendered as its own row, ahead of everything else, same renderNode
+    // used for every other layer.
     let rows = "";
+    const tier0 = byLayer[0.5];
+    if (tier0) {
+      rows += `<div class="techtree-layer">
+        <div class="techtree-layer-label">T0</div>
+        ${COLUMNS.map((col) => `<div class="techtree-column">${
+          tier0[col].map((tech) => renderNode(civ, tech, nextPick, isPlayerCiv)).join("") || ""
+        }</div>`).join("")}
+      </div>`;
+    }
     for (let layer = 1; layer <= maxLayer; layer++) {
       const cols = byLayer[layer];
       if (!cols) continue;

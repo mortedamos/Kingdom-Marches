@@ -198,9 +198,11 @@ window.GameEngine = window.GameEngine || {};
    * accumulates progress against coinCost each turn instead. Units and
    * buildings both split across these two the same way now (2026-08-03):
    * whichever ones have an unlocking tech with a costBreakdown use the
-   * modern model (see GameData.unitBuildCost/buildingBuildCost), the rest
-   * (Pioneer/Galley/Human's free Scout; wall_section, which has no
-   * unlocking tech at all) stay on the legacy path.
+   * modern model (see GameData.unitBuildCost/buildingBuildCost) -- as of
+   * 2026-08-05 that's every unit, including Pioneer/Galley/Scout (via
+   * shared_infrastructure's own costBreakdown); wall_section is the only
+   * thing left on the legacy path (explicitly excluded from
+   * buildingBuildCost's tech resolution -- see buildings.js).
    */
   function queueBuild(city, civ, gameState, option, placeAt) {
     if (!option || !city || civ.id !== gameState.civs[civ.id]?.id) return false;

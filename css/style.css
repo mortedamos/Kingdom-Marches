@@ -943,6 +943,12 @@ html, body {
   padding-left: 20px;
 }
 .game-dialog-actions { display: flex; justify-content: flex-end; gap: 8px; }
+/* N-way tech choice (2026-08-05, user-directed) -- see dialog.js's
+   "chooseTech" kind. Vertical list of full-width buttons instead of
+   .game-dialog-actions' row layout, since the option count varies. */
+.game-dialog-choices { display: flex; flex-direction: column; gap: 8px; margin: 4px 0 4px 0; }
+.game-dialog-choice-label { font-weight: 600; }
+.game-dialog-choice-desc { font-size: 11px; color: var(--text-dim); margin-top: 2px; }
 .game-dialog-primary { background: var(--accent); border-color: var(--accent); color: #1a1a1a; }
 .game-dialog-primary:hover { background: var(--accent-hover); }
 /* Destructive confirm (2026-08-04, user-directed) -- e.g. Disband Unit --

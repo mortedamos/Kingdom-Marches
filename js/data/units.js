@@ -169,9 +169,13 @@
 
  * Upkeep is NOT stored here -- it's derived, 10% of the unit's raw power
  * (see techs.js's unitUpkeep/unitPower), NOT its build cost.
- * `coinCost` below only matters for the 3 units with no associated tech
- * (Pioneer, Galley, Human's free Scout), which still use the legacy flat-
- * coin build model -- see ai.js's buildUnitOption.
+ * `coinCost` here only matters for a unit whose unlocking tech has no
+ * costBreakdown -- see ai.js's buildUnitOption's legacy-flat-coin fallback.
+ * As of 2026-08-05 every unit, including Pioneer/Galley/Scout (via
+ * shared_infrastructure's own costBreakdown), resolves to the modern
+ * power-derived multi-resource cost instead, so no unit currently carries
+ * a `coinCost` field any more -- the fallback machinery is kept only as a
+ * defensive path for a future tech authored without one.
  */
 
 
@@ -184,17 +188,17 @@ window.GameData.UNITS = {
   pioneer: {
     id: "pioneer", label: "Pioneer", symbol: "⌂", category: "civilian",
     attack: 0, defense: 2, movement: 2, visionRadius: 3,
-    canFoundCity: true, canBuildRoad: true, canImprove: true, coinCost: 20,
+    canFoundCity: true, canBuildRoad: true, canImprove: true, canProspect: true,
   },
   scout: {
     id: "scout", label: "Tracker", symbol: "⊙", category: "civilian",
-    attack: 1, defense: 1, movement: 3, visionRadius: 3, range: 2, 
-    canExplore: true, coinCost: 10, attackChars: ["➵", "➳"], 
+    attack: 1, defense: 1, movement: 3, visionRadius: 3, range: 2,
+    canExplore: true, canProspect: true, attackChars: ["➵", "➳"],
   },
   galley: {
     id: "galley", label: "Galley", symbol: "⛵", category: "military",
     attack: 1, defense: 2, movement: 4, visionRadius: 4, range: 1,
-    isNaval: true, canCarryUnit: true, coinCost: 25, biggerPct: .5,
+    isNaval: true, canCarryUnit: true, biggerPct: .5,
     // A ship, not a person -- see unit-names.js's UNIT_TYPE_PROPER_NAMES doc.
     nameSpecial: true,
     // Opts out of Boomerang's civ-wide Ranged-2 floor (combat.js

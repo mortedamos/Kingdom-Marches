@@ -426,7 +426,18 @@ window.UI = window.UI || {};
     let channelActions = "";
     if (isHumanUnit && gameState) {
       const tile = gameState.map.tiles[unit.y * gameState.map.width + unit.x];
-      const CHANNEL_LABELS = { prospecting: "Prospecting", delving: "Delving", fishing: "Fishing" };
+      // "hunting"/"farming" (2026-08-05, user-directed): Pioneer/Scout's own
+      // two channeled actions -- Hunt Game (Game tiles) and Farm Soil
+      // (Fertile Soil tiles), each gated behind its own Tier 0 tech
+      // (techs.js's hunt_game/farm_soil) -- replaced a single free
+      // "surveying" action with a generic "Start Prospecting" button.
+      // Distinct unit.channeling values from Dwarf's "prospecting"
+      // (Prospector's Claim) even though the tag on that one also reads
+      // "Prospecting" -- these are separate mechanics (flat-rate/no-claim,
+      // like Galley Fishing below, not Prospector's Claim's territorial
+      // claim-and-tier system) and reusing its string would make turns.js's
+      // dwarf-only gating fire for the wrong units.
+      const CHANNEL_LABELS = { prospecting: "Prospecting", delving: "Delving", fishing: "Fishing", hunting: "Hunting", farming: "Farming" };
       if (unit.channeling && CHANNEL_LABELS[unit.channeling]) {
         channelActions = `<h3>Actions</h3>`;
         const turnsIn = unit._ritualTurns || 0;
@@ -436,6 +447,8 @@ window.UI = window.UI || {};
         channelActions += `<button id="cancel-channel-btn" class="action-btn action-btn-danger">Cancel ${CHANNEL_LABELS[unit.channeling]}</button>`;
       } else if (!unit.usedThisTurn) {
         const onVein = tile.resource === "gold" || tile.resource === "iron";
+        const onGame = tile.resource === "game";
+        const onFertile = tile.resource === "fertile";
         if (civ.raceId === "dwarf" && civ.unlockedMechanics && civ.unlockedMechanics.has("prospectors_claim") && onVein) {
           channelActions = `<h3>Actions</h3>`;
           channelActions += `<button id="start-prospecting-btn" class="action-btn">Start Prospecting</button>`;
@@ -445,6 +458,12 @@ window.UI = window.UI || {};
         } else if (unit.typeId === "galley" && !unit.carries && tile.resource === "fish") {
           channelActions = `<h3>Actions</h3>`;
           channelActions += `<button id="start-fishing-btn" class="action-btn">Start Fishing</button>`;
+        } else if (baseUnit.canProspect && onGame && civ.unlockedMechanics && civ.unlockedMechanics.has("hunt_game")) {
+          channelActions = `<h3>Actions</h3>`;
+          channelActions += `<button id="start-hunting-btn" class="action-btn">Hunt Game</button>`;
+        } else if (baseUnit.canProspect && onFertile && civ.unlockedMechanics && civ.unlockedMechanics.has("farm_soil")) {
+          channelActions = `<h3>Actions</h3>`;
+          channelActions += `<button id="start-farming-btn" class="action-btn">Farm Soil</button>`;
         }
       }
     }
