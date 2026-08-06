@@ -423,10 +423,18 @@ window.GameConfig = {
        *  actually sells "high above the field". 0 would pin them to the
        *  screen, 1 would glue them to the terrain. */
       parallax: 0.3,
-      /** Radius (px) of the fully-transparent hole that follows the cursor,
-       *  and how far past that the hole feathers back to full cloud. */
-      holeRadius: 150,
-      holeFeather: 110,
+      /** Clouds are confined to a band around the OUTER edge of the map
+       *  view (2026-08-06, user-directed -- this replaced an earlier
+       *  transparent hole that followed the mouse). bandFraction is how
+       *  deep that band reaches as a fraction of the viewport's width and
+       *  height, so 0.15 leaves the middle ~70% x ~70% completely clear.
+       *
+       *  bandFeather is what portion of that band is the fade-out, measured
+       *  inward: 0.6 means clouds hold full strength across the outermost
+       *  40% of the band and then fade to nothing over the remaining 60%,
+       *  so there's no hard line where the clouds stop. */
+      bandFraction: 0.15,
+      bandFeather: 0.6,
       /** Sprite generation: puffs per cloud and the px radius range of each
        *  puff. More/larger puffs = bigger, lumpier clouds. Raised from
        *  [6,9] (2026-08-06): too few puffs left visible gaps across the

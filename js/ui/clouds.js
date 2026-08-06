@@ -3,8 +3,11 @@
  * -------------------------------------------------
  * Sparse white clouds floating high above the map: semi-transparent (you can
  * always see the board through them), slowly drifting left -> right at an
- * angle that wanders over time, and fully transparent in a large soft circle
- * around the mouse cursor.
+ * angle that wanders over time, and confined to a band around the OUTER edge
+ * of the view so the middle of the play area stays completely clear (see
+ * ensureMask / GameConfig.view.clouds.bandFraction). An earlier version
+ * instead punched a transparent hole that followed the mouse cursor;
+ * replaced 2026-08-06, user-directed.
  *
  * PURELY COSMETIC -- this module never reads or writes game state, never
  * triggers a redraw, and can never intercept a click. Three independent
@@ -12,15 +15,12 @@
  *   1. #map-clouds is styled `pointer-events: none`, so it is never a hit
  *      target (same treatment #map-canvas-3d-hud already gets).
  *   2. Painting pixels onto a canvas doesn't create hit targets anyway.
- *   3. Nothing here calls onChange()/redraw() -- main.js's existing
- *      per-frame requestAnimationFrame loop (startAnimationLoop) already
- *      repaints every frame, so cursor tracking is free and adds zero
- *      redraw pressure. That's specifically why this doesn't reuse
- *      viewState.hoverTile: that's TILE-granular, only updates when the
- *      tile changes, and deliberately early-returns while dragging -- none
- *      of which suits a hole that has to follow the cursor smoothly.
+ *   3. Nothing here listens for input at all, and nothing calls
+ *      onChange()/redraw() -- main.js's existing per-frame
+ *      requestAnimationFrame loop (startAnimationLoop) already repaints
+ *      every frame, so this layer costs no extra redraws.
  *
- * WHY ITS OWN CANVAS: the cursor hole is punched with
+ * WHY ITS OWN CANVAS: the edge band is cut with
  * globalCompositeOperation = "destination-out", which erases whatever is
  * already on the canvas. On the shared map canvas that would erase the MAP.
  * A dedicated layer makes the erase affect only the clouds.
@@ -47,11 +47,72 @@ window.UI = window.UI || {};
   // smoothly instead of jumping (see render's dt clamp).
   let elapsed = 0;
 
-  // Cursor position in canvas-local px, or null when the pointer isn't over
-  // the map at all (no hole is drawn then). Written by main.js's listener.
-  let pointer = null;
+  // Cached edge-band mask (see ensureMask). Depends only on canvas size, so
+  // it's rebuilt on resize rather than every frame.
+  let maskCanvas = null;
+  let maskW = 0, maskH = 0;
 
   function randRange(min, max) { return min + Math.random() * (max - min); }
+
+  /** Smooth 0..1 ramp -- softer than a linear fade, so the band's inner
+   *  edge has no visible banding or hard start. */
+  function smoothstep(t) {
+    const c = Math.max(0, Math.min(1, t));
+    return c * c * (3 - 2 * c);
+  }
+
+  /**
+   * Builds (and caches) the mask that confines clouds to a band around the
+   * outer edge of the view, leaving the middle clear -- see
+   * GameConfig.view.clouds.bandFraction/bandFeather.
+   *
+   * The mask's ALPHA is "how much to erase": 0 out at the very edge (clouds
+   * fully visible), ramping to 1 by the inner boundary of the band (clouds
+   * fully erased) and staying 1 across the whole middle. render() applies it
+   * with one destination-out drawImage.
+   *
+   * Distance-to-nearest-edge is min(dx, dy), which gives a RECTANGULAR band
+   * that hugs the window on all four sides and handles the corners correctly
+   * for free -- a corner is close to two edges, so it stays cloudy rather
+   * than being double-darkened the way four separate edge gradients would
+   * have done it.
+   *
+   * Built per-pixel, which is fine because it only happens on a resize, not
+   * per frame.
+   */
+  function ensureMask(w, h) {
+    if (maskCanvas && maskW === w && maskH === h) return maskCanvas;
+    const cfg = CFG();
+    const band = Math.max(0.001, cfg.bandFraction);
+    const feather = Math.min(0.999, Math.max(0, cfg.bandFeather));
+    // Where within the band the fade starts (0 = at the outer edge, so the
+    // whole band is a gradient; higher = clouds hold full strength longer).
+    const holdUntil = 1 - feather;
+
+    const c = document.createElement("canvas");
+    c.width = w; c.height = h;
+    const ctx = c.getContext("2d");
+    const img = ctx.createImageData(w, h);
+    const data = img.data;
+
+    for (let y = 0; y < h; y++) {
+      const fy = Math.min(y, h - 1 - y) / h;
+      for (let x = 0; x < w; x++) {
+        const fx = Math.min(x, w - 1 - x) / w;
+        // 0 at the window edge, growing inward; capped at the band depth.
+        const d = Math.min(fx, fy);
+        const t = d / band; // 0 at edge, 1 at the band's inner boundary
+        let erase;
+        if (t <= holdUntil) erase = 0;              // outermost: full clouds
+        else if (t >= 1) erase = 1;                 // middle: no clouds
+        else erase = smoothstep((t - holdUntil) / (1 - holdUntil));
+        data[(y * w + x) * 4 + 3] = Math.round(erase * 255);
+      }
+    }
+    ctx.putImageData(img, 0, 0);
+    maskCanvas = c; maskW = w; maskH = h;
+    return c;
+  }
 
   /**
    * One cloud sprite: a cluster of overlapping soft radial puffs on a
@@ -201,9 +262,6 @@ window.UI = window.UI || {};
     elapsed = 0;
   }
 
-  /** Public: cursor position in canvas-local px, or null when off-map. */
-  function setPointer(pos) { pointer = pos; }
-
   /**
    * Public: advance and draw one frame. Called from main.js's existing rAF
    * loop, right after the map itself is rendered.
@@ -262,24 +320,15 @@ window.UI = window.UI || {};
     }
     ctx.globalAlpha = 1;
 
-    // --- cursor hole ---------------------------------------------------
+    // --- confine to the outer band -------------------------------------
     // destination-out erases what's already painted -- clouds only, since
-    // this canvas holds nothing else. Fully transparent at the centre,
-    // feathering back to untouched cloud at holeRadius + holeFeather, so
-    // there's no visible ring at the boundary.
-    if (pointer) {
-      const inner = cfg.holeRadius;
-      const outer = cfg.holeRadius + cfg.holeFeather;
-      const g = ctx.createRadialGradient(pointer.x, pointer.y, 0, pointer.x, pointer.y, outer);
-      g.addColorStop(0, "rgba(0,0,0,1)");
-      g.addColorStop(Math.min(0.99, inner / outer), "rgba(0,0,0,1)");
-      g.addColorStop(1, "rgba(0,0,0,0)");
-      ctx.globalCompositeOperation = "destination-out";
-      ctx.fillStyle = g;
-      ctx.fillRect(pointer.x - outer, pointer.y - outer, outer * 2, outer * 2);
-      ctx.globalCompositeOperation = "source-over";
-    }
+    // this canvas holds nothing else. The cached mask is 0 (no erase) at
+    // the window edge and 1 (full erase) across the middle, so whatever
+    // drifted into the centre is cleared and the play area stays clean.
+    ctx.globalCompositeOperation = "destination-out";
+    ctx.drawImage(ensureMask(w, h), 0, 0);
+    ctx.globalCompositeOperation = "source-over";
   }
 
-  window.UI.clouds = { init, setPointer, render };
+  window.UI.clouds = { init, render };
 })();

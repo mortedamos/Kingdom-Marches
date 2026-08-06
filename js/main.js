@@ -678,7 +678,6 @@
     // after setupCanvas has sized the canvas so the initial scatter covers
     // the real viewport. Purely cosmetic; see js/ui/clouds.js.
     window.UI.clouds.init($("map-canvas").width, $("map-canvas").height);
-    setupCloudPointerTracking();
     window.UI.input.attach($("map-canvas"), gameState, viewState, redraw);
     // 3D click-to-select needs to trigger the exact same post-selection
     // refresh a 2D click does -- not just re-rendering the sidebar's HTML,
@@ -1054,31 +1053,6 @@
       cloudCanvas.height = canvas.height;
     }
     redraw();
-  }
-
-  /**
-   * Cursor tracking for the cloud layer's transparent hole (2026-08-06,
-   * user-directed). Deliberately its own listener rather than reusing
-   * viewState.hoverTile: that's TILE-granular, only updates when the tile
-   * actually changes, and early-returns while dragging -- none of which
-   * suits a hole that has to follow the cursor smoothly and continuously.
-   *
-   * Critically this does NOT call redraw(): startAnimationLoop's existing
-   * per-frame rAF pass already repaints the cloud layer every frame, so
-   * storing the position is all that's needed. Calling redraw() here would
-   * add a full map re-render per mousemove for zero benefit.
-   *
-   * Bound to the map canvas (not window) so leaving the map clears the
-   * hole, and passive so it can never delay scrolling or dragging.
-   */
-  function setupCloudPointerTracking() {
-    const canvas = $("map-canvas");
-    if (!canvas) return;
-    canvas.addEventListener("mousemove", (e) => {
-      const rect = canvas.getBoundingClientRect();
-      window.UI.clouds.setPointer({ x: e.clientX - rect.left, y: e.clientY - rect.top });
-    }, { passive: true });
-    canvas.addEventListener("mouseleave", () => window.UI.clouds.setPointer(null), { passive: true });
   }
 
   function setupCanvas() {
