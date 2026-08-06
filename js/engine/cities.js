@@ -41,6 +41,9 @@ window.GameEngine = window.GameEngine || {};
   const FLAT_CITY_COIN    = CFG.flatCoin;
   const FLAT_CITY_LORE    = CFG.flatLore;
   const LORE_TRICKLE_RATE = CFG.loreTrickleRate;  // influence bonus per point of Lore/turn
+  // Share of its own yield a city adds when its turn's production goes into
+  // resources instead of a unit/building -- see applyResourceProduction.
+  const RESOURCE_PRODUCTION_BONUS = CFG.resourceProductionBonus;
   const BASE_INFLUENCE_RADIUS = CFG.baseInfluenceRadius; // pop 1 city starts with radius 1
 
   // city.influenceRadius is now the SINGLE radius governing both territory
@@ -508,22 +511,12 @@ window.GameEngine = window.GameEngine || {};
     const buildingCount = city.structures.filter((s) => !window.GameData.getBuilding(s.id).isWall).length;
     const buildingCountBonus = civ.buildingCountBonus || {};
 
-    // "Resource Production" (2026-08-06, user-directed): a city action
-    // (main.js's handleBoostResourceProduction) that queues a flat +50%
-    // yield boost for this city's very NEXT tick -- consumed here, no
-    // cooldown or limit on how often the player can queue it again.
-    // Applied uniformly to harvest/coin/lore below, including the harvest
-    // that feeds growth and coin_from_harvest_pct further down, so a
-    // boosted tick's downstream effects scale with it too.
-    const boostMult = city.pendingResourceBoost ? 1.5 : 1;
-    city.pendingResourceBoost = false;
-
     // Tech: harvest_pct_bonus (e.g. Human "Industrious Harvest") scales total harvest yield.
     // Structure yieldPct (e.g. Bazaar +10% harvest) is a SEPARATE, per-city-only multiplier.
     const harvestPctMult = 1 + (civ.harvestPctBonus || 0);
     const totalHarvest = (tileYield.harvest + struct.yield.harvest + FLAT_CITY_HARVEST
         + (buildingCountBonus.harvest || 0) * buildingCount)
-      * harvestPctMult * (1 + struct.yieldPct.harvest) * boostMult;
+      * harvestPctMult * (1 + struct.yieldPct.harvest);
 
     const upkeep = UPKEEP_RATE * city.population;
     const netHarvest = Math.max(0, totalHarvest * (race.growthMult || 1.0) - upkeep);
@@ -566,17 +559,14 @@ window.GameEngine = window.GameEngine || {};
     const intrinsicCoin = INTRINSIC_COIN_RATE * city.population;
     const intrinsicLore = INTRINSIC_LORE_RATE * city.population;
     // Tech: coin_from_harvest_pct converts a slice of this turn's harvest into bonus coin.
-    // Divides boostMult back out first -- totalHarvest already carries it,
-    // and totalCoin below applies boostMult again to its own total, so
-    // leaving it in here would double-boost this one term.
-    const coinFromHarvest = (totalHarvest / boostMult) * (civ.coinFromHarvestPct || 0);
+    const coinFromHarvest = totalHarvest * (civ.coinFromHarvestPct || 0);
 
     const totalCoin = (tileYield.coin + struct.yield.coin + intrinsicCoin + FLAT_CITY_COIN + coinFromHarvest
         + (buildingCountBonus.coin || 0) * buildingCount)
-      * (1 + struct.yieldPct.coin) * boostMult;
+      * (1 + struct.yieldPct.coin);
     const totalLore = (tileYield.lore + struct.yield.lore + intrinsicLore + FLAT_CITY_LORE
         + (buildingCountBonus.lore || 0) * buildingCount)
-      * (1 + struct.yieldPct.lore) * boostMult;
+      * (1 + struct.yieldPct.lore);
 
     city.lastYield = { harvest: totalHarvest, coin: totalCoin, lore: totalLore };
     city.coinBanked += city.lastYield.coin;
@@ -598,6 +588,86 @@ window.GameEngine = window.GameEngine || {};
     }
 
     return city.lastYield;
+  }
+
+  /**
+   * RESOURCE PRODUCTION (2026-08-06, user-directed)
+   * ----------------------------------------------
+   * A city's turn goes into ONE thing: a unit, a building, or -- via this --
+   * straight into resources. Picking it (sidebar.js's renderBuildSection,
+   * main.js's handleResourceProduction) adds RESOURCE_PRODUCTION_BONUS of
+   * the city's own yield to what it produces THIS turn.
+   *
+   * "This turn" is the whole point, and is why the payout is paid straight
+   * into the stockpile here rather than left on a flag for the next tick to
+   * read (which is what the first version of this did -- a +50% boost that
+   * landed on the FOLLOWING turn, since tickCity runs in beginCivTurn, before
+   * the player can click anything). turns.js's beginCivTurn does the whole
+   * income sweep -- tick every city, sum lastYield into civ.resources, bank
+   * that into civ.stockpile, then charge upkeep -- at the START of the turn,
+   * so by the time the player clicks there is no later sweep left to hook:
+   * civ.stockpile is credited directly, and civ.resources alongside it purely
+   * so the sidebar's Income row still adds up to what the cities produced.
+   *
+   * Once per city per turn (resourceProductionTurn), and only while the city
+   * has no build queued -- resources are what this city's production is
+   * spent on instead of a unit or building, not a bonus on top of one.
+   */
+  function isProducingResources(city, gameState) {
+    return !!city && city.resourceProductionTurn === (gameState.turnNumber || 0);
+  }
+
+  /** What "Resource Production" would pay out for `city` right now: a flat
+   *  share of its current per-turn yield. Zero for a city founded this turn
+   *  (no lastYield to take a share of yet). Pure -- the sidebar calls this
+   *  every render to label the button. */
+  function resourceProductionPreview(city) {
+    const y = (city && city.lastYield) || { harvest: 0, coin: 0, lore: 0 };
+    return {
+      harvest: (y.harvest || 0) * RESOURCE_PRODUCTION_BONUS,
+      coin: (y.coin || 0) * RESOURCE_PRODUCTION_BONUS,
+      lore: (y.lore || 0) * RESOURCE_PRODUCTION_BONUS,
+    };
+  }
+
+  /** Spends `city`'s production this turn on resources. Returns the gain, or
+   *  null if it wasn't allowed (already done this turn, building something,
+   *  or nothing to produce yet). */
+  function applyResourceProduction(city, civ, gameState) {
+    if (!city || !civ || city.buildQueue) return null;
+    if (isProducingResources(city, gameState)) return null;
+
+    const gain = resourceProductionPreview(city);
+    if (!gain.harvest && !gain.coin && !gain.lore) return null;
+
+    city.resourceProductionTurn = gameState.turnNumber || 0;
+    city.resourceProductionGain = gain;
+
+    civ.stockpile = civ.stockpile || { harvest: 0, coin: 0, lore: 0 };
+    civ.resources = civ.resources || { harvest: 0, coin: 0, lore: 0 };
+    for (const key of ["harvest", "coin", "lore"]) {
+      civ.stockpile[key] = (civ.stockpile[key] || 0) + gain[key];
+      civ.resources[key] = (civ.resources[key] || 0) + gain[key];
+    }
+
+    // Everything tickCity derives from lastYield is brought along, so the
+    // city reads as having genuinely produced more this turn rather than the
+    // stockpile quietly gaining resources no city accounts for: the
+    // sidebar's "Yield this turn", the growth surplus (scaled by growthMult,
+    // matching how tickCity converts harvest into surplus), coinBanked for a
+    // legacy coin-accumulation build, and the lore->influence trickle.
+    const race = window.GameData.getRace(civ.raceId);
+    city.lastYield = {
+      harvest: (city.lastYield.harvest || 0) + gain.harvest,
+      coin: (city.lastYield.coin || 0) + gain.coin,
+      lore: (city.lastYield.lore || 0) + gain.lore,
+    };
+    city.harvestSurplus += gain.harvest * (race.growthMult || 1.0);
+    city.coinBanked += gain.coin;
+    city.loreInfluenceTrickle = city.lastYield.lore * LORE_TRICKLE_RATE;
+
+    window.GameEngine.floatingText.spawnResourceGain(city, gain);
+    return gain;
   }
 
   /**
@@ -947,6 +1017,9 @@ window.GameEngine = window.GameEngine || {};
     canFoundCityAt,
     isRoadConnected,
     tickCity,
+    isProducingResources,
+    resourceProductionPreview,
+    applyResourceProduction,
     computeWorkedTileYield,
     isOffsetFilled,
     isTileFilledForCiv,

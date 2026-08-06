@@ -426,6 +426,18 @@ window.UI = window.UI || {};
     const quipBubbleQueue = [];
     const floatingTextQueue = [];
 
+    // Cities can raise floating text too (2026-08-06: "Resource Production"
+    // -- see cities.js's applyResourceProduction), matched by object identity
+    // exactly like a unit or a structure record. Its own pass rather than a
+    // push inside the city loop above, which runs before these queues exist.
+    for (const civ of Object.values(civs)) {
+      for (const city of civ.cities) {
+        if (!visible.has(city.y * map.width + city.x)) continue;
+        if (!overlays.hasActiveFloatingText(city)) continue;
+        floatingTextQueue.push({ unit: city, screenX: city.x * ts + offsetX, screenY: city.y * ts + offsetY });
+      }
+    }
+
     // Structures (buildings placed on any tile adjacent to their city)
     for (const civ of Object.values(civs)) {
       const race = window.GameData.getRace(civ.raceId);
@@ -623,6 +635,12 @@ window.UI = window.UI || {};
       }
     }
 
+    // Where the player's self-directing units are headed (2026-08-06,
+    // user-directed) -- above units, below the hover preview, same reasoning
+    // as the path preview: a route is only useful if it reads THROUGH
+    // whatever it passes over.
+    drawPlannedPaths(ctx, gameState, viewState, offsetX, offsetY, ts, now);
+
     // "Next Unit" flash (2026-08-06, user-directed): drawn above cities/units
     // so it reads clearly regardless of what's standing on the tile.
     drawFlashTile(ctx, viewState, offsetX, offsetY, ts, now);
@@ -745,6 +763,101 @@ window.UI = window.UI || {};
     ctx.lineWidth = 3 + 3 * alpha;
     ctx.strokeRect(screenX + 2, screenY + 2, ts - 4, ts - 4);
     ctx.restore();
+  }
+
+  // Route colors by what's driving the unit -- a player-issued goto reuses
+  // the move preview's own blue (same thing, just already committed), a
+  // build-road order the roads' earthy tone, and an automated unit a distinct
+  // green so "I told it to go there" never reads the same as "it decided to
+  // go there on its own".
+  const PLANNED_PATH_COLORS = { goto: "#7fd4f7", buildRoad: "#e0b26a", auto: "#9ad97f" };
+  const PATH_DASH_MS_PER_CYCLE = 700; // one dash+gap of travel; lower = faster crawl
+
+  /**
+   * Every self-directing unit's route, drawn on the map (2026-08-06,
+   * user-directed): a dashed line crawling from the unit along the exact path
+   * it will take, with an X on the tile it's headed for. Covers units mid
+   * multi-turn goto order and units running on Automate Actions -- see
+   * orders.js's plannedPath, which decides what (if anything) each unit is
+   * aiming at and does the pathfinding.
+   *
+   * Drawn for ALL of the player's own such units at once, not just the
+   * selected one, so a dozen automated units read as a set of plans at a
+   * glance -- the unselected ones at reduced alpha so the selected unit's own
+   * route still stands out from the crowd. Never drawn for another civ's
+   * units: their intentions aren't the player's to see.
+   */
+  function drawPlannedPaths(ctx, gameState, viewState, offsetX, offsetY, ts, now) {
+    const orders = window.GameEngine.orders;
+    const civ = viewState.humanCivId ? gameState.civs[viewState.humanCivId] : null;
+    if (!orders || !orders.plannedPath || !civ) return;
+
+    // Marching dashes: the offset runs negative so the pattern travels
+    // FORWARD along the stroke, i.e. toward the destination.
+    const dashCycle = 14;
+    const dashOffset = -((now % PATH_DASH_MS_PER_CYCLE) / PATH_DASH_MS_PER_CYCLE) * dashCycle;
+
+    for (const unit of civ.units) {
+      const plan = orders.plannedPath(unit, gameState);
+      if (!plan) continue;
+
+      const visual = getVisualPos(unit);
+      const points = [{ x: (visual.x + 0.5) * ts + offsetX, y: (visual.y + 0.5) * ts + offsetY }];
+      for (const step of plan.path) {
+        points.push({ x: (step.x + 0.5) * ts + offsetX, y: (step.y + 0.5) * ts + offsetY });
+      }
+      const targetX = (plan.target.x + 0.5) * ts + offsetX;
+      const targetY = (plan.target.y + 0.5) * ts + offsetY;
+
+      // Whole-route cull: nothing to draw if the line and its X both sit well
+      // off-canvas (a long cross-map order is common, and stroking one costs
+      // more than the bounds check).
+      const xs = points.map((p) => p.x).concat(targetX);
+      const ys = points.map((p) => p.y).concat(targetY);
+      if (Math.max(...xs) < -ts || Math.min(...xs) > ctx.canvas.width + ts
+        || Math.max(...ys) < -ts || Math.min(...ys) > ctx.canvas.height + ts) continue;
+
+      const color = PLANNED_PATH_COLORS[plan.kind] || PLANNED_PATH_COLORS.goto;
+      const alpha = viewState.selectedUnit === unit ? 1 : 0.5;
+
+      ctx.save();
+      ctx.globalAlpha = alpha;
+      ctx.lineCap = "round";
+      ctx.lineJoin = "round";
+
+      ctx.beginPath();
+      ctx.moveTo(points[0].x, points[0].y);
+      for (let i = 1; i < points.length; i++) ctx.lineTo(points[i].x, points[i].y);
+      // Solid dark backing first, so the dashes stay legible over bright
+      // terrain (sand, snow) as well as dark (deep water, forest).
+      ctx.strokeStyle = "rgba(0, 0, 0, 0.45)";
+      ctx.lineWidth = Math.max(3, ts * 0.09);
+      ctx.stroke();
+      ctx.setLineDash([7, 7]);
+      ctx.lineDashOffset = dashOffset;
+      ctx.strokeStyle = color;
+      ctx.lineWidth = Math.max(1.5, ts * 0.05);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      // Destination X. Anchored to the ORDER's target, which is not always
+      // the end of the drawn route -- an unreachable target gets a path that
+      // stops at the closest approach (see plannedPath), and marking where
+      // the unit is actually TRYING to get to is the more useful of the two.
+      const arm = ts * 0.22;
+      ctx.beginPath();
+      ctx.moveTo(targetX - arm, targetY - arm);
+      ctx.lineTo(targetX + arm, targetY + arm);
+      ctx.moveTo(targetX + arm, targetY - arm);
+      ctx.lineTo(targetX - arm, targetY + arm);
+      ctx.strokeStyle = "rgba(0, 0, 0, 0.55)";
+      ctx.lineWidth = Math.max(4, ts * 0.11);
+      ctx.stroke();
+      ctx.strokeStyle = color;
+      ctx.lineWidth = Math.max(2, ts * 0.06);
+      ctx.stroke();
+      ctx.restore();
+    }
   }
 
   /** The hovered tile's order preview: an attack reticle with odds, a move
@@ -1167,8 +1280,37 @@ window.UI = window.UI || {};
     return !(screenX < -ts || screenX > canvas.width || screenY < -ts || screenY > canvas.height);
   }
 
+  /**
+   * The CENTER of tile (x,y) in pixels relative to the map canvas's own top-
+   * left -- the anchor a DOM overlay positioned inside .map-area needs (see
+   * js/ui/ringmenu.js). Pure, like isTileOnScreen above: it does NOT clamp or
+   * mutate viewState.scrollX/Y the way render() does.
+   *
+   * Deliberately duplicates render()'s ts/offset derivation (2026-08-06,
+   * user-directed) rather than inverting screenToTile, which looks like the
+   * obvious way to do this and is wrong: screenToTile uses the UNROUNDED
+   * tile size, while everything actually drawn uses Math.round(ts) and a
+   * rounded offset (see render()'s own comment on why). At zoom 1.37 that's
+   * 71.24 vs 71 px per tile -- a drift that accumulates across the map, so a
+   * ring anchored from the inverse would sit visibly off the sprite it
+   * belongs to. Anchor from what's drawn, not from what's hit-tested.
+   *
+   * Returns { x, y, ts } -- ts comes along because callers sizing themselves
+   * against the tile (a ring radius, a highlight circle) all need it and
+   * would otherwise recompute the same rounding a third time.
+   */
+  function tileCenterOnMap(x, y, canvas, gameState, viewState) {
+    const ts = Math.round(TILE_SIZE * (viewState.zoomLevel || 1));
+    const clamped = clampOffset(viewState.scrollX || 0, viewState.scrollY || 0, canvas, gameState.map, ts);
+    return {
+      x: (x + 0.5) * ts - Math.round(clamped.x),
+      y: (y + 0.5) * ts - Math.round(clamped.y),
+      ts,
+    };
+  }
+
   window.UI.render = {
-    render, screenToTile, isTileOnScreen, fullVisibilitySet, getVisualPos,
+    render, screenToTile, isTileOnScreen, tileCenterOnMap, fullVisibilitySet, getVisualPos,
     get TILE_SIZE() { return TILE_SIZE; },
     MIN_ZOOM, MAX_ZOOM,
   };

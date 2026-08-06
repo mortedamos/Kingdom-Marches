@@ -114,38 +114,81 @@ window.UI = window.UI || {};
       onChange();
     });
 
-    // CONTEXT MENU (2026-08-06, user-directed rewrite -- previously right-
-    // click issued a move/attack immediately, same-turn range only). Every
-    // right-click now opens a menu of context-relevant actions at the
-    // clicked tile (see orders.js's contextMenuOptions for what's offered
-    // and why, main.js's redraw()/handleContextMenuAction for how it's
+    // RADIAL MENU (2026-08-06, user-directed rewrite -- previously right-
+    // click issued a move/attack immediately, same-turn range only; then a
+    // linear list at the cursor). Every right-click now opens a ring of
+    // context-relevant actions AROUND the clicked tile (see orders.js's
+    // contextMenuOptions for what's offered and why, js/ui/ringmenu.js for
+    // the geometry, main.js's redraw()/handleContextMenuAction for how it's
     // rendered and dispatched) -- this handler only decides WHERE the
     // player clicked and stores that, same "decide where, not what" split
     // the old handler had.
+    //
+    // No screenX/screenY any more: the ring anchors to the TILE, so the
+    // cursor's own position stops being part of the model (and with it goes
+    // the old menu's hardcoded width/height clamp estimates).
     canvas.addEventListener("contextmenu", (e) => {
       e.preventDefault(); // suppress the browser menu, always -- even on a no-op
       if (dragMoved) return;
       const tilePos = eventTile(e, canvas, viewState, gameState);
       if (!tilePos) return;
-      const unit = viewState.selectedUnit;
-      if (!window.GameEngine.orders.canCommand(unit, gameState, viewState.humanCivId)) return;
-      const options = window.GameEngine.orders.contextMenuOptions(unit, gameState, tilePos.x, tilePos.y, viewState.humanCivId);
-      if (!options.length) {
-        // Nothing legal here -- surface a refusal rather than popping an
-        // empty menu, same "nothing happened is indistinguishable from a
-        // broken button" reasoning the old immediate-order handler had.
-        viewState.orderHint = { text: "No valid actions here", until: performance.now() + 2000 };
+      const orders = window.GameEngine.orders;
+
+      // Structure placement is a modal cursor that swallows left-clicks (see
+      // the click handler above), so right-click is the conventional escape
+      // from it rather than yet another way to open a menu.
+      if (viewState.placement) {
+        if (viewState.placement.onPick) viewState.placement.onPick(null);
         onChange();
         return;
       }
-      viewState.contextMenu = { x: tilePos.x, y: tilePos.y, screenX: e.clientX, screenY: e.clientY };
+
+      let res = orders.mapMenuOptions(gameState, viewState, tilePos.x, tilePos.y, viewState.humanCivId);
+      // Retarget BEFORE committing to an option list: the subject is on the
+      // clicked tile (one of the player's own units, or a city with nothing
+      // selected), so selection follows the ring and the sidebar stays in
+      // agreement with it. Forcing the tab matters -- handleTileClick carries
+      // the previously-active tab KIND forward, so arriving from a Terrain
+      // tab would otherwise leave the sidebar showing terrain while the ring
+      // talks about a unit. Same follow-up main.js's Next Unit cycler does.
+      if (res.retarget) {
+        handleTileClick(tilePos, gameState, viewState);
+        const sel = viewState.selection;
+        if (sel) {
+          const wanted = res.subject === "city" ? "city" : "unit";
+          const idx = sel.tabs.findIndex((t) => t.kind === wanted);
+          if (idx >= 0) setActiveTab(gameState, viewState, idx);
+        }
+        // Re-derive against the new selection -- the previous list was built
+        // for whatever happened to be selected a moment ago.
+        res = orders.mapMenuOptions(gameState, viewState, tilePos.x, tilePos.y, viewState.humanCivId);
+      }
+
+      if (!res.options.length) {
+        onChange();
+        return;
+      }
+      viewState.ringMenu = { x: tilePos.x, y: tilePos.y, subject: res.subject, page: null };
+      // Aiming is over -- the player is reading the ring now, not the map.
+      // See the hover handler below for why this matters beyond cosmetics.
+      viewState.hoverTile = null;
       onChange();
     });
 
     // Hover tile drives the path preview and the move/attack cursor. Tracked
     // on the canvas only (not window) so leaving the map clears it.
+    //
+    // Frozen while a ring menu is open (2026-08-06, user-directed). The
+    // cosmetic reason is that a stale attack reticle shouldn't sit under the
+    // menu; the structural reason is worse. Every hover change calls
+    // onChange() -> redraw(), and moving the cursor from the subject tile out
+    // to a pill crosses the canvas -- so without this, the ring's own DOM
+    // would be rebuilt several times mid-travel, which is exactly the
+    // "control swapped out from under the click" failure main.js's
+    // hasFocusedControlIn comment documents for the report dropdowns.
     canvas.addEventListener("mousemove", (e) => {
       if (dragging) return; // panning, not aiming
+      if (viewState.ringMenu) return;
       const tilePos = eventTile(e, canvas, viewState, gameState);
       const prev = viewState.hoverTile;
       if (!tilePos) {

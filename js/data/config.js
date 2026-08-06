@@ -164,6 +164,11 @@ window.GameConfig = {
     /** Radius a freshly founded (population 1) city starts with. */
     baseInfluenceRadius: 2,
 
+    /** "Resource Production" (see cities.js's applyResourceProduction): the
+     *  fraction of its own yield a city adds when the player spends THIS
+     *  turn's production on resources instead of a unit or building. */
+    resourceProductionBonus: 0.5,
+
     /** FILL-IN: a tile inside a city's radius contributes nothing to
      *  influence OR yield until it has individually "filled in". This delay
      *  is the main brake on the growth feedback loop (bigger radius -> more

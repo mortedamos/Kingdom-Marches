@@ -178,6 +178,17 @@
         <canvas id="map-canvas-3d"></canvas>
         <canvas id="map-canvas-3d-hud"></canvas>
         <input type="file" id="load-game-file-input" accept="application/json" style="display:none;">
+        <!-- Radial map menu (2026-08-06, user-directed) -- a bare root, not a
+             full-screen overlay like the modals below; js/ui/ringmenu.js
+             renders into it. Lives INSIDE .map-area (which is
+             position:relative) so the ring positions in the same pixel space
+             the canvas draws in -- see render.js's tileCenterOnMap. That also
+             means the sidebar and menu bar are outside its containing block
+             entirely, so the ring cannot spill onto them and its edge
+             clamping needs no hardcoded sizes. The id is unchanged from when
+             this held a linear cursor menu: main.js's click-outside
+             dismissal matches on it. -->
+        <div id="map-context-menu-root"></div>
       </div>
       <div id="sidebar" class="sidebar"></div>
     </div>
@@ -196,11 +207,6 @@
     <div id="game-dialog-overlay" class="techtree-overlay" style="display:none;">
       <div id="game-dialog-modal" class="techtree-modal game-dialog-modal"></div>
     </div>
-    <!-- Map right-click context menu (2026-08-06, user-directed) -- a bare
-         root, not a full-screen overlay like the modals above: js/ui/
-         contextmenu.js renders the floating menu itself, positioned near
-         the cursor, directly into this container. -->
-    <div id="map-context-menu-root"></div>
     <div id="turn-progress-banner" class="turn-progress-banner" style="display:none;"></div>
   </div>
 
@@ -251,7 +257,8 @@
   <script src="js/ui/techtree.js"></script>
   <script src="js/ui/reports.js"></script>
   <script src="js/ui/dialog.js"></script>
-  <script src="js/ui/contextmenu.js"></script>
+  <script src="js/ui/buildlist.js"></script>
+  <script src="js/ui/ringmenu.js"></script>
   <script src="js/ui/input.js"></script>
 
   <!-- Bootstrap (last) -->

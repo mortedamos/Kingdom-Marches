@@ -147,17 +147,6 @@ window.UI = window.UI || {};
       return `<h3>Garrison (${unitTabs.length})</h3>${rows}`;
     })() : '';
 
-    // "Resource Production" (2026-08-06, user-directed): queues a flat +50%
-    // yield boost for this city's NEXT tick (see cities.js's tickCity,
-    // which consumes and clears city.pendingResourceBoost) -- no cooldown
-    // or limit on how often it can be queued again, the player's own call
-    // each turn. Own cities only, same isOwnCity gate renderBuildSection
-    // below uses.
-    const isOwnCity = viewState && viewState.humanCivId && city.civId === viewState.humanCivId;
-    const boostBtn = !isOwnCity ? '' : city.pendingResourceBoost
-      ? `<div class="stat-row"><em>Resource Production boost queued for next turn</em></div>`
-      : `<button id="boost-resource-production-btn" class="action-btn">Resource Production (+50% next turn)</button>`;
-
     return `
       <div class="panel">
         <h2>${escapeHtml(city.name)}${portTag}</h2>
@@ -173,7 +162,6 @@ window.UI = window.UI || {};
         <div class="stat-row"><span>Harvest</span><span>${y.harvest.toFixed(1)}</span></div>
         <div class="stat-row"><span>Coin</span><span>${y.coin.toFixed(1)}</span></div>
         <div class="stat-row"><span>Lore</span><span>${y.lore.toFixed(1)}</span></div>
-        ${boostBtn}
         ${renderBuildSection(city, civ, gameState, viewState)}
         <h3>Structures (${city.structures.length}/${window.GameEngine.cities.RING1_SLOT_COUNT + window.GameEngine.cities.RING2_SLOT_COUNT})</h3>
         ${city.structures.length
@@ -187,14 +175,19 @@ window.UI = window.UI || {};
   }
 
   /**
-   * The city's production: what's building now, and (for the player's own
-   * cities) a picker for what to build next.
+   * What this city is producing. Read-only (2026-08-06, user-directed): the
+   * picker, Resource Production, Cancel Build and "next city" all moved to
+   * the radial map menu -- right-click the city (see orders.js's
+   * cityRingOptions and js/ui/buildlist.js, which is this file's former
+   * picker markup, lifted out whole).
    *
-   * An AI city gets the read-only progress row it always had -- there's
-   * nothing for the player to decide there.
+   * It was the single biggest block in the sidebar -- an open picker ran to a
+   * dozen rows on top of the city's own stats -- and it's the reason the
+   * panel could grow past the height of the window.
    */
   function renderBuildSection(city, civ, gameState, viewState) {
     const isOwnCity = viewState && viewState.humanCivId && city.civId === viewState.humanCivId;
+    const hint = isOwnCity ? actionHintHtml("the city") : "";
 
     if (city.buildQueue) {
       const item = city.buildQueue;
@@ -208,94 +201,68 @@ window.UI = window.UI || {};
       const turnsTag = item.turnsRemaining !== undefined
         ? `${item.turnsRemaining} turn${item.turnsRemaining === 1 ? "" : "s"} left`
         : `${buildQueuePct(item)}%`;
-      // "Select Next City's Production" (2026-08-06, user-directed): once
-      // THIS city's production is set, jump straight to the next city that
-      // still needs one instead of leaving the player to hunt for it via
-      // the Kingdom tab or the End Turn nag -- same "needs production"
-      // criteria collectUnresolvedTurnWork already uses (no queue, and at
-      // least one option it can actually afford right now).
-      const nextCity = isOwnCity ? civ.cities.find((c) => c !== city && !c.buildQueue
-        && window.GameEngine.ai.availableBuilds(civ, c, gameState).some((o) => o.affordable)) : null;
-      const nextCityBtn = nextCity
-        ? `<button id="next-city-production-btn" class="action-btn" data-city-key="${escapeHtml(cityKey(nextCity))}">Select Next City's Production</button>`
-        : "";
       return `<h3>Building</h3>
         <div class="stat-row"><span>${escapeHtml(label)}${placeTag}</span><span>${escapeHtml(turnsTag)}</span></div>
         <div class="build-progress"><div class="build-progress-fill" style="width:${buildQueuePct(item)}%"></div></div>
-        ${isOwnCity ? `<button id="cancel-build-btn" class="action-btn action-btn-danger">Cancel Build</button>` : ""}
-        ${nextCityBtn}`;
+        ${hint}`;
     }
 
     if (!isOwnCity) return `<h3>Building</h3><div class="stat-row"><em>Nothing queued</em></div>`;
 
-    // The picker itself. Collapsed behind a button by default -- the full
-    // list can run to a dozen entries and would otherwise bury the city's own
-    // stats every time you glance at it.
-    const open = viewState.buildPickerCityId === cityKey(city);
-    if (!open) {
+    // The receipt for a turn already spent on resources -- see cities.js's
+    // applyResourceProduction. Information, so it stays here; the action that
+    // produces it is a ring pill.
+    if (window.GameEngine.cities.isProducingResources(city, gameState)) {
+      const made = city.resourceProductionGain || { harvest: 0, coin: 0, lore: 0 };
+      const amounts = [
+        made.harvest >= 0.5 ? `+${Math.round(made.harvest)} Harvest` : null,
+        made.coin >= 0.5 ? `+${Math.round(made.coin)} Coin` : null,
+        made.lore >= 0.5 ? `+${Math.round(made.lore)} Lore` : null,
+      ].filter(Boolean).join(", ");
       return `<h3>Building</h3>
-        <div class="stat-row"><em>Nothing queued</em></div>
-        <button id="open-build-picker-btn" class="action-btn" data-city-key="${escapeHtml(cityKey(city))}">Choose Production…</button>`;
+        <div class="stat-row"><span>Resource Production</span><span>${escapeHtml(amounts)}</span></div>
+        <div class="stat-row"><em>This turn's production went to resources</em></div>`;
     }
 
-    const options = window.GameEngine.ai.availableBuilds(civ, city, gameState);
-    if (!options.length) {
-      return `<h3>Building</h3><div class="stat-row"><em>Nothing available to build</em></div>`;
-    }
-    const units = options.filter((o) => o.kind === "unit");
-    const buildings = options.filter((o) => o.kind === "building");
-
-    // Stockpile readout + per-resource cost coloring (2026-08-04, user-
-    // directed): a build's cost used to be the ONLY number on screen --
-    // reading "unaffordable" meant trusting the greyed-out state and
-    // guessing which resource(s) were short and by how much, with no way to
-    // check the actual stockpile without leaving this picker for the
-    // Kingdom tab. Each cost token is now colored green/red against
-    // civ.stockpile (same convention as sidebar's own HP-bar meter --
-    // hpBarHtml's colors), and the stockpile itself is shown right above the
-    // list so "green/red against WHAT" is never a mystery.
-    const stock = civ.stockpile || { harvest: 0, coin: 0, lore: 0 };
-    const RESOURCE_LABEL = { harvest: "Harvest", coin: "Coin", lore: "Lore" };
-    const costTokenHtml = (key, amount) => {
-      const have = stock[key] || 0;
-      const color = have >= amount ? "#6fbf6f" : "#d9695f";
-      const short = have >= amount ? "" : ` title="Short ${(amount - have).toFixed(0)} ${RESOURCE_LABEL[key]} (have ${have.toFixed(0)})"`;
-      return `<span style="color:${color}"${short}>${amount}${key[0].toUpperCase()}</span>`;
-    };
-    const stockpileHtml = `<div class="stat-row"><span>Stockpile (H / C / L)</span>`
-      + `<span>${stock.harvest.toFixed(0)} / ${stock.coin.toFixed(0)} / ${stock.lore.toFixed(0)}</span></div>`;
-
-    const row = (o, i) => {
-      const priceHtml = o.cost
-        ? Object.entries(o.cost).map(([k, v]) => costTokenHtml(k, v)).join(" ")
-        : costTokenHtml("coin", o.coinCost || 0);
-      // Spelled out, not "Nt" (2026-08-04, user-reported): a bare "2t" sat
-      // directly next to the H/C/L-style resource tokens above and read as
-      // a fourth resource abbreviation rather than a turn count.
-      const time = o.turns ? `${o.turns} turn${o.turns === 1 ? "" : "s"}` : "";
-      const needsPlacement = o.kind === "building";
-      return `<button class="build-option${o.affordable ? "" : " build-option-unaffordable"}"
-          data-build-index="${i}" ${o.affordable ? "" : "disabled"}>
-        <span>${escapeHtml(o.label)}${needsPlacement ? " ⌂" : ""}</span>
-        <span>${priceHtml}${time ? ` · ${escapeHtml(time)}` : ""}</span>
-      </button>`;
-    };
-
-    // Indices are into the FULL options array, so the click handler can look
-    // the option straight back up without re-deriving the split.
-    const indexed = options.map((o, i) => ({ o, i }));
-    const unitRows = indexed.filter(({ o }) => o.kind === "unit").map(({ o, i }) => row(o, i)).join("");
-    const buildingRows = indexed.filter(({ o }) => o.kind === "building").map(({ o, i }) => row(o, i)).join("");
-
-    return `<h3>Choose Production</h3>
-      ${stockpileHtml}
-      ${units.length ? `<div class="build-group-label">Units</div>${unitRows}` : ""}
-      ${buildings.length ? `<div class="build-group-label">Buildings <span style="opacity:0.6">⌂ = pick a tile</span></div>${buildingRows}` : ""}
-      <button id="close-build-picker-btn" class="action-btn">Cancel</button>`;
+    return `<h3>Building</h3>
+      <div class="stat-row"><em>Nothing queued</em></div>
+      ${hint}`;
   }
 
-  /** Cities have no stable id field, but (x,y) is unique and never changes. */
-  function cityKey(city) { return `${city.x},${city.y}`; }
+  /** "Right-click for actions" (2026-08-06, user-directed). Once every verb
+   *  moved to the radial map menu, this became the ONLY signpost to the whole
+   *  action set -- so it's a real styled row rather than the 70%-opacity
+   *  aside it started as. Shown by both the unit and city panels. */
+  function actionHintHtml(subject) {
+    return `<div class="action-hint">Right-click ${escapeHtml(subject)} on the map for actions</div>`;
+  }
+
+  /** The five veteran-bonus buttons, each showing what it would change and to
+   *  what ("Attack (12 -> 14)"). Exported (2026-08-06) because the ring menu
+   *  shows this same picker as a sub-page -- those labels are far too wide to
+   *  be ring pills, so the two surfaces share the markup rather than the ring
+   *  inventing a terser second version that could drift from this one. */
+  function levelUpChoicesHtml(unit, civ) {
+    const combat = window.GameEngine.combat;
+    const LEVEL_UP_LABELS = {
+      attack: "Attack", defense: "Defense", siegePct: "Siege",
+      firstStrikePct: "First Strike", doubleStrikePct: "Double Strike",
+    };
+    const currentValue = {
+      attack: combat.effectiveAttack(unit, civ),
+      defense: combat.effectiveDefense(unit, civ),
+      siegePct: combat.effectiveSiegePct(unit, civ),
+      firstStrikePct: combat.effectiveFirstStrikePct(unit, civ),
+      doubleStrikePct: combat.effectiveDoubleStrikePct(unit, civ),
+    };
+    const isPct = (stat) => stat === "siegePct" || stat === "firstStrikePct" || stat === "doubleStrikePct";
+    const fmt = (stat, v) => isPct(stat) ? `${Math.round(v * 100)}%` : Math.round(v);
+    return combat.LEVEL_UP_STATS.map((stat) => {
+      const bonus = combat.LEVEL_BONUS_VALUES[stat];
+      return `<button class="action-btn action-btn-primary level-up-btn" data-level-up-stat="${stat}">`
+        + `${LEVEL_UP_LABELS[stat]} (${fmt(stat, currentValue[stat])} &rarr; ${fmt(stat, currentValue[stat] + bonus)})</button>`;
+    }).join("");
+  }
 
   function renderTilePanel(tile, civs, sel) {
     const terrain = window.GameData.TERRAIN[tile.terrain];
@@ -406,38 +373,44 @@ window.UI = window.UI || {};
     const baseUnit = window.GameData.getUnit(unit.typeId);
     const isHumanUnit = viewState && unit.civId === viewState.humanCivId;
 
-    // Settler actions: found a city, build a road. Gated on the unit-data
-    // flags (canFoundCity/canBuildRoad) rather than typeId === "pioneer", so
-    // the other settler-capable units (Elf Druid, Undead Wanderer) get the
-    // same controls the AI already gives itself for them (see ai.js's
-    // maybeFoundCity, which is likewise flag-driven).
+    // INFORMATION ONLY, FROM HERE DOWN (2026-08-06, user-directed)
+    // -------------------------------------------------------------
+    // Every unit VERB moved to the radial map menu (right-click the unit --
+    // see js/ui/ringmenu.js and orders.js's contextMenuOptions). This panel
+    // kept only the rows that TELL the player something, because the buttons
+    // were what made it long enough to push End Turn off the bottom of the
+    // sidebar in the first place. The gating conditions went with the
+    // buttons: orders.js is now the single copy of "what can this unit do",
+    // where it used to be duplicated between there and here.
+    //
+    // What survives is deliberately the non-actionable half these blocks
+    // always interleaved with their buttons -- "Cannot found here: <reason>",
+    // a channel's turn counter, "Already acted this turn". Those answer
+    // questions the ring can't: the ring shows what IS available, these say
+    // why something isn't.
+
+    // Settler status. Gated on the unit-data flags (canFoundCity/
+    // canBuildRoad) rather than typeId === "pioneer", so the other
+    // settler-capable units (Elf Druid, Undead Wanderer) report the same way.
     let pioneerActions = "";
     if ((baseUnit.canFoundCity || baseUnit.canBuildRoad) && isHumanUnit && gameState) {
       const tile = gameState.map.tiles[unit.y * gameState.map.width + unit.x];
       const canFoundCheck = baseUnit.canFoundCity
         ? window.GameEngine.cities.canFoundCityAt(gameState.map, gameState.civs, unit.x, unit.y, civ.raceId)
         : { ok: false, reason: null };
-      const canBuildRoad = baseUnit.canBuildRoad && !tile.hasRoad && !unit.usedThisTurn;
 
-      pioneerActions = `<h3>Actions</h3>`;
+      let rows = "";
       if (!unit.usedThisTurn) {
-        // A real button, not a "use End Turn to confirm" note (2026-08-03,
-        // user-reported): founding was previously only reachable from the
-        // end-turn settler sweep, so there was no way to ask for a city the
-        // moment the pioneer arrived. See main.js's handleFoundCity.
-        if (canFoundCheck.ok) {
-          pioneerActions += `<button id="found-city-btn" class="action-btn action-btn-primary">Found City</button>`;
-        } else if (baseUnit.canFoundCity && canFoundCheck.reason) {
-          pioneerActions += `<div class="stat-row"><em style="color:#f0a830">Cannot found here: ${escapeHtml(canFoundCheck.reason)}</em></div>`;
+        if (!canFoundCheck.ok && baseUnit.canFoundCity && canFoundCheck.reason) {
+          rows += `<div class="stat-row"><em style="color:#f0a830">Cannot found here: ${escapeHtml(canFoundCheck.reason)}</em></div>`;
         }
-        if (canBuildRoad) {
-          pioneerActions += `<button id="build-road-btn" class="action-btn">Build Road</button>`;
-        } else if (baseUnit.canBuildRoad && tile.hasRoad) {
-          pioneerActions += `<div class="stat-row"><span>Road</span><span>Already built here</span></div>`;
+        if (baseUnit.canBuildRoad && tile.hasRoad) {
+          rows += `<div class="stat-row"><span>Road</span><span>Already built here</span></div>`;
         }
       } else {
-        pioneerActions += `<div class="stat-row"><em>Already acted this turn</em></div>`;
+        rows += `<div class="stat-row"><em>Already acted this turn</em></div>`;
       }
+      if (rows) pioneerActions = `<h3>Status</h3>${rows}`;
     }
 
     // Channeled actions (2026-07-21, user-directed): Prospector's Claim,
@@ -447,84 +420,23 @@ window.UI = window.UI || {};
     // standing still -- these buttons are the player's own start/cancel
     // controls, mirroring ai.js's maybeProspectorsClaimPlay/
     // maybeDungeonDelvePlay/maybeGalleyFishingPlay for the AI side.
+    // How long this unit has been channeling -- the one thing about a channel
+    // the ring can't tell you (its start/claim/cancel verbs live there now).
     let channelActions = "";
-    if (isHumanUnit && gameState) {
-      const tile = gameState.map.tiles[unit.y * gameState.map.width + unit.x];
-      // "hunting"/"farming" (2026-08-05, user-directed): Pioneer/Scout's own
-      // two channeled actions -- Hunt Game (Game tiles) and Farm Soil
-      // (Fertile Soil tiles), each gated behind its own Tier 0 tech
-      // (techs.js's hunt_game/farm_soil) -- replaced a single free
-      // "surveying" action with a generic "Start Prospecting" button.
-      // Distinct unit.channeling values from Dwarf's "prospecting"
-      // (Prospector's Claim) even though the tag on that one also reads
-      // "Prospecting" -- these are separate mechanics (flat-rate/no-claim,
-      // like Galley Fishing below, not Prospector's Claim's territorial
-      // claim-and-tier system) and reusing its string would make turns.js's
-      // dwarf-only gating fire for the wrong units.
+    if (isHumanUnit) {
       const CHANNEL_LABELS = { prospecting: "Prospecting", delving: "Delving", fishing: "Fishing", hunting: "Hunting", farming: "Farming" };
-      if (unit.channeling && CHANNEL_LABELS[unit.channeling]) {
-        channelActions = `<h3>Actions</h3>`;
-        const turnsIn = unit._ritualTurns || 0;
-        if (turnsIn > 0) {
-          channelActions += `<div class="stat-row"><span>${CHANNEL_LABELS[unit.channeling]}</span><span>${turnsIn} turn${turnsIn === 1 ? "" : "s"}</span></div>`;
-        }
-        // Claim Gathered Resources (2026-08-06, user-directed): a clean
-        // voluntary stop that BANKS whatever's accumulated in
-        // unit._channelStash into the civ's stockpile -- mirrors ai.js's
-        // maybeCashOutChannel (the AI's own "voluntary stop" path), just
-        // triggered by the player instead of a value/danger heuristic.
-        // Distinct from "Cancel" below, which is a FORCED-style
-        // interruption that forfeits the stash entirely (turns.js's own
-        // documented rule) -- both stay available side by side so the
-        // player can choose collect-and-stop vs. just-abandon.
-        channelActions += `<button id="claim-channel-btn" class="action-btn">Claim Gathered Resources</button>`;
-        channelActions += `<button id="cancel-channel-btn" class="action-btn action-btn-danger">Cancel ${CHANNEL_LABELS[unit.channeling]}</button>`;
-      } else if (!unit.usedThisTurn && !unit.channeling) {
-        // !unit.channeling here excludes "garrison" (2026-08-06) -- it isn't
-        // in CHANNEL_LABELS above, so without this it would fall through to
-        // these resource-channel start buttons instead of showing none, the
-        // same way a unit mid-hunt/prospect correctly shows none.
-        const onVein = tile.resource === "gold" || tile.resource === "iron";
-        const onGame = tile.resource === "game";
-        const onFertile = tile.resource === "fertile";
-        if (civ.raceId === "dwarf" && civ.unlockedMechanics && civ.unlockedMechanics.has("prospectors_claim") && onVein) {
-          channelActions = `<h3>Actions</h3>`;
-          channelActions += `<button id="start-prospecting-btn" class="action-btn">Start Prospecting</button>`;
-        } else if (unit.typeId === "wizard" && civ.unlockedMechanics && civ.unlockedMechanics.has("dungeon_delve") && tile.isRuin) {
-          channelActions = `<h3>Actions</h3>`;
-          channelActions += `<button id="start-delving-btn" class="action-btn">Start Delving</button>`;
-        } else if (unit.typeId === "galley" && !unit.carries && tile.resource === "fish") {
-          channelActions = `<h3>Actions</h3>`;
-          channelActions += `<button id="start-fishing-btn" class="action-btn">Start Fishing</button>`;
-        } else if (baseUnit.canProspect && onGame && civ.unlockedMechanics && civ.unlockedMechanics.has("hunt_game")) {
-          channelActions = `<h3>Actions</h3>`;
-          channelActions += `<button id="start-hunting-btn" class="action-btn">Hunt Game</button>`;
-        } else if (baseUnit.canProspect && onFertile && civ.unlockedMechanics && civ.unlockedMechanics.has("farm_soil")) {
-          channelActions = `<h3>Actions</h3>`;
-          channelActions += `<button id="start-farming-btn" class="action-btn">Farm Soil</button>`;
-        }
+      const label = CHANNEL_LABELS[unit.channeling];
+      const turnsIn = unit._ritualTurns || 0;
+      if (label && turnsIn > 0) {
+        channelActions = `<h3>Status</h3>`
+          + `<div class="stat-row"><span>${label}</span><span>${turnsIn} turn${turnsIn === 1 ? "" : "s"}</span></div>`;
       }
     }
 
-    // Hidden/stealth (2026-08-03, user-reported): Halfellow's "Sneaking
-    // Around", Elf's "Shadowed Hush, Unseen", and the two unit-specific
-    // variants (Human Wizard's Invisibility, Halfellow Trouble Maker's
-    // Making Trouble) all fed a real engine mechanic (combat.js's
-    // canGoHidden/enterHidden/revealHidden) that only ever had AI call
-    // sites -- researching any of these techs unlocked the ABILITY with no
-    // way for a human player to actually use it. A full-turn action to
-    // enter Hidden, matching enterHidden's own contract; canceling early is
-    // free (see the tech's own "voluntarily cancellable early" wording) and
-    // reuses revealHidden, the same path a forced reveal takes -- both route
-    // through the same 1-turn "forced visible" cooldown before re-hiding.
-    let stealthActions = "";
-    if (isHumanUnit && gameState) {
-      if (unit.conditions?.hidden) {
-        stealthActions = `<h3>Actions</h3><button id="cancel-hidden-btn" class="action-btn">Cancel Hidden</button>`;
-      } else if (!unit.usedThisTurn && window.GameEngine.combat.canGoHidden(unit, civ, gameState.civs)) {
-        stealthActions = `<h3>Actions</h3><button id="go-hidden-btn" class="action-btn">Go Hidden</button>`;
-      }
-    }
+    // (Go Hidden / Cancel Hidden moved to the ring, 2026-08-06. Nothing is
+    // lost here: the Properties row below already reports "Hidden" and
+    // "Forced Visible", which was the only non-button content this block
+    // ever had.)
 
     const carriedByTag = unit.carriedBy
       ? `<div class="stat-row"><span>Status</span><span>Aboard ${escapeHtml(window.GameData.getUnit(unit.carriedBy.typeId).label)}</span></div>`
@@ -560,25 +472,12 @@ window.UI = window.UI || {};
     // threshold at once).
     let levelUpActions = "";
     if (isHumanUnit) {
-      const combat = window.GameEngine.combat;
-      const pendingCount = combat.pendingLevelUps(unit);
+      const pendingCount = window.GameEngine.combat.pendingLevelUps(unit);
       if (pendingCount > 0) {
-        const LEVEL_UP_LABELS = {
-          attack: "Attack", defense: "Defense", siegePct: "Siege",
-          firstStrikePct: "First Strike", doubleStrikePct: "Double Strike",
-        };
-        const currentValue = { attack: effAttack, defense: effDefense, siegePct, firstStrikePct, doubleStrikePct };
-        const isPct = (stat) => stat === "siegePct" || stat === "firstStrikePct" || stat === "doubleStrikePct";
-        const fmt = (stat, v) => isPct(stat) ? `${Math.round(v * 100)}%` : Math.round(v);
-        const buttons = combat.LEVEL_UP_STATS.map((stat) => {
-          const bonus = combat.LEVEL_BONUS_VALUES[stat];
-          return `<button class="action-btn action-btn-primary level-up-btn" data-level-up-stat="${stat}">`
-            + `${LEVEL_UP_LABELS[stat]} (${fmt(stat, currentValue[stat])} &rarr; ${fmt(stat, currentValue[stat] + bonus)})</button>`;
-        }).join("");
         levelUpActions = `<div class="placement-banner">
           <strong>Level Up!${pendingCount > 1 ? ` (${pendingCount} pending)` : ''}</strong>
           <div>Choose a veteran bonus:</div>
-          ${buttons}
+          ${levelUpChoicesHtml(unit, civ)}
         </div>`;
       }
     }
@@ -662,46 +561,14 @@ window.UI = window.UI || {};
       turnStatus = `
         <div class="stat-row"><span>Movement Left</span><span>${escapeHtml(moveText)}</span></div>
         <div class="stat-row"><span>Action</span><span${unit.usedThisTurn ? ' style="opacity:0.6"' : ''}>${actionText}</span></div>
-        <div class="stat-row"><em style="opacity:0.7">Right-click the map for a menu of actions</em></div>`;
+        ${actionHintHtml("this unit")}`;
     }
 
-    const canRest = isHumanUnit && !unit.usedThisTurn;
-    const restBtn = canRest ? `<button id="rest-unit-btn" class="action-btn">Rest</button>` : '';
-    // Defend (2026-07-20, user-directed): a universal normal action, any
-    // race/unit -- same availability gate as Rest (human-controlled, not
-    // already acted this turn).
-    const canDefend = isHumanUnit && !unit.usedThisTurn;
-    const defendBtn = canDefend ? `<button id="defend-unit-btn" class="action-btn">Defend</button>` : '';
-    // Garrison (2026-08-06, user-directed): the channeled twin of Defend --
-    // same x2 defense, but stays braced turn after turn with no re-prompt
-    // (see main.js's handleGarrisonUnit/turns.js's finishCivTurn refresh)
-    // until Cancel Garrison or any other order ends it. Only offered while
-    // standing in one of this civ's own cities.
-    const inOwnCityForGarrison = isHumanUnit && gameState
-      && civ.cities.some((c) => c.x === unit.x && c.y === unit.y);
-    const garrisonBtn = unit.channeling === "garrison"
-      ? `<button id="cancel-garrison-btn" class="action-btn action-btn-danger">Cancel Garrison</button>`
-      : (inOwnCityForGarrison && !unit.usedThisTurn && !unit.channeling)
-        ? `<button id="garrison-unit-btn" class="action-btn">Garrison</button>` : '';
-    const disbandBtn = isHumanUnit ? `<button id="disband-unit-btn" class="action-btn action-btn-danger">Disband Unit</button>` : '';
-    // Stop Order (2026-08-06, user-directed): a sidebar-reachable twin of
-    // the context menu's own "Stop" entry (right-click the unit's own
-    // tile) -- discoverable without knowing that trick, for a unit
-    // currently mid-way through a queued multi-turn move/build-road order.
-    const stopOrderBtn = (isHumanUnit && unit.gotoTarget)
-      ? `<button id="stop-order-btn" class="action-btn action-btn-danger">Stop Order</button>` : '';
-
-    // Automate Actions (2026-08-06, user-directed): hands this unit's turn-
-    // by-turn decisions to the real AI logic (see ai.js's
-    // runAutomatedUnitTurn/turns.js's finishCivTurn hook), gated only on
-    // "player's own unit" -- no unit-type restriction, same as the pioneer/
-    // combat/summon confirmation gates threaded into the AI functions
-    // themselves. Turning it off also drops any pendingIntent still
-    // awaiting confirmation -- a no-longer-automated unit shouldn't have a
-    // stale proposal hanging over it.
-    const automateBtn = isHumanUnit
-      ? `<button id="automate-actions-btn" class="action-btn${unit.automated ? " action-btn-danger" : ""}">${unit.automated ? "Stop Automating" : "Automate Actions"}</button>`
-      : '';
+    // (Rest, Defend, Garrison, Cancel Garrison, Disband, Stop Order and
+    // Automate Actions all live on the ring now -- see this function's
+    // "INFORMATION ONLY" note above. Their non-button signals are all still
+    // here: Stop Order's is the "Order" row below, Automate's is "Intent",
+    // Garrison's is Properties' "Garrisoned (x2 defense)".)
 
     // Spectator-only: every unit in a spectator game is AI-controlled, so
     // ai.js stamps a human-readable currentMission on it each turn (see
@@ -763,13 +630,6 @@ window.UI = window.UI || {};
         ${turnStatus}
         ${pioneerActions}
         ${channelActions}
-        ${stealthActions}
-        ${stopOrderBtn}
-        ${restBtn}
-        ${defendBtn}
-        ${garrisonBtn}
-        ${automateBtn}
-        ${disbandBtn}
       </div>`;
   }
 
@@ -935,5 +795,5 @@ window.UI = window.UI || {};
     return String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
   }
 
-  window.UI.sidebar = { render };
+  window.UI.sidebar = { render, levelUpChoicesHtml };
 })();

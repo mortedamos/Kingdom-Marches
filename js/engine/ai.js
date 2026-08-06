@@ -2133,6 +2133,16 @@ window.GameEngine = window.GameEngine || {};
   }
 
   function spendMovement(unit, targetX, targetY, map, civs) {
+    // Where this unit is headed, remembered past the end of the move
+    // (2026-08-06, user-directed). An AI-decided move -- including an
+    // automated human unit's, which reuses this same code -- has no persisted
+    // order to read a destination back out of the way unit.gotoTarget is, so
+    // the destination is captured here, at the one place every move goes
+    // through. Purely informational: render.js's drawPlannedPaths draws the
+    // route and an X on the target tile for the player's own automated units.
+    // Nothing clears it -- a unit standing on its own last target draws
+    // nothing, and the next move overwrites it.
+    unit.lastMoveTarget = { x: targetX, y: targetY };
     if (unit.movesRemaining == null) unit.movesRemaining = computeMovementBudget(unit, map, civs);
     const rules = buildMoveRules(unit, civs, map);
     const { flying, costFn } = rules;

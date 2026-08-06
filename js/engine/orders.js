@@ -22,14 +22,17 @@
  * Build Road, founding, and starting a channel consume the action. This
  * module enforces that split for the player -- the AI enforces it for itself.
  *
- * RIGHT-CLICK CONTEXT MENU (2026-08-06, user-directed): js/ui/input.js's
- * contextmenu handler no longer issues a move/attack immediately -- it
- * opens a menu built from contextMenuOptions below, and the player's pick
- * dispatches through main.js's handleContextMenuAction. A destination out
- * of this turn's movement range is no longer just refused -- "Move to This
- * Tile"/"Build Road to This Tile" start a persisted gotoTarget order (see
- * startGotoOrder/advanceGotoOrder) that keeps making progress automatically
- * every turn until it arrives or gets blocked.
+ * RIGHT-CLICK RADIAL MENU (2026-08-06, user-directed): js/ui/input.js's
+ * contextmenu handler no longer issues a move/attack immediately -- it opens
+ * a ring of actions around the clicked tile, built from mapMenuOptions below
+ * (which routes to contextMenuOptions for a unit or cityRingOptions for a
+ * city), and the player's pick dispatches through main.js's
+ * handleContextMenuAction. A destination out of this turn's movement range is
+ * no longer just refused -- "Move to This Tile"/"Build Road to This Tile"
+ * start a persisted gotoTarget order (see startGotoOrder/advanceGotoOrder)
+ * that keeps making progress automatically every turn until it arrives or
+ * gets blocked. This module is now the ONLY place that decides what a unit or
+ * city can be told to do; the sidebar renders information only.
  */
 
 window.GameEngine = window.GameEngine || {};
@@ -305,37 +308,95 @@ window.GameEngine = window.GameEngine || {};
   }
 
   /**
-   * CONTEXT MENU (2026-08-06, user-directed)
-   * -----------------------------------------
-   * Every action available for `unit` if the player right-clicks tile
-   * (x,y) -- replaces the old immediate-move/attack right-click (see
-   * js/ui/input.js) with a menu the player picks from every time, no
-   * exceptions for "simple" in-range moves. Two shapes:
-   *   - Own tile: the FULL action list (2026-08-06, user-directed --
-   *     previously a curated subset), i.e. every button
-   *     sidebar.js's renderUnitPanel would show for this exact unit right
-   *     now: Found City, Build Road, every channel start/claim/cancel
-   *     variant, Go Hidden/Cancel Hidden, Stop (a pending goto order),
-   *     Rest, Defend, Disband. The CONDITIONS below are transcribed
-   *     directly from sidebar.js's pioneerActions/channelActions/
-   *     stealthActions blocks -- kept as a second copy rather than a
-   *     shared extraction (sidebar.js also interleaves non-actionable
-   *     status lines -- "Cannot found here: X", turnsIn counters -- that
-   *     have no equivalent here, so a full merge would be a much larger,
-   *     riskier rendering refactor for comparatively little gain). If you
-   *     change one of these gates, change the other.
-   *   - Any other tile: "Attack" if something targetable sits there and is
-   *     in range, else "Move to This Tile" (always) and "Build Road to
-   *     This Tile" (if the unit canBuildRoad and the destination doesn't
-   *     already have one) -- both start a gotoTarget order via
-   *     startGotoOrder rather than a same-turn-only move.
+   * WHERE IS THIS UNIT GOING? (2026-08-06, user-directed)
+   * ------------------------------------------------------
+   * A unit that keeps moving on its own between clicks -- one mid multi-turn
+   * goto order, or one running on Automate Actions -- used to give the player
+   * no way to see where it was headed short of reading the sidebar's mission
+   * text one unit at a time. This reports the route it will take and the tile
+   * it's aiming for, so render.js can draw it on the map (drawPlannedPaths).
+   *
+   * Two sources, in priority order -- the same order sidebar.js's own
+   * Order/Intent rows use, and for the same reason: a player-issued goto
+   * order on an automated unit is a deliberate override and executes first
+   * (advanceGotoOrder runs regardless of unit.automated).
+   *   - unit.gotoTarget: the persisted order itself (kind "goto"/"buildRoad").
+   *   - unit.lastMoveTarget (kind "auto"): where the AI logic last sent this
+   *     automated unit -- see ai.js's spendMovement. A prediction, not a
+   *     promise: an automated unit re-decides every turn (turns.js's
+   *     finishCivTurn) and may pick something else entirely, which is exactly
+   *     why this is only ever drawn for automated units, where "here's the
+   *     current plan" is the honest reading.
+   *
+   * Returns { path, target, kind } or null (already there, no destination, or
+   * nowhere to go). `path` is pathfinding.js's step list -- the FULL route,
+   * not this turn's slice of it, since the point is showing the multi-turn
+   * journey. Memoized per unit: the renderer asks every frame for every unit,
+   * and an A* search per unit per frame would be pure waste. The key covers
+   * everything that changes the answer (where the unit is, where it's going,
+   * and the turn number, which catches the board moving around it).
+   */
+  const plannedPathCache = new WeakMap();
+  function plannedPath(unit, gameState) {
+    if (!unit || unit.hp <= 0 || unit.carriedBy) return null;
+    const dest = unit.gotoTarget
+      ? { x: unit.gotoTarget.x, y: unit.gotoTarget.y, kind: unit.gotoTarget.buildRoad ? "buildRoad" : "goto" }
+      : (unit.automated && unit.lastMoveTarget)
+        ? { x: unit.lastMoveTarget.x, y: unit.lastMoveTarget.y, kind: "auto" }
+        : null;
+    if (!dest) return null;
+    if (dest.x === unit.x && dest.y === unit.y) return null;
+
+    const key = `${unit.x},${unit.y}->${dest.x},${dest.y}:${dest.kind}:${gameState.turnNumber}`;
+    const cached = plannedPathCache.get(unit);
+    if (cached && cached.key === key) return cached.value;
+
+    const rules = window.GameEngine.ai.buildMoveRules(unit, gameState.civs, gameState.map);
+    const path = window.GameEngine.pathfinding.findPath(
+      unit.x, unit.y, dest.x, dest.y, gameState.map, rules.costFn);
+    // findPath falls back to the closest reachable tile when the target
+    // itself is unreachable, so `target` stays the ORDER's destination while
+    // the drawn route may stop short -- same "walk as close as possible"
+    // behaviour the move itself has.
+    const value = path && path.length ? { path, target: dest, kind: dest.kind } : null;
+    plannedPathCache.set(unit, { key, value });
+    return value;
+  }
+
+  /**
+   * A UNIT'S ACTIONS (2026-08-06, user-directed)
+   * ---------------------------------------------
+   * Every action available for `unit` if the player right-clicks tile (x,y).
+   * Replaced the old immediate-move/attack right-click (see js/ui/input.js)
+   * with a menu the player picks from every time, no exceptions for "simple"
+   * in-range moves; that menu is now the radial one (js/ui/ringmenu.js).
+   * Two shapes:
+   *   - Own tile: the unit's FULL action list -- Found City, Build Road,
+   *     every channel start/claim/cancel variant, Go Hidden/Cancel Hidden,
+   *     Stop (a pending goto order), Rest, Defend, Garrison, Automate, Level
+   *     Up, Disband.
+   *   - Any other tile: "Attack" if something targetable sits there and is in
+   *     range, plus "Move to This Tile" (always) and "Build Road to This
+   *     Tile" (if the unit canBuildRoad and the destination doesn't already
+   *     have one) -- both start a gotoTarget order via startGotoOrder rather
+   *     than a same-turn-only move.
+   *
+   * THIS IS THE ONLY COPY OF THESE GATES. It used to be the second of two:
+   * sidebar.js's renderUnitPanel carried the same conditions for its own
+   * button set, and this comment warned to change both together. That button
+   * set is gone (2026-08-06 -- the sidebar is information-only now, see its
+   * "INFORMATION ONLY" note), so there is no longer another copy to keep in
+   * sync. What sidebar.js still derives independently is the NON-actionable
+   * half it always interleaved with those buttons -- "Cannot found here:
+   * <reason>", a channel's turn counter -- which answers a different
+   * question ("why can't I?") than this does ("what can I?").
+   *
    * Each option is {kind, label, danger?} -- `kind` is a stable string
-   * main.js's handleContextMenuAction dispatches on; `danger` just carries
-   * the same red-styling hint sidebar.js's action-btn-danger class gives
+   * main.js's handleContextMenuAction dispatches on; `danger` carries the
+   * same red-styling hint sidebar.js's action-btn-danger class gives
    * Cancel/Disband. Pure/non-mutating, re-derived fresh every time the menu
-   * needs to render or a click needs resolving (same "recompute, don't
-   * cache a closure" convention availableBuilds/handleChooseBuild already
-   * use).
+   * needs to render or a click needs resolving (same "recompute, don't cache
+   * a closure" convention availableBuilds/handleChooseBuild already use).
    */
   function contextMenuOptions(unit, gameState, x, y, humanCivId) {
     const options = [];
@@ -407,15 +468,39 @@ window.GameEngine = window.GameEngine || {};
       } else if (!unit.usedThisTurn && !unit.channeling && civ.cities.some((c) => c.x === unit.x && c.y === unit.y)) {
         options.push({ kind: "garrison", label: "Garrison" });
       }
+      // Automate Actions -- sidebar.js's automateBtn. Added here (2026-08-06)
+      // when the ring menu became the way actions are given, so it stops
+      // being the one unit verb reachable only from the sidebar.
+      options.push({
+        kind: "automate",
+        label: unit.automated ? "Stop Automating" : "Automate Actions",
+        danger: !!unit.automated,
+      });
+      // Level up -- opens the stat picker as a ring SUB-PAGE rather than as
+      // five more pills: each choice reads "Attack (12 -> 14)", far too wide
+      // for a pill, and would set the width for every other option too. See
+      // sidebar.js's levelUpChoicesHtml, which both surfaces share.
+      if (window.GameEngine.combat.pendingLevelUps(unit) > 0) {
+        options.push({ kind: "levelUp", label: "Level Up!" });
+      }
       options.push({ kind: "disband", label: "Disband Unit", danger: true });
       return options;
     }
 
+    // Attack, when something targetable is standing there and is actually in
+    // range. Deliberately falls THROUGH to the move options below when it
+    // isn't (2026-08-06, user-directed fix): this used to return early on any
+    // target, so right-clicking an enemy one tile out of reach opened nothing
+    // at all -- indistinguishable from a broken click. "Move to This Tile"
+    // against an occupied tile paths to the closest reachable approach (see
+    // pathfinding.js), which reads correctly as "advance on it".
     const target = attackTargetAt(unit, gameState, x, y, humanCivId);
     if (target) {
       const preview = previewOrder(unit, gameState, x, y, humanCivId);
-      if (preview.kind === "attack") options.push({ kind: "attack", label: "Attack" });
-      return options;
+      if (preview.kind === "attack") {
+        options.push({ kind: "attack", label: "Attack" });
+        return options;
+      }
     }
 
     options.push({ kind: "moveTo", label: "Move to This Tile" });
@@ -423,6 +508,115 @@ window.GameEngine = window.GameEngine || {};
       options.push({ kind: "buildRoadTo", label: "Build Road to This Tile" });
     }
     return options;
+  }
+
+  /**
+   * What one of the player's own cities offers the ring (2026-08-06,
+   * user-directed). Categories, not a build list: a build option carries a
+   * label, per-resource cost tokens coloured against the stockpile, a turn
+   * count and a placement marker, and a dozen of those arranged radially
+   * would be unreadable. "Build Unit"/"Build Structure" open the real list as
+   * a sub-page instead (see js/ui/ringmenu.js's popover).
+   *
+   * The gates are transcribed from sidebar.js's renderBuildSection, which is
+   * the only other place that decides what a city can be told to do.
+   */
+  function cityRingOptions(city, gameState, humanCivId) {
+    const options = [];
+    if (!city || !humanCivId || city.civId !== humanCivId) return options;
+    const civ = gameState.civs[city.civId];
+    if (!civ) return options;
+    const cities = window.GameEngine.cities;
+
+    // A city already building something has spent its production; the only
+    // thing left to decide is whether to abandon it.
+    if (city.buildQueue) {
+      options.push({ kind: "city:cancelBuild", label: "Cancel Build", danger: true });
+    } else if (!cities.isProducingResources(city, gameState)) {
+      const builds = window.GameEngine.ai.availableBuilds(civ, city, gameState);
+      if (builds.some((o) => o.kind === "unit")) options.push({ kind: "city:buildUnit", label: "Build Unit" });
+      if (builds.some((o) => o.kind === "building")) options.push({ kind: "city:buildStructure", label: "Build Structure" });
+      // Same "nothing to take a share of yet" suppression sidebar.js uses for
+      // a city founded this turn -- see cities.js's resourceProductionPreview.
+      const gain = cities.resourceProductionPreview(city);
+      const amounts = [
+        gain.harvest >= 0.5 ? `+${Math.round(gain.harvest)}H` : null,
+        gain.coin >= 0.5 ? `+${Math.round(gain.coin)}C` : null,
+        gain.lore >= 0.5 ? `+${Math.round(gain.lore)}L` : null,
+      ].filter(Boolean).join(" ");
+      if (amounts) options.push({ kind: "city:resourceProduction", label: `Resources (${amounts})` });
+    }
+
+    // "Next city needing production" -- same criteria main.js's
+    // collectUnresolvedTurnWork nags about at End Turn. The target rides in
+    // the kind string, the convention startChannel:<kind> already set.
+    const next = civ.cities.find((c) => c !== city && !c.buildQueue
+      && !cities.isProducingResources(c, gameState)
+      && window.GameEngine.ai.availableBuilds(civ, c, gameState).some((o) => o.affordable));
+    if (next) options.push({ kind: `city:nextProduction:${next.x},${next.y}`, label: "Next City Needing Orders" });
+
+    return options;
+  }
+
+  /**
+   * THE ONE ENTRY POINT the ring menu asks (2026-08-06, user-directed).
+   * Keeps input.js's "decide WHERE, not WHAT" split intact: input.js reports
+   * a tile, this decides whose menu that tile opens and what's on it.
+   *
+   * The rule the whole interaction rests on:
+   *
+   *   Right-click moves selection only when the ring's SUBJECT is on the tile
+   *   that was clicked. A remote target never steals selection.
+   *
+   * so right-clicking one of your own units picks it up and shows its own
+   * actions, while right-clicking anything else (empty ground, an enemy, an
+   * enemy city) leaves your current unit selected and shows what IT can do
+   * about that tile. `retarget` is how that gets reported back.
+   *
+   * A city under a unit is the case that forces the `city:open` cross-link: a
+   * unit standing on your own city always wins the sidebar's tab (see
+   * input.js's SELECTION MODEL), so viewState.selectedCity is null there and
+   * the city ring would otherwise be unreachable on exactly the tiles where
+   * it's most wanted. The same pill is appended when a DIFFERENT unit is
+   * selected and you right-click a city, so setting production never costs a
+   * preparatory left-click.
+   */
+  function mapMenuOptions(gameState, viewState, x, y, humanCivId) {
+    const none = { subject: "none", retarget: false, options: [] };
+    if (!humanCivId) return none;
+    const civ = gameState.civs[humanCivId];
+    if (!civ) return none;
+
+    const cityHere = civ.cities.find((c) => c.x === x && c.y === y) || null;
+    const unitHere = civ.units.find((u) => u.x === x && u.y === y && !u.carriedBy
+      && canCommand(u, gameState, humanCivId)) || null;
+
+    // 1. One of ours is standing there: that unit becomes the subject.
+    if (unitHere) {
+      const selected = viewState.selectedUnit;
+      const alreadyActive = selected && selected.x === x && selected.y === y
+        && canCommand(selected, gameState, humanCivId);
+      const subjectUnit = alreadyActive ? selected : unitHere;
+      const options = contextMenuOptions(subjectUnit, gameState, x, y, humanCivId);
+      if (cityHere) options.push({ kind: "city:open", label: "City Actions" });
+      // No retarget when the selected unit is already on this tile -- right-
+      // clicking a stack shouldn't shuffle which of its units is active.
+      return { subject: "unit", retarget: !alreadyActive, options };
+    }
+
+    // 2. A commandable unit is selected elsewhere: this tile is its target.
+    const selected = viewState.selectedUnit;
+    if (canCommand(selected, gameState, humanCivId)) {
+      const options = contextMenuOptions(selected, gameState, x, y, humanCivId);
+      if (cityHere) options.push({ kind: "city:open", label: "City Actions" });
+      return { subject: "unit", retarget: false, options };
+    }
+
+    // 3. Nothing selected, but one of our cities is here.
+    if (cityHere) {
+      return { subject: "city", retarget: true, options: cityRingOptions(cityHere, gameState, humanCivId) };
+    }
+    return none;
   }
 
   /**
@@ -489,7 +683,10 @@ window.GameEngine = window.GameEngine || {};
     startGotoOrder,
     advanceGotoOrder,
     stopGotoOrder,
+    plannedPath,
     contextMenuOptions,
+    cityRingOptions,
+    mapMenuOptions,
     queueBuild,
     cancelBuild,
   };

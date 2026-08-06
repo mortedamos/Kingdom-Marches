@@ -54,6 +54,7 @@
   let lastRenderedTechTreeKey = null;
   let lastRenderedReportKey = null;
   let lastRenderedDialog = null;
+  let lastRenderedRingKey = null;
 
   // Dialog kinds that ask "are you sure you want to do this?" -- see
   // redraw()'s dialog block, which plays system_confirm_action.mp3 the
@@ -504,7 +505,7 @@
 
   /** Dismissal wiring for the map context menu (2026-08-06, user-directed):
    *  registered ONCE at bootstrap (safe pre-game -- both listeners no-op
-   *  until viewState.contextMenu is actually set), same convention
+   *  until viewState.ringMenu is actually set), same convention
    *  setupLaunchOptionsOverlay uses for its own open/close wiring, rather
    *  than re-registering a fresh document listener every redraw(). A click
    *  anywhere outside the menu itself, or Escape, closes it without acting
@@ -512,17 +513,20 @@
    *  handleContextMenuAction). */
   function setupContextMenuDismissal() {
     document.addEventListener("mousedown", (e) => {
-      if (!viewState || !viewState.contextMenu) return;
+      if (!viewState || !viewState.ringMenu) return;
       const root = $("map-context-menu-root");
       if (root && root.contains(e.target)) return; // let the menu's own click-through happen
-      viewState.contextMenu = null;
+      viewState.ringMenu = null;
       redraw();
     });
     document.addEventListener("keydown", (e) => {
-      if (e.key === "Escape" && viewState && viewState.contextMenu) {
-        viewState.contextMenu = null;
-        redraw();
-      }
+      if (e.key !== "Escape" || !viewState || !viewState.ringMenu) return;
+      // Two-level (2026-08-06): a ring showing a sub-page (the build list,
+      // the level-up picker) backs out to the ring itself first, so Escape
+      // never throws away more context than the player expected.
+      if (viewState.ringMenu.page) viewState.ringMenu.page = null;
+      else viewState.ringMenu = null;
+      redraw();
     });
   }
 
@@ -614,6 +618,11 @@
       tileScoreCivId: null, // Interface menu's Tile City Score overlay -- available in both spectator and human modes
       dialog: null, // in-game confirm/prompt/alert replacement -- see js/ui/dialog.js
       turnBanner: null, // "<Race> Kingdom Taking Its Turn..." -- see advanceTurn()
+      // Radial map menu (2026-08-06) -- { x, y, subject, page } while open.
+      // Declared here rather than only set lazily so the field is discoverable
+      // alongside the rest of the view model; the load path below must
+      // declare it too, or a loaded game keeps whatever the previous one had.
+      ringMenu: null,
     };
 
     stopTitleMusic();
@@ -1460,7 +1469,7 @@
       // this now (see input.js's SELECTION MODEL).
       selection: null,
       fogMode: "off", fogCivIds: new Set(Object.keys(gameState.civs)),
-      tileScoreCivId: null, dialog: null, turnBanner: null,
+      tileScoreCivId: null, dialog: null, turnBanner: null, ringMenu: null,
     });
 
     clearInterval(autoplayTimer);
@@ -1557,6 +1566,10 @@
       items.push({ text: "No research selected" });
     }
     for (const c of civ.cities) {
+      // A city that spent this turn's production on resources (2026-08-06,
+      // user-directed -- see cities.js's applyResourceProduction) HAS made
+      // its choice; it's no more unresolved than one mid-build.
+      if (window.GameEngine.cities.isProducingResources(c, gameState)) continue;
       if (!c.buildQueue && window.GameEngine.ai.availableBuilds(civ, c, gameState).some((o) => o.affordable)) {
         items.push({ text: `${c.name} is not building anything`, x: c.x, y: c.y, tabKind: "city" });
       }
@@ -1833,7 +1846,10 @@
       onGoToCity: () => {
         if (city) {
           goToTile(city.x, city.y, "city");
-          viewState.buildPickerCityId = `${city.x},${city.y}`;
+          // Land ready to choose what's next, not one click short of it.
+          // Used to open the sidebar's build picker; that picker is the ring
+          // now (2026-08-06), so open the ring instead.
+          viewState.ringMenu = { x: city.x, y: city.y, subject: "city", page: null };
         }
         offerNextUnitBuiltNotice(civ, onDone);
       },
@@ -2076,86 +2092,20 @@
     window.UI.sidebar.render($("sidebar"), gameState, viewState);
     const zoomLabel = $("zoom-level-label");
     if (zoomLabel) zoomLabel.textContent = `${Math.round((viewState.zoomLevel || 1) * 100)}%`;
+    // The sidebar's own controls -- all that's left of them (2026-08-06,
+    // user-directed). Every unit verb and the whole city production picker
+    // moved to the radial map menu, so their wiring moved with them into
+    // renderRingMenu below; what remains here is the footer, which is the
+    // one place buttons genuinely belong in a panel that is otherwise just
+    // information. The handleXxx functions themselves all still exist and
+    // are unchanged -- handleContextMenuAction is simply their only caller
+    // now, which is why nothing was stranded by the deletion.
     const endTurnBtn = $("end-turn-btn");
     if (endTurnBtn) endTurnBtn.onclick = handleEndTurnClick;
-    const roadBtn = $("build-road-btn");
-    if (roadBtn) roadBtn.onclick = handleBuildRoad;
-    const foundCityBtn = $("found-city-btn");
-    if (foundCityBtn) foundCityBtn.onclick = handleFoundCity;
-    const disbandBtn = $("disband-unit-btn");
-    if (disbandBtn) disbandBtn.onclick = handleDisbandUnit;
-    const restBtn = $("rest-unit-btn");
-    if (restBtn) restBtn.onclick = handleRestUnit;
-    const defendBtn = $("defend-unit-btn");
-    if (defendBtn) defendBtn.onclick = handleDefendUnit;
-    const garrisonBtn = $("garrison-unit-btn");
-    if (garrisonBtn) garrisonBtn.onclick = handleGarrisonUnit;
-    const cancelGarrisonBtn = $("cancel-garrison-btn");
-    if (cancelGarrisonBtn) cancelGarrisonBtn.onclick = handleCancelGarrison;
-    const stopOrderBtn = $("stop-order-btn");
-    if (stopOrderBtn) stopOrderBtn.onclick = handleStopOrder;
-    const automateBtn = $("automate-actions-btn");
-    if (automateBtn) automateBtn.onclick = handleToggleAutomate;
-    const startProspectingBtn = $("start-prospecting-btn");
-    if (startProspectingBtn) startProspectingBtn.onclick = () => handleStartChannel("prospecting");
-    const startHuntingBtn = $("start-hunting-btn");
-    if (startHuntingBtn) startHuntingBtn.onclick = () => handleStartChannel("hunting");
-    const startFarmingBtn = $("start-farming-btn");
-    if (startFarmingBtn) startFarmingBtn.onclick = () => handleStartChannel("farming");
-    const startDelvingBtn = $("start-delving-btn");
-    if (startDelvingBtn) startDelvingBtn.onclick = () => handleStartChannel("delving");
-    const startFishingBtn = $("start-fishing-btn");
-    if (startFishingBtn) startFishingBtn.onclick = () => handleStartChannel("fishing");
-    const claimChannelBtn = $("claim-channel-btn");
-    if (claimChannelBtn) claimChannelBtn.onclick = handleClaimChannel;
-    const cancelChannelBtn = $("cancel-channel-btn");
-    if (cancelChannelBtn) cancelChannelBtn.onclick = handleCancelChannel;
-    const goHiddenBtn = $("go-hidden-btn");
-    if (goHiddenBtn) goHiddenBtn.onclick = handleGoHidden;
-    const cancelHiddenBtn = $("cancel-hidden-btn");
-    if (cancelHiddenBtn) cancelHiddenBtn.onclick = handleCancelHidden;
     const nextUnitBtn = $("next-unit-btn");
     if (nextUnitBtn) nextUnitBtn.onclick = handleNextUnit;
     const openResearchBtn = $("open-research-btn");
     if (openResearchBtn) openResearchBtn.onclick = () => { viewState.techTreeCivId = humanCivId; redraw(); };
-
-    // City production picker
-    const openPickerBtn = $("open-build-picker-btn");
-    if (openPickerBtn) openPickerBtn.onclick = () => {
-      viewState.buildPickerCityId = openPickerBtn.dataset.cityKey;
-      redraw();
-    };
-    const closePickerBtn = $("close-build-picker-btn");
-    if (closePickerBtn) closePickerBtn.onclick = () => {
-      viewState.buildPickerCityId = null;
-      redraw();
-    };
-    const cancelBuildBtn = $("cancel-build-btn");
-    if (cancelBuildBtn) cancelBuildBtn.onclick = () => {
-      const city = viewState.selectedCity;
-      if (city) window.GameEngine.orders.cancelBuild(city);
-      redraw();
-    };
-    // "Select Next City's Production" (2026-08-06, user-directed) --
-    // sidebar.js's renderBuildSection computes WHICH city (data-city-key,
-    // same "x,y" format main.js already uses for buildPickerCityId
-    // elsewhere), this just jumps there and opens its picker directly so
-    // the player lands ready to choose, not one extra click short of it.
-    const nextCityProductionBtn = $("next-city-production-btn");
-    if (nextCityProductionBtn) nextCityProductionBtn.onclick = () => {
-      const [x, y] = nextCityProductionBtn.dataset.cityKey.split(",").map(Number);
-      goToTile(x, y, "city");
-      viewState.buildPickerCityId = nextCityProductionBtn.dataset.cityKey;
-      redraw();
-    };
-    const boostResourceBtn = $("boost-resource-production-btn");
-    if (boostResourceBtn) boostResourceBtn.onclick = handleBoostResourceProduction;
-    for (const btn of document.querySelectorAll(".build-option")) {
-      btn.onclick = () => handleChooseBuild(Number(btn.dataset.buildIndex));
-    }
-    for (const btn of document.querySelectorAll(".level-up-btn")) {
-      btn.onclick = () => handleChooseLevelUp(btn.dataset.levelUpStat);
-    }
 
     // Tile-inspector tabs, plus the in-panel shortcuts that jump to one (the
     // city panel's garrison list and the terrain panel's contents list) --
@@ -2293,32 +2243,7 @@
       if (dialogOverlay) dialogOverlay.style.display = "none";
     }
 
-    // Map right-click context menu (2026-08-06, user-directed) -- rebuilt
-    // fresh every redraw (unlike the modals above, which gate on an
-    // identity key) since it's a short-lived, cheap-to-rebuild popup, not
-    // worth the bookkeeping. Auto-closes itself if the option list it
-    // would show has gone empty (e.g. the unit died, moved, or already
-    // acted since the menu opened) rather than leaving a stale/broken menu
-    // open. See orders.js's contextMenuOptions for what's offered.
-    const contextMenuRoot = $("map-context-menu-root");
-    if (contextMenuRoot) {
-      if (viewState.contextMenu && humanCivId && viewState.selectedUnit) {
-        const options = window.GameEngine.orders.contextMenuOptions(
-          viewState.selectedUnit, gameState, viewState.contextMenu.x, viewState.contextMenu.y, humanCivId);
-        if (!options.length) {
-          viewState.contextMenu = null;
-          contextMenuRoot.innerHTML = "";
-        } else {
-          contextMenuRoot.innerHTML = window.UI.contextmenu.render(viewState.contextMenu, options);
-          for (const btn of contextMenuRoot.querySelectorAll(".map-context-menu-item")) {
-            btn.onclick = () => handleContextMenuAction(btn.dataset.menuKind);
-          }
-        }
-      } else {
-        viewState.contextMenu = null;
-        contextMenuRoot.innerHTML = "";
-      }
-    }
+    renderRingMenu();
 
     const turnBanner = $("turn-progress-banner");
     if (turnBanner) {
@@ -2329,6 +2254,125 @@
         turnBanner.style.display = "none";
       }
     }
+  }
+
+  /**
+   * RADIAL MAP MENU (2026-08-06, user-directed) -- see js/ui/ringmenu.js for
+   * the geometry and js/engine/orders.js for what each subject is offered.
+   *
+   * Two things this has to get right, both learned the hard way elsewhere in
+   * this file:
+   *
+   * 1. DOM STABILITY. The markup is rebuilt only when the identity key
+   *    changes (subject, tile, page, and the exact option kinds), the same
+   *    guard the tech tree and reports blocks use above -- redraw() runs on
+   *    every hover, every animation-driven state change and every autoplay
+   *    tick, and replacing a button's node out from under an in-flight click
+   *    silently eats it. Positioning and click wiring are then re-applied to
+   *    those STABLE nodes every redraw, so the ring still follows the map
+   *    when it's panned or zoomed while open. Reassigning .onclick on the
+   *    same node is idempotent and leak-free, same convention as the sidebar.
+   *
+   * 2. LIVENESS. The old menu self-closed when its option list came back
+   *    empty, which is necessary but not sufficient: a city captured while
+   *    the ring is open still returns a perfectly good option list -- for its
+   *    NEW owner. So the subject is re-resolved against live state each pass,
+   *    and the ring also closes if the map has scrolled its subject off the
+   *    screen (a Next Unit jump, say), rather than floating over unrelated
+   *    terrain.
+   */
+  function renderRingMenu() {
+    const root = $("map-context-menu-root");
+    if (!root) return;
+    const close = () => {
+      viewState.ringMenu = null;
+      lastRenderedRingKey = null;
+      root.innerHTML = "";
+    };
+
+    const menu = viewState.ringMenu;
+    const canvas = $("map-canvas");
+    if (!menu || !humanCivId || !canvas) return close();
+    if (!window.UI.render.isTileOnScreen(menu.x, menu.y, canvas, gameState, viewState)) return close();
+
+    // Subject liveness, re-resolved against live state every pass. An empty
+    // option list is NOT a sufficient test on its own: a city captured while
+    // its ring is open still returns a perfectly good list -- for its new
+    // owner -- and a unit that died mid-turn would leave its ring hanging
+    // over whatever moved onto the tile.
+    const civ = gameState.civs[humanCivId];
+    const city = civ && civ.cities.find((c) => c.x === menu.x && c.y === menu.y);
+    const unit = viewState.selectedUnit;
+    let options;
+    if (menu.subject === "city") {
+      if (!city) return close();
+      options = window.GameEngine.orders.cityRingOptions(city, gameState, humanCivId);
+    } else {
+      if (!window.GameEngine.orders.canCommand(unit, gameState, humanCivId)) return close();
+      options = window.GameEngine.orders.contextMenuOptions(unit, gameState, menu.x, menu.y, humanCivId);
+      if (city) options.push({ kind: "city:open", label: "City Actions" });
+    }
+
+    const center = window.UI.render.tileCenterOnMap(menu.x, menu.y, canvas, gameState, viewState);
+    const ctx = {
+      cx: center.x, cy: center.y, ts: center.ts,
+      mapW: canvas.width, mapH: canvas.height,
+    };
+
+    // A sub-page (build list, level-up picker) replaces the ring rather than
+    // sitting alongside it -- see ringmenu.js's renderPopover. Its own markup
+    // and wiring, but the same root, key and reposition machinery.
+    const page = menu.page ? buildRingPage(menu, city, unit, civ) : null;
+    if (menu.page && !page) { viewState.ringMenu.page = null; }
+    if (!page && !options.length) return close();
+
+    const key = page
+      ? `page:${menu.subject}:${menu.x},${menu.y}:${menu.page}:${page.body.length}`
+      : `${menu.subject}:${menu.x},${menu.y}::${options.map((o) => o.kind).join("|")}`;
+
+    // Reposition first and rebuild only if that reports the markup is no
+    // longer the right shape -- so a pan or zoom with the ring open moves the
+    // existing buttons instead of replacing them.
+    if (key !== lastRenderedRingKey || !window.UI.ringmenu.position(root, options, ctx)) {
+      root.innerHTML = page
+        ? window.UI.ringmenu.renderPopover(page.title, page.body)
+        : window.UI.ringmenu.render(options, ctx);
+      window.UI.ringmenu.position(root, options, ctx);
+      lastRenderedRingKey = key;
+    }
+    for (const btn of root.querySelectorAll(".map-ring-item")) {
+      btn.onclick = () => handleContextMenuAction(btn.dataset.ringKind);
+    }
+    // The sub-page's own controls. Wired HERE rather than in redraw()'s
+    // sidebar block, which runs earlier and would never see these nodes.
+    for (const btn of root.querySelectorAll("[data-ring-back]")) {
+      btn.onclick = () => { viewState.ringMenu.page = null; redraw(); };
+    }
+    for (const btn of root.querySelectorAll(".build-option")) {
+      btn.onclick = () => handleChooseBuild(Number(btn.dataset.buildIndex));
+    }
+    for (const btn of root.querySelectorAll(".level-up-btn")) {
+      btn.onclick = () => handleChooseLevelUp(btn.dataset.levelUpStat);
+    }
+  }
+
+  /** The contents of whichever ring sub-page is open, or null if it can no
+   *  longer be shown (the city started building, the level-ups were spent) --
+   *  in which case renderRingMenu drops back to the ring itself. */
+  function buildRingPage(menu, city, unit, civ) {
+    if (menu.page === "buildUnit" || menu.page === "buildStructure") {
+      if (!city || city.buildQueue) return null;
+      const kind = menu.page === "buildUnit" ? "unit" : "building";
+      return {
+        title: kind === "unit" ? "Build Unit" : "Build Structure",
+        body: window.UI.buildlist.render(civ, city, gameState, kind),
+      };
+    }
+    if (menu.page === "levelUp") {
+      if (!unit || window.GameEngine.combat.pendingLevelUps(unit) <= 0) return null;
+      return { title: "Level Up", body: window.UI.sidebar.levelUpChoicesHtml(unit, civ) };
+    }
+    return null;
   }
 
   /** Wires the buttons for whichever dialog kind was just rendered into
@@ -2596,17 +2640,99 @@
     redraw();
   }
 
-  /** Dispatches whichever context-menu entry the player picked (2026-08-06,
+  /** Points the tile inspector at the city on (x,y) and returns it, so a city
+   *  ring action and the sidebar are always talking about the same city --
+   *  the downstream handlers (handleResourceProduction, cancelBuild,
+   *  handleChooseBuild) all read viewState.selectedCity. Forcing the city tab
+   *  matters on a garrisoned tile, where handleTileClick would otherwise hand
+   *  the tab to the unit standing there (see input.js's SELECTION MODEL). */
+  function selectCityAt(x, y) {
+    const civ = gameState.civs[humanCivId];
+    const city = civ && civ.cities.find((c) => c.x === x && c.y === y);
+    if (!city) return null;
+    window.UI.input.handleTileClick({ x, y }, gameState, viewState);
+    const sel = viewState.selection;
+    if (sel) {
+      const idx = sel.tabs.findIndex((t) => t.kind === "city");
+      if (idx >= 0) window.UI.input.setActiveTab(gameState, viewState, idx);
+    }
+    return city;
+  }
+
+  /** The "city:*" half of the ring's dispatch (2026-08-06, user-directed) --
+   *  see orders.js's cityRingOptions for what's offered and when. Split out
+   *  of handleContextMenuAction because these run without a selected unit,
+   *  which that function's own guard rules out. */
+  function handleCityRingAction(kind, menu) {
+    // "City Actions" is a navigation pill, not an order: it swaps the ring
+    // over to the city standing on this tile. It exists because a unit on
+    // your own city always wins the sidebar's tab, so the city ring would
+    // otherwise be unreachable exactly where it's most useful.
+    if (kind === "city:open") {
+      if (selectCityAt(menu.x, menu.y)) {
+        viewState.ringMenu = { x: menu.x, y: menu.y, subject: "city", page: null };
+      }
+      redraw();
+      return;
+    }
+
+    // "Next city needing orders" carries its target in the kind string, the
+    // same convention startChannel:<kind> uses below.
+    if (kind.startsWith("city:nextProduction:")) {
+      const [nx, ny] = kind.slice("city:nextProduction:".length).split(",").map(Number);
+      goToTile(nx, ny, "city");
+      if (selectCityAt(nx, ny)) {
+        viewState.ringMenu = { x: nx, y: ny, subject: "city", page: null };
+      }
+      redraw();
+      return;
+    }
+
+    const city = selectCityAt(menu.x, menu.y);
+    if (!city) { redraw(); return; }
+
+    switch (kind) {
+      case "city:cancelBuild":
+        window.GameEngine.orders.cancelBuild(city);
+        break;
+      case "city:resourceProduction":
+        handleResourceProduction();
+        break;
+      case "city:buildUnit":
+      case "city:buildStructure":
+        // Opens the real build list as a ring sub-page (see
+        // ringmenu.js's renderPopover / buildlist.js) -- the ring stays open
+        // rather than closing, so Back returns to the categories.
+        viewState.ringMenu = {
+          x: city.x, y: city.y, subject: "city",
+          page: kind === "city:buildUnit" ? "buildUnit" : "buildStructure",
+        };
+        break;
+      default:
+        break;
+    }
+    redraw();
+  }
+
+  /** Dispatches whichever ring-menu entry the player picked (2026-08-06,
    *  user-directed -- see orders.js's contextMenuOptions for what each
-   *  `kind` means and when it's offered, js/ui/contextmenu.js for how it's
-   *  rendered). Re-reads viewState.contextMenu/selectedUnit fresh rather
+   *  `kind` means and when it's offered, js/ui/ringmenu.js for how it's
+   *  rendered). Re-reads viewState.ringMenu/selectedUnit fresh rather
    *  than closing over anything from when the menu was built, same
    *  "recompute at click time" convention handleChooseBuild already uses
    *  for the city build picker. */
   function handleContextMenuAction(kind) {
-    const menu = viewState.contextMenu;
-    viewState.contextMenu = null;
+    const menu = viewState.ringMenu;
+    viewState.ringMenu = null;
     if (!menu || !humanCivId) { redraw(); return; }
+
+    // City actions run before the unit guard below -- a city ring is opened
+    // on tiles where there may be no selected unit at all.
+    if (kind && kind.startsWith("city:")) {
+      handleCityRingAction(kind, menu);
+      return;
+    }
+
     const unit = viewState.selectedUnit;
     if (!unit) { redraw(); return; }
 
@@ -2655,6 +2781,14 @@
         break;
       case "defend":
         handleDefendUnit();
+        break;
+      case "automate":
+        handleToggleAutomate();
+        break;
+      case "levelUp":
+        // Sub-page, not an order -- keep the ring open on this unit's tile
+        // and swap it for the picker (see renderRingMenu's buildRingPage).
+        viewState.ringMenu = { x: menu.x, y: menu.y, subject: "unit", page: "levelUp" };
         break;
       case "garrison":
         handleGarrisonUnit();
@@ -2727,9 +2861,15 @@
     const option = options[index];
     if (!option) return;
 
+    // Close the ring FIRST, before either branch (2026-08-06). The building
+    // branch below hands the map over to placement mode, which is a modal
+    // cursor that swallows left-clicks -- an open popover sitting on top of
+    // the very slots the player now has to click would be actively in the
+    // way, and right-click (the placement escape hatch) would be ambiguous.
+    viewState.ringMenu = null;
+
     if (option.kind !== "building") {
       window.GameEngine.orders.queueBuild(city, civ, gameState, option, null);
-      viewState.buildPickerCityId = null;
       redraw();
       return;
     }
@@ -2740,10 +2880,7 @@
       onPick: (slot) => {
         // A click outside the highlighted slots cancels rather than queuing
         // the building somewhere arbitrary.
-        if (slot) {
-          window.GameEngine.orders.queueBuild(city, civ, gameState, option, slot);
-          viewState.buildPickerCityId = null;
-        }
+        if (slot) window.GameEngine.orders.queueBuild(city, civ, gameState, option, slot);
         viewState.placement = null;
         redraw();
       },
@@ -2751,14 +2888,15 @@
     redraw();
   }
 
-  /** "Resource Production" city action (2026-08-06, user-directed): queues
-   *  a flat +50% yield boost for this city's very NEXT tick -- see
-   *  cities.js's tickCity, which consumes city.pendingResourceBoost and
-   *  clears it. No cooldown/limit; re-clickable every turn. */
-  function handleBoostResourceProduction() {
+  /** "Resource Production" (2026-08-06, user-directed): spends this city's
+   *  production for the CURRENT turn on resources instead of a unit or a
+   *  building -- see cities.js's applyResourceProduction for the payout and
+   *  why it lands on this turn rather than the next one. */
+  function handleResourceProduction() {
     const city = viewState.selectedCity;
     if (!city || !humanCivId || city.civId !== humanCivId) return;
-    city.pendingResourceBoost = true;
+    const civ = gameState.civs[humanCivId];
+    window.GameEngine.cities.applyResourceProduction(city, civ, gameState);
     redraw();
   }
 
