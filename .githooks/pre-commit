@@ -1,0 +1,133 @@
+#!/bin/sh
+#
+# BUILD STAMP (2026-08-06, user-directed)
+# ---------------------------------------
+# Rewrites the `build` section of js/data/config.js -- date, time, number --
+# and stages it, so the version shown under Start Game on the launch screen
+# is always the build that was actually cut.
+#
+# WHY THIS EXISTS. The stamp used to be read live from the GitHub API, which
+# was self-maintaining but depended on the network, the repo being public,
+# and an unauthenticated 60-req/hour rate limit; it rendered blank whenever
+# any of those failed. Moving it into config.js fixed that but traded it for
+# a worse failure: a value nobody remembers to bump is not blank, it is
+# WRONG. This hook closes that gap -- config.js stays the single source the
+# game reads, and nobody has to remember anything.
+#
+# TRACKED, NOT INSTALLED. This lives in .githooks/ (committed) rather than
+# .git/hooks/ (not), so it survives a fresh clone. Git only looks here
+# because core.hooksPath points at it:
+#
+#     git config core.hooksPath .githooks
+#
+# That one command is per-clone -- run it after cloning or the hook silently
+# does nothing.
+#
+# TO SKIP IT for one commit: git commit --no-verify
+
+set -e
+
+# PORTABILITY (2026-08-06): this hook has to survive being run by something
+# other than Git Bash. Committing from VS Code, GitHub Desktop, or any tool
+# bundling MinGit gives the hook a PATH that may not include Git's own Unix
+# utilities -- the reported symptom was "perl is not found", and MinGit in
+# particular ships sed but deliberately omits perl entirely.
+#
+# So: no perl anywhere below (sed only), plus this repair for the case where
+# even sed isn't on PATH. `command -v` is a shell builtin, so this check
+# works with no PATH at all. The Git root is derived from `git --exec-path`
+# (.../Git/mingw64/libexec/git-core -> .../Git) using ${var%/*} parameter
+# expansion rather than dirname, which would itself need to be findable.
+if ! command -v sed >/dev/null 2>&1 || ! command -v date >/dev/null 2>&1; then
+  _root=$(git --exec-path 2>/dev/null)
+  _root=${_root%/*}; _root=${_root%/*}; _root=${_root%/*}
+  for _dir in "$_root/usr/bin" "/usr/bin" "/c/Program Files/Git/usr/bin"; do
+    if [ -x "$_dir/sed" ] || [ -x "$_dir/sed.exe" ]; then
+      PATH="$_dir:$PATH"
+      export PATH
+      break
+    fi
+  done
+  unset _root _dir
+fi
+
+if ! command -v sed >/dev/null 2>&1; then
+  echo "pre-commit: cannot find 'sed'; skipping the build stamp." >&2
+  echo "  js/data/config.js keeps whatever values it already has." >&2
+  exit 0   # never block a commit just because the stamp couldn't be written
+fi
+
+CONFIG="js/data/config.js"
+
+# Not an error to be missing -- a commit that doesn't include the game (docs,
+# assets on a branch without it) shouldn't be blocked by a build stamp.
+[ -f "$CONFIG" ] || exit 0
+
+# The number this commit will BE once it lands, not the count before it.
+# Derived rather than incremented in place: a derived number can't drift when
+# a commit is amended, a hook run is skipped with --no-verify, or a branch is
+# reset. It continues the numbering the old GitHub stamp used, which showed
+# the same total-commit-count value.
+#
+# Known imprecision, accepted: `git commit --amend` doesn't add a commit, so
+# the count already includes the one being amended and the stamp lands one
+# high. Pre-commit has no reliable way to detect an amend, and the cost is a
+# cosmetic off-by-one on a rewritten commit.
+if git rev-parse --verify HEAD >/dev/null 2>&1; then
+  NUMBER=$(($(git rev-list --count HEAD) + 1))
+else
+  NUMBER=1   # the very first commit in a fresh repo
+fi
+
+# Local time, matching how a person reading the launch screen thinks about
+# "when was this built".
+DATE=$(date +%Y-%m-%d)
+TIME=$(date +%H:%M)
+
+# Warn (don't block) if config.js has edits that aren't staged: `git add`
+# below stages the whole file, so those would ride along into this commit
+# whether or not that was intended.
+if ! git diff --quiet -- "$CONFIG"; then
+  echo "pre-commit: note -- $CONFIG had unstaged changes; they are included in this commit." >&2
+fi
+
+# Keep a pristine copy so a failed rewrite can be undone completely. The
+# three substitutions below are independent, so a partial match (one key
+# renamed, two not) would otherwise leave config.js half-rewritten in the
+# working tree after a blocked commit -- a confusing thing to be handed by an
+# operation that just told you it did nothing.
+BACKUP="$CONFIG.build-stamp-backup"
+trap 'rm -f "$BACKUP"' EXIT
+cp "$CONFIG" "$BACKUP"
+
+# Each substitution is confined to the `build: { ... }` block by a sed line
+# RANGE, so it can only ever match inside it -- a bare /date:/ would be a
+# landmine in a config file this large.
+#
+# Nothing anchors to end-of-line ($). Matching only as far as the closing
+# quote (or the last digit) leaves the trailing comma alone, and with it any
+# carriage return -- so this behaves the same whether the working copy is
+# checked out LF or CRLF, which on Windows depends on core.autocrlf.
+sed -i \
+  -e "/^  build: {/,/^  },/ s/^\(  *date: \"\)[^\"]*\"/\1$DATE\"/" \
+  -e "/^  build: {/,/^  },/ s/^\(  *time: \"\)[^\"]*\"/\1$TIME\"/" \
+  -e "/^  build: {/,/^  },/ s/^\(  *number: \)[0-9][0-9]*/\1$NUMBER/" \
+  "$CONFIG"
+
+# Fail loudly if the substitution didn't take. Renaming a key in config.js
+# would otherwise leave this hook quietly writing nothing, which is exactly
+# the silent-stale-stamp failure it was written to prevent.
+if ! grep -q "date: \"$DATE\"" "$CONFIG" \
+  || ! grep -q "time: \"$TIME\"" "$CONFIG" \
+  || ! grep -q "number: $NUMBER," "$CONFIG"; then
+  cp "$BACKUP" "$CONFIG"   # leave the working tree exactly as we found it
+  echo "pre-commit: FAILED to write the build stamp into $CONFIG." >&2
+  echo "  Expected: date \"$DATE\", time \"$TIME\", number $NUMBER" >&2
+  echo "  Has the 'build' section been renamed or reformatted?" >&2
+  echo "  $CONFIG was left unchanged." >&2
+  echo "  Fix .githooks/pre-commit, or commit with --no-verify to bypass." >&2
+  exit 1
+fi
+
+git add "$CONFIG"
+echo "pre-commit: build stamp -> $DATE $TIME (build $NUMBER)"
