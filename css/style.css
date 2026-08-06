@@ -1085,6 +1085,24 @@ html, body {
 .launch-row select:focus,
 .launch-row input[type="text"]:focus { outline: none; border-color: var(--accent); }
 .launch-row input[type="checkbox"] { accent-color: var(--accent); margin: 0; }
+/* Game Speed slider (2026-08-06, user-directed) -- the percentage label
+   sits to the right, inside the same flex row as the slider itself. */
+.launch-row-slider {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
+  max-width: 260px;
+}
+.launch-row-slider input[type="range"] {
+  flex: 1;
+  accent-color: var(--accent);
+}
+.launch-row-slider span {
+  min-width: 40px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
 .launch-hint {
   margin: 8px 0 0 0;
   font-size: 11px;

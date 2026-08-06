@@ -59,6 +59,38 @@ window.GameConfig = {
      *  roughly doubles in speed to match research rather than the other way
      *  around. */
     slowness: 0.1,
+    /** Per-category RATIOS on top of slowness above (2026-08-06, user-
+     *  directed), not a second independent rate -- units were finishing in
+     *  1-2 turns almost everywhere (unit power is a small number, and
+     *  unitBuildTurns' rate gets a militarism boost on top of
+     *  industriousness) while buildings/walls stretched to 15-28 turns for
+     *  a low-industriousness race (building coinCost is a bigger number,
+     *  and buildingBuildTurns' rate is industriousness alone). Multiplying
+     *  each category's turns by its own factor here fixes that gap while
+     *  keeping slowness as the ONE knob that scales every queue at once --
+     *  turn slowness up or down and units/buildings/research all still
+     *  move together, just at their established relative pace to each
+     *  other. Tuned so a mid-tier combat unit lands around 3-4 turns and a
+     *  mid-tier building around half its old length (worst case, a cheap-
+     *  industriousness race's priciest building, roughly 28 turns -> ~14)
+     *  -- see ai.js's unitBuildTurns/buildingBuildTurns.
+     *
+     *  researchPaceFactor (2026-08-06, user-directed) joined the two above
+     *  for the same reason -- research had grown into its own pacing
+     *  problem, especially at high tiers for a low-industriousness race
+     *  (Layer 5 was running 160 turns at industriousness 0.2).
+     *
+     *  Re-tuned again (2026-08-06, user-directed) alongside tech.js's new
+     *  RESEARCH_TURNS_EXPONENT -- the two together are calibrated so that,
+     *  at industriousness 0.5 (the fallback default), Layer 5 lands at
+     *  exactly 20 turns and Layer 1 at 3, with Layers 0/2/3/4 falling
+     *  smoothly in between (2/3/5/8/12/20) -- see researchTurns' own doc
+     *  comment for why the exponent had to change too, not just this
+     *  factor, to hit both. Faster/slower industriousness races and the
+     *  Game Speed slider still scale proportionally from there. */
+    unitPaceFactor: 2.2,
+    buildingPaceFactor: 0.5,
+    researchPaceFactor: 2.1,
   },
 
   // =========================================================================

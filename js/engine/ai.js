@@ -2543,6 +2543,14 @@ window.GameEngine = window.GameEngine || {};
   // pioneer_infrastructure/distant_shores/distant_horizons) and
   // wall_section -- nothing is left on the legacy flat-coinCost
   // accumulation path any more.
+  //
+  // unitBuildTurns/buildingBuildTurns each ALSO multiply by their own
+  // GameConfig.pacing.unitPaceFactor/buildingPaceFactor (2026-08-06, user-
+  // directed) -- units were finishing in 1-2 turns almost everywhere while
+  // buildings/walls stretched to 15-28 for a low-industriousness race.
+  // Those factors are a fixed RATIO on top of BUILD_SLOWNESS, not a second
+  // independent rate, so slowness stays the one knob that scales every
+  // timed queue in the game together -- see config.js's own doc comment.
   const BUILD_SLOWNESS = window.GameConfig.pacing.slowness;
 
   /** How fast this civ turns unit power into finished units -- industriousness
@@ -2572,7 +2580,12 @@ window.GameEngine = window.GameEngine || {};
     const baseUnit = window.GameData.getUnit(unitId);
     const power = window.GameData.unitPower(unitId);
     const rate = raceUnitBuildRate(civ);
-    const turns = Math.max(1, Math.round((power / rate) * BUILD_SLOWNESS));
+    // unitPaceFactor (2026-08-06, user-directed): a per-category RATIO on
+    // top of BUILD_SLOWNESS, not a second independent rate -- see its own
+    // doc comment in config.js for why units/buildings needed different
+    // multipliers of the SAME shared slowness knob rather than each
+    // getting their own unrelated constant.
+    const turns = Math.max(1, Math.round((power / rate) * BUILD_SLOWNESS * window.GameConfig.pacing.unitPaceFactor));
     return baseUnit.minBuildTurns ? Math.max(turns, baseUnit.minBuildTurns) : turns;
   }
 
@@ -2594,7 +2607,9 @@ window.GameEngine = window.GameEngine || {};
     const race = window.GameData.getRace(civ.raceId);
     const industriousness = race.industriousness ?? 0.5;
     const total = building.coinCost || 0;
-    const turns = Math.max(1, Math.round((total / industriousness) * BUILD_SLOWNESS));
+    // buildingPaceFactor -- see unitBuildTurns' matching comment above /
+    // config.js's own doc comment.
+    const turns = Math.max(1, Math.round((total / industriousness) * BUILD_SLOWNESS * window.GameConfig.pacing.buildingPaceFactor));
     return building.minBuildTurns ? Math.max(turns, building.minBuildTurns) : turns;
   }
 

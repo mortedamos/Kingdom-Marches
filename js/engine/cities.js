@@ -508,12 +508,22 @@ window.GameEngine = window.GameEngine || {};
     const buildingCount = city.structures.filter((s) => !window.GameData.getBuilding(s.id).isWall).length;
     const buildingCountBonus = civ.buildingCountBonus || {};
 
+    // "Resource Production" (2026-08-06, user-directed): a city action
+    // (main.js's handleBoostResourceProduction) that queues a flat +50%
+    // yield boost for this city's very NEXT tick -- consumed here, no
+    // cooldown or limit on how often the player can queue it again.
+    // Applied uniformly to harvest/coin/lore below, including the harvest
+    // that feeds growth and coin_from_harvest_pct further down, so a
+    // boosted tick's downstream effects scale with it too.
+    const boostMult = city.pendingResourceBoost ? 1.5 : 1;
+    city.pendingResourceBoost = false;
+
     // Tech: harvest_pct_bonus (e.g. Human "Industrious Harvest") scales total harvest yield.
     // Structure yieldPct (e.g. Bazaar +10% harvest) is a SEPARATE, per-city-only multiplier.
     const harvestPctMult = 1 + (civ.harvestPctBonus || 0);
     const totalHarvest = (tileYield.harvest + struct.yield.harvest + FLAT_CITY_HARVEST
         + (buildingCountBonus.harvest || 0) * buildingCount)
-      * harvestPctMult * (1 + struct.yieldPct.harvest);
+      * harvestPctMult * (1 + struct.yieldPct.harvest) * boostMult;
 
     const upkeep = UPKEEP_RATE * city.population;
     const netHarvest = Math.max(0, totalHarvest * (race.growthMult || 1.0) - upkeep);
@@ -556,14 +566,17 @@ window.GameEngine = window.GameEngine || {};
     const intrinsicCoin = INTRINSIC_COIN_RATE * city.population;
     const intrinsicLore = INTRINSIC_LORE_RATE * city.population;
     // Tech: coin_from_harvest_pct converts a slice of this turn's harvest into bonus coin.
-    const coinFromHarvest = totalHarvest * (civ.coinFromHarvestPct || 0);
+    // Divides boostMult back out first -- totalHarvest already carries it,
+    // and totalCoin below applies boostMult again to its own total, so
+    // leaving it in here would double-boost this one term.
+    const coinFromHarvest = (totalHarvest / boostMult) * (civ.coinFromHarvestPct || 0);
 
     const totalCoin = (tileYield.coin + struct.yield.coin + intrinsicCoin + FLAT_CITY_COIN + coinFromHarvest
         + (buildingCountBonus.coin || 0) * buildingCount)
-      * (1 + struct.yieldPct.coin);
+      * (1 + struct.yieldPct.coin) * boostMult;
     const totalLore = (tileYield.lore + struct.yield.lore + intrinsicLore + FLAT_CITY_LORE
         + (buildingCountBonus.lore || 0) * buildingCount)
-      * (1 + struct.yieldPct.lore);
+      * (1 + struct.yieldPct.lore) * boostMult;
 
     city.lastYield = { harvest: totalHarvest, coin: totalCoin, lore: totalLore };
     city.coinBanked += city.lastYield.coin;

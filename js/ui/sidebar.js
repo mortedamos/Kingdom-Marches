@@ -147,6 +147,17 @@ window.UI = window.UI || {};
       return `<h3>Garrison (${unitTabs.length})</h3>${rows}`;
     })() : '';
 
+    // "Resource Production" (2026-08-06, user-directed): queues a flat +50%
+    // yield boost for this city's NEXT tick (see cities.js's tickCity,
+    // which consumes and clears city.pendingResourceBoost) -- no cooldown
+    // or limit on how often it can be queued again, the player's own call
+    // each turn. Own cities only, same isOwnCity gate renderBuildSection
+    // below uses.
+    const isOwnCity = viewState && viewState.humanCivId && city.civId === viewState.humanCivId;
+    const boostBtn = !isOwnCity ? '' : city.pendingResourceBoost
+      ? `<div class="stat-row"><em>Resource Production boost queued for next turn</em></div>`
+      : `<button id="boost-resource-production-btn" class="action-btn">Resource Production (+50% next turn)</button>`;
+
     return `
       <div class="panel">
         <h2>${escapeHtml(city.name)}${portTag}</h2>
@@ -162,6 +173,7 @@ window.UI = window.UI || {};
         <div class="stat-row"><span>Harvest</span><span>${y.harvest.toFixed(1)}</span></div>
         <div class="stat-row"><span>Coin</span><span>${y.coin.toFixed(1)}</span></div>
         <div class="stat-row"><span>Lore</span><span>${y.lore.toFixed(1)}</span></div>
+        ${boostBtn}
         ${renderBuildSection(city, civ, gameState, viewState)}
         <h3>Structures (${city.structures.length}/${window.GameEngine.cities.RING1_SLOT_COUNT + window.GameEngine.cities.RING2_SLOT_COUNT})</h3>
         ${city.structures.length

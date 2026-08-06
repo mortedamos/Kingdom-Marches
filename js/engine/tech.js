@@ -82,12 +82,33 @@ window.GameEngine = window.GameEngine || {};
   // doesn't factor in the way it does for raceUnitBuildRate). Shares
   // GameConfig.pacing.slowness with ai.js's BUILD_SLOWNESS now (2026-08-04,
   // user-directed) -- one universal pacing knob for every timed queue in
-  // the game, not a separate rate per subsystem.
+  // the game, not a separate rate per subsystem. researchPaceFactor
+  // (2026-08-06, user-directed) is a RATIO on top of that shared slowness,
+  // same treatment as ai.js's unitPaceFactor/buildingPaceFactor -- see
+  // config.js's own doc comment for why (research had grown into the same
+  // "takes too long" problem buildings did, especially at high tiers for a
+  // low-industriousness race).
+  //
+  // RESEARCH_TURNS_EXPONENT (2026-08-06, user-directed): turns no longer
+  // scale LINEARLY with cost -- cost itself is exponential in layer
+  // (effectiveTechCost = baseCost * tierGrowth^layer, a flat 16x between
+  // Layer 1 and Layer 5), so a linear turns formula forces that exact same
+  // 16x ratio onto turns too, and "Layer 5 = 20 turns" and "Layer 1 = ~3
+  // turns" can't both hold under ANY single rate constant (20/3 is only
+  // ~6.7x, not 16x). Raising cost to this sub-1 exponent BEFORE the rest of
+  // the formula compresses that ratio -- at industriousness 0.5 (the
+  // fallback default) this lands Layer 1 at 3, Layer 5 at 20, with Layers
+  // 0/2/3/4 falling smoothly in between (2/3/5/8/12/20) instead of jumping
+  // straight from ~1 to ~20. Only changes the TURN-COUNT curve -- the
+  // actual harvest/coin/lore price paid still comes from the unmodified,
+  // linear effectiveTechCost.
+  const RESEARCH_TURNS_EXPONENT = 2 / 3;
   function researchTurns(civ, tech) {
     const race = window.GameData.getRace(civ.raceId);
     const industriousness = race.industriousness ?? 0.5;
     const cost = window.GameData.effectiveTechCost(tech);
-    return Math.max(1, Math.round((cost / industriousness) * window.GameConfig.pacing.slowness));
+    const scaledCost = Math.pow(cost, RESEARCH_TURNS_EXPONENT);
+    return Math.max(1, Math.round((scaledCost / industriousness) * window.GameConfig.pacing.slowness * window.GameConfig.pacing.researchPaceFactor));
   }
 
   /** Counts down one turn on the civ's in-progress research (2026-08-04,

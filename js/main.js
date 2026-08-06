@@ -15,8 +15,34 @@
   let spectatorSpeed = 1; // 1x/2x/4x/8x/16x -- see the speed-btn row in index.html
   let spectatorPaused = false;
   let autoplayTimer = null;
+  // AI difficulty (2026-08-06, user-directed): the start screen no longer
+  // exposes a control for this -- game-speed-slider replaced it -- so this
+  // just stays at its default. Left in place rather than ripped out: it's
+  // still a real, working lever (ai.js's applyDifficultyNoise), just not
+  // currently reachable from the UI.
   let aiDifficulty = "normal";
   let loadingStatusTimer = null; // see showLoadingScreen/hideLoadingScreen
+
+  // Game Speed (2026-08-06, user-directed): replaces the old Difficulty
+  // dropdown on the start screen with a slider that controls how many
+  // turns units/buildings/research take (GameConfig.pacing.slowness) --
+  // see js/data/config.js's own doc comment for the unit/building/research
+  // pace-factor system this scales uniformly. 100% is the slider's middle
+  // and reproduces the game's default pace exactly; higher = faster
+  // (fewer turns), lower = slower (more turns) -- an inverse relationship,
+  // since "speed" and "how many turns something takes" move opposite ways.
+  // BASE_PACING_SLOWNESS is captured ONCE here, before applyGameSpeed ever
+  // runs, so every subsequent call (a fresh Start Game at a different
+  // speed, or loading a save) recomputes from this fixed baseline rather
+  // than the live (possibly already-adjusted) config value -- otherwise
+  // repeated speed changes would compound/drift instead of each being an
+  // absolute setting.
+  const BASE_PACING_SLOWNESS = window.GameConfig.pacing.slowness;
+  let gameSpeedPercent = 100;
+  function applyGameSpeed(percent) {
+    gameSpeedPercent = percent;
+    window.GameConfig.pacing.slowness = BASE_PACING_SLOWNESS * (100 / percent);
+  }
 
   // Identity of whatever's currently rendered into the tech tree/reports/
   // dialog modals -- redraw() only rebuilds a modal's innerHTML when its
@@ -266,9 +292,11 @@
    * room for single-player options that don't exist yet.
    *
    * The control IDs are deliberately UNCHANGED from the old toolbar markup
-   * (spectator-toggle, human-race-select, opponent-count, difficulty-select,
+   * (spectator-toggle, human-race-select, opponent-count, game-speed-slider,
    * seed-input, .spectator-race-checkbox), so startGame() reads them exactly
-   * as before and knows nothing about where they're rendered.
+   * as before and knows nothing about where they're rendered. game-speed-
+   * slider (2026-08-06, user-directed) replaced the old difficulty-select
+   * dropdown -- see startGame()'s own comment for what it actually does.
    *
    * Sections are shown/hidden by mode rather than mixed together: picking
    * All-AI Spectator swaps the Single Player block for the race checklist,
@@ -317,13 +345,13 @@
       <div class="launch-section">
         <div class="launch-section-label">World</div>
         <label class="launch-row">
-          <span>Difficulty</span>
-          <select id="difficulty-select">
-            <option value="easy">Easy</option>
-            <option value="normal" selected>Normal</option>
-            <option value="hard">Hard</option>
-          </select>
+          <span>Game Speed</span>
+          <span class="launch-row-slider">
+            <input type="range" id="game-speed-slider" min="50" max="150" step="5" value="100">
+            <span id="game-speed-pct">100%</span>
+          </span>
         </label>
+        <p class="launch-hint">How many turns units, buildings, and research take to complete -- lower is slower, higher is faster. 100% (the middle) is the default pace.</p>
         <label class="launch-row">
           <span>Map Seed</span>
           <input type="text" id="seed-input" placeholder="random">
@@ -424,6 +452,15 @@
       const isSpectator = e.target.checked;
       $("single-player-section").style.display = isSpectator ? "none" : "block";
       $("spectator-race-section").style.display = isSpectator ? "block" : "none";
+    });
+
+    // Game Speed slider (2026-08-06, user-directed): the percentage label
+    // moves live as the slider is dragged -- actually applying the speed
+    // (mutating GameConfig.pacing.slowness) waits for Start Game itself
+    // (see startGame's applyGameSpeed call), same as every other launch
+    // option here only takes effect once the game actually starts.
+    $("game-speed-slider").addEventListener("input", (e) => {
+      $("game-speed-pct").textContent = `${e.target.value}%`;
     });
 
     $("start-game-btn").addEventListener("click", startGame);
@@ -544,7 +581,7 @@
       return;
     }
     const opponentCount = parseInt($("opponent-count").value, 10);
-    aiDifficulty = $("difficulty-select").value;
+    applyGameSpeed(parseInt($("game-speed-slider").value, 10));
     const seedInput = $("seed-input").value.trim();
     const seed = seedInput ? (parseInt(seedInput, 10) || hashStringToSeed(seedInput)) : Math.floor(Math.random() * 1e9);
     if (spectatorMode) console.log(`[spectator] map seed: ${seed}`);
@@ -1347,7 +1384,7 @@
     const payload = {
       version: 1,
       savedAt: new Date().toISOString(),
-      humanCivId, spectatorMode, aiDifficulty,
+      humanCivId, spectatorMode, aiDifficulty, gameSpeedPercent,
       gameState,
     };
     const json = window.GameEngine.savegame.serialize(payload);
@@ -1391,6 +1428,10 @@
     humanCivId = payload.humanCivId;
     spectatorMode = payload.spectatorMode;
     aiDifficulty = payload.aiDifficulty;
+    // Falls back to 100% (the default pace) for a save made before the Game
+    // Speed slider existed, same "predates this field" convention as
+    // civ.isHuman's own recompute just below.
+    applyGameSpeed(payload.gameSpeedPercent || 100);
     // Recomputed rather than trusted from the save file itself (2026-08-04):
     // civ.isHuman didn't exist before this fix, so a save made prior to it
     // would otherwise load with the flag missing on every civ, silently
@@ -2045,6 +2086,8 @@
       viewState.buildPickerCityId = nextCityProductionBtn.dataset.cityKey;
       redraw();
     };
+    const boostResourceBtn = $("boost-resource-production-btn");
+    if (boostResourceBtn) boostResourceBtn.onclick = handleBoostResourceProduction;
     for (const btn of document.querySelectorAll(".build-option")) {
       btn.onclick = () => handleChooseBuild(Number(btn.dataset.buildIndex));
     }
@@ -2640,6 +2683,17 @@
         redraw();
       },
     };
+    redraw();
+  }
+
+  /** "Resource Production" city action (2026-08-06, user-directed): queues
+   *  a flat +50% yield boost for this city's very NEXT tick -- see
+   *  cities.js's tickCity, which consumes city.pendingResourceBoost and
+   *  clears it. No cooldown/limit; re-clickable every turn. */
+  function handleBoostResourceProduction() {
+    const city = viewState.selectedCity;
+    if (!city || !humanCivId || city.civId !== humanCivId) return;
+    city.pendingResourceBoost = true;
     redraw();
   }
 
