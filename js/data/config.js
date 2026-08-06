@@ -140,9 +140,17 @@ window.GameConfig = {
     /** Harvest consumed per population point per turn. */
     upkeepRatePerPop: 0.2,
 
-    /** Coin and Lore produced per population point per turn. */
+    /** Coin and Lore produced per population point per turn. Lore raised
+     *  from 0.1 to 3 (2026-08-06, user-directed): every base terrain tile
+     *  yields 0 lore (see terrain.js -- harvest/coin appear on nearly every
+     *  tile, lore only from rare Ruins), so unlike harvest/coin, lore was
+     *  never scaling with a growing city working more tiles -- it stayed
+     *  essentially flat regardless of size, a shortage that got WORSE as a
+     *  city grew even though every tech needs some lore. Tying it directly
+     *  to population fixes that scaling gap at its source, not just the
+     *  early-game flat-bonus workaround (flatLore below). */
     intrinsicCoinRate: 0.1,
-    intrinsicLoreRate: 0.1,
+    intrinsicLoreRate: 3,
 
     /** Flat per-city, per-turn yield, before any tiles are worked -- keeps a
      *  brand-new city from producing literally nothing. */
