@@ -40,7 +40,11 @@ window.MusicSystem = (function () {
   let fadeIntervalId = null;
 
   let masterVolume = 1.0;
-  let musicVolume = 1.0;
+  // Default lowered from 1.0 to 0.75 (2026-08-06, user-directed): music was
+  // drowning out sfx. Only the DEFAULT for a first-ever session -- a
+  // persisted user setting (loadPersistedVolumes below) still overrides it,
+  // same as any other volume preference already saved.
+  let musicVolume = 0.75;
   let muted = false;
   let trackChangeListeners = []; // notified with getCurrentTrackLabel()'s result whenever currentKey changes
   // Manual track override: when set, playback is pinned to this exact track
@@ -48,10 +52,17 @@ window.MusicSystem = (function () {
   // until cleared back to null ("Auto"). See setManualTrack/resolveCurrent.
   let manualTrackKey = null;
   // Set once a civ wins (2026-07-22, user-directed) -- see notifyVictory.
-  // Never cleared back to null within a session: once the game is over, the
-  // winning race's theme is what plays from then on (still overridable by a
-  // manual track pin, same precedence as everything else -- see resolveCurrent).
+  // Reset back to null by setRace (2026-08-06, user-directed fix -- see its
+  // own comment) whenever a fresh game actually starts, so returning to the
+  // title screen and starting a new game doesn't keep the PREVIOUS game's
+  // victory theme playing forever. Still overridable by a manual track pin,
+  // same precedence as everything else -- see resolveCurrent.
   let victoryRace = null;
+  // Set once the human player loses (2026-08-06, user-directed) -- see
+  // notifyGameOver. Same one-way-until-a-fresh-game shape and reset point
+  // (setRace) as victoryRace above; takes priority over it in resolveCurrent
+  // since a loss is this session's own outcome, not just informational.
+  let gameOverActive = false;
 
   function loadPersistedVolumes() {
     try {
@@ -85,11 +96,13 @@ window.MusicSystem = (function () {
     return `assets/music/${race}_${situation}_${variant}.mp3`;
   }
 
-  /** "race_situation_n" / "neutral_n" -> a human-readable label. Shared by
-   *  getAvailableTracks (track-picker dropdown) and getCurrentTrackLabel
-   *  (now-playing display) so the two never drift out of sync. */
+  /** "race_situation_n" / "neutral_n" / "game_over" -> a human-readable
+   *  label. Shared by getAvailableTracks (track-picker dropdown) and
+   *  getCurrentTrackLabel (now-playing display) so the two never drift out
+   *  of sync. */
   function keyToLabel(key) {
     if (!key) return null;
+    if (key === "game_over") return "Game Over";
     const parts = key.split("_");
     return parts[0] === "neutral"
       ? `Neutral ${parts[1]}`
@@ -181,6 +194,9 @@ window.MusicSystem = (function () {
     for (let v = 1; v <= MAX_VARIANTS; v++) {
       criticalTasks.push({ key: `neutral_${v}`, path: `assets/music/neutral_${v}.mp3` });
     }
+    // Game over (2026-08-06, user-directed) -- single fixed file, no race
+    // prefix, same "no race" shape as neutral above.
+    criticalTasks.push({ key: "game_over", path: "assets/music/game_over.mp3" });
     async function runTask({ key, path }) {
       const exists = await probeFile(path);
       if (myGeneration !== scanGeneration) return; // superseded -- see scanGeneration's doc comment
@@ -327,6 +343,13 @@ window.MusicSystem = (function () {
       console.log(`[music] manually-selected track ${manualTrackKey}.mp3 unavailable -- reverting to Auto`);
       manualTrackKey = null;
     }
+    // Game over (2026-08-06, user-directed): the human player's own loss
+    // outranks even a victory theme (shouldn't ever coincide in practice --
+    // the human losing and some OTHER civ winning both resolve the same
+    // round -- but if it ever does, this is the human's own outcome and
+    // wins the tiebreak). Single fixed file, no race, so it bypasses
+    // resolveTrack's race-keyed fallback chain entirely.
+    if (gameOverActive) return { path: "assets/music/game_over.mp3", key: "game_over" };
     // Victory (2026-07-22, user-directed): once a civ has won, its theme
     // takes priority over the ordinary race/situation resolution below --
     // reuses resolveTrack's existing fallback chain (victory -> that race's
@@ -400,9 +423,15 @@ window.MusicSystem = (function () {
     }, FADE_STEP_MS);
   }
 
-  /** Public: set which race's music to follow (null = spectator/no human race) */
+  /** Public: set which race's music to follow (null = spectator/no human race).
+   *  Called once at the start of every game (fresh or loaded) -- also the
+   *  reset point for victoryRace/gameOverActive (2026-08-06, user-directed
+   *  fix), so a new game started after a previous one ended doesn't keep
+   *  playing that OLD game's victory/game-over music. */
   function setRace(raceId) {
     currentRace = raceId;
+    victoryRace = null;
+    gameOverActive = false;
     refreshNowPlaying();
   }
 
@@ -432,6 +461,16 @@ window.MusicSystem = (function () {
    *  is harmless (refreshNowPlaying no-ops if nothing actually changed). */
   function notifyVictory(raceId) {
     victoryRace = raceId;
+    refreshNowPlaying();
+  }
+
+  /** Public: the human player has lost -- switch to the fixed game_over.mp3
+   *  track (see resolveCurrent's priority order, which puts this ABOVE even
+   *  a victory theme). No race involved -- a single shared file, not one
+   *  per race. Permanent for the rest of the session (same shape as
+   *  notifyVictory/victoryRace -- see setRace for the reset point). */
+  function notifyGameOver() {
+    gameOverActive = true;
     refreshNowPlaying();
   }
 
@@ -529,6 +568,7 @@ window.MusicSystem = (function () {
     setRace,
     notifySituation,
     notifyVictory,
+    notifyGameOver,
     notifyDiscoveryTrackEndedNaturally,
     setMusicVolume,
     getMusicVolume: () => musicVolume,

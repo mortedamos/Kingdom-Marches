@@ -16,6 +16,7 @@
  *   { kind: "unitBuilt", cityName, unitLabel, unitProperName, onGoToCity(), onGoToUnit(), onDismiss() }
  *   { kind: "confirmAutomatedAction", unitLabel, actionLabel, onConfirm(), onDecline() }
  *   { kind: "attackNotice", unitLabel, onGoTo(), onSkip() }
+ *   { kind: "gameOver", turnsSurvived, citiesFounded, citiesLost, techsResearched, onReturnToTitle() }
  *
  * Every kind rendered here needs a matching branch in main.js's
  * wireDialogButtons -- the markup below only names the buttons, it doesn't
@@ -168,6 +169,22 @@ window.UI = window.UI || {};
         <div class="game-dialog-actions">
           <button class="menu-dropdown-btn" id="game-dialog-cancel-btn">Skip</button>
           <button class="menu-dropdown-btn game-dialog-danger" id="game-dialog-confirm-btn">Go to Attack</button>
+        </div>`;
+    }
+    if (dialog.kind === "gameOver") {
+      // Human defeat (2026-08-06, user-directed): fires the instant this
+      // civ is eliminated, or another civ wins first -- see main.js's
+      // finishRoundBookkeeping/openGameOverDialog. Stats-only, single exit
+      // (no "keep playing" option -- the game has genuinely ended for this
+      // player either way).
+      return `
+        <h2>You Have Lost</h2>
+        <div class="stat-row"><span>Turns Survived</span><span>${dialog.turnsSurvived}</span></div>
+        <div class="stat-row"><span>Cities Founded</span><span>${dialog.citiesFounded}</span></div>
+        <div class="stat-row"><span>Cities Lost</span><span>${dialog.citiesLost}</span></div>
+        <div class="stat-row"><span>Technologies Researched</span><span>${dialog.techsResearched}</span></div>
+        <div class="game-dialog-actions">
+          <button class="menu-dropdown-btn game-dialog-primary" id="game-dialog-ok-btn">Return to Title Screen</button>
         </div>`;
     }
     // "message" -- single-button dismiss, e.g. a victory announcement.

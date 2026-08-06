@@ -221,6 +221,19 @@ html, body {
   display: block;
   cursor: grab;
 }
+/* Drifting cloud layer (2026-08-06, user-directed) -- purely cosmetic
+   atmosphere floating above the map. pointer-events:none so it can never
+   be a hit target: every click, drag, wheel and hover falls straight
+   through to #map-canvas underneath, exactly as if this layer weren't
+   here. Same treatment #map-canvas-3d-hud gets below, and for the same
+   reason. See js/ui/clouds.js. */
+#map-clouds {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
 #map-canvas-3d {
   position: absolute;
   inset: 0;

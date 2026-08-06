@@ -202,6 +202,67 @@ window.GameEngine = window.GameEngine || {};
   const RESOURCE_EXHAUSTION_CHANCE = window.GameConfig.world.resourceExhaustionChance;
 
   /**
+   * RESOURCE RESPAWN (2026-08-06, user-directed)
+   * --------------------------------------------
+   * A depleted resource (Game, Fish, Iron, Gold, Fertile Soil) reappears
+   * somewhere else on the map within the next 3 turns, so the world doesn't
+   * strictly drain toward zero over a long game. Ruins are deliberately
+   * EXCLUDED -- they're one-shot map features, not a renewable resource
+   * (see the isDelveWizard branch in beginRound, which doesn't call this).
+   *
+   * Queued rather than placed immediately: gameState.pendingResourceRespawns
+   * is a list of { resourceId, dueTurn } processed once per round by
+   * processResourceRespawns below. A plain array of plain objects, so it
+   * survives savegame.js's JSON round-trip with no special handling.
+   */
+  const RESPAWN_MIN_DELAY = 1;
+  const RESPAWN_MAX_DELAY = 3;
+
+  function scheduleResourceRespawn(gameState, resourceId) {
+    if (!resourceId) return;
+    const delay = RESPAWN_MIN_DELAY + Math.floor(Math.random() * (RESPAWN_MAX_DELAY - RESPAWN_MIN_DELAY + 1));
+    gameState.pendingResourceRespawns = gameState.pendingResourceRespawns || [];
+    gameState.pendingResourceRespawns.push({
+      resourceId,
+      dueTurn: (gameState.turnNumber || 0) + delay,
+    });
+  }
+
+  /**
+   * Places every respawn whose dueTurn has arrived, on a random tile that's
+   * valid terrain for that resource and doesn't already hold one. Called
+   * once per round from beginRound.
+   *
+   * A respawn with no legal tile left anywhere is DROPPED rather than
+   * retried forever -- the only way that happens is a map with every valid
+   * tile for that resource type already occupied, in which case the world
+   * isn't short of it and re-queuing would just spin every round.
+   */
+  function processResourceRespawns(gameState) {
+    const pending = gameState.pendingResourceRespawns;
+    if (!pending || !pending.length) return;
+    const turnNumber = gameState.turnNumber || 0;
+    const { map } = gameState;
+    const stillPending = [];
+
+    for (const entry of pending) {
+      if (entry.dueTurn > turnNumber) { stillPending.push(entry); continue; }
+      const record = window.GameData.RESOURCES[entry.resourceId];
+      if (!record) continue; // unknown id (e.g. a save from a build where it existed) -- drop it
+      const candidates = [];
+      for (const tile of map.tiles) {
+        if (tile.resource) continue;
+        if (!record.validTerrain.includes(tile.terrain)) continue;
+        candidates.push(tile);
+      }
+      if (!candidates.length) continue; // nowhere legal left -- see doc comment
+      candidates[Math.floor(Math.random() * candidates.length)].resource = entry.resourceId;
+    }
+
+    gameState.pendingResourceRespawns = stillPending;
+  }
+
+  /**
    * Prospecting/delving/fishing payout redesign (2026-07-24, user-directed):
    * instead of paying out straight to civ.resources every qualifying turn,
    * each turn's gain accumulates into unit._channelStash -- delivered to the
@@ -260,6 +321,10 @@ window.GameEngine = window.GameEngine || {};
     const { map, civs } = gameState;
 
     refreshVisibility(gameState);
+
+    // Resource respawn (2026-08-06, user-directed): places anything queued
+    // by a depletion 1-3 turns ago -- see scheduleResourceRespawn.
+    processResourceRespawns(gameState);
 
     // Dark Ritual (Undead) / Dungeon Delve (Human Wizard) / Prospector's Claim
     // (Dwarf, any unit, gold veins): track consecutive turns a qualifying
@@ -362,7 +427,16 @@ window.GameEngine = window.GameEngine || {};
         // through the exact same "no longer on anchor" cleanup path as
         // moving away or dying -- no separate cleanup logic needed.
         if ((isDelveWizard || isClaimUnit) && onAnchor && Math.random() < RESOURCE_EXHAUSTION_CHANCE) {
-          if (isDelveWizard) tile.isRuin = false; else tile.resource = null;
+          if (isDelveWizard) {
+            tile.isRuin = false;
+          } else {
+            // Respawn (2026-08-06, user-directed) -- a Ruin never respawns
+            // (explicitly out of scope), but a depleted Gold/Iron Vein
+            // reappears elsewhere within a few turns. See
+            // scheduleResourceRespawn/processResourceRespawns.
+            scheduleResourceRespawn(gameState, tile.resource);
+            tile.resource = null;
+          }
           window.GameEngine.floatingText.spawnFloatingText(
             unit, isDelveWizard ? "Ruin Exhausted!" : "Vein Exhausted!", "warning");
           onAnchor = false;
@@ -685,6 +759,7 @@ window.GameEngine = window.GameEngine || {};
       // accumulateChannelStash's doc comment above.
       accumulateChannelStash(unit, { harvest: 5, coin: 2 });
       if (Math.random() < RESOURCE_EXHAUSTION_CHANCE) {
+        scheduleResourceRespawn(gameState, tile.resource);
         tile.resource = null;
         window.GameEngine.floatingText.spawnFloatingText(unit, "Shoal Exhausted!", "warning");
         unit.channeling = null;
@@ -720,6 +795,7 @@ window.GameEngine = window.GameEngine || {};
       }
       accumulateChannelStash(unit, { harvest: 3 });
       if (Math.random() < RESOURCE_EXHAUSTION_CHANCE) {
+        scheduleResourceRespawn(gameState, tile.resource);
         tile.resource = null;
         window.GameEngine.floatingText.spawnFloatingText(unit, "Game Depleted!", "warning");
         unit.channeling = null;
@@ -737,6 +813,7 @@ window.GameEngine = window.GameEngine || {};
       }
       accumulateChannelStash(unit, { harvest: 3 });
       if (Math.random() < RESOURCE_EXHAUSTION_CHANCE) {
+        scheduleResourceRespawn(gameState, tile.resource);
         tile.resource = null;
         window.GameEngine.floatingText.spawnFloatingText(unit, "Soil Exhausted!", "warning");
         unit.channeling = null;

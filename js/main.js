@@ -674,6 +674,11 @@
 
     setupCanvas();
     centerViewOnStart();
+    // Cloud layer (2026-08-06, user-directed) -- built once per game start,
+    // after setupCanvas has sized the canvas so the initial scatter covers
+    // the real viewport. Purely cosmetic; see js/ui/clouds.js.
+    window.UI.clouds.init($("map-canvas").width, $("map-canvas").height);
+    setupCloudPointerTracking();
     window.UI.input.attach($("map-canvas"), gameState, viewState, redraw);
     // 3D click-to-select needs to trigger the exact same post-selection
     // refresh a 2D click does -- not just re-rendering the sidebar's HTML,
@@ -1039,7 +1044,41 @@
     const rect = canvas.getBoundingClientRect();
     canvas.width = Math.floor(rect.width);
     canvas.height = Math.floor(rect.height);
+    // Cloud overlay (2026-08-06, user-directed) is layered pixel-for-pixel
+    // over the map canvas, so it has to track the exact same size -- same
+    // CSS-pixel convention (no devicePixelRatio scaling) as above, or the
+    // cursor hole would land offset from the actual cursor.
+    const cloudCanvas = $("map-clouds");
+    if (cloudCanvas) {
+      cloudCanvas.width = canvas.width;
+      cloudCanvas.height = canvas.height;
+    }
     redraw();
+  }
+
+  /**
+   * Cursor tracking for the cloud layer's transparent hole (2026-08-06,
+   * user-directed). Deliberately its own listener rather than reusing
+   * viewState.hoverTile: that's TILE-granular, only updates when the tile
+   * actually changes, and early-returns while dragging -- none of which
+   * suits a hole that has to follow the cursor smoothly and continuously.
+   *
+   * Critically this does NOT call redraw(): startAnimationLoop's existing
+   * per-frame rAF pass already repaints the cloud layer every frame, so
+   * storing the position is all that's needed. Calling redraw() here would
+   * add a full map re-render per mousemove for zero benefit.
+   *
+   * Bound to the map canvas (not window) so leaving the map clears the
+   * hole, and passive so it can never delay scrolling or dragging.
+   */
+  function setupCloudPointerTracking() {
+    const canvas = $("map-canvas");
+    if (!canvas) return;
+    canvas.addEventListener("mousemove", (e) => {
+      const rect = canvas.getBoundingClientRect();
+      window.UI.clouds.setPointer({ x: e.clientX - rect.left, y: e.clientY - rect.top });
+    }, { passive: true });
+    canvas.addEventListener("mouseleave", () => window.UI.clouds.setPointer(null), { passive: true });
   }
 
   function setupCanvas() {
@@ -1662,6 +1701,19 @@
   let pendingPreUnitCounts = null;
 
   function finishRoundBookkeeping(victoryResult) {
+    // Human defeat (2026-08-06, user-directed): two independent ways to
+    // lose in single player -- this civ's own elimination (all cities
+    // destroyed after founding at least one, or wiped before founding --
+    // see turns.js's checkElimination), which can happen while OTHER civs
+    // are still fighting it out (no victoryResult yet at all), or another
+    // civ reaching a victory condition first (victoryResult.winner is set,
+    // but not to this civ). Checked before either branch below reads
+    // victoryResult, since a defeated human should see ONLY the defeat
+    // dialog -- never the game's own Victory message, even on the exact
+    // round some other civ's win coincides with this civ's elimination.
+    const humanLost = !!humanCivId
+      && ((victoryResult && victoryResult.winner !== humanCivId) || !!gameState.civs[humanCivId]?.eliminated);
+
     if (humanCivId) {
       const civ = gameState.civs[humanCivId];
       const finishedTechId = civ.lastCompletedTech;
@@ -1678,12 +1730,12 @@
       // Tech-researched / Unit-built announcements (2026-08-06, user-
       // directed): skipped once the game has actually ended THIS round
       // (below) -- nothing left to research or build toward, and the
-      // Victory dialog takes the one viewState.dialog slot instead. Tech
-      // first, then the unit-built queue (if any) once THAT'S dismissed,
-      // chained rather than raced, so neither silently drops behind the
-      // other if both happen the same round (see openTechResearchedDialog/
-      // offerNextUnitBuiltNotice).
-      if (!victoryResult) {
+      // Victory/Defeat dialog takes the one viewState.dialog slot instead.
+      // Tech first, then the unit-built queue (if any) once THAT'S
+      // dismissed, chained rather than raced, so neither silently drops
+      // behind the other if both happen the same round (see
+      // openTechResearchedDialog/offerNextUnitBuiltNotice).
+      if (!victoryResult && !humanLost) {
         const afterUnitBuilt = () => offerNextPendingIntent(civ);
         if (finishedTechId) {
           openTechResearchedDialog(civ, finishedTechId, () => offerNextUnitBuiltNotice(civ, afterUnitBuilt));
@@ -1696,7 +1748,9 @@
       }
     }
 
-    if (victoryResult) {
+    if (humanLost) {
+      openGameOverDialog(gameState.civs[humanCivId]);
+    } else if (victoryResult) {
       clearInterval(autoplayTimer);
       const text = victoryResult.type === "elimination"
         ? `${victoryResult.winner} has conquered all rivals!`
@@ -1707,6 +1761,40 @@
       // normal theme if it doesn't have one yet (see music.js's resolveCurrent).
       window.MusicSystem.notifyVictory(gameState.civs[victoryResult.winner].raceId);
     }
+  }
+
+  /** Human defeat announcement (2026-08-06, user-directed) -- see
+   *  finishRoundBookkeeping's humanLost check. Stats drawn from data
+   *  already tracked civ-wide (no new tracking needed): cityEvents (see
+   *  cities.js's foundCity/destroyCity) survives the civ's own elimination
+   *  since it's an append-only log on the civ object, not derived from
+   *  civ.cities itself (which is empty by the time this fires). */
+  function openGameOverDialog(civ) {
+    clearInterval(autoplayTimer);
+    const events = civ.cityEvents || [];
+    viewState.dialog = {
+      kind: "gameOver",
+      turnsSurvived: gameState.turnNumber || 0,
+      citiesFounded: events.filter((e) => e.type === "founded").length,
+      citiesLost: events.filter((e) => e.type === "razed").length,
+      techsResearched: civ.completedTechs ? civ.completedTechs.size : 0,
+      onReturnToTitle: handleReturnToTitle,
+    };
+    // Fixed game_over.mp3, overriding any situational/victory theme (see
+    // music.js's resolveCurrent priority order).
+    window.MusicSystem.notifyGameOver();
+  }
+
+  /** "Return to Title Screen" (2026-08-06, user-directed) -- a full reload
+   *  rather than a hand-rolled teardown of gameState/viewState/timers/
+   *  music/sfx visibility hooks/etc: the game has already ended, there's
+   *  nothing left to preserve, and a reload guarantees every piece of
+   *  session state (several of which, like music.js's victoryRace/
+   *  gameOverActive, are deliberately one-way-until-a-fresh-game) actually
+   *  resets instead of relying on this file remembering every place that
+   *  would need to be manually cleared. */
+  function handleReturnToTitle() {
+    location.reload();
   }
 
   /** Tech-researched announcement (2026-08-06, user-directed): opens the
@@ -2337,6 +2425,9 @@
         if (dialog.onDismiss) dialog.onDismiss();
         redraw();
       };
+    } else if (dialog.kind === "gameOver") {
+      const okBtn = $("game-dialog-ok-btn");
+      if (okBtn) okBtn.onclick = () => dialog.onReturnToTitle();
     } else if (dialog.kind === "chooseTech") {
       const modal = $("game-dialog-modal");
       if (modal) {
@@ -2860,6 +2951,11 @@
           window.UI.render3d.render($("map-canvas-3d"), gameState, viewState);
         } else {
           window.UI.render.render($("map-canvas"), gameState, viewState);
+          // Clouds ride this same loop, drawn onto their own overlay canvas
+          // after the map beneath them (2026-08-06, user-directed). 2D only
+          // -- the 3D path has no equivalent sky layer, and its canvas is a
+          // different element entirely.
+          window.UI.clouds.render($("map-clouds"), viewState);
         }
       }
       animFrameId = requestAnimationFrame(frame);

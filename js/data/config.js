@@ -397,5 +397,42 @@ window.GameConfig = {
 
     /** Purely visual glide duration for a unit moving between tiles. */
     moveAnimMs: 350,
+
+    /**
+     * Drifting cloud layer (2026-08-06, user-directed) -- purely cosmetic
+     * atmosphere drawn on its own overlay canvas ABOVE the map, never
+     * interacting with gameplay in any way (see js/ui/clouds.js).
+     */
+    clouds: {
+      /** How many clouds exist at once. Deliberately sparse -- this is
+       *  atmosphere, not weather. */
+      count: 7,
+      /** Peak alpha of a cloud's densest point. Low enough that terrain,
+       *  units and borders stay readable straight through them. */
+      opacity: 0.20,
+      /** Base drift, px/second, left -> right (the user's stated
+       *  direction). Slow enough to read as "floating", not "blowing". */
+      driftSpeed: 7,
+      /** Vertical drift is a very slow sine rather than a constant, so the
+       *  wind ANGLE wanders over minutes instead of holding one fixed
+       *  diagonal. Amplitude is in px/second; period is in seconds. */
+      angleDriftSpeed: 2.5,
+      angleDriftPeriod: 90,
+      /** How much of the map's own scroll the cloud layer follows. Below 1
+       *  means clouds pan SLOWER than the ground -- the parallax cue that
+       *  actually sells "high above the field". 0 would pin them to the
+       *  screen, 1 would glue them to the terrain. */
+      parallax: 0.3,
+      /** Radius (px) of the fully-transparent hole that follows the cursor,
+       *  and how far past that the hole feathers back to full cloud. */
+      holeRadius: 150,
+      holeFeather: 110,
+      /** Sprite generation: puffs per cloud and the px radius range of each
+       *  puff. More/larger puffs = bigger, lumpier clouds. Raised from
+       *  [6,9] (2026-08-06): too few puffs left visible gaps across the
+       *  cloud's horizontal span instead of merging into one soft mass. */
+      puffsPerCloud: [10, 15],
+      puffRadius: [38, 78],
+    },
   },
 };
