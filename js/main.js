@@ -373,71 +373,35 @@
   }
 
   /** "Which copy of the game is this" -- date/time/build number under the
-   *  Start Game button. Empty placeholder here (2026-08-05, user-directed
-   *  redesign -- replaces the old hand-bumped js/data/build-info.js, which
-   *  is gone); the real content is filled in asynchronously by
-   *  fetchBuildStamp below once the GitHub API call resolves. */
-  function renderBuildStamp() {
-    return `<div class="build-stamp" id="build-stamp"></div>`;
-  }
-
-  // Owner/repo this build stamp reads from -- see fetchBuildStamp.
-  const BUILD_STAMP_REPO = "mortedamos/Kingdom-Marches";
-
-  /** Fills in #build-stamp from the repo's actual commit history (2026-08-05,
-   *  user-directed): "which copy of the game am I looking at" now reflects
-   *  the real latest-pushed commit instead of a number someone has to
-   *  remember to bump by hand. Build number = total commit count on the
-   *  default branch, read off the GitHub API's own pagination Link header
-   *  (requesting per_page=1 makes the `rel="last"` page number equal the
-   *  total commit count -- avoids fetching/paging through full history just
-   *  to count it) rather than a separately-tracked number. Short SHA
-   *  alongside it for exact reproducibility (two different commits on the
-   *  same day would otherwise be indistinguishable).
+   *  Start Game button, read straight from js/data/config.js's `build`
+   *  section (2026-08-06, user-directed).
    *
-   *  Graceful failure (2026-08-05, user-directed): offline, rate-limited
-   *  (unauthenticated GitHub API caps at 60 req/hour per IP), or the repo
-   *  otherwise unreachable -- #build-stamp is just left empty rather than
-   *  showing a stale/wrong static fallback. Fire-and-forget from
-   *  showSetupScreen; never blocks the (synchronous) rest of the launch
-   *  screen from rendering. */
-  async function fetchBuildStamp() {
-    const el = $("build-stamp");
-    if (!el) return;
-    try {
-      const res = await fetch(`https://api.github.com/repos/${BUILD_STAMP_REPO}/commits?per_page=1`);
-      if (!res.ok) return;
-      const commits = await res.json();
-      const latest = commits && commits[0];
-      const iso = latest && latest.commit && latest.commit.author && latest.commit.author.date;
-      if (!iso) return;
-
-      // rel="last" page number (at per_page=1) IS the total commit count.
-      // No "last" link at all means everything fit on one page -- i.e. the
-      // total is just how many commits this single response returned.
-      const link = res.headers.get("link") || "";
-      const lastMatch = link.match(/[?&]page=(\d+)>;\s*rel="last"/);
-      const buildNumber = lastMatch ? Number(lastMatch[1]) : commits.length;
-
-      const sha = (latest.sha || "").slice(0, 7);
-      const d = new Date(iso);
-      const pad = (n) => String(n).padStart(2, "0");
-      const dateStr = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-      const timeStr = `${pad(d.getHours())}:${pad(d.getMinutes())}`;
-      // No escaping needed -- every piece here is either a regex-matched
-      // number or a hex SHA, not free-form text.
-      el.textContent = `${dateStr} ${timeStr} · build ${buildNumber} (${sha})`;
-    } catch (e) {
-      // Network failure, CORS, JSON parse error, etc. -- #build-stamp stays
-      // empty, per user direction, rather than showing anything stale.
-      console.warn("[build-stamp] fetch failed:", e);
-    }
+   *  Synchronous, and that's the point. This used to be an empty placeholder
+   *  filled in asynchronously from the GitHub API's commit history -- which
+   *  was accurate but only when the network, the repo's visibility and an
+   *  unauthenticated 60-req/hour rate limit all cooperated, and rendered
+   *  blank whenever they didn't. A config value always renders, offline
+   *  included, at the cost of having to be bumped by hand (see config.js's
+   *  own note on that trade). */
+  function renderBuildStamp() {
+    const build = window.GameConfig.build || {};
+    const when = [build.date, build.time].filter(Boolean).join(" ");
+    const stamp = build.number != null
+      ? `${when}${when ? " · " : ""}build ${build.number}`
+      : when;
+    // Nothing rendered at all if the section is missing or blank, rather than
+    // a stray "build undefined" -- same "show nothing over showing something
+    // wrong" stance the old network version took when its fetch failed.
+    if (!stamp) return "";
+    // Not escaped, and doesn't need to be: every piece is a scalar typed by
+    // hand into js/data/config.js by whoever cut the build. Same reasoning
+    // the previous version applied to its own interpolated commit data.
+    return `<div class="build-stamp" id="build-stamp">${stamp}</div>`;
   }
 
   function showSetupScreen() {
     applyMuteUrlSwitch();
     $("launch-options-content").innerHTML = renderLaunchOptions();
-    fetchBuildStamp(); // fire-and-forget -- see its own doc comment
 
     // Spectator mode: pick exactly which races participate via checkboxes,
     // instead of a random subset sized by "Opponents" (that dropdown/random

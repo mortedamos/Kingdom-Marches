@@ -6,6 +6,23 @@ designed across the `realms_of_influence_*.md` design docs. This is a
 generation, the influence/territory system, dice+HP combat, city
 growth/founding, tech research, and a utility-scoring AI all actually run.
 
+## Working on this repo
+
+The game itself needs no build step -- it's plain scripts loaded by
+`index.html`, served over HTTP (not `file://`).
+
+There is one **per-clone** setup command. It points Git at the tracked hook
+directory, and without it the pre-commit hook silently does nothing:
+
+```
+git config core.hooksPath .githooks
+```
+
+`.githooks/pre-commit` stamps the build date, time and number into
+`js/data/config.js` (the `build` section) on every commit, which is what the
+launch screen shows under Start Game. Skip it for one commit with
+`git commit --no-verify`.
+
 ## Project structure
 
 ```

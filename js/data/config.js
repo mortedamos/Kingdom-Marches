@@ -45,6 +45,38 @@
 window.GameConfig = {
 
   // =========================================================================
+  // BUILD STAMP  (js/main.js's renderBuildStamp)
+  // =========================================================================
+  // "Which copy of the game am I looking at" -- shown under the Start Game
+  // button on the launch screen.
+  //
+  // Not a balance dial, unlike everything below it, but it lives here for the
+  // same reason they do: one place to change, and this file is already the
+  // first script loaded (see LOAD ORDER above), so the launch screen can read
+  // it synchronously with no ordering question.
+  //
+  // Hand-maintained ON PURPOSE (2026-08-06, user-directed). This replaced a
+  // live GitHub API call that derived the same three values from the repo's
+  // latest commit -- accurate, but it made the launch screen depend on the
+  // network, on the repo being public, and on an unauthenticated rate limit
+  // of 60 requests/hour per IP; when any of those failed the stamp simply
+  // rendered blank. A value typed here always renders, offline included.
+  //
+  // BUMP THESE WHEN YOU SHIP. Nothing enforces it -- a stale stamp is a wrong
+  // stamp, and the only cost of forgetting is being told the wrong thing.
+  build: {
+    /** Local date this build was cut, YYYY-MM-DD. */
+    date: "2026-08-06",
+    /** Local time this build was cut, 24-hour HH:MM. */
+    time: "18:24",
+    /** Monotonic build counter. Continues the numbering the old GitHub-
+     *  derived stamp used (it showed the repo's total commit count), so
+     *  builds from before and after this change still sort against each
+     *  other. Increment it; don't recompute it. */
+    number: 68,
+  },
+
+  // =========================================================================
   // PACING  (js/engine/ai.js, js/engine/tech.js)
   // =========================================================================
   pacing: {
