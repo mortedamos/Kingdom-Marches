@@ -71,11 +71,18 @@ window.UI = window.UI || {};
    * fully erased) and staying 1 across the whole middle. render() applies it
    * with one destination-out drawImage.
    *
-   * Distance-to-nearest-edge is min(dx, dy), which gives a RECTANGULAR band
-   * that hugs the window on all four sides and handles the corners correctly
-   * for free -- a corner is close to two edges, so it stays cloudy rather
-   * than being double-darkened the way four separate edge gradients would
-   * have done it.
+   * SHAPE: distance is measured with a p-norm on viewport-normalized
+   * coordinates -- q = (|nx|^p + |ny|^p)^(1/p), where nx/ny run -1..1 across
+   * the view. q = 0 at the centre and q = 1 on the rounded-rect boundary
+   * that touches the edge midpoints; the four corners sit further out
+   * (q = 2^(1/p)), so they end up fully clouded, which is what closes the
+   * frame.
+   *
+   * This replaced min(dx, dy) (2026-08-06, user-reported): that version was
+   * continuous in value but kinked in its DERIVATIVE along the diagonal out
+   * of each corner, which the eye reads as a hard line even though no
+   * pixel-to-pixel jump exists. The p-norm is smooth everywhere, so there is
+   * no seam to see. See GameConfig.view.clouds.bandShape for the exponent.
    *
    * Built per-pixel, which is fine because it only happens on a resize, not
    * per frame.
@@ -83,11 +90,15 @@ window.UI = window.UI || {};
   function ensureMask(w, h) {
     if (maskCanvas && maskW === w && maskH === h) return maskCanvas;
     const cfg = CFG();
-    const band = Math.max(0.001, cfg.bandFraction);
+    // Band depth measured from the boundary inward, in normalized
+    // half-extents: bandFraction is a share of the FULL dimension, and the
+    // normalized axis spans half of it, hence the doubling.
+    const band = Math.max(0.001, cfg.bandFraction * 2);
     const feather = Math.min(0.999, Math.max(0, cfg.bandFeather));
-    // Where within the band the fade starts (0 = at the outer edge, so the
-    // whole band is a gradient; higher = clouds hold full strength longer).
+    // Where within the band the fade starts (0 = the whole band is a
+    // gradient; higher = clouds hold full strength further inward).
     const holdUntil = 1 - feather;
+    const p = Math.max(2, cfg.bandShape || 4);
 
     const c = document.createElement("canvas");
     c.width = w; c.height = h;
@@ -96,12 +107,15 @@ window.UI = window.UI || {};
     const data = img.data;
 
     for (let y = 0; y < h; y++) {
-      const fy = Math.min(y, h - 1 - y) / h;
+      const ny = Math.abs((y / (h - 1)) * 2 - 1); // 0 centre .. 1 top/bottom edge
+      const nyp = Math.pow(ny, p);
       for (let x = 0; x < w; x++) {
-        const fx = Math.min(x, w - 1 - x) / w;
-        // 0 at the window edge, growing inward; capped at the band depth.
-        const d = Math.min(fx, fy);
-        const t = d / band; // 0 at edge, 1 at the band's inner boundary
+        const nx = Math.abs((x / (w - 1)) * 2 - 1); // 0 centre .. 1 left/right edge
+        const q = Math.pow(Math.pow(nx, p) + nyp, 1 / p);
+        // Distance inward from the boundary. Negative outside it (the
+        // corners), clamped to 0 so they read as fully cloudy.
+        const inward = Math.max(0, 1 - q);
+        const t = inward / band; // 0 at the boundary, 1 at the band's inner edge
         let erase;
         if (t <= holdUntil) erase = 0;              // outermost: full clouds
         else if (t >= 1) erase = 1;                 // middle: no clouds

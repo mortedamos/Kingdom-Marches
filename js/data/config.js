@@ -435,6 +435,21 @@ window.GameConfig = {
        *  so there's no hard line where the clouds stop. */
       bandFraction: 0.15,
       bandFeather: 0.6,
+      /** Shape of the clear middle, as the exponent of a p-norm
+       *  (2026-08-06, user-reported sharp corner seams).
+       *
+       *  The first version measured distance as min(distToVerticalEdge,
+       *  distToHorizontalEdge), which is continuous in VALUE but has a
+       *  kink in its DERIVATIVE along the 45-degree diagonal out of each
+       *  corner -- and the eye reads a gradient discontinuity as a hard
+       *  line (a Mach band) even when no pixel-to-pixel jump exists. A
+       *  p-norm has no such kink anywhere, so the corners blend smoothly.
+       *
+       *    2 = a true ellipse (oval clear area, corners heavily clouded)
+       *    4 = a rounded rectangle -- keeps more of the middle usable
+       *   >6 = approaches a hard rectangle again; corner curvature gets
+       *        tight enough to start reading as an edge, so don't. */
+      bandShape: 4,
       /** Sprite generation: puffs per cloud and the px radius range of each
        *  puff. More/larger puffs = bigger, lumpier clouds. Raised from
        *  [6,9] (2026-08-06): too few puffs left visible gaps across the
