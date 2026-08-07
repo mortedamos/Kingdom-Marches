@@ -1197,7 +1197,14 @@ html, body {
 }
 /* --- Launch options modal (reuses .techtree-overlay for the backdrop) --- */
 .launch-options-modal {
-  width: min(460px, 94vw);
+  /* 2026-08-07, user-directed: was a flat 460px cap, which read as narrow
+     and cramped on wider windows. max(50vw, 460px) grows past 460px once
+     the window is wide enough that half its width exceeds that (roughly
+     920px+ browser width) rather than pinning to 460px forever; the outer
+     min(..., 94vw) is the same overflow guard the original had, so a
+     narrow/mobile-width window still shrinks to fit instead of spilling
+     past the viewport edge. */
+  width: min(max(50vw, 460px), 94vw);
   max-height: 88vh;
   overflow-y: auto;
 }
