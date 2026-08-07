@@ -369,13 +369,15 @@
       <div class="launch-actions">
         <button id="start-game-btn" class="launch-start-btn">Start Game</button>
         <button id="view-credits-btn" class="launch-credits-btn">View Credits</button>
-        ${renderBuildStamp()}
       </div>`;
   }
 
-  /** "Which copy of the game is this" -- date/time/build number under the
-   *  Start Game button, read straight from js/data/config.js's `build`
-   *  section (2026-08-06, user-directed).
+  /** "Which copy of the game is this" -- date/time/build number, read
+   *  straight from js/data/config.js's `build` section (2026-08-06, user-
+   *  directed). Lives in the lower-right corner of the base title screen
+   *  (2026-08-07, user-directed -- moved out from under the Start Game
+   *  button inside the Game Options modal, so it's visible before the
+   *  player even opens that modal).
    *
    *  Synchronous, and that's the point. This used to be an empty placeholder
    *  filled in asynchronously from the GitHub API's commit history -- which
@@ -397,11 +399,12 @@
     // Not escaped, and doesn't need to be: every piece is a scalar typed by
     // hand into js/data/config.js by whoever cut the build. Same reasoning
     // the previous version applied to its own interpolated commit data.
-    return `<div class="build-stamp" id="build-stamp">${stamp}</div>`;
+    return stamp;
   }
 
   function showSetupScreen() {
     applyMuteUrlSwitch();
+    $("title-build-stamp").textContent = renderBuildStamp();
     $("launch-options-content").innerHTML = renderLaunchOptions();
 
     // Spectator mode: pick exactly which races participate via checkboxes,

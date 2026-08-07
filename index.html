@@ -25,6 +25,13 @@
         <p class="title-byline">2026 Shawn Nicolen</p>
         <button id="title-options-btn" class="title-options-btn">Begin</button>
       </div>
+      <!-- "Which copy of the game is this" -- moved here from under the
+           Start Game button inside the Game Options modal (2026-08-07,
+           user-directed). Filled in by main.js's renderBuildStamp, once at
+           bootstrap (showSetupScreen) -- see that function's own doc
+           comment for why it's a hand-maintained config value, not a live
+           network lookup. -->
+      <div id="title-build-stamp" class="title-build-stamp"></div>
     </div>
 
     <!-- Launch options: every pre-game choice, plus the Start Game button.
