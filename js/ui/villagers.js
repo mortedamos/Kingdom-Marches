@@ -109,17 +109,24 @@ window.UI = window.UI || {};
   /** Draws every active figure whose city is in `visibleCities` (the same
    *  filtered list passed to tick()) -- affine offsetX/offsetY/ts tile
    *  grid, same convention every other 2D-only per-tile cosmetic here
-   *  uses. A tiny round head over an oval body, with a small vertical bob
-   *  while walking to read as motion at this scale.
+   *  uses. A tiny round head over an oval torso, with thin swinging
+   *  arm/leg strokes while walking -- shrunk to half its previous core
+   *  size (2026-08-07, user-reported "look sort of like little pegs") and
+   *  given actual limbs so the silhouette alone (even before the swing
+   *  animation) no longer reads as a blob. Legs and arms swing in a
+   *  natural alternating gait (each arm opposite its same-side leg) driven
+   *  by the same per-figure `phase` the old bob used, frozen to a neutral
+   *  standing pose (swing = 0) whenever the figure isn't actively walking.
    *
-   *  Head stays a flat neutral tone (no race identity there -- shape alone
-   *  still reads as "kingdom-neutral", can't-tell-if-human-elf-orc), but
-   *  the body/"clothes" ellipse is tinted with the owning civ's race color
-   *  (2026-08-07, user-directed), same window.GameData.getRace(...).color
-   *  + overlays.hexToRgba(...) pairing the influence overlay and the city
-   *  fallback-circle rendering already use -- so a glance at a wandering
-   *  figure's colour says whose city it's in, same as everything else on
-   *  the map that's already colour-coded by civ.
+   *  Head and limbs stay a flat neutral tone (no race identity there --
+   *  shape alone still reads as "kingdom-neutral", can't-tell-if-human-elf-
+   *  orc), but the torso/"clothes" ellipse is tinted with the owning civ's
+   *  race color (2026-08-07, user-directed), same
+   *  window.GameData.getRace(...).color + overlays.hexToRgba(...) pairing
+   *  the influence overlay and the city fallback-circle rendering already
+   *  use -- so a glance at a wandering figure's colour says whose city
+   *  it's in, same as everything else on the map that's already
+   *  colour-coded by civ.
    */
   function draw(ctx, offsetX, offsetY, ts, visibleCities) {
     if (!figures.length) return;
@@ -133,17 +140,44 @@ window.UI = window.UI || {};
       const py = ty * ts + offsetY + ts / 2;
 
       const alpha = f.state === "fading" ? Math.max(0, 1 - f.age / FADE_SECONDS) : 1;
-      const bob = f.state === "walking" ? Math.sin(f.age * 8 + f.phase) * ts * 0.04 : 0;
-      // Raised from 0.05 (2026-08-07, user-reported too small to notice) --
-      // still tiny relative to a full tile, but no longer sub-pixel at
-      // typical zoom. A thin light stroke helps the silhouette read
-      // against equally-dark terrain (mountains, forest).
-      const r = Math.max(2, ts * 0.13);
+      const walking = f.state === "walking";
+      const bob = walking ? Math.sin(f.age * 8 + f.phase) * ts * 0.04 : 0;
+      // Gait cycle: -1..1, each arm swinging opposite its same-side leg
+      // (real walking, not both limbs on one side moving together).
+      // Frozen at 0 (a neutral standing pose, limbs together) outside the
+      // walking state, so a paused/fading figure doesn't hold a mid-stride
+      // pose. Halved from 0.13 (2026-08-07, user-reported too peg-like).
+      const swing = walking ? Math.sin(f.age * 10 + f.phase) : 0;
+      const r = Math.max(1, ts * 0.065);
       const race = window.GameData.getRace(f.civ.raceId);
       const bodyColor = window.UI.overlays.hexToRgba(race.color, 0.85);
+      const limbColor = "rgba(255,248,230,0.75)";
+
+      const headCenterY = py - r * 0.5 + bob;
+      const shoulderY = py - r * 0.8 + bob;
+      const hipY = py + r * 0.1 + bob;
+      const limbEndY = py + r * 1.1 + bob;
 
       ctx.save();
       ctx.globalAlpha = alpha;
+      ctx.lineCap = "round";
+      ctx.strokeStyle = limbColor;
+      ctx.lineWidth = Math.max(0.6, r * 0.35);
+      // Legs (from the hip) -- opposite-phase swing.
+      ctx.beginPath();
+      ctx.moveTo(px, hipY);
+      ctx.lineTo(px + swing * r * 0.9, limbEndY);
+      ctx.moveTo(px, hipY);
+      ctx.lineTo(px - swing * r * 0.9, limbEndY);
+      ctx.stroke();
+      // Arms (from the shoulder) -- opposite the same-side leg.
+      ctx.beginPath();
+      ctx.moveTo(px, shoulderY);
+      ctx.lineTo(px - swing * r * 0.8, shoulderY + r * 1.1);
+      ctx.moveTo(px, shoulderY);
+      ctx.lineTo(px + swing * r * 0.8, shoulderY + r * 1.1);
+      ctx.stroke();
+
       ctx.strokeStyle = "rgba(255,248,230,0.55)";
       ctx.lineWidth = Math.max(0.5, r * 0.12);
       ctx.fillStyle = bodyColor;
@@ -153,7 +187,7 @@ window.UI = window.UI || {};
       ctx.stroke();
       ctx.fillStyle = "rgba(40,35,30,0.85)";
       ctx.beginPath();
-      ctx.arc(px, py - r * 0.5 + bob, r * 0.55, 0, Math.PI * 2);
+      ctx.arc(px, headCenterY, r * 0.55, 0, Math.PI * 2);
       ctx.fill();
       ctx.stroke();
       ctx.restore();

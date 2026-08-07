@@ -1749,25 +1749,28 @@ window.GameEngine = window.GameEngine || {};
     return true;
   }
 
-  // A road tile costs a flat 1 movement point to LEAVE, regardless of the
-  // underlying terrain -- "removes any terrain based movement penalties"
-  // (2026-07-17, user-directed). 1 is the cheapest a land terrain can
-  // already be (Plains/Desert/Tundra), so this never makes a road tile
-  // BETTER than the best natural terrain, only neutralizes the 2-cost
-  // penalty on Forest/Hills/Swamp (and, in the rare case a Pioneer with
-  // mountain-tunneling tech built one on Mountains, its own 3-cost tunnel
-  // rate too). See moveUnitToward's separate +1 movement bonus for a unit
-  // that STARTS its turn on a road -- a different mechanic, stacks with this.
+  // A road tile discounts the cost to LEAVE it by 0.5, on top of whatever
+  // terrain/tech discounts already applied (2026-08-07, user-directed --
+  // replaced the previous flat-cost-1 override, which capped a road's
+  // benefit at "as cheap as the best natural terrain" and gave cheap
+  // terrain, e.g. Plains, no benefit from a road at all). Combined with the
+  // shared 0.5 floor every discount source in this file respects (see
+  // landCostForTerrain's own doc comment, and getMoveCost's re-application
+  // of it below once the road discount is folded in), a road can never
+  // drive a step's cost to zero -- see moveUnitToward's separate +1
+  // movement bonus for a unit that STARTS its turn on a road, a different
+  // mechanic that stacks with this.
   //
   // WHOSE road (2026-08-03, user-directed): the discount applies when
   // LEAVING a road tile, not when arriving at one -- see getMoveCost's own
   // doc comment for why the whole cost model reads from the origin tile now.
-  // Concretely: walking a chain of connected road tiles still costs 1 per
-  // hop the entire way (every tile you leave along the chain has a road
-  // under it), but stepping OFF rough terrain onto a road no longer gets an
-  // immediate discount -- you pay what leaving the rough terrain costs; the
-  // road only pays off starting with your NEXT step.
-  const ROAD_MOVE_COST = 1;
+  // Concretely: walking a chain of connected road tiles still costs the
+  // same discounted amount per hop the entire way (every tile you leave
+  // along the chain has a road under it), but stepping OFF rough terrain
+  // onto a road no longer gets an immediate discount -- you pay what
+  // leaving the rough terrain costs; the road only pays off starting with
+  // your NEXT step.
+  const ROAD_MOVE_DISCOUNT = 0.5;
 
   /**
    * Effective LAND movement cost of `terrain` under `mods` (a unit's
@@ -1836,8 +1839,8 @@ window.GameEngine = window.GameEngine || {};
    *     LEAVING the ORIGIN tile. Moving out of a Forest costs 2 no matter how
    *     open the tile you're stepping onto is; moving out of Plains costs 1
    *     even into a Forest. The discount for a unit standing on a road is
-   *     likewise about the tile you're leaving -- see ROAD_MOVE_COST's own
-   *     comment.
+   *     likewise about the tile you're leaving -- see ROAD_MOVE_DISCOUNT's
+   *     own comment.
    *
    * Callers (buildMoveRules' costFn, pioneerRoadStep, findFleeTile) all
    * derive originTerrain/originTile from whichever tile the unit is ACTUALLY
@@ -1873,11 +1876,16 @@ window.GameEngine = window.GameEngine || {};
     // Land unit: can the destination even be entered?
     if (landCostForTerrain(destTerrain, mods) === window.GameData.IMPASSABLE) return window.GameData.IMPASSABLE;
 
-    // It can -- charge for leaving the origin.
-    if (originTile?.hasRoad) return ROAD_MOVE_COST;
+    // It can -- charge for leaving the origin. Road discount applies AFTER
+    // every terrain/tech discount landCostForTerrain already folded in, then
+    // the SAME 0.5 floor is re-applied to the combined result -- otherwise a
+    // tile already floored to 0.5 by tech discounts would drop to 0 once the
+    // road discount also lands on it, instead of holding at the shared floor.
     const originHasRiver = !!(originTile?.hasRiver
       && (originTile.hasRiver.n || originTile.hasRiver.s || originTile.hasRiver.e || originTile.hasRiver.w));
-    return landCostForTerrain(originTerrain, mods, originHasRiver, unit?.typeId);
+    let cost = landCostForTerrain(originTerrain, mods, originHasRiver, unit?.typeId);
+    if (originTile?.hasRoad) cost = Math.max(0.5, cost - ROAD_MOVE_DISCOUNT);
+    return cost;
   }
 
   /**
@@ -2083,10 +2091,10 @@ window.GameEngine = window.GameEngine || {};
     // (2026-07-17, user-directed) -- universal and tech-independent, unlike
     // the tiered terrain bonuses above, so it stacks on top of them rather
     // than competing in the same "best of" comparison. Pairs with
-    // getMoveCost's flat ROAD_MOVE_COST=1 (roads also removing terrain
-    // movement penalties) -- together a road network both starts a unit's
-    // turn with extra movement AND makes every road tile along the route
-    // cheap to cross.
+    // getMoveCost's ROAD_MOVE_DISCOUNT (roads also discounting the cost to
+    // leave them by 0.5, on top of any terrain/tech discount, floored at
+    // 0.5) -- together a road network both starts a unit's turn with extra
+    // movement AND makes every road tile along the route cheaper to cross.
     if (startTile?.hasRoad) movement += 1;
 
     // Tech: Orc "Violent Momentum" -- +2 movement for a unit that killed an

@@ -183,19 +183,31 @@ window.GameData.BUILDINGS = {
   // applying it raw, the way every other (defenseless) structure still does.
   wall_section: {
     id: "wall_section", label: "Wall", symbol: "▬", isWall: true,
+    // minBuildTurns 7 -> 3 (2026-08-07, user-directed: "walls should take
+    // less time to build -- around the same amount of time as a level 0
+    // tech granted unit"). Pioneer/Scout/Galley (each unlocked by its own
+    // Level 0 tech -- see ai.js's unitBuildTurns) all land at exactly 3
+    // turns under default pacing, floored by their own minBuildTurns: 3
+    // (units.js). wall_section's own raw formula
+    // (round((coinCost/industriousness) * BUILD_SLOWNESS *
+    // buildingPaceFactor), see ai.js's buildingBuildTurns) never exceeds 3
+    // for ANY race's industriousness (0.2-0.9, races.js), so this floor is
+    // what actually governs everywhere -- every race now builds a wall in
+    // exactly 3 turns, matching a level-0 unit turn-for-turn rather than
+    // just "around" it.
+    //
     // coinCost trimmed 15 -> 11, minBuildTurns 10 -> 7 (2026-08-06, user-
     // directed: "walls should be a little cheaper and take less time to
-    // build" -- both around a 25-30% cut). This directly supersedes the
-    // 2026-08-06 reasoning just below that had settled on 10 turns as
-    // matching a non-siege attacker's own teardown time on an existing
-    // wall -- a wall now finishes a couple turns AHEAD of that benchmark
-    // instead of at the short end of it, by explicit request, not an
-    // oversight of that earlier balance pass. cityDefensePerWall (see
-    // combat.js's cityDefenseValue) also went in this same change, so a
-    // built wall is worth more defensively than it used to be even as it
-    // got cheaper to put up.
+    // build" -- both around a 25-30% cut). That earlier pass's own
+    // reasoning (10 turns matching a non-siege attacker's teardown time on
+    // an existing wall) is superseded again here, same as it superseded
+    // the ORIGINAL reasoning below it -- walls keep getting faster to put
+    // up each time this has been revisited. cityDefensePerWall (see
+    // combat.js's cityDefenseValue) still applies from that same change,
+    // so a built wall is worth more defensively than it used to be even as
+    // it keeps getting cheaper/faster to put up.
     coinCost: 11, maxHp: 40, defense: 8,
-    minBuildTurns: 7,
+    minBuildTurns: 3,
   },
 };
 

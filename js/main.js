@@ -1441,11 +1441,14 @@
       gameState,
     };
     const json = window.GameEngine.savegame.serialize(payload);
+    // .kms extension, not .json (2026-08-07, user-directed) -- the payload
+    // itself is still plain JSON text (savegame.js's serialize/deserialize
+    // are untouched), this only changes what the downloaded file is named.
     const blob = new Blob([json], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `arcane-empires-turn${gameState.turnNumber}.json`;
+    a.download = `kingdom-marches-turn${gameState.turnNumber}.kms`;
     a.click();
     URL.revokeObjectURL(url);
   }

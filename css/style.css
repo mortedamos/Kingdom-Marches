@@ -522,33 +522,49 @@ html, body {
    terrain / kingdom); see js/ui/input.js's SELECTION MODEL. The strip wraps
    rather than scrolls -- a tile can hold several tabs and the sidebar is only
    280px, so a hidden overflow would silently swallow them. */
+/* File-folder tab look (2026-08-07, user-directed) -- was a row of equal-
+   weight rounded buttons with a gap under the whole strip; now each tab has
+   only its top corners rounded and sits directly on a shared fold line
+   (.tile-tabs' own border-bottom). The active tab stands 2px proud of the
+   inactive ones (top: 0 vs top: 2px) and its own bottom border is painted
+   the PANEL's background color, which erases exactly the segment of the
+   fold line under it -- the classic "this tab is physically part of the
+   page below it; the others are tucked behind" illusion, rather than a
+   filled button that merely indicates selection by color. */
 .tile-tabs {
   display: flex;
   flex-wrap: wrap;
-  gap: 3px;
+  align-items: flex-end;
+  gap: 2px;
   margin-bottom: 12px;
-  padding-bottom: 8px;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 2px solid var(--border);
 }
 .tile-tab {
+  position: relative;
+  top: 2px;
   background: var(--bg-panel-raised);
   border: 1px solid var(--border);
-  border-radius: 3px;
+  border-bottom: 2px solid var(--border);
+  border-radius: 5px 5px 0 0;
   color: var(--text-dim);
   font-family: inherit;
   font-size: 11px;
-  padding: 4px 8px;
+  padding: 4px 9px 3px;
   cursor: pointer;
   white-space: nowrap;
 }
 .tile-tab:hover { color: var(--text-main); border-color: var(--accent); }
 .tile-tab-active {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: #1a1a1a;
+  top: 0;
+  z-index: 1;
+  background: var(--bg-panel);
+  border-color: var(--border);
+  border-bottom-color: var(--bg-panel);
+  padding-top: 5px;
+  color: var(--accent);
   font-weight: bold;
 }
-.tile-tab-active:hover { color: #1a1a1a; }
+.tile-tab-active:hover { color: var(--accent-hover); }
 
 /* Shortcut rows that jump to another tab (city panel's garrison list,
    terrain panel's contents list). Deliberately shaped like a .stat-row so
