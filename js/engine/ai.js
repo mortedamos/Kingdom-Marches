@@ -10606,11 +10606,13 @@ window.GameEngine = window.GameEngine || {};
    *  exceptions that used to filter civ.units directly -- both now route
    *  through here too, see the "Rouse the People"/structure-counter blocks
    *  below), so it's also the one place that needs to know how to play a
-   *  death sound. */
+   *  death sound and queue the smoke/skull cosmetic (2026-08-07, user-
+   *  directed -- see deathfx.js/overlays.js's drawDeathEffects). */
   function otherCivRemoveDeadUnit(civs, deadUnit) {
     const civ = civs[deadUnit.civId];
     if (civ) {
       window.SfxSystem.playAction(civ.raceId, deadUnit.typeId, "death", deadUnit.x, deadUnit.y, DEATH_SFX_DELAY_MS);
+      window.GameEngine.deathFx.spawnDeathEffect(deadUnit.x, deadUnit.y);
       civ.units = civ.units.filter((u) => u !== deadUnit);
     }
   }

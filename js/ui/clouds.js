@@ -243,6 +243,42 @@ window.UI = window.UI || {};
       ctx.arc(x, y, p.r, 0, Math.PI * 2);
       ctx.fill();
     }
+
+    // Sky-lit top / shadowed underside (2026-08-07, user-directed): a
+    // vertical tint from white at the sprite's top to a light grey at its
+    // bottom. `source-atop` confines it to pixels the puffs above already
+    // painted, so it shades the cloud's own silhouette rather than washing
+    // a rectangle over the transparent canvas around it.
+    ctx.globalCompositeOperation = "source-atop";
+    const shade = ctx.createLinearGradient(0, 0, 0, height);
+    shade.addColorStop(0, "rgba(255,255,255,1)");
+    shade.addColorStop(1, "rgba(198,200,206,1)");
+    ctx.fillStyle = shade;
+    ctx.fillRect(0, 0, width, height);
+    ctx.globalCompositeOperation = "source-over";
+
+    // Faint edge tint (2026-08-07, user-directed: "very very small amounts
+    // of a very pale orange or light blue sometimes around the edges, to
+    // help define cloud shape") -- most clouds get none; the rest get one
+    // warm or cool tint, never both. Each puff's own rim gradient fades to
+    // 0 alpha exactly at its radius (matching the puff's own edge), so this
+    // can't spill a colored halo past where the cloud already is.
+    const rimRoll = Math.random();
+    if (rimRoll < 0.35) {
+      const rimColor = rimRoll < 0.175 ? "255,214,178" : "182,212,255"; // pale orange / pale blue
+      for (const p of puffs) {
+        const x = ox + p.px, y = oy + p.py;
+        const rim = ctx.createRadialGradient(x, y, p.r * 0.75, x, y, p.r);
+        rim.addColorStop(0, `rgba(${rimColor},0)`);
+        rim.addColorStop(0.85, `rgba(${rimColor},0.07)`);
+        rim.addColorStop(1, `rgba(${rimColor},0)`);
+        ctx.fillStyle = rim;
+        ctx.beginPath();
+        ctx.arc(x, y, p.r, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+
     return canvas;
   }
 

@@ -189,8 +189,16 @@ window.UI = window.UI || {};
     return { mode: "ring", items };
   }
 
+  // City-action pills read slightly lighter than unit-action ones
+  // (2026-08-07, user-directed) -- most visible on a merged ring (see
+  // orders.js's mergeUnitCityOptions), where both kinds sit side by side and
+  // otherwise look identical apart from which column they're in. "city:" is
+  // the same kind-string prefix main.js's dispatcher already switches on
+  // (city:buildUnit, city:cancelBuild, city:nextProduction:X,Y, ...), so
+  // there's no second classification to keep in sync with orders.js.
   function itemHtml(o, sideClass) {
-    return `<button class="map-ring-item${sideClass}${o.danger ? " map-ring-item-danger" : ""}"`
+    const cityClass = o.kind.startsWith("city:") ? " map-ring-item-city" : "";
+    return `<button class="map-ring-item${sideClass}${cityClass}${o.danger ? " map-ring-item-danger" : ""}"`
       + ` data-ring-kind="${escapeHtml(o.kind)}">${escapeHtml(o.label)}</button>`;
   }
 

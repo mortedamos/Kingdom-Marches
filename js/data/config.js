@@ -66,14 +66,14 @@ window.GameConfig = {
   // stamp, and the only cost of forgetting is being told the wrong thing.
   build: {
     /** Local date this build was cut, YYYY-MM-DD. */
-    date: "2026-08-06",
+    date: "2026-08-07",
     /** Local time this build was cut, 24-hour HH:MM. */
-    time: "20:34",
+    time: "11:50",
     /** Monotonic build counter. Continues the numbering the old GitHub-
      *  derived stamp used (it showed the repo's total commit count), so
      *  builds from before and after this change still sort against each
      *  other. Increment it; don't recompute it. */
-    number: 71,
+    number: 72,
   },
 
   // =========================================================================
@@ -169,8 +169,14 @@ window.GameConfig = {
      *  radius bonuses still stack on top of this, uncapped. */
     maxPopulation: 6,
 
-    /** Harvest consumed per population point per turn. */
-    upkeepRatePerPop: 0.2,
+    /** Harvest consumed per population point per turn. Zeroed (2026-08-07,
+     *  user-directed: "population should not use harvest") -- population no
+     *  longer costs any upkeep at all. cities.js's tickCity still computes
+     *  `upkeep = UPKEEP_RATE * city.population` and subtracts it from
+     *  totalHarvest every turn; at 0 that's a no-op multiplication rather
+     *  than removed code, so a future balance pass can reintroduce a cost
+     *  here without touching the formula itself. */
+    upkeepRatePerPop: 0,
 
     /** Coin and Lore produced per population point per turn. Lore raised
      *  from 0.1 to 3 (2026-08-06, user-directed): every base terrain tile
@@ -451,8 +457,9 @@ window.GameConfig = {
      */
     clouds: {
       /** How many clouds exist at once. Deliberately sparse -- this is
-       *  atmosphere, not weather. */
-      count: 7,
+       *  atmosphere, not weather. Raised from 7 (2026-08-07, user-directed:
+       *  "more clouds"). */
+      count: 12,
       /** Peak alpha of a cloud's densest point. Low enough that terrain,
        *  units and borders stay readable straight through them. */
       opacity: 0.20,

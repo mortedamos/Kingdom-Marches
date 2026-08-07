@@ -741,7 +741,15 @@ window.UI = window.UI || {};
         <h3>Research</h3>
         <div class="stat-row">${isOwn ? researchHtml : UNKNOWN}</div>
         ${isOwn ? `<h3>Cities</h3>
-        ${civ.cities.map((c) => `<div class="stat-row">${tileLink(c.x, c.y, c.name, "city")}<span>pop ${c.population.toFixed(0)}</span></div>`).join("")}
+        ${civ.cities.map((c) => {
+          // Idle tag (2026-08-07, user-directed): same shared predicate the
+          // End Turn nag and the map badge use -- see cities.js's
+          // isCityIdle. An FYI, not an error, so it's styled with the
+          // accent color rather than a danger red.
+          const idle = window.GameEngine.cities.isCityIdle(civ, c, gameState);
+          const idleTag = idle ? `<span class="idle-tag" title="Not producing anything">Idle</span> ` : '';
+          return `<div class="stat-row">${tileLink(c.x, c.y, c.name, "city")}<span>${idleTag}pop ${c.population.toFixed(0)}</span></div>`;
+        }).join("")}
         <button class="action-btn view-tech-tree-btn" data-civ-id="${escapeHtml(civ.id)}">View Tech Tree</button>` : ''}
       </div>`;
   }

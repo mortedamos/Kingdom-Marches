@@ -691,6 +691,24 @@ window.GameEngine = window.GameEngine || {};
     return !!city && city.researchBoostTurn === (gameState.turnNumber || 0);
   }
 
+  /**
+   * True when `city` has nothing queued and isn't spending this turn's
+   * production on resources or research either (2026-08-07, user-directed)
+   * -- the single shared predicate for "should this read as idle to the
+   * player", pulled out of main.js's collectUnresolvedTurnWork (which used
+   * to compute this inline, duplicated the moment a second consumer needed
+   * it) so the End Turn nag, the sidebar's per-city tag, and the map badge
+   * all agree on the same answer. `availableBuilds` is the expensive part
+   * (iterates every unlocked unit/building) and only runs once the cheap
+   * checks above have already ruled the city in.
+   */
+  function isCityIdle(civ, city, gameState) {
+    if (!civ || !city || city.buildQueue) return false;
+    if (isProducingResources(city, gameState)) return false;
+    if (isBoostingResearch(city, gameState)) return false;
+    return window.GameEngine.ai.availableBuilds(civ, city, gameState).some((o) => o.affordable);
+  }
+
   /** Turns a boost would cut right now: population, floored, with a floor of
    *  its own so even a brand-new pop-1 city does something. Pure -- the ring
    *  menu calls this every render to label the pill. */
@@ -1072,6 +1090,7 @@ window.GameEngine = window.GameEngine || {};
     isBoostingResearch,
     researchBoostAmount,
     applyResearchBoost,
+    isCityIdle,
     computeWorkedTileYield,
     isOffsetFilled,
     isTileFilledForCiv,

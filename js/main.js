@@ -368,6 +368,7 @@
 
       <div class="launch-actions">
         <button id="start-game-btn" class="launch-start-btn">Start Game</button>
+        <button id="view-credits-btn" class="launch-credits-btn">View Credits</button>
         ${renderBuildStamp()}
       </div>`;
   }
@@ -436,6 +437,7 @@
     });
 
     setupLaunchOptionsOverlay();
+    setupCreditsOverlay();
     setupContextMenuDismissal();
     setupButtonClickSfx();
   }
@@ -464,6 +466,65 @@
     overlay.addEventListener("mousedown", (e) => { if (e.target === overlay) close(); });
     document.addEventListener("keydown", (e) => {
       if (e.key === "Escape" && overlay.style.display === "flex") close();
+    });
+  }
+
+  // Continuously re-scheduled while the credits overlay is open (2026-08-07,
+  // user-directed) -- see startCreditsCrawl/closeCredits.
+  let creditsAnimId = null;
+
+  /** "View Credits" in the Game Options modal: closes that modal (per the
+   *  user's own framing of the request) and fetches/parses doc/credits.txt
+   *  fresh every time it's opened, so editing the file needs no rebuild --
+   *  see js/ui/credits.js for the tiny format it understands. */
+  function openCredits() {
+    $("launch-options-overlay").style.display = "none";
+    fetch("doc/credits.txt")
+      .then((r) => r.text())
+      .then((text) => {
+        $("credits-content").innerHTML = window.UI.credits.render(text);
+        $("credits-overlay").style.display = "flex";
+        startCreditsCrawl();
+      });
+  }
+
+  function closeCredits() {
+    $("credits-overlay").style.display = "none";
+    if (creditsAnimId != null) { cancelAnimationFrame(creditsAnimId); creditsAnimId = null; }
+  }
+
+  /** Drives the bottom-to-top scroll with rAF + measured pixel heights
+   *  (rather than a CSS % keyframe) so the crawl always starts fully below
+   *  the viewport and ends fully above it regardless of how long the credits
+   *  text is -- then loops, since nothing here ever forces the overlay
+   *  closed on its own. */
+  function startCreditsCrawl() {
+    if (creditsAnimId != null) cancelAnimationFrame(creditsAnimId);
+    const viewport = $("credits-viewport");
+    const content = $("credits-content");
+    const PX_PER_SEC = 40;
+    let y = viewport.clientHeight;
+    let last = null;
+    function frame(now) {
+      if (last == null) last = now;
+      y -= PX_PER_SEC * ((now - last) / 1000);
+      last = now;
+      if (y < -content.offsetHeight) y = viewport.clientHeight;
+      content.style.transform = `translateY(${y}px)`;
+      creditsAnimId = requestAnimationFrame(frame);
+    }
+    creditsAnimId = requestAnimationFrame(frame);
+  }
+
+  /** Open/close wiring for the credits crawl -- same generous-dismissal
+   *  convention as setupLaunchOptionsOverlay (button, backdrop, Escape). */
+  function setupCreditsOverlay() {
+    const overlay = $("credits-overlay");
+    $("view-credits-btn").addEventListener("click", openCredits);
+    $("credits-close-btn").addEventListener("click", closeCredits);
+    overlay.addEventListener("mousedown", (e) => { if (e.target === overlay) closeCredits(); });
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape" && overlay.style.display === "flex") closeCredits();
     });
   }
 
@@ -587,6 +648,12 @@
       // alongside the rest of the view model; the load path below must
       // declare it too, or a loaded game keeps whatever the previous one had.
       ringMenu: null,
+      // Deferred callback (2026-08-07) for the unit-built-notice/
+      // pendingIntent chain a tech-completion dialog's "Choose Research"
+      // stashes here instead of firing immediately -- see
+      // openTechResearchedDialog's onChooseResearch and the tech tree
+      // close button that reads/clears this.
+      onTechTreeClosed: null,
     };
 
     stopTitleMusic();
@@ -1434,6 +1501,7 @@
       selection: null,
       fogMode: "off", fogCivIds: new Set(Object.keys(gameState.civs)),
       tileScoreCivId: null, dialog: null, turnBanner: null, ringMenu: null,
+      onTechTreeClosed: null,
     });
 
     clearInterval(autoplayTimer);
@@ -1530,13 +1598,12 @@
       items.push({ text: "No research selected" });
     }
     for (const c of civ.cities) {
-      // A city that spent this turn's production on resources or research
-      // (2026-08-06, user-directed -- see cities.js's
-      // applyResourceProduction/applyResearchBoost) HAS made its choice;
-      // it's no more unresolved than one mid-build.
-      if (window.GameEngine.cities.isProducingResources(c, gameState)) continue;
-      if (window.GameEngine.cities.isBoostingResearch(c, gameState)) continue;
-      if (!c.buildQueue && window.GameEngine.ai.availableBuilds(civ, c, gameState).some((o) => o.affordable)) {
+      // Shared with the sidebar's per-city idle tag and the map's idle
+      // badge (2026-08-07, user-directed) -- see cities.js's isCityIdle for
+      // the exact rules (a city that spent this turn's production on
+      // resources or research HAS made its choice, it's no more unresolved
+      // than one mid-build).
+      if (window.GameEngine.cities.isCityIdle(civ, c, gameState)) {
         items.push({ text: `${c.name} is not building anything`, x: c.x, y: c.y, tabKind: "city" });
       }
     }
@@ -1648,6 +1715,73 @@
     openFoundCityDialog(civ, unit, () => redraw());
   }
 
+  /** "Found City Here" on a remote tile (2026-08-07, user-directed): if the
+   *  site is already road-connected (or exempt -- see cities.js's
+   *  canFoundCityAt), founds immediately; otherwise asks whether to build a
+   *  road there first, since a new city must be road-connected to found. A
+   *  "yes" answer starts the SAME buildRoad goto order Build Road to This
+   *  Tile would, just tagged foundCity so advanceGotoOrder (orders.js) flags
+   *  the unit on arrival instead of leaving it idle at the destination. */
+  function handleFoundCityHere(x, y) {
+    if (!humanCivId || !viewState.selectedUnit) return;
+    const unit = viewState.selectedUnit;
+    const civ = gameState.civs[humanCivId];
+    if (!civ || unit.civId !== humanCivId) return;
+    if (!window.GameData.getUnit(unit.typeId).canFoundCity) return;
+    endAutomationAndGoto(unit);
+    if (window.GameEngine.cities.canFoundCityAt(gameState.map, gameState.civs, x, y, civ.raceId).ok) {
+      startFoundCityGoto(unit, x, y, false);
+      return;
+    }
+    viewState.dialog = {
+      kind: "confirm",
+      title: "Road Needed",
+      text: "New cities must be connected to other cities by a road. Would you like to build a road to this spot?",
+      confirmLabel: "Yes",
+      onAnswer: (ok) => {
+        if (ok) startFoundCityGoto(unit, x, y, true);
+      },
+    };
+    redraw();
+  }
+
+  function startFoundCityGoto(unit, x, y, buildRoad) {
+    window.GameEngine.orders.startGotoOrder(unit, gameState, x, y, buildRoad, { foundCity: true });
+    if (viewState.selection) {
+      viewState.selection.x = unit.x;
+      viewState.selection.y = unit.y;
+    }
+    offerFoundCityIfPending(gameState.civs[humanCivId]);
+  }
+
+  /** Drains unit._foundCityPending (set by orders.js's advanceGotoOrder on
+   *  arrival at a "Found City Here" destination) into the real found-city
+   *  dialog. Called both right after issuing the order (same-turn arrival)
+   *  and from finishRoundBookkeeping's notification chain (multi-turn
+   *  arrival, after the relevant End Turn). */
+  function offerFoundCityIfPending(civ, onDone) {
+    if (!civ) { if (onDone) onDone(); return; }
+    const unit = civ.units.find((u) => u._foundCityPending);
+    if (!unit) { if (onDone) onDone(); return; }
+    unit._foundCityPending = false;
+    const check = window.GameEngine.cities.canFoundCityAt(gameState.map, gameState.civs, unit.x, unit.y, civ.raceId);
+    if (!check.ok) {
+      // Site went bad between order-issue and arrival (e.g. someone else
+      // founded nearby in the meantime) -- tell the player instead of
+      // silently stranding the unit with no explanation.
+      const baseUnit = window.GameData.getUnit(unit.typeId);
+      viewState.dialog = {
+        kind: "message",
+        title: "Can't Found a City Here",
+        text: `${unit.name || baseUnit.label} arrived, but can no longer found a city here: ${check.reason}.`,
+        onDismiss: () => offerFoundCityIfPending(civ, onDone),
+      };
+      redraw();
+      return;
+    }
+    openFoundCityDialog(civ, unit, () => offerFoundCityIfPending(civ, onDone));
+  }
+
   // Captured once at the start of each round (when turnStepIndex is 0) so the
   // "did the human's army just take losses" combat-music check can compare
   // across the WHOLE round, not just whichever single civ-step just ran.
@@ -1689,7 +1823,7 @@
       // behind the other if both happen the same round (see
       // openTechResearchedDialog/offerNextUnitBuiltNotice).
       if (!victoryResult && !humanLost) {
-        const afterUnitBuilt = () => offerNextPendingIntent(civ);
+        const afterUnitBuilt = () => offerNextPendingIntent(civ, () => offerFoundCityIfPending(civ));
         if (finishedTechId) {
           openTechResearchedDialog(civ, finishedTechId, () => offerNextUnitBuiltNotice(civ, afterUnitBuilt));
         } else {
@@ -1697,7 +1831,7 @@
         }
       } else {
         civ.pendingUnitBuiltNotices = [];
-        for (const unit of civ.units) unit.pendingIntent = null;
+        for (const unit of civ.units) { unit.pendingIntent = null; unit._foundCityPending = false; }
       }
     }
 
@@ -1777,8 +1911,18 @@
       techDescription: tech.description || "",
       unlockedLabels,
       onChooseResearch: () => {
+        // Defer onDone until the tech tree is actually CLOSED (2026-08-07,
+        // user-directed bug fix), rather than firing it the instant the
+        // player clicks through to the tech tree -- onDone is the head of
+        // the unit-built-notice/pendingIntent chain (see
+        // finishRoundBookkeeping), and firing it here raced a fresh
+        // "unitBuilt" dialog open against the tech tree overlay the player
+        // just asked for, stealing focus back immediately: "the research
+        // selection screen is interrupted by messages for city production
+        // completion." viewState.onTechTreeClosed is read (and cleared)
+        // once, by the tech tree's own close button below.
         viewState.techTreeCivId = civ.id;
-        if (onDone) onDone();
+        viewState.onTechTreeClosed = onDone;
       },
       onDismiss: () => { if (onDone) onDone(); },
     };
@@ -2130,7 +2274,22 @@
         $("techtree-content").innerHTML = window.UI.techtree.render(civ, isPlayerCiv, viewState.techTreeExpandedLayers);
         lastRenderedTechTreeKey = key;
       }
-      $("techtree-close-btn").onclick = () => { viewState.techTreeCivId = null; redraw(); };
+      $("techtree-close-btn").onclick = () => {
+        viewState.techTreeCivId = null;
+        // Fires the deferred unit-built-notice/pendingIntent chain
+        // (2026-08-07, user-directed bug fix) -- see openTechResearchedDialog's
+        // onChooseResearch, which stashes it here instead of firing it the
+        // instant the tech tree opens, specifically so those notices can't
+        // pop up and steal focus while the player is still choosing research.
+        // Cleared before calling: the callback itself may end up back at a
+        // point that reopens the tech tree (unlikely today, but this ordering
+        // means an onTechTreeClosed set during the callback is never
+        // stomped by this line running after it).
+        const onClosed = viewState.onTechTreeClosed;
+        viewState.onTechTreeClosed = null;
+        if (onClosed) onClosed();
+        redraw();
+      };
       // Research selection (player's own tree only -- renderNode only emits
       // these buttons when isPlayerCiv).
       for (const node of document.querySelectorAll(".techtree-node-selectable")) {
@@ -2775,6 +2934,9 @@
         break;
       case "foundCity":
         handleFoundCity();
+        break;
+      case "foundCityHere":
+        handleFoundCityHere(menu.x, menu.y);
         break;
       case "claimChannel":
         handleClaimChannel();

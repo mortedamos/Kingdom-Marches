@@ -30,6 +30,8 @@ window.UI = window.UI || {};
   const FLOAT_TEXT_ANIM_MS = 3000; // total lifetime of a floating-text popup (incl. fade in/hold/fade out)
   const FLOAT_TEXT_FADE_IN_MS = 150; // quick pop-in at the start
   const FLOAT_TEXT_FADE_OUT_MS = 500; // quick fade-out at the very end; everything between is full opacity
+  const DEATH_EFFECT_ANIM_MS = 1300; // puff-of-smoke-resolving-into-a-skull, total lifetime
+  const DEATH_SMOKE_COUNT = 6; // number of drifting smoke puffs per death
 
   // Condition badges (2026-07-22, user-directed): a small icon per active
   // entry in unit.conditions (see combat.js's setCondition/tickConditions),
@@ -210,18 +212,54 @@ window.UI = window.UI || {};
     return activeFloatingTexts.some((f) => f.unit === unit);
   }
 
-  /** Read-only access to the live combat-anim/area-effect queues, for a
-   *  caller (render3d.js's HUD pass) that needs to iterate them itself with
-   *  its own per-tile projection instead of the affine offsetX/offsetY/ts
-   *  math drawCombatSlashes/drawAreaEffects use -- perspective means there
-   *  is no single (offsetX,offsetY,ts) that maps every tile to screen
-   *  space correctly in 3D, so those two draw functions stay 2D-only and
-   *  render3d.js projects each event's tiles individually instead. */
+  /**
+   * Live death effects (puff of smoke resolving into a skull, 2026-08-07,
+   * user-directed), drained each frame from window.GameEngine.deathFx's
+   * cosmetic event queue. Tile-position-anchored rather than unit-anchored,
+   * same reasoning as activeAreaEffects: the unit is already gone from
+   * civ.units by the time otherCivRemoveDeadUnit fires this (ai.js), so
+   * there's no unit object left for a per-unit draw pass to key off of.
+   * Each puff's angle/distance/size/delay is baked in once at spawn time
+   * (same convention activeCombatAnims uses) so repeated deaths don't all
+   * play identically.
+   */
+  let activeDeathEffects = [];
+
+  function updateDeathEffects(now) {
+    const newEvents = window.GameEngine.deathFx.drainDeathEffectEvents();
+    for (const evt of newEvents) {
+      const puffs = [];
+      for (let i = 0; i < DEATH_SMOKE_COUNT; i++) {
+        puffs.push({
+          angle: (i / DEATH_SMOKE_COUNT) * Math.PI * 2 + (Math.random() - 0.5) * 0.6,
+          dist: 0.28 + Math.random() * 0.22,
+          size: 0.16 + Math.random() * 0.10,
+          delay: Math.random() * 0.15,
+        });
+      }
+      activeDeathEffects.push({ x: evt.x, y: evt.y, start: now, puffs });
+    }
+    if (activeDeathEffects.length) {
+      activeDeathEffects = activeDeathEffects.filter((d) => now - d.start < DEATH_EFFECT_ANIM_MS);
+    }
+  }
+
+  /** Read-only access to the live combat-anim/area-effect/death-effect
+   *  queues, for a caller (render3d.js's HUD pass) that needs to iterate
+   *  them itself with its own per-tile projection instead of the affine
+   *  offsetX/offsetY/ts math drawCombatSlashes/drawAreaEffects/
+   *  drawDeathEffects use -- perspective means there is no single
+   *  (offsetX,offsetY,ts) that maps every tile to screen space correctly in
+   *  3D, so those draw functions stay 2D-only and render3d.js projects each
+   *  event's tiles individually instead. */
   function getActiveCombatAnims() {
     return activeCombatAnims;
   }
   function getActiveAreaEffects() {
     return activeAreaEffects;
+  }
+  function getActiveDeathEffects() {
+    return activeDeathEffects;
   }
 
   /** Runs every per-frame queue drain in one call -- the single entry point
@@ -232,6 +270,7 @@ window.UI = window.UI || {};
     updateAreaEffects(now);
     updateQuipBubbles(now);
     updateFloatingTexts(now);
+    updateDeathEffects(now);
   }
 
   /** Color/weight per floating-text `kind` (see engine/floatingtext.js's
@@ -460,6 +499,83 @@ window.UI = window.UI || {};
     }
   }
 
+  /**
+   * Puff-of-smoke-resolving-into-a-skull (2026-08-07, user-directed), drawn
+   * at an already-projected screen point -- same "shared point-based draw,
+   * each renderer supplies its own projection" split as drawCombatSlashAt:
+   * 2D projects via its single affine grid (drawDeathEffects below), 3D
+   * projects this effect's own tile individually and calls this directly.
+   *
+   * Two overlapping phases against one shared timeline `t` (0..1): a
+   * handful of grey puffs drift outward/up and fade over the first ~65% of
+   * the effect's life (staggered by each puff's own `delay` so they don't
+   * pop in unison), while a skull glyph fades in as the smoke thins, holds,
+   * then fades out -- "resolves into" rather than "instantly is".
+   */
+  function drawDeathEffectAt(ctx, e, px, py, ts, now) {
+    const elapsed = now - e.start;
+    if (elapsed > DEATH_EFFECT_ANIM_MS) return;
+    const t = elapsed / DEATH_EFFECT_ANIM_MS;
+
+    ctx.save();
+    for (const p of e.puffs) {
+      const pt = (t - p.delay) / 0.65;
+      if (pt <= 0 || pt >= 1) continue;
+      const ease = 1 - (1 - pt) * (1 - pt);
+      const dist = p.dist * ts * ease;
+      const size = p.size * ts * (0.6 + 0.4 * ease);
+      const alpha = (pt < 0.25 ? pt / 0.25 : 1 - (pt - 0.25) / 0.75) * 0.55;
+      const cx = px + Math.cos(p.angle) * dist;
+      const cy = py + Math.sin(p.angle) * dist - ts * 0.15 * ease;
+      ctx.globalAlpha = Math.max(0, alpha);
+      ctx.fillStyle = "#9e9e9e";
+      ctx.beginPath();
+      ctx.arc(cx, cy, Math.max(1, size), 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
+
+    let skullAlpha = 0;
+    if (t > 0.30 && t < 0.55) skullAlpha = (t - 0.30) / 0.25;
+    else if (t >= 0.55 && t < 0.78) skullAlpha = 1;
+    else if (t >= 0.78) skullAlpha = Math.max(0, 1 - (t - 0.78) / 0.22);
+    if (skullAlpha > 0) {
+      const scale = 0.75 + 0.25 * Math.min(1, (t - 0.30) / 0.15);
+      const size = Math.max(8, ts * 0.55 * scale);
+      const sx = px, sy = py - ts * 0.1;
+      ctx.save();
+      ctx.globalAlpha = skullAlpha;
+      // Soft dark backdrop so the glyph reads against bright terrain --
+      // same reasoning drawConditionBadges' per-icon circle uses -- plus an
+      // explicit fill color + stroke outline (drawFloatingTexts' own
+      // stroke-then-fill convention) so this stays legible even on a
+      // platform whose emoji font renders \u{1F480} as a plain glyph tinted
+      // by fillStyle rather than its native color-emoji artwork.
+      ctx.beginPath();
+      ctx.arc(sx, sy, size * 0.62, 0, Math.PI * 2);
+      ctx.fillStyle = "rgba(0,0,0,0.35)";
+      ctx.fill();
+      ctx.font = `${size}px sans-serif`;
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.strokeStyle = "rgba(0,0,0,0.7)";
+      ctx.lineWidth = Math.max(1, ts * 0.04);
+      ctx.strokeText("\u{1F480}", sx, sy);
+      ctx.fillStyle = "#f2efe6";
+      ctx.fillText("\u{1F480}", sx, sy);
+      ctx.restore();
+    }
+  }
+
+  /** 2D-only: projects every active death effect via the affine
+   *  offsetX/offsetY/ts tile grid, then draws it with drawDeathEffectAt. */
+  function drawDeathEffects(ctx, offsetX, offsetY, ts, now) {
+    for (const e of activeDeathEffects) {
+      const px = e.x * ts + offsetX + ts / 2, py = e.y * ts + offsetY + ts / 2;
+      drawDeathEffectAt(ctx, e, px, py, ts, now);
+    }
+  }
+
   const BURNING_TINT_COLOR = "255,87,34"; // orange-red
   const FROZEN_TINT_COLOR = "129,212,250"; // icy blue
   const ZOMBIE_TINT_COLOR = "120,120,120"; // washed-out grey
@@ -575,6 +691,40 @@ window.UI = window.UI || {};
   }
 
   /**
+   * Idle-city badge (2026-08-07, user-directed): a small corner marker on
+   * the player's own city tiles that have nothing queued and aren't
+   * spending this turn's production on resources/research either -- see
+   * cities.js's isCityIdle, the single shared predicate this also backs the
+   * End Turn nag and the sidebar's per-city tag with. Human-civ-only gate
+   * lives in the caller (render.js's Cities loop); this just draws.
+   * Same dark-backdrop-circle-plus-icon convention as drawConditionBadges,
+   * inset into the tile's top-right corner since a city sprite fills the
+   * whole tile (no "above the sprite" space the way a unit's own badges
+   * get). Explicit fillStyle + stroke on the icon, not just `fillText`,
+   * same reasoning drawDeathEffectAt's skull uses: some platforms render
+   * emoji as a plain glyph tinted by fillStyle rather than native
+   * color-emoji art, and this needs to read clearly either way.
+   */
+  function drawIdleCityBadge(ctx, x, y, size) {
+    const r = size * 0.16;
+    const cx = x + size - r * 1.3, cy = y + r * 1.3;
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, 0, Math.PI * 2);
+    ctx.fillStyle = "rgba(0,0,0,0.45)";
+    ctx.fill();
+    ctx.font = `${Math.max(8, r * 1.3)}px sans-serif`;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.strokeStyle = "rgba(0,0,0,0.7)";
+    ctx.lineWidth = Math.max(1, size * 0.02);
+    ctx.strokeText("\u{1F4A4}", cx, cy);
+    ctx.fillStyle = "#f2efe6";
+    ctx.fillText("\u{1F4A4}", cx, cy);
+    ctx.restore();
+  }
+
+  /**
    * Persistent (non-fading) label showing a channeling unit's currently
    * accumulated prospecting/delving/fishing stash -- reads LIVE state
    * directly off the unit every frame rather than draining a one-shot
@@ -610,6 +760,54 @@ window.UI = window.UI || {};
     const g = parseInt(hex.slice(3, 5), 16);
     const b = parseInt(hex.slice(5, 7), 16);
     return `rgba(${r},${g},${b},${alpha})`;
+  }
+
+  const CONSTRUCTION_COLOR = "#e0a030"; // amber -- reads as "in progress", distinct from the influence overlay's civ colors
+
+  /**
+   * Under-construction placeholder (2026-08-07, user-directed): a queued
+   * building/wall's final tile is already locked in at queue time
+   * (city.buildQueue.placeAt, set by main.js's handleChooseBuild placement
+   * flow -- see orders.js's queueBuild), but the actual structure record
+   * isn't created until completion (cities.js's placeStructure/
+   * completeBuildingStructure). Without this, the tile just sits empty for
+   * however many turns the build takes and the finished building pops in
+   * with no buildup at all. 2D-only for now -- the 3D renderer's influence
+   * hatch is a whole separate WebGL decal/texture-batch pipeline
+   * (buildInfluenceDecalGroups), not a couple of canvas calls, so giving
+   * this the same treatment there is a much larger, separate lift.
+   *
+   * Reuses drawHatch (same as the influence overlay's contested-tile
+   * stripes) rather than inventing a new pattern, plus a crane icon and the
+   * turns-remaining count -- explicit fill/stroke on both (not just
+   * `fillText`), same reasoning drawDeathEffectAt's skull uses: some
+   * platforms render emoji as a plain glyph tinted by fillStyle rather than
+   * native color-emoji art, and this needs to read clearly either way.
+   */
+  function drawConstructionSite(ctx, x, y, size, item) {
+    drawHatch(ctx, x, y, size, CONSTRUCTION_COLOR);
+
+    const cx = x + size / 2, cy = y + size * 0.58;
+    ctx.save();
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.font = `${Math.max(9, size * 0.42)}px sans-serif`;
+    ctx.strokeStyle = "rgba(0,0,0,0.7)";
+    ctx.lineWidth = Math.max(1, size * 0.035);
+    ctx.strokeText("\u{1F3D7}\u{FE0F}", cx, cy);
+    ctx.fillStyle = "#3a2a12";
+    ctx.fillText("\u{1F3D7}\u{FE0F}", cx, cy);
+
+    if (item.turnsRemaining != null) {
+      const label = String(item.turnsRemaining);
+      const ty = y + size * 0.88;
+      ctx.font = `bold ${Math.max(8, size * 0.24)}px sans-serif`;
+      ctx.lineWidth = Math.max(1, size * 0.05);
+      ctx.strokeText(label, cx, ty);
+      ctx.fillStyle = "#fff3d0";
+      ctx.fillText(label, cx, ty);
+    }
+    ctx.restore();
   }
 
   function drawHatch(ctx, x, y, size, color) {
@@ -680,12 +878,12 @@ window.UI = window.UI || {};
 
   window.UI.overlays = {
     tick,
-    updateCombatAnims, updateAreaEffects, updateQuipBubbles, updateFloatingTexts,
+    updateCombatAnims, updateAreaEffects, updateQuipBubbles, updateFloatingTexts, updateDeathEffects,
     drawAreaEffects, drawAreaEffectBox, drawCombatSlashes, drawCombatSlashAt,
-    drawQuipBubble, drawFloatingTexts,
-    hasActiveQuip, hasActiveFloatingText, getActiveCombatAnims, getActiveAreaEffects,
-    getUnitShakeOffset, drawConditionVisualEffects, drawConditionBadges, drawChannelStashLabel,
-    hexToRgba, drawHatch, auraInfoForUnit, drawTileScoreOverlay,
-    ATTACK_ANIM_MS, SLASH_ANIM_MS, AREA_EFFECT_ANIM_MS, AREA_EFFECT_COLORS,
+    drawQuipBubble, drawFloatingTexts, drawDeathEffects, drawDeathEffectAt,
+    hasActiveQuip, hasActiveFloatingText, getActiveCombatAnims, getActiveAreaEffects, getActiveDeathEffects,
+    getUnitShakeOffset, drawConditionVisualEffects, drawConditionBadges, drawChannelStashLabel, drawIdleCityBadge,
+    hexToRgba, drawHatch, drawConstructionSite, auraInfoForUnit, drawTileScoreOverlay,
+    ATTACK_ANIM_MS, SLASH_ANIM_MS, AREA_EFFECT_ANIM_MS, AREA_EFFECT_COLORS, DEATH_EFFECT_ANIM_MS,
   };
 })();

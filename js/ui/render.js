@@ -173,6 +173,23 @@ window.UI = window.UI || {};
     // reason) so overhang always lands on top of terrain, never under it.
     const deferredIcons = [];
 
+    // Construction placeholders (2026-08-07, user-directed): every queued
+    // building/wall already has its final tile locked in at queue time
+    // (city.buildQueue.placeAt -- see orders.js's queueBuild), even though
+    // the actual structure record doesn't exist until completion. Built
+    // once per frame so the tile loop below is a plain lookup instead of
+    // scanning every civ's cities per tile. See overlays.js's
+    // drawConstructionSite for the actual draw.
+    const constructionSites = new Map();
+    for (const civ of Object.values(civs)) {
+      for (const city of civ.cities) {
+        const bq = city.buildQueue;
+        if (bq && bq.kind === "building" && bq.placeAt) {
+          constructionSites.set(`${bq.placeAt.x},${bq.placeAt.y}`, bq);
+        }
+      }
+    }
+
     for (let y = 0; y < map.height; y++) {
       for (let x = 0; x < map.width; x++) {
         const idx = y * map.width + x;
@@ -288,6 +305,10 @@ window.UI = window.UI || {};
           }
         }
 
+        // Construction placeholder -- see constructionSites above.
+        const construction = constructionSites.get(`${x},${y}`);
+        if (construction) overlays.drawConstructionSite(ctx, screenX, screenY, ts, construction);
+
         // Influence overlay
         if (showInfluence && tile.status !== "neutral" && tile.ownerCivId) {
           const civ = civs[tile.ownerCivId];
@@ -323,12 +344,17 @@ window.UI = window.UI || {};
     drawPlacementOverlay(ctx, viewState, offsetX, offsetY, ts);
 
     // Cities
+    // Fed to villagers.js's tick/draw below -- the cities currently visible
+    // on screen, so ambient figures never spawn (or keep animating)
+    // somewhere the player can't actually see.
+    const villagerCities = [];
     for (const civ of Object.values(civs)) {
       const race = window.GameData.getRace(civ.raceId);
       const citySymbol = race.citySymbol || "★";
       for (const city of civ.cities) {
         const idx = city.y * map.width + city.x;
         if (!visible.has(idx)) continue;
+        villagerCities.push({ civ, city });
         const screenX = city.x * ts + offsetX;
         const screenY = city.y * ts + offsetY;
         const cx = screenX + ts / 2, cy = screenY + ts / 2;
@@ -390,6 +416,14 @@ window.UI = window.UI || {};
           ctx.strokeStyle = "#ffeb3b";
           ctx.lineWidth = 2;
           ctx.strokeRect(screenX + 1, screenY + 1, ts - 2, ts - 2);
+        }
+
+        // Idle badge -- human-civ-only (no visibility into a foreign civ's
+        // build queue, and no agency over it anyway; see cities.js's
+        // isCityIdle, shared with the sidebar's per-city tag and the End
+        // Turn nag).
+        if (humanCivId && civ.id === humanCivId && window.GameEngine.cities.isCityIdle(civ, city, gameState)) {
+          overlays.drawIdleCityBadge(ctx, screenX, screenY, ts);
         }
       }
     }
@@ -634,6 +668,15 @@ window.UI = window.UI || {};
       }
     }
 
+    // Ambient villager figures -- drawn after Cities/Structures/Units
+    // (2026-08-07, user-reported: a figure standing on a wall's own tile
+    // was being fully painted over by that wall's sprite, which draws
+    // after the Cities loop this used to sit right beside) so they're
+    // never hidden behind a building or wall they're walking past. See
+    // villagers.js's own doc comment.
+    window.UI.villagers.tick(villagerCities);
+    window.UI.villagers.draw(ctx, offsetX, offsetY, ts, villagerCities);
+
     // Where the player's self-directing units are headed (2026-08-06,
     // user-directed) -- above units, below the hover preview, same reasoning
     // as the path preview: a route is only useful if it reads THROUGH
@@ -650,6 +693,7 @@ window.UI = window.UI || {};
 
     overlays.drawAreaEffects(ctx, offsetX, offsetY, ts, now);
     overlays.drawCombatSlashes(ctx, offsetX, offsetY, ts, now);
+    overlays.drawDeathEffects(ctx, offsetX, offsetY, ts, now);
     for (const { unit, screenX, screenY } of quipBubbleQueue) {
       overlays.drawQuipBubble(ctx, unit, screenX, screenY, ts, now);
     }

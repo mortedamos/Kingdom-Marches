@@ -36,6 +36,17 @@
       </div>
     </div>
 
+    <!-- Credits crawl: opened from the Game Options modal's "View Credits"
+         button (main.js's openCredits), which closes that modal first --
+         content is fetched/parsed from doc/credits.txt at open time (see
+         js/ui/credits.js). -->
+    <div id="credits-overlay" class="credits-overlay" style="display:none;">
+      <button id="credits-close-btn" class="techtree-close-btn credits-close-btn">Close</button>
+      <div id="credits-viewport" class="credits-viewport">
+        <div id="credits-content" class="credits-content"></div>
+      </div>
+    </div>
+
   </div>
 
   <!-- Loading screen: shown between clicking Begin and the game actually
@@ -236,6 +247,7 @@
   <script src="js/engine/combat.js"></script>
   <script src="js/engine/quips.js"></script>
   <script src="js/engine/floatingtext.js"></script>
+  <script src="js/engine/deathfx.js"></script>
   <script src="js/engine/tech.js"></script>
   <script src="js/engine/strategy.js"></script>
   <script src="js/engine/ai.js"></script>
@@ -252,11 +264,13 @@
   <script src="js/ui/overlays.js"></script>
   <script src="js/ui/render.js"></script>
   <script src="js/ui/clouds.js"></script>
+  <script src="js/ui/villagers.js"></script>
   <script src="js/ui/render3d.js"></script>
   <script src="js/ui/sidebar.js"></script>
   <script src="js/ui/techtree.js"></script>
   <script src="js/ui/reports.js"></script>
   <script src="js/ui/dialog.js"></script>
+  <script src="js/ui/credits.js"></script>
   <script src="js/ui/buildlist.js"></script>
   <script src="js/ui/ringmenu.js"></script>
   <script src="js/ui/input.js"></script>

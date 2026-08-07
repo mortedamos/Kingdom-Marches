@@ -456,6 +456,22 @@ html, body {
 }
 .stat-row span:first-child { color: var(--text-dim); }
 .stat-row span:last-child { color: var(--text-main); font-weight: bold; }
+/* Idle-city tag (2026-08-07, user-directed): an FYI, not an error -- amber
+   like the rest of the accent palette, not the danger red action buttons
+   use for destructive actions. */
+.idle-tag {
+  display: inline-block;
+  padding: 1px 6px;
+  margin-right: 6px;
+  border: 1px solid rgba(201, 168, 87, 0.55);
+  border-radius: 3px;
+  background: rgba(201, 168, 87, 0.12);
+  color: var(--accent);
+  font-size: 10px;
+  font-weight: bold;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
 
 /* Pinned to the bottom of the sidebar (2026-08-06, user-directed): End Turn
    used to scroll off-screen exactly when the panel was busiest. `margin-top:
@@ -868,6 +884,14 @@ html, body {
 .map-ring-item-right { text-align: left; }
 .map-ring-item-left  { text-align: right; }
 .map-ring-item:hover { background: var(--bg-panel); border-color: var(--accent); color: var(--accent); }
+/* City-action pills (2026-08-07, user-directed) -- a step lighter than
+   --bg-panel-raised's #262b34, so the two columns of a merged unit+city
+   ring (see orders.js's mergeUnitCityOptions) read as visibly two different
+   KINDS of action at a glance, not just two different labels. Border
+   lightened to match, same ratio the base pill keeps between its own
+   background and border. */
+.map-ring-item-city { background: #333a46; border-color: #454d5c; }
+.map-ring-item-city:hover { background: var(--bg-panel); border-color: var(--accent); color: var(--accent); }
 /* Danger actions (2026-08-06) -- Cancel*/Disband/Stop Order -- same red as
    sidebar.js's .action-btn-danger. */
 .map-ring-item-danger { color: #d98a8a; }
@@ -1293,6 +1317,21 @@ html, body {
   cursor: pointer;
 }
 .launch-start-btn:hover { background: var(--accent-hover); }
+.launch-credits-btn {
+  width: 100%;
+  margin-top: 8px;
+  padding: 9px;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text-dim);
+  font-family: "Cinzel", Georgia, serif;
+  font-size: 13px;
+  letter-spacing: 0.08em;
+  cursor: pointer;
+  transition: border-color 0.2s, color 0.2s;
+}
+.launch-credits-btn:hover { border-color: var(--accent); color: var(--accent); }
 /* Build stamp -- date/time/build number under the Start Game button
    (2026-08-03, user-directed). Purely informational. */
 .build-stamp {
@@ -1301,4 +1340,59 @@ html, body {
   font-size: 10px;
   color: var(--text-dim);
 }
+
+/* --- Credits crawl (2026-08-07, user-directed) --- */
+.credits-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 110;
+  background: rgba(6, 7, 9, 0.94);
+  display: flex;
+  justify-content: center;
+}
+.credits-close-btn {
+  position: absolute;
+  top: 20px;
+  right: 24px;
+  z-index: 1;
+}
+.credits-viewport {
+  position: relative;
+  width: min(720px, 90vw);
+  height: 100%;
+  overflow: hidden;
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0, black 10%, black 90%, transparent 100%);
+  mask-image: linear-gradient(to bottom, transparent 0, black 10%, black 90%, transparent 100%);
+}
+.credits-content {
+  position: absolute;
+  left: 0;
+  right: 0;
+  will-change: transform;
+}
+.credits-title {
+  margin: 0 0 10px 0;
+  font-family: "Cinzel", Georgia, serif;
+  color: var(--accent);
+  text-align: center;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  font-size: clamp(24px, 4vw, 36px);
+}
+.credits-heading {
+  margin: 44px 0 10px 0;
+  font-family: "Cinzel", Georgia, serif;
+  color: var(--accent);
+  text-align: center;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  font-size: clamp(15px, 2.2vw, 20px);
+}
+.credits-para {
+  margin: 0 0 8px 0;
+  text-align: center;
+  color: var(--text-main);
+  line-height: 1.7;
+}
+.credits-para a { color: var(--accent-hover); }
 

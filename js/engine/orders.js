@@ -230,15 +230,17 @@ window.GameEngine = window.GameEngine || {};
    * Two shapes:
    *   - Plain move (buildRoad: false): identical to moveTo/spendMovement --
    *     walks as far as the unit's movement budget allows this turn.
-   *   - "Build road to this tile" (buildRoad: true): walks the path ONE
-   *     step at a time, but the INSTANT it would enter a tile with no road
-   *     already on it, stops there and builds the road (an instant action,
-   *     same as the standalone "Build Road Here" button) -- ending this
-   *     turn's progress even if movement remains. Guarantees a fully
-   *     connected road with no gaps: already-roaded ground along the way
-   *     is crossed at full speed with no stopping, but only one NEW
-   *     segment can go down per turn (building is always a whole action,
-   *     regardless of the unit's raw movement stat).
+   *   - "Build road to this tile" (buildRoad: true): checks the unit's OWN
+   *     tile first (2026-08-07, user-reported fix -- see advanceGotoOrder),
+   *     then walks the path ONE step at a time, but the INSTANT it would
+   *     enter a tile with no road already on it, stops there and builds the
+   *     road (an instant action, same as the standalone "Build Road Here"
+   *     button) -- ending this turn's progress even if movement remains.
+   *     Guarantees a fully connected road with no gaps, including at the
+   *     starting tile: already-roaded ground along the way is crossed at
+   *     full speed with no stopping, but only one NEW segment can go down
+   *     per turn (building is always a whole action, regardless of the
+   *     unit's raw movement stat).
    *
    * Blocked-path handling (2026-08-06, user-directed: "stop and wait for
    * new orders", not auto-reroute/auto-fight like an AI unit): if a call
@@ -246,8 +248,8 @@ window.GameEngine = window.GameEngine || {};
    * order is cancelled outright rather than left to spin forever making
    * zero progress every future turn too.
    */
-  function startGotoOrder(unit, gameState, x, y, buildRoad) {
-    unit.gotoTarget = { x, y, buildRoad: !!buildRoad };
+  function startGotoOrder(unit, gameState, x, y, buildRoad, opts = {}) {
+    unit.gotoTarget = { x, y, buildRoad: !!buildRoad, foundCity: !!opts.foundCity };
     advanceGotoOrder(unit, gameState);
   }
 
@@ -258,31 +260,58 @@ window.GameEngine = window.GameEngine || {};
   function advanceGotoOrder(unit, gameState) {
     const target = unit.gotoTarget;
     if (!target) return;
-    if (unit.x === target.x && unit.y === target.y) { unit.gotoTarget = null; return; }
+    if (unit.x === target.x && unit.y === target.y) {
+      if (target.foundCity) unit._foundCityPending = true;
+      unit.gotoTarget = null;
+      return;
+    }
 
     const { map, civs } = gameState;
     let progressed = false;
 
     if (target.buildRoad) {
-      if (unit.movesRemaining == null) {
-        unit.movesRemaining = window.GameEngine.ai.computeMovementBudget(unit, map, civs);
-      }
-      const rules = window.GameEngine.ai.buildMoveRules(unit, civs, map);
-      const path = window.GameEngine.pathfinding.findPath(unit.x, unit.y, target.x, target.y, map, rules.costFn);
-      if (path) {
-        for (const step of path) {
-          if (unit.movesRemaining <= 0) break;
-          unit.x = step.x;
-          unit.y = step.y;
-          unit.movesRemaining -= step.cost;
-          progressed = true;
-          const tile = map.tiles[unit.y * map.width + unit.x];
-          if (!tile.hasRoad) {
-            if (!unit.usedThisTurn) { tile.hasRoad = true; unit.usedThisTurn = true; }
-            break; // one new road segment per turn -- stop here regardless of leftover movement
-          }
+      // The STARTING tile first (2026-08-07, user-reported bug fix).
+      // pathfinding.js's findPath returns steps "from (but not including)
+      // the start tile" -- exactly right for movement, but it meant this
+      // order's own road-laying loop below (which walks `path`) never once
+      // looked at the tile the unit was ALREADY standing on. A unit ordered
+      // to build a road to some remote tile would happily road every tile
+      // it stepped onto along the way while leaving its own starting tile
+      // bare, so the finished road had a one-tile gap at the beginning --
+      // the exact opposite of "gapless" this mechanic's own doc comment
+      // above promises. Checked and handled before any movement happens
+      // this call, same "one new segment per turn, stop here regardless of
+      // leftover movement" rule the loop below applies to every other tile.
+      const startTile = map.tiles[unit.y * map.width + unit.x];
+      if (!unit.usedThisTurn && !startTile.hasRoad) {
+        startTile.hasRoad = true;
+        unit.usedThisTurn = true;
+        progressed = true;
+        window.GameEngine.turns.refreshVisibility(gameState);
+        // Movement loop skipped entirely this call -- building is a whole
+        // action, same as every other tile below, and falls through to the
+        // shared currentMission/return tail at the bottom of this function.
+      } else {
+        if (unit.movesRemaining == null) {
+          unit.movesRemaining = window.GameEngine.ai.computeMovementBudget(unit, map, civs);
         }
-        if (progressed) window.GameEngine.turns.refreshVisibility(gameState);
+        const rules = window.GameEngine.ai.buildMoveRules(unit, civs, map);
+        const path = window.GameEngine.pathfinding.findPath(unit.x, unit.y, target.x, target.y, map, rules.costFn);
+        if (path) {
+          for (const step of path) {
+            if (unit.movesRemaining <= 0) break;
+            unit.x = step.x;
+            unit.y = step.y;
+            unit.movesRemaining -= step.cost;
+            progressed = true;
+            const tile = map.tiles[unit.y * map.width + unit.x];
+            if (!tile.hasRoad) {
+              if (!unit.usedThisTurn) { tile.hasRoad = true; unit.usedThisTurn = true; }
+              break; // one new road segment per turn -- stop here regardless of leftover movement
+            }
+          }
+          if (progressed) window.GameEngine.turns.refreshVisibility(gameState);
+        }
       }
     } else {
       // moveTo does its own canCommand check -- passing the unit's own
@@ -294,6 +323,7 @@ window.GameEngine = window.GameEngine || {};
     }
 
     if (unit.x === target.x && unit.y === target.y) {
+      if (target.foundCity) unit._foundCityPending = true;
       unit.gotoTarget = null;
       return;
     }
@@ -536,6 +566,15 @@ window.GameEngine = window.GameEngine || {};
         options.push({ kind: "attack", label: "Attack" });
         return options;
       }
+    }
+
+    // Found City Here (2026-08-07, user-directed): offered on a remote tile
+    // whenever the site is otherwise valid, ignoring the road-connectivity
+    // check (skipRoadCheck) -- clicking it is what decides whether that check
+    // still applies, via main.js's confirm-a-road-first modal.
+    if (baseUnit.canFoundCity && !unit.usedThisTurn
+        && window.GameEngine.cities.canFoundCityAt(gameState.map, gameState.civs, x, y, civ.raceId, { skipRoadCheck: true }).ok) {
+      options.push({ kind: "foundCityHere", label: "Found City Here" });
     }
 
     options.push({ kind: "moveTo", label: "Move to This Tile" });
