@@ -2695,7 +2695,7 @@
         window.GameEngine.orders.cancelBuild(city);
         break;
       case "city:resourceProduction":
-        handleResourceProduction();
+        handleResourceProduction(city);
         break;
       case "city:research":
         window.GameEngine.cities.applyResearchBoost(city, gameState.civs[humanCivId], gameState);
@@ -2928,19 +2928,21 @@
   /** "Resource Production" (2026-08-06, user-directed): spends this city's
    *  production for the CURRENT turn on resources instead of a unit or a
    *  building -- see cities.js's applyResourceProduction for the payout and
-   *  why it lands on this turn rather than the next one. */
-  function handleResourceProduction() {
-    // Same ringMenu-based resolution as handleChooseBuild, for the same
-    // reason (2026-08-06) -- called synchronously from handleCityRingAction
-    // today, right after that function sets viewState.selectedCity by hand,
-    // so reading that field back would technically still work here; resolved
-    // independently anyway so this doesn't silently break the next time
-    // something calls it from a spot where that ordering guarantee doesn't
-    // hold.
-    if (!humanCivId || !viewState.ringMenu) return;
-    const civ = gameState.civs[humanCivId];
-    const city = civ.cities.find((c) => c.x === viewState.ringMenu.x && c.y === viewState.ringMenu.y);
-    if (!city) return;
+   *  why it lands on this turn rather than the next one.
+   *
+   *  Takes `city` explicitly (2026-08-06, user-reported fix -- a prior
+   *  version of this read it back from viewState.ringMenu.x/y instead, which
+   *  broke the button outright: handleContextMenuAction nulls
+   *  viewState.ringMenu BEFORE calling handleCityRingAction, which is what
+   *  calls this, so ringMenu was already null on every real click, not just
+   *  the merged-ring case that rewrite was trying to fix. handleCityRingAction
+   *  has already resolved the correct city by the time it calls this, the
+   *  same way it already passes `city` directly to cancelBuild/
+   *  applyResearchBoost right alongside this call -- no reason for this one
+   *  case to read it back out of view state instead of just taking it. */
+  function handleResourceProduction(city) {
+    const civ = humanCivId && gameState.civs[humanCivId];
+    if (!civ || !city || city.civId !== humanCivId) return;
     window.GameEngine.cities.applyResourceProduction(city, civ, gameState);
     redraw();
   }
