@@ -198,8 +198,15 @@ window.UI = window.UI || {};
   // there's no second classification to keep in sync with orders.js.
   function itemHtml(o, sideClass) {
     const cityClass = o.kind.startsWith("city:") ? " map-ring-item-city" : "";
+    // Shortcut badge (2026-08-07, user-directed) -- o.shortcut is set by
+    // main.js's renderRingMenu for the handful of pills that have a fixed
+    // key binding; plain trailing text inside the same nowrap/ellipsis
+    // button rather than a flex layout, so a long label just pushes it
+    // toward (and, worst case, past) the clipped edge instead of needing
+    // its own box model.
+    const shortcut = o.shortcut ? `<span class="map-ring-item-shortcut">${escapeHtml(o.shortcut)}</span>` : "";
     return `<button class="map-ring-item${sideClass}${cityClass}${o.danger ? " map-ring-item-danger" : ""}"`
-      + ` data-ring-kind="${escapeHtml(o.kind)}">${escapeHtml(o.label)}</button>`;
+      + ` data-ring-kind="${escapeHtml(o.kind)}">${escapeHtml(o.label)}${shortcut}</button>`;
   }
 
   /** Applies one layout to real elements. Shared by render (via a detached

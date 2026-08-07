@@ -226,26 +226,18 @@ window.GameData.TECHS = {
     costBreakdown: { coin: 12, harvest: 8 },
     effects: [{ type: "unlock_building", building: "bazaar" }],
   },
+  // Absorbed "Longspear" (2026-08-07, user-directed): that tech's own
+  // effect (Spearguard +2 attack/+1 defense) is folded into this one's
+  // effects array below, and the "longspear" tech id no longer exists --
+  // nothing else in the codebase referenced it by id (no unit unlocks, no
+  // other tech's prereqs), so removing it is a clean data-only cut.
   defense_of_the_kingdom: {
     id: "defense_of_the_kingdom", label: "Defense of the Kingdom", category: "military", layer: 2, cost: 22,
     prereqs: ["spears_raised"], raceOnly: "human",
-    description: "Spearguard gains +5 defense while garrisoned in a city or on a building tile.",
-    costBreakdown: { lore: 22 },
-    effects: [{ type: "garrison_defense_bonus", unit: "spearguard", value: 5 }],
-  },
-  longspear: {
-    id: "longspear", label: "Longspear", category: "military", layer: 2, cost: 22,
-    prereqs: ["spears_raised"], raceOnly: "human",
-    // FLAGGED FOR REVIEW: this tech used to also reduce how much a
-    // First-Strike attacker's counter-damage-taken got shrunk (via the now-
-    // removed ranged_negation_reduction effect/mechanic) -- that entire
-    // effect no longer exists anywhere in combat.js (First Strike no longer
-    // touches counter damage at all), so it's been dropped here rather than
-    // left as dead data. Only the stat upgrade remains; this tech may be
-    // worth redesigning with a new effect to fill the gap.
-    description: "Grants the Spearguard +2 attack and +1 defense.",
+    description: "Spearguard gains +5 defense while garrisoned in a city or on a building tile, plus +2 attack and +1 defense always.",
     costBreakdown: { lore: 22 },
     effects: [
+      { type: "garrison_defense_bonus", unit: "spearguard", value: 5 },
       { type: "unit_stat_upgrade", unit: "spearguard", changes: { attack: 2, defense: 1 } },
     ],
   },

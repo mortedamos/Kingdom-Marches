@@ -22,8 +22,12 @@
       <div class="title-bg-overlay"></div>
       <div class="title-content">
         <img class="title-logo" src="assets/img/logo.png" alt="Arcane Empires">
-        <p class="title-byline">2026 Shawn Nicolen</p>
         <button id="title-options-btn" class="title-options-btn">Begin</button>
+        <!-- Mute Sound (2026-08-07, user-directed) -- master mute for BOTH
+             music and sfx, mirroring the in-game Audio menu's checkbox (see
+             main.js's setupAudioControls); wired/label-synced by
+             setupTitleMuteControl. -->
+        <button id="title-mute-btn" class="title-mute-btn">Mute Sound</button>
       </div>
       <!-- "Which copy of the game is this" -- moved here from under the
            Start Game button inside the Game Options modal (2026-08-07,
@@ -105,15 +109,12 @@
         <div class="menu-dropdown" id="menu-interface-dropdown" style="display:none;">
           <button id="influence-toggle-btn" class="menu-dropdown-btn">Toggle Influence Overlay</button>
           <button id="grid-toggle-btn" class="menu-dropdown-btn">Toggle Grid Lines</button>
-          <!-- The shortcut hint is F11 because that is the key players
-               actually reach for. It is the BROWSER's own fullscreen
-               shortcut, not something this page binds -- browsers reserve
-               F11 and a page cannot reliably intercept it. This button uses
-               the Fullscreen API instead, which looks the same to the
-               player. See main.js's setupFullscreenControl. -->
-          <button id="fullscreen-toggle-btn" class="menu-dropdown-btn menu-dropdown-btn-shortcut">
-            <span>Enter Full Screen</span><span class="menu-shortcut">F11</span>
-          </button>
+          <!-- Full Screen moved into the Keyboard Shortcuts window
+               (2026-08-07, user-directed -- see js/main.js's
+               setupKeyboardShortcutsOverlay). The button itself still lives
+               in #keyboard-shortcuts-overlay below, unchanged id/handler
+               (setupFullscreenControl), just relocated. -->
+          <button id="keyboard-shortcuts-btn" class="menu-dropdown-btn">Keyboard Shortcuts</button>
           <div id="fog-of-war-panel" class="fow-panel" style="display:none;">
             <div class="fow-panel-label">Fog of War</div>
             <label class="audio-panel-row"><span>Off</span><input type="radio" name="fow-mode" id="fow-mode-off" value="off" checked></label>
@@ -224,6 +225,36 @@
     </div>
     <div id="game-dialog-overlay" class="techtree-overlay" style="display:none;">
       <div id="game-dialog-modal" class="techtree-modal game-dialog-modal"></div>
+    </div>
+    <!-- Keyboard Shortcuts window (2026-08-07, user-directed) -- opened from
+         the Interface menu's "Keyboard Shortcuts" button (see
+         js/main.js's setupKeyboardShortcutsOverlay). Also where the
+         standalone "Enter Full Screen" menu button now lives -- same id
+         (fullscreen-toggle-btn) and inner markup it always had, so
+         setupFullscreenControl needs no changes, just a new home. -->
+    <div id="keyboard-shortcuts-overlay" class="techtree-overlay" style="display:none;">
+      <div id="keyboard-shortcuts-modal" class="techtree-modal shortcuts-modal">
+        <button class="techtree-close-btn" id="keyboard-shortcuts-close-btn">Close</button>
+        <h2>Keyboard Shortcuts</h2>
+        <button id="fullscreen-toggle-btn" class="menu-dropdown-btn menu-dropdown-btn-shortcut">
+          <span>Enter Full Screen</span><span class="menu-shortcut">F11</span>
+        </button>
+        <div class="shortcuts-section">
+          <div class="shortcuts-section-title">General</div>
+          <div class="shortcuts-row"><span class="shortcuts-key">W A S D</span><span>Scroll around the map</span></div>
+          <div class="shortcuts-row"><span class="shortcuts-key">Shift (hold)</span><span>Repeat "Rest and Defend", "Gather More Resources", or "Research" for the next 3 turns when chosen</span></div>
+          <div class="shortcuts-row"><span class="shortcuts-key">M</span><span>Mute or unmute all sound</span></div>
+        </div>
+        <div class="shortcuts-section">
+          <div class="shortcuts-section-title">Unit Selected</div>
+          <div class="shortcuts-row"><span class="shortcuts-key">Space</span><span>Rest and Defend</span></div>
+          <div class="shortcuts-row"><span class="shortcuts-key">Arrow Keys</span><span>Move one tile</span></div>
+        </div>
+        <div class="shortcuts-section">
+          <div class="shortcuts-section-title">City Selected</div>
+          <div class="shortcuts-row"><span class="shortcuts-key">Space</span><span>Gather More Resources</span></div>
+        </div>
+      </div>
     </div>
     <div id="turn-progress-banner" class="turn-progress-banner" style="display:none;"></div>
   </div>

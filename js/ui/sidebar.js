@@ -80,11 +80,28 @@ window.UI = window.UI || {};
       researchHtml = `<button id="open-research-btn" class="research-btn">${escapeHtml(researchLabel)}</button>`;
     }
 
+    // "Next Idle City" (2026-08-07, user-directed) -- same shared predicate
+    // (cities.js's isCityIdle) already backing the per-city Idle tag in
+    // renderKingdomPanel's own city list, the map's idle badge, and the End
+    // Turn nag. Only rendered when there's actually one to jump to, same
+    // "hide the control rather than show it disabled" convention the unit
+    // cycler above uses.
+    let idleCityHtml = "";
+    if (viewState.humanCivId) {
+      const civ = civs[viewState.humanCivId];
+      const idleCount = civ ? civ.cities.filter((c) => window.GameEngine.cities.isCityIdle(civ, c, gameState)).length : 0;
+      if (idleCount > 0) {
+        idleCityHtml = `<button id="next-idle-city-btn" class="next-unit-btn">Next Idle City (${idleCount})</button>`;
+      }
+    }
+
+    // Turn counter moved below End Turn (2026-08-07, user-directed).
     html += `<div class="sidebar-footer">
       ${researchHtml}
+      ${idleCityHtml}
       ${cyclerHtml}
-      <div class="turn-counter">Turn ${turnNumber}</div>
       <button id="end-turn-btn" class="end-turn-btn">End Turn</button>
+      <div class="turn-counter">Turn ${turnNumber}</div>
     </div>`;
 
     container.innerHTML = html;
@@ -263,26 +280,44 @@ window.UI = window.UI || {};
     return `<div class="action-hint">Right-click ${escapeHtml(subject)} on the map for actions</div>`;
   }
 
-  /** The five veteran-bonus buttons, each showing what it would change and to
-   *  what ("Attack (12 -> 14)"). Exported (2026-08-06) because the ring menu
-   *  shows this same picker as a sub-page -- those labels are far too wide to
-   *  be ring pills, so the two surfaces share the markup rather than the ring
-   *  inventing a terser second version that could drift from this one. */
-  function levelUpChoicesHtml(unit, civ) {
+  /** The seven veteran-bonus buttons, each showing what it would change and
+   *  to what ("Attack (12 -> 14)"). Ring-menu-only now (2026-08-07, user-
+   *  directed -- the sidebar's own inline copy of this picker is gone, see
+   *  renderUnitPanel); still exported since main.js's ring popover
+   *  (buildRingPage) is the only remaining caller.
+   *
+   *  visionRadius/movement (2026-08-07, user-directed) joined the original
+   *  five paths -- their "current value" needs `gameState` (vision reads
+   *  civ.unitOverrides/conditions the same way turns.js's visibility sum
+   *  does; movement goes through ai.js's computeMovementBudget, which is
+   *  ALREADY the single source of truth for what a move actually costs, so
+   *  this reuses it rather than re-deriving a second formula that could
+   *  drift). Road/terrain bonuses computeMovementBudget also folds in are
+   *  left showing here too -- deliberately not stripped to "base + level
+   *  only", since matching what the sidebar's own current-tile display
+   *  already shows the player beats a cleaner-but-wrong number. */
+  function levelUpChoicesHtml(unit, civ, gameState) {
     const combat = window.GameEngine.combat;
     const LEVEL_UP_LABELS = {
       attack: "Attack", defense: "Defense", siegePct: "Siege",
       firstStrikePct: "First Strike", doubleStrikePct: "Double Strike",
+      visionRadius: "Vision", movement: "Movement",
     };
+    const baseUnit = window.GameData.getUnit(unit.typeId);
+    const effVision = (baseUnit.visionRadius || 3) + (civ.unitOverrides?.[unit.typeId]?.visionRadius || 0)
+      + (unit.conditions?.flying?.visionBonus || 0) + (unit.conditions?.keepingWatch?.visionBonus || 0)
+      + (unit.levelBonuses?.visionRadius || 0);
     const currentValue = {
       attack: combat.effectiveAttack(unit, civ),
       defense: combat.effectiveDefense(unit, civ),
       siegePct: combat.effectiveSiegePct(unit, civ),
       firstStrikePct: combat.effectiveFirstStrikePct(unit, civ),
       doubleStrikePct: combat.effectiveDoubleStrikePct(unit, civ),
+      visionRadius: effVision,
+      movement: window.GameEngine.ai.computeMovementBudget(unit, gameState.map, gameState.civs),
     };
     const isPct = (stat) => stat === "siegePct" || stat === "firstStrikePct" || stat === "doubleStrikePct";
-    const fmt = (stat, v) => isPct(stat) ? `${Math.round(v * 100)}%` : Math.round(v);
+    const fmt = (stat, v) => isPct(stat) ? `${Math.round(v * 100)}%` : (Number.isInteger(v) ? v : v.toFixed(1));
     return combat.LEVEL_UP_STATS.map((stat) => {
       const bonus = combat.LEVEL_BONUS_VALUES[stat];
       return `<button class="action-btn action-btn-primary level-up-btn" data-level-up-stat="${stat}">`
@@ -487,23 +522,18 @@ window.UI = window.UI || {};
     const doubleStrikePct = window.GameEngine.combat.effectiveDoubleStrikePct(unit, civ);
     const siegePct = window.GameEngine.combat.effectiveSiegePct(unit, civ);
 
-    // Player-facing level-up picker (2026-08-04, user-reported): ai.js's
-    // applyComputedXP now leaves a human-controlled unit's level-up PENDING
-    // (see combat.js's pendingLevelUps) rather than auto-spending it via the
-    // AI's own chooseLevelUpStat heuristic. Shown at the very top of the
-    // panel, above even HP, so it can't be missed the next time this unit is
-    // selected -- and each button applies one level immediately, looping
-    // back here (via redraw) if more than one point is still pending (a big
-    // single XP grant, e.g. a signature kill, can vault more than one
-    // threshold at once).
+    // Level-up notice (2026-08-07, user-directed: the actual picker is
+    // ring-menu-only now, see orders.js's "levelUp" pill/main.js's
+    // buildRingPage) -- same INFORMATION ONLY convention this whole panel
+    // follows: the verb lives on the ring, this just tells the player one
+    // is waiting so it can't be missed the next time this unit is selected.
     let levelUpActions = "";
     if (isHumanUnit) {
       const pendingCount = window.GameEngine.combat.pendingLevelUps(unit);
       if (pendingCount > 0) {
         levelUpActions = `<div class="placement-banner">
-          <strong>Level Up!${pendingCount > 1 ? ` (${pendingCount} pending)` : ''}</strong>
-          <div>Choose a veteran bonus:</div>
-          ${levelUpChoicesHtml(unit, civ)}
+          <strong>Level Up! (${pendingCount} pending)</strong>
+          <div>Right-click this unit to choose a veteran bonus.</div>
         </div>`;
       }
     }

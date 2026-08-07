@@ -257,6 +257,26 @@ window.GameEngine = window.GameEngine || {};
     unit.gotoTarget = null;
   }
 
+  /** Rest and Defend (2026-08-07, user-directed): heals via unit.resting AND
+   *  doubles defense until the start of this unit's next turn via the
+   *  "defending" condition -- see combat.js's setCondition. Pulled out of
+   *  main.js's handleRestAndDefend into a plain engine function so it can
+   *  be re-invoked automatically by turns.js's per-turn "Shift-held: repeat
+   *  for the next 3 turns" auto-repeat (see finishCivTurn), not just from a
+   *  direct player click. Returns false (no-op) if the unit already acted
+   *  this turn -- same guard the ring pill's own visibility uses. */
+  function performRestAndDefend(unit, gameState) {
+    if (!unit || unit.usedThisTurn) return false;
+    unit.automated = false;
+    unit.pendingIntent = null;
+    unit.gotoTarget = null;
+    if (unit.channeling === "garrison") unit.channeling = null;
+    unit.resting = true;
+    window.GameEngine.combat.setCondition(unit, "defending", { expiresAtTurn: (gameState.turnNumber || 0) + 1 });
+    unit.usedThisTurn = true;
+    return true;
+  }
+
   function advanceGotoOrder(unit, gameState) {
     const target = unit.gotoTarget;
     if (!target) return;
@@ -523,9 +543,14 @@ window.GameEngine = window.GameEngine || {};
       // stopOrderBtn for the equivalent sidebar button.
       if (unit.gotoTarget) options.push({ kind: "stopOrder", label: "Stop Order", danger: true });
 
+      // Rest and Defend (2026-08-07, user-directed): merged from two
+      // separate pills into one -- both effects (heal via unit.resting,
+      // x2 defense via the "defending" condition) still apply together;
+      // see main.js's handleRestAndDefend. overlays.js's drawConditionBadges
+      // skips the resting icon whenever "defending" is also active so this
+      // shows exactly one badge, not two.
       if (!unit.usedThisTurn) {
-        options.push({ kind: "rest", label: "Rest" });
-        options.push({ kind: "defend", label: "Defend" });
+        options.push({ kind: "restAndDefend", label: "Rest and Defend" });
       }
       // Garrison -- sidebar.js's garrisonBtn/cancel-garrison-btn.
       if (unit.channeling === "garrison") {
@@ -620,7 +645,11 @@ window.GameEngine = window.GameEngine || {};
       ].filter(Boolean).join(" ");
       // "Gather More Resources" (2026-08-06, user-directed rename -- was
       // "Resources", which read as a status label rather than a verb).
-      if (amounts) options.push({ kind: "city:resourceProduction", label: `Gather More Resources (${amounts})` });
+      // Label no longer shows the amount (2026-08-07, user-directed) --
+      // `amounts` is still computed and still gates whether this pill is
+      // offered at all (a freshly founded city with nothing to take a share
+      // of yet still gets no pill), just not printed into the label text.
+      if (amounts) options.push({ kind: "city:resourceProduction", label: "Gather More Resources" });
 
       // "Research" (2026-08-06, user-directed): the fourth thing this city's
       // production can go into, alongside a unit/building/resources -- see
@@ -803,6 +832,7 @@ window.GameEngine = window.GameEngine || {};
     startGotoOrder,
     advanceGotoOrder,
     stopGotoOrder,
+    performRestAndDefend,
     plannedPath,
     contextMenuOptions,
     cityRingOptions,

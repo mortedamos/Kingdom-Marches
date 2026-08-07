@@ -73,7 +73,10 @@ window.GameEngine = window.GameEngine || {};
         // Halfellow "Keep an Eye Out": +3 vision while holding a lookout
         // post (Hidden + stationary) -- see ai.js's maybeKeepAnEyeOutPlay.
         const watchVision = unit.conditions?.keepingWatch?.visionBonus || 0;
-        const r = (baseUnit.visionRadius || 3) + overrideVision + flightVision + watchVision;
+        // Level-up "+1 Vision" pick (2026-08-07, user-directed) -- same flat-
+        // add convention as attack/defense, see combat.js's LEVEL_BONUS_VALUES.
+        const levelVision = unit.levelBonuses?.visionRadius || 0;
+        const r = (baseUnit.visionRadius || 3) + overrideVision + flightVision + watchVision + levelVision;
         for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) {
           const x = unit.x + dx, y = unit.y + dy;
           if (x < 0 || x >= map.width || y < 0 || y >= map.height) continue;
@@ -1215,6 +1218,41 @@ window.GameEngine = window.GameEngine || {};
           continue;
         }
         window.GameEngine.combat.setCondition(unit, "defending", { expiresAtTurn: (gameState.turnNumber || 0) + 1 });
+      }
+    }
+
+    // Shift-held "repeat for the next 3 turns" auto-repeat (2026-08-07,
+    // user-directed): main.js's maybeScheduleAutoRepeat stamps
+    // unit.autoRepeat/city.autoRepeat = {kind, turnsLeft} the moment the
+    // player Shift-clicks (or Shift-presses the matching key for) Rest and
+    // Defend, Gather More Resources, or Research. Re-fires that same action
+    // here, once per turn, decrementing until it runs out -- same "runs
+    // once per round without asking the player again" slot as the Garrison
+    // brace just above. Each engine call already self-gates on whether it's
+    // still valid (performRestAndDefend no-ops if the unit already acted
+    // this turn; applyResourceProduction/applyResearchBoost no-op on a
+    // queued build, an already-claimed turn, or -- for research -- nothing
+    // currently being researched), so a stale schedule just quietly does
+    // nothing rather than erroring.
+    if (turnCtx && civ.id === turnCtx.humanCivId) {
+      for (const unit of civ.units) {
+        if (!unit.autoRepeat || unit.autoRepeat.turnsLeft <= 0) continue;
+        if (unit.autoRepeat.kind === "restAndDefend") {
+          window.GameEngine.orders.performRestAndDefend(unit, gameState);
+        }
+        unit.autoRepeat.turnsLeft -= 1;
+        if (unit.autoRepeat.turnsLeft <= 0) unit.autoRepeat = null;
+      }
+      for (const city of civ.cities) {
+        if (!city.autoRepeat || city.autoRepeat.turnsLeft <= 0) continue;
+        if (city.autoRepeat.kind === "resourceProduction") {
+          window.GameEngine.cities.applyResourceProduction(city, civ, gameState);
+        } else if (city.autoRepeat.kind === "research") {
+          const result = window.GameEngine.cities.applyResearchBoost(city, civ, gameState);
+          if (result?.completed) civ.lastCompletedTech = result.techId;
+        }
+        city.autoRepeat.turnsLeft -= 1;
+        if (city.autoRepeat.turnsLeft <= 0) city.autoRepeat = null;
       }
     }
 

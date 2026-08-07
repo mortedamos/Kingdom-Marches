@@ -687,6 +687,15 @@ window.UI = window.UI || {};
     // so it reads clearly regardless of what's standing on the tile.
     drawFlashTile(ctx, viewState, offsetX, offsetY, ts, now);
 
+    // Enemy-in-range reticles (2026-08-07, user-directed): a persistent
+    // small target over every enemy unit the CURRENTLY SELECTED unit could
+    // actually attack right now, so the player doesn't have to hover each
+    // enemy one at a time to find out which ones are in range. Drawn before
+    // the hover-driven order preview just below, so that preview's own
+    // fuller attack reticle still reads clearly on top for whichever tile
+    // is actually being considered.
+    drawEnemyTargets(ctx, gameState, viewState, offsetX, offsetY, ts);
+
     // Path preview last-but-one: it must read clearly over units and terrain
     // alike, since the whole point is showing a route THROUGH them.
     drawOrderPreview(ctx, gameState, viewState, offsetX, offsetY, ts);
@@ -841,6 +850,12 @@ window.UI = window.UI || {};
     const dashOffset = -((now % PATH_DASH_MS_PER_CYCLE) / PATH_DASH_MS_PER_CYCLE) * dashCycle;
 
     for (const unit of civ.units) {
+      // Selected-unit-only (2026-08-07, user-directed): this used to draw
+      // every unit's own goto/planned-path line at once (full opacity for
+      // the selected one, half for the rest) -- a busy map with several
+      // units mid-route got cluttered with lines for units the player
+      // isn't even looking at right now.
+      if (unit !== viewState.selectedUnit) continue;
       const plan = orders.plannedPath(unit, gameState);
       if (!plan) continue;
 
@@ -861,10 +876,9 @@ window.UI = window.UI || {};
         || Math.max(...ys) < -ts || Math.min(...ys) > ctx.canvas.height + ts) continue;
 
       const color = PLANNED_PATH_COLORS[plan.kind] || PLANNED_PATH_COLORS.goto;
-      const alpha = viewState.selectedUnit === unit ? 1 : 0.5;
 
       ctx.save();
-      ctx.globalAlpha = alpha;
+      ctx.globalAlpha = 1;
       ctx.lineCap = "round";
       ctx.lineJoin = "round";
 
@@ -900,6 +914,58 @@ window.UI = window.UI || {};
       ctx.lineWidth = Math.max(2, ts * 0.06);
       ctx.stroke();
       ctx.restore();
+    }
+  }
+
+  /**
+   * Small red target reticle over every enemy unit currently in range of
+   * the selected unit (2026-08-07, user-directed) -- reuses
+   * ai.js's canAttackUnitNow (the same range/visibility/line-of-sight/
+   * reachability check considerAttackOrGarrison itself consults) rather
+   * than re-deriving range logic here, so this can never promise a target
+   * that clicking wouldn't actually let the player attack. Deliberately
+   * simpler than drawOrderPreview's own attack reticle (no odds label, no
+   * tile-square outline) -- this is an at-a-glance "these are in range"
+   * scan across the whole visible board, not a considered look at one tile.
+   */
+  function drawEnemyTargets(ctx, gameState, viewState, offsetX, offsetY, ts) {
+    const orders = window.GameEngine.orders;
+    const ai = window.GameEngine.ai;
+    const unit = viewState.selectedUnit;
+    if (!orders || !ai || !orders.canCommand(unit, gameState, viewState.humanCivId)) return;
+    const civ = gameState.civs[unit.civId];
+    if (!civ) return;
+
+    for (const otherCiv of Object.values(gameState.civs)) {
+      if (otherCiv.id === civ.id) continue;
+      for (const enemy of otherCiv.units) {
+        if (enemy.carriedBy) continue; // not a real, targetable board presence
+        if (!ai.canAttackUnitNow(civ, unit, enemy, gameState)) continue;
+        const screenX = enemy.x * ts + offsetX, screenY = enemy.y * ts + offsetY;
+        if (screenX < -ts || screenX > ctx.canvas.width || screenY < -ts || screenY > ctx.canvas.height) continue;
+        const cx = screenX + ts / 2, cy = screenY + ts / 2;
+
+        ctx.save();
+        ctx.strokeStyle = "rgba(255,60,60,0.85)";
+        ctx.lineWidth = Math.max(1, ts * 0.03);
+        ctx.beginPath();
+        ctx.arc(cx, cy, ts * 0.24, 0, Math.PI * 2);
+        ctx.stroke();
+        // Crosshair ticks, gapped around the ring rather than crossing all
+        // the way through the center -- reads as a "target" mark, not just
+        // a circle-with-a-plus.
+        ctx.beginPath();
+        ctx.moveTo(cx - ts * 0.32, cy); ctx.lineTo(cx - ts * 0.17, cy);
+        ctx.moveTo(cx + ts * 0.17, cy); ctx.lineTo(cx + ts * 0.32, cy);
+        ctx.moveTo(cx, cy - ts * 0.32); ctx.lineTo(cx, cy - ts * 0.17);
+        ctx.moveTo(cx, cy + 0.17 * ts); ctx.lineTo(cx, cy + ts * 0.32);
+        ctx.stroke();
+        ctx.fillStyle = "rgba(255,60,60,0.85)";
+        ctx.beginPath();
+        ctx.arc(cx, cy, ts * 0.05, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      }
     }
   }
 

@@ -2062,7 +2062,10 @@ window.GameEngine = window.GameEngine || {};
     const baseUnit = window.GameData.getUnit(unit.typeId);
     // civ.unitOverrides movement delta (e.g. Orc's Swift Hunters: +1 Wolf Rider movement)
     const overrideMovement = unit._moveMods?.unitOverrides?.[unit.typeId]?.movement || 0;
-    let movement = baseUnit.movement + overrideMovement;
+    // Level-up "+0.5 Movement" pick (2026-08-07, user-directed) -- same
+    // flat-add convention as attack/defense, see combat.js's LEVEL_BONUS_VALUES.
+    const levelMovement = unit.levelBonuses?.movement || 0;
+    let movement = baseUnit.movement + overrideMovement + levelMovement;
     // Tech-unlocked terrain movement bonus: extra movement points while standing
     // on the race's favored terrain at the start of this move (e.g. Human on Plains).
     // "river" is a pseudo-terrain key checked separately since rivers overlay

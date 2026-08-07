@@ -258,14 +258,19 @@ window.UI = window.UI || {};
     ctx.globalCompositeOperation = "source-over";
 
     // Faint edge tint (2026-08-07, user-directed: "very very small amounts
-    // of a very pale orange or light blue sometimes around the edges, to
-    // help define cloud shape") -- most clouds get none; the rest get one
-    // warm or cool tint, never both. Each puff's own rim gradient fades to
-    // 0 alpha exactly at its radius (matching the puff's own edge), so this
-    // can't spill a colored halo past where the cloud already is.
+    // of a very pale orange or light blue [or pale pink] sometimes around
+    // the edges, to help define cloud shape") -- most clouds get none; the
+    // rest get exactly one of the three tints, never more than one. Each
+    // puff's own rim gradient fades to 0 alpha exactly at its radius
+    // (matching the puff's own edge), so this can't spill a colored halo
+    // past where the cloud already is.
     const rimRoll = Math.random();
     if (rimRoll < 0.35) {
-      const rimColor = rimRoll < 0.175 ? "255,214,178" : "182,212,255"; // pale orange / pale blue
+      // Three equal slices of the [0, 0.35) band: pale orange / pale blue /
+      // pale pink, each with the same ~11.7% overall chance.
+      const rimColor = rimRoll < 0.35 / 3 ? "255,214,178" // pale orange
+        : rimRoll < (0.35 / 3) * 2 ? "182,212,255"        // pale blue
+        : "255,200,220";                                   // pale pink
       for (const p of puffs) {
         const x = ox + p.px, y = oy + p.py;
         const rim = ctx.createRadialGradient(x, y, p.r * 0.75, x, y, p.r);

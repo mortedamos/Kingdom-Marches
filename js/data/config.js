@@ -68,12 +68,12 @@ window.GameConfig = {
     /** Local date this build was cut, YYYY-MM-DD. */
     date: "2026-08-07",
     /** Local time this build was cut, 24-hour HH:MM. */
-    time: "12:45",
+    time: "17:05",
     /** Monotonic build counter. Continues the numbering the old GitHub-
      *  derived stamp used (it showed the repo's total commit count), so
      *  builds from before and after this change still sort against each
      *  other. Increment it; don't recompute it. */
-    number: 75,
+    number: 76,
   },
 
   // =========================================================================
@@ -230,8 +230,9 @@ window.GameConfig = {
     influenceMultPerIndustriousness: 0.6,
 
     /** Minimum Chebyshev distance between any two cities, anywhere, and the
-     *  relaxed floor used only when a civ is stranded with no legal site. */
-    minCitySpacing: 8,
+     *  relaxed floor used only when a civ is stranded with no legal site.
+     *  Lowered 8 -> 6 (2026-08-07, user-directed). */
+    minCitySpacing: 6,
     emergencyCitySpacing: 3,
 
     /** How many road tiles in a city's radius can pay a road yield bonus.
@@ -399,21 +400,28 @@ window.GameConfig = {
     xpKillBase: 3,
     xpKillPowerMult: 0.5,
 
-    /** Per-level bonus for each of the five upgrade paths a leveling unit
+    /** Per-level bonus for each of the seven upgrade paths a leveling unit
      *  can pick. Attack/Defense are flat +1 (meaningful on this game's small
      *  integer stat scale). Siege/First Strike/Double Strike are
      *  percentage-point bonuses, kept deliberately smaller per level:
      *  siegePct only applies against structures, firstStrikePct compounds
-     *  every round of a fight, and doubleStrikePct (2026-08-03,
-     *  user-directed) is worth roughly a whole extra attack's chance to
-     *  land, so 3% per level was chosen to feel comparable to the other two
-     *  percentage paths rather than to Attack/Defense's flat weight. */
+     *  every round of a fight, and doubleStrikePct is worth roughly a whole
+     *  extra attack's chance to land, so 7%/level (2026-08-07, user-
+     *  directed -- raised from 3%) was chosen to feel comparable to the
+     *  other two percentage paths rather than to Attack/Defense's flat
+     *  weight. visionRadius/movement (2026-08-07, user-directed) are the
+     *  same flat-add convention as Attack/Defense, just on this game's
+     *  already-small vision/movement scales -- see turns.js's visibility
+     *  radius sum and ai.js's computeMovementBudget for where each reads
+     *  unit.levelBonuses. */
     bonusValues: {
       attack: 1,
       defense: 1,
       siegePct: 0.10,
       firstStrikePct: 0.01,
-      doubleStrikePct: 0.03,
+      doubleStrikePct: 0.07,
+      visionRadius: 1,
+      movement: 0.5,
     },
   },
 

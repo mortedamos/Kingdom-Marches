@@ -667,7 +667,14 @@ window.UI = window.UI || {};
   function drawConditionBadges(ctx, unit, boxX, boxY, boxSize, ts) {
     const icons = [];
     if (unit.carries) icons.push(CARRYING_ICON);
-    if (unit.resting) icons.push(CONDITION_ICONS.resting);
+    // Rest and Defend (2026-08-07, user-directed) sets BOTH unit.resting and
+    // conditions.defending together -- only one badge should show for that
+    // single action, so the resting icon is skipped whenever defending is
+    // also active (defending's own icon is picked up by the loop below).
+    // Every OTHER unit.resting=true call site (the many AI heuristics in
+    // ai.js marking "this unit had nothing else to do") has no defending
+    // condition alongside it and still shows its own lone badge as before.
+    if (unit.resting && !unit.conditions?.defending) icons.push(CONDITION_ICONS.resting);
     if (unit.conditions) {
       for (const key of Object.keys(unit.conditions)) {
         if (CONDITION_ICONS[key]) icons.push(CONDITION_ICONS[key]);

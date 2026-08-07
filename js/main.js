@@ -56,6 +56,15 @@
   let lastRenderedDialog = null;
   let lastRenderedRingKey = null;
 
+  // Keyboard shortcuts (2026-08-07, user-directed) -- see
+  // setupGlobalShortcuts. shiftHeld drives both the ring menu's "Next 3
+  // turns: " label prefix and whether a shortcut/pill click schedules an
+  // auto-repeat (see maybeScheduleAutoRepeat); panKeys is which of WASD are
+  // currently held, read every animation-loop frame for continuous map
+  // panning rather than one step per keydown.
+  let shiftHeld = false;
+  const panKeys = new Set();
+
   // Dialog kinds that ask "are you sure you want to do this?" -- see
   // redraw()'s dialog block, which plays system_confirm_action.mp3 the
   // instant one of these is first shown. Deliberately excludes the purely
@@ -441,8 +450,32 @@
 
     setupLaunchOptionsOverlay();
     setupCreditsOverlay();
+    setupTitleMuteControl();
     setupContextMenuDismissal();
     setupButtonClickSfx();
+    setupGlobalShortcuts();
+    setupKeyboardShortcutsOverlay();
+  }
+
+  /** Title screen's own master-mute button (2026-08-07, user-directed) --
+   *  same "mute covers BOTH systems" master switch as the in-game Audio
+   *  menu's checkbox (see setupAudioControls), just reachable before a game
+   *  even starts. Label reflects MusicSystem's persisted mute state on
+   *  load, same as that checkbox does, so the two controls always agree. */
+  function setupTitleMuteControl() {
+    const btn = $("title-mute-btn");
+    if (!btn) return;
+    const sync = () => {
+      const muted = window.MusicSystem.isMuted();
+      btn.textContent = muted ? "Unmute Sound" : "Mute Sound";
+    };
+    sync();
+    btn.addEventListener("click", () => {
+      const muted = !window.MusicSystem.isMuted();
+      window.MusicSystem.setMuted(muted);
+      window.SfxSystem.setMuted(muted);
+      sync();
+    });
   }
 
   /** Open/close wiring for the launch options modal. Closing is deliberately
@@ -466,6 +499,25 @@
 
     $("title-options-btn").addEventListener("click", open);
     $("launch-options-close-btn").addEventListener("click", close);
+    overlay.addEventListener("mousedown", (e) => { if (e.target === overlay) close(); });
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape" && overlay.style.display === "flex") close();
+    });
+  }
+
+  /** Open/close wiring for the Keyboard Shortcuts window (2026-08-07,
+   *  user-directed) -- same button/backdrop/Escape convention as
+   *  setupLaunchOptionsOverlay. Opened from the Interface menu's
+   *  "Keyboard Shortcuts" button, which replaced the standalone "Enter
+   *  Full Screen" entry there; that button now lives INSIDE this window
+   *  (see index.html), unchanged apart from its new parent. */
+  function setupKeyboardShortcutsOverlay() {
+    const overlay = $("keyboard-shortcuts-overlay");
+    if (!overlay) return;
+    const close = () => { overlay.style.display = "none"; };
+    const btn = $("keyboard-shortcuts-btn");
+    if (btn) btn.addEventListener("click", () => { overlay.style.display = "flex"; });
+    $("keyboard-shortcuts-close-btn").addEventListener("click", close);
     overlay.addEventListener("mousedown", (e) => { if (e.target === overlay) close(); });
     document.addEventListener("keydown", (e) => {
       if (e.key === "Escape" && overlay.style.display === "flex") close();
@@ -1338,9 +1390,14 @@
     document.addEventListener("fullscreenchange", syncLabel);
     // Opening the menu re-reads the real state, which covers the player
     // having used F11 (browser-level fullscreen doesn't always fire the
-    // Fullscreen API's own change event).
+    // Fullscreen API's own change event). The button itself now lives in
+    // the Keyboard Shortcuts window (2026-08-07, user-directed), not the
+    // Interface dropdown -- resync on whichever one the player actually
+    // opens next.
     const interfaceBtn = $("menu-interface-btn");
     if (interfaceBtn) interfaceBtn.addEventListener("click", syncLabel);
+    const shortcutsBtn = $("keyboard-shortcuts-btn");
+    if (shortcutsBtn) shortcutsBtn.addEventListener("click", syncLabel);
     syncLabel();
   }
 
@@ -1710,6 +1767,159 @@
     if (unit.channeling === "garrison") unit.channeling = null;
   }
 
+  /** Shift-held "repeat for the next 3 turns" (2026-08-07, user-directed):
+   *  called by handleRestAndDefend/handleResourceProduction/
+   *  handleCityResearch right after each has successfully applied its
+   *  action once, normally. Holding Shift at the moment the action is
+   *  chosen -- a ring click or the matching keyboard shortcut, both funnel
+   *  through the same handler -- arms it to fire again automatically at the
+   *  start of each of the next 3 turns; see turns.js's finishCivTurn, which
+   *  reads and decrements this same field. A plain (non-Shift) invocation
+   *  always clears any previous schedule, so re-choosing the action by hand
+   *  is how the player turns auto-repeat back off. */
+  function maybeScheduleAutoRepeat(entity, kind) {
+    entity.autoRepeat = shiftHeld ? { kind, turnsLeft: 3 } : null;
+  }
+
+  const SHORTCUT_OVERLAY_IDS = [
+    "launch-options-overlay", "credits-overlay", "techtree-overlay",
+    "reports-overlay", "game-dialog-overlay", "keyboard-shortcuts-overlay",
+  ];
+
+  /** True while any full-screen modal is up -- gates the gameplay shortcuts
+   *  (WASD pan, Space, arrows) below so they can't reach through a dialog
+   *  the player is actually looking at (e.g. Space toggling Rest and Defend
+   *  on the unit behind a "Research Complete" popup). Checks actual
+   *  rendered size, not display style: launch-options-overlay in particular
+   *  is never explicitly closed when Start Game is clicked -- only its
+   *  ancestor #title-screen is hidden (see startGame) -- so its OWN
+   *  style.display, and even its OWN getComputedStyle().display, stay
+   *  "flex" for the rest of the session even though the whole subtree
+   *  renders nothing once that ancestor is display:none (getComputedStyle
+   *  reports an element's own resolved display value, not whether an
+   *  ancestor is hiding it). getBoundingClientRect, unlike either of those,
+   *  collapses to 0x0 whenever anything up the ancestor chain is
+   *  display:none, so it's the one check that's actually reliable here. */
+  function anyOverlayOpen() {
+    return SHORTCUT_OVERLAY_IDS.some((id) => {
+      const el = $(id);
+      if (!el) return false;
+      const r = el.getBoundingClientRect();
+      return r.width > 0 && r.height > 0;
+    });
+  }
+
+  function isTypingTarget(el) {
+    return !!(el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" ||
+      el.tagName === "SELECT" || el.isContentEditable));
+  }
+
+  /** Global keyboard shortcuts (2026-08-07, user-directed). Registered ONCE
+   *  at bootstrap, same "safe pre-game, guards internally" convention
+   *  setupContextMenuDismissal uses -- every handler below re-checks
+   *  gameState/viewState/humanCivId itself rather than assuming a game is
+   *  running.
+   *
+   *  General: WASD pans the map (continuous, applied every animation-loop
+   *  frame while held -- see startAnimationLoop's panKeys read); Shift
+   *  arms the "next 3 turns" auto-repeat on Rest and Defend/Gather More
+   *  Resources/Research (see maybeScheduleAutoRepeat) and prefixes their
+   *  ring-menu labels (see renderRingMenu); M toggles the same master mute
+   *  both the title screen's and the in-game Audio menu's mute controls
+   *  use. Unit context: Space = Rest and Defend, arrow keys move one tile.
+   *  City context: Space = Gather More Resources. */
+  function setupGlobalShortcuts() {
+    function handleGlobalKeydown(e) {
+      if (e.key === "Shift") {
+        if (!shiftHeld) {
+          shiftHeld = true;
+          if (viewState && viewState.ringMenu) redraw();
+        }
+        return;
+      }
+      // Sync from the event's own modifier flag, not just the tracked
+      // Shift keydown/keyup pair above -- a real held-Shift-then-press
+      // always agrees with both, but this is the one source of truth that
+      // can't drift (a keyup swallowed by another element, a synthetic/
+      // chorded event that never sent its own separate "Shift" keydown).
+      shiftHeld = e.shiftKey;
+      if (isTypingTarget(document.activeElement)) return;
+
+      // M: global mute toggle -- works even before a game has started (the
+      // title screen has its own dedicated button for this, but the key
+      // should too, matching every other "general" shortcut's always-on
+      // scope). Not gated on anyOverlayOpen(): muting sound is harmless to
+      // fire through a dialog, unlike the movement/action shortcuts below.
+      if (e.key === "m" || e.key === "M") {
+        const muted = !window.MusicSystem.isMuted();
+        window.MusicSystem.setMuted(muted);
+        window.SfxSystem.setMuted(muted);
+        const titleBtn = $("title-mute-btn");
+        if (titleBtn) titleBtn.textContent = muted ? "Unmute Sound" : "Mute Sound";
+        const checkbox = $("audio-mute-checkbox");
+        if (checkbox) checkbox.checked = muted;
+        return;
+      }
+
+      if (!gameState || !viewState || !humanCivId || anyOverlayOpen()) return;
+
+      const key = e.key.toLowerCase();
+      if (key === "w" || key === "a" || key === "s" || key === "d") {
+        panKeys.add(key);
+        return;
+      }
+
+      if (e.key === " " || e.key === "Spacebar") {
+        e.preventDefault(); // stop the page itself from scrolling
+        if (e.repeat) return;
+        if (viewState.selectedUnit && viewState.selectedUnit.civId === humanCivId) {
+          handleRestAndDefend();
+        } else if (viewState.selectedCity && viewState.selectedCity.civId === humanCivId) {
+          handleResourceProduction(viewState.selectedCity);
+        }
+        return;
+      }
+
+      const ARROW_DELTA = {
+        ArrowUp: { dx: 0, dy: -1 }, ArrowDown: { dx: 0, dy: 1 },
+        ArrowLeft: { dx: -1, dy: 0 }, ArrowRight: { dx: 1, dy: 0 },
+      };
+      if (ARROW_DELTA[e.key]) {
+        e.preventDefault();
+        if (e.repeat) return;
+        const unit = viewState.selectedUnit;
+        if (!unit || unit.civId !== humanCivId || unit.usedThisTurn) return;
+        const { dx, dy } = ARROW_DELTA[e.key];
+        const tx = unit.x + dx, ty = unit.y + dy;
+        const { width, height } = gameState.map;
+        if (tx < 0 || ty < 0 || tx >= width || ty >= height) return;
+        endAutomationAndGoto(unit);
+        window.GameEngine.orders.startGotoOrder(unit, gameState, tx, ty, false);
+        if (viewState.selection) {
+          viewState.selection.x = unit.x;
+          viewState.selection.y = unit.y;
+        }
+        redraw();
+      }
+    }
+    document.addEventListener("keydown", handleGlobalKeydown);
+
+    document.addEventListener("keyup", (e) => {
+      if (e.key === "Shift") {
+        shiftHeld = false;
+        if (viewState && viewState.ringMenu) redraw();
+        return;
+      }
+      const key = e.key.toLowerCase();
+      if (key === "w" || key === "a" || key === "s" || key === "d") panKeys.delete(key);
+    });
+
+    // Held keys must not survive a tab switch/alt-tab -- there's no keyup
+    // event once focus leaves the page, so without this a key released
+    // while the browser wasn't focused would pan forever.
+    window.addEventListener("blur", () => { panKeys.clear(); shiftHeld = false; });
+  }
+
   function handleFoundCity() {
     if (!humanCivId || !viewState.selectedUnit) return;
     const unit = viewState.selectedUnit;
@@ -2073,11 +2283,14 @@
 
   /** Shows the "X is being attacked" modal (see js/ui/dialog.js's
    *  "attackNotice" kind) and pauses turn processing until it's answered.
-   *  "Go to" jumps/centers the camera on the attack (via goToTile) before
-   *  resuming; "Skip" resumes without moving the camera -- either way the
-   *  attack itself already happened (this fires AFTER the fact, see
-   *  detectHumanAttack), `onDone` is what actually continues processing
-   *  the rest of the turn (advanceTurn's processBatch). */
+   *  The camera has already been recentered on the attack by the caller
+   *  (processBatch, 2026-08-07, user-directed -- see the comment there) by
+   *  the time this dialog appears, so its effects are still animating in
+   *  view behind it. "Go to" (via goToTile) mainly selects the attacked
+   *  unit/city's own sidebar tab now rather than moving the camera (already
+   *  there); "Skip" just dismisses without that tab switch. Either way,
+   *  `onDone` is what actually continues processing the rest of the turn
+   *  (advanceTurn's processBatch). */
   function offerAttackNotice(notice, onDone) {
     viewState.dialog = {
       kind: "attackNotice",
@@ -2158,6 +2371,21 @@
         }
         const notice = detectHumanAttack(preAttackSnap);
         if (notice && !window.UI.render.isTileOnScreen(notice.x, notice.y, $("map-canvas"), gameState, viewState)) {
+          // Arrive at the attack site immediately (2026-08-07, user-
+          // directed), not only once the player manually clicks "Go to" on
+          // the dialog below. The step that just ran already queued this
+          // attack's floating-text/death-fx events (see floatingtext.js/
+          // deathfx.js) and applied its HP change -- advanceOneUnitStep is
+          // atomic, so there's no engine hook to pause mid-resolution and
+          // truly show the attack unfolding. What IS achievable: those
+          // effects animate over a couple of real seconds once render.js's
+          // per-frame drain first sees them, so recentering the camera HERE
+          // -- before the player has had time to read the dialog and click,
+          // let alone the several seconds an off-screen "Go to" click used
+          // to take before this fix -- means the animation is still playing
+          // when they land, rather than long since finished. See
+          // offerAttackNotice for the dialog itself.
+          centerViewOn(notice.x, notice.y);
           redraw();
           offerAttackNotice(notice, processBatch);
           return;
@@ -2220,6 +2448,8 @@
     if (endTurnBtn) endTurnBtn.onclick = handleEndTurnClick;
     const nextUnitBtn = $("next-unit-btn");
     if (nextUnitBtn) nextUnitBtn.onclick = handleNextUnit;
+    const nextIdleCityBtn = $("next-idle-city-btn");
+    if (nextIdleCityBtn) nextIdleCityBtn.onclick = handleNextIdleCity;
     const openResearchBtn = $("open-research-btn");
     if (openResearchBtn) openResearchBtn.onclick = () => { viewState.techTreeCivId = humanCivId; redraw(); };
 
@@ -2459,6 +2689,22 @@
       }
     }
 
+    // Keyboard-shortcut hints (2026-08-07, user-directed): a static badge on
+    // the two pills that always have one, plus the Shift-held "next 3
+    // turns" prefix on all three auto-repeat-eligible pills (see
+    // maybeScheduleAutoRepeat -- Space/restAndDefend/city:resourceProduction/
+    // city:research all funnel through the same handler a click would).
+    // Movement (arrow keys) has no single fixed pill to annotate this way --
+    // "moveTo" only exists dynamically once a destination tile is clicked --
+    // so it's left without a ring badge, a scoping call rather than an
+    // oversight.
+    for (const o of options) {
+      if (o.kind === "restAndDefend" || o.kind === "city:resourceProduction") o.shortcut = "Space";
+      if (shiftHeld && (o.kind === "restAndDefend" || o.kind === "city:resourceProduction" || o.kind === "city:research")) {
+        o.label = `Next 3 turns: ${o.label}`;
+      }
+    }
+
     const center = window.UI.render.tileCenterOnMap(menu.x, menu.y, canvas, gameState, viewState);
     const ctx = {
       cx: center.x, cy: center.y, ts: center.ts,
@@ -2474,7 +2720,7 @@
 
     const key = page
       ? `page:${menu.subject}:${menu.x},${menu.y}:${menu.page}:${page.body.length}`
-      : `${menu.subject}:${menu.x},${menu.y}::${options.map((o) => o.kind).join("|")}`;
+      : `${menu.subject}:${menu.x},${menu.y}::${options.map((o) => o.kind).join("|")}${shiftHeld ? ":shift" : ""}`;
 
     // Reposition first and rebuild only if that reports the markup is no
     // longer the right shape -- so a pan or zoom with the ring open moves the
@@ -2516,7 +2762,7 @@
     }
     if (menu.page === "levelUp") {
       if (!unit || window.GameEngine.combat.pendingLevelUps(unit) <= 0) return null;
-      return { title: "Level Up", body: window.UI.sidebar.levelUpChoicesHtml(unit, civ) };
+      return { title: "Level Up", body: window.UI.sidebar.levelUpChoicesHtml(unit, civ, gameState) };
     }
     return null;
   }
@@ -2651,13 +2897,18 @@
     }
   }
 
-  function handleRestUnit() {
+  // Rest and Defend (2026-08-07, user-directed: merged from two separate
+  // actions into one) -- both effects still apply: healUnit at end of turn
+  // via unit.resting (turns.js), AND doubled defense until the start of
+  // this unit's next turn via the "defending" condition (same
+  // expiresAtTurn convention ai.js's performDefend uses for the AI side).
+  // Only one badge shows for this (overlays.js's drawConditionBadges skips
+  // the resting icon whenever "defending" is also active).
+  function handleRestAndDefend() {
     if (!humanCivId || !viewState.selectedUnit) return;
     const unit = viewState.selectedUnit;
-    if (unit.usedThisTurn) return;
-    endAutomationAndGoto(unit);
-    unit.resting = true;
-    unit.usedThisTurn = true;
+    if (!window.GameEngine.orders.performRestAndDefend(unit, gameState)) return;
+    maybeScheduleAutoRepeat(unit, "restAndDefend");
     redraw();
   }
 
@@ -2688,22 +2939,8 @@
     redraw();
   }
 
-  // Defend (2026-07-20, user-directed): a universal normal action, any
-  // race/unit -- doubles this unit's own defense (see combat.js's
-  // effectiveDefense) until the start of its next turn, same expiresAtTurn
-  // convention ai.js's performDefend uses for the AI side.
-  function handleDefendUnit() {
-    if (!humanCivId || !viewState.selectedUnit) return;
-    const unit = viewState.selectedUnit;
-    if (unit.usedThisTurn) return;
-    endAutomationAndGoto(unit);
-    window.GameEngine.combat.setCondition(unit, "defending", { expiresAtTurn: (gameState.turnNumber || 0) + 1 });
-    unit.usedThisTurn = true;
-    redraw();
-  }
-
   /** Garrison (2026-08-06, user-directed): the same x2-defense "defending"
-   *  condition as Defend just above, but CHANNELED -- started once, then
+   *  condition Rest and Defend also sets, but CHANNELED -- started once, then
    *  kept alive automatically every turn (see turns.js's finishCivTurn,
    *  which re-applies the condition for any human unit with
    *  unit.channeling === "garrison" so it never lapses on its own) instead
@@ -2863,7 +3100,7 @@
         handleResourceProduction(city);
         break;
       case "city:research":
-        window.GameEngine.cities.applyResearchBoost(city, gameState.civs[humanCivId], gameState);
+        handleCityResearch(city);
         break;
       case "city:buildUnit":
       case "city:buildStructure":
@@ -2956,11 +3193,8 @@
       case "cancelHidden":
         handleCancelHidden();
         break;
-      case "rest":
-        handleRestUnit();
-        break;
-      case "defend":
-        handleDefendUnit();
+      case "restAndDefend":
+        handleRestAndDefend();
         break;
       case "automate":
         handleToggleAutomate();
@@ -3111,7 +3345,29 @@
   function handleResourceProduction(city) {
     const civ = humanCivId && gameState.civs[humanCivId];
     if (!civ || !city || city.civId !== humanCivId) return;
-    window.GameEngine.cities.applyResourceProduction(city, civ, gameState);
+    if (!window.GameEngine.cities.applyResourceProduction(city, civ, gameState)) return;
+    maybeScheduleAutoRepeat(city, "resourceProduction");
+    redraw();
+  }
+
+  /** 2026-08-07, user-reported: finishing research via a city's own
+   *  "Research" boost pill never triggered the "research complete" dialog --
+   *  only turns.js's per-turn tickResearch path ever set civ.lastCompletedTech
+   *  (see finishRoundBookkeeping, which reads and clears it every round).
+   *  applyResearchBoost/reduceResearchTurns share the identical completion
+   *  logic and return a receipt with the same shape (`{completed, techId}`),
+   *  just never wrote it into that flag -- do so here so both paths notify
+   *  the same way. Its own named handler (rather than inlined in
+   *  handleCityRingAction) so the Space-bar shortcut and the Shift "next 3
+   *  turns" auto-repeat (turns.js) can both call the exact same path a ring
+   *  click does. */
+  function handleCityResearch(city) {
+    const civ = humanCivId && gameState.civs[humanCivId];
+    if (!civ || !city || city.civId !== humanCivId) return;
+    const result = window.GameEngine.cities.applyResearchBoost(city, civ, gameState);
+    if (!result) return;
+    if (result.completed) civ.lastCompletedTech = result.techId;
+    maybeScheduleAutoRepeat(city, "research");
     redraw();
   }
 
@@ -3151,6 +3407,34 @@
     centerViewOn(next.x, next.y);
     // Flash the tile (2026-08-06, user-directed) -- see render.js's
     // drawFlashTile, driven by the existing per-frame animation loop.
+    viewState.flashTile = { x: next.x, y: next.y, startTime: performance.now() };
+    redraw();
+  }
+
+  /** "Next Idle City" (2026-08-07, user-directed) -- same cycler shape as
+   *  handleNextUnit just above, for cities.js's isCityIdle predicate (the
+   *  same one backing the sidebar's per-city Idle tag, the map's idle
+   *  badge, and the End Turn nag) instead of units needing orders. Mirrors
+   *  handleNextUnit's exact step order (select+tab, THEN center, THEN
+   *  flash, THEN one redraw at the end) rather than calling goToTile --
+   *  that helper redraws internally, which would land the flash flag one
+   *  frame too late. */
+  function handleNextIdleCity() {
+    if (!humanCivId) return;
+    const civ = gameState.civs[humanCivId];
+    if (!civ) return;
+    const idle = civ.cities.filter((c) => window.GameEngine.cities.isCityIdle(civ, c, gameState));
+    if (!idle.length) return;
+    const current = viewState.selectedCity;
+    const currentIdx = current ? idle.indexOf(current) : -1;
+    const next = idle[(currentIdx + 1) % idle.length];
+    window.UI.input.handleTileClick({ x: next.x, y: next.y }, gameState, viewState);
+    const sel = viewState.selection;
+    if (sel) {
+      const idx = sel.tabs.findIndex((t) => t.kind === "city" && t.city === next);
+      if (idx >= 0) window.UI.input.setActiveTab(gameState, viewState, idx);
+    }
+    centerViewOn(next.x, next.y);
     viewState.flashTile = { x: next.x, y: next.y, startTime: performance.now() };
     redraw();
   }
@@ -3270,6 +3554,14 @@
   // animated tile sprites play independently of turn progression or input.
   // The sidebar is not re-rendered here (data doesn't change between turns).
   let animFrameId = null;
+  let lastPanMs = null;
+  // WASD map panning (2026-08-07, user-directed) -- px/second at 100% zoom,
+  // applied every frame while a key is held (see setupGlobalShortcuts'
+  // panKeys) rather than one fixed step per keydown, so holding a key pans
+  // smoothly regardless of the OS's key-repeat rate. 2D only, same scoping
+  // as the clouds layer a few lines down -- the 3D renderer has its own
+  // separate camera model this doesn't touch.
+  const PAN_SPEED = 900;
   function startAnimationLoop() {
     if (animFrameId !== null) return; // already running
     function frame() {
@@ -3277,6 +3569,20 @@
         if (viewState.is3D) {
           window.UI.render3d.render($("map-canvas-3d"), gameState, viewState);
         } else {
+          if (panKeys.size) {
+            const now = performance.now();
+            const dt = lastPanMs === null ? 0 : Math.min(0.1, (now - lastPanMs) / 1000);
+            lastPanMs = now;
+            const delta = PAN_SPEED * dt;
+            viewState.scrollX = viewState.scrollX || 0;
+            viewState.scrollY = viewState.scrollY || 0;
+            if (panKeys.has("w")) viewState.scrollY -= delta;
+            if (panKeys.has("s")) viewState.scrollY += delta;
+            if (panKeys.has("a")) viewState.scrollX -= delta;
+            if (panKeys.has("d")) viewState.scrollX += delta;
+          } else {
+            lastPanMs = null; // next hold starts from dt=0, not a stale gap
+          }
           window.UI.render.render($("map-canvas"), gameState, viewState);
           // Clouds ride this same loop, drawn onto their own overlay canvas
           // after the map beneath them (2026-08-06, user-directed). 2D only

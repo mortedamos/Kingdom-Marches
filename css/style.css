@@ -72,15 +72,7 @@ html, body {
   width: auto;
   margin: 0 auto;
 }
-.title-byline {
-  margin: 28px 0 0 0;
-  font-family: "Cinzel", Georgia, serif;
-  font-size: clamp(11px, 1.4vw, 15px);
-  color: var(--text-dim);
-  letter-spacing: 0.12em;
-  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.8);
-}
-/* The splash screen's one button -- opens the launch options modal. Sits
+/* The splash screen's main button -- opens the launch options modal. Sits
    where the old "♪ Play Music" button did (that control moved into the
    modal's Audio section). */
 .title-options-btn {
@@ -100,6 +92,26 @@ html, body {
   background: var(--accent);
   border-color: var(--accent);
   color: #1a1a1a;
+}
+/* Mute Sound (2026-08-07, user-directed) -- a secondary, quieter control
+   below Begin, not competing with it for attention. */
+.title-mute-btn {
+  display: block;
+  margin: 12px auto 0;
+  padding: 7px 20px;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text-dim);
+  font-family: "Cinzel", Georgia, serif;
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  cursor: pointer;
+  transition: border-color 0.2s, color 0.2s;
+}
+.title-mute-btn:hover {
+  border-color: var(--accent);
+  color: var(--accent);
 }
 
 /* --- Loading screen: between clicking Begin and the game being ready --- */
@@ -912,6 +924,17 @@ html, body {
    sidebar.js's .action-btn-danger. */
 .map-ring-item-danger { color: #d98a8a; }
 .map-ring-item-danger:hover { background: var(--bg-panel); color: #d98a8a; border-color: #d98a8a; }
+/* Keyboard-shortcut badge (2026-08-07, user-directed) -- see ringmenu.js's
+   itemHtml. Plain trailing inline text, same nowrap/ellipsis box as the
+   label itself. */
+.map-ring-item-shortcut {
+  margin-left: 6px;
+  padding: 1px 5px;
+  border-radius: 8px;
+  font-size: 10px;
+  color: var(--text-dim);
+  background: rgba(0, 0, 0, 0.25);
+}
 
 /* Ring sub-page (2026-08-06) -- the build list and the level-up picker. A
    panel rather than more pills: these are rows of label + cost tokens +
@@ -1039,6 +1062,40 @@ html, body {
 .techtree-node.techtree-node-far:hover { opacity: 1; }
 
 .reports-modal { width: min(800px, 94vw); }
+/* Keyboard Shortcuts window (2026-08-07, user-directed) -- reuses
+   .techtree-modal for the backdrop/frame, same as .reports-modal. */
+.shortcuts-modal { width: min(520px, 94vw); }
+.shortcuts-modal #fullscreen-toggle-btn { width: 100%; margin: 12px 0 4px 0; }
+.shortcuts-section { margin-top: 16px; }
+.shortcuts-section-title {
+  color: var(--accent);
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 4px;
+  margin-bottom: 6px;
+}
+.shortcuts-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 4px 0;
+  color: var(--text-main);
+  font-size: 13px;
+}
+.shortcuts-key {
+  flex: 0 0 auto;
+  min-width: 90px;
+  padding: 2px 8px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg-panel-raised);
+  color: var(--text-dim);
+  font-size: 11px;
+  text-align: center;
+  white-space: nowrap;
+}
 .reports-legend {
   display: flex;
   flex-wrap: wrap;
