@@ -579,15 +579,14 @@ window.UI = window.UI || {};
       // spectator mode (humanCivId null), where every civ's units are
       // equally "own" to the viewer.
       const isOwnHidden = !!unit.conditions?.hidden && (humanCivId == null || unit.civId === humanCivId);
-      // Spent-unit dimming (2026-08-01, user-directed): the player's own units
-      // that have nothing left to do this turn fade back, so "who still needs
-      // orders" is answerable by looking at the map rather than by clicking
-      // each unit in turn. Only ever applied to the human's own units -- an AI
-      // civ's units are never awaiting the player's orders, so dimming them
-      // would be meaningless noise.
-      const isOwnSpent = humanCivId != null && unit.civId === humanCivId
-        && window.GameEngine.orders.isSpent(unit, gameState);
-      const spriteAlpha = isOwnHidden ? 0.55 : (isOwnSpent ? 0.5 : 1);
+      // Spent-unit dimming REMOVED (2026-08-06, user-directed): a unit that
+      // had nothing left to do this turn used to fade to 0.5 alpha, same
+      // mechanism as Hidden's 0.55 -- the two read as visually identical at a
+      // glance, which is exactly backwards for Hidden (a state the player
+      // specifically wants to notice). "Who still needs orders" has its own
+      // affordance already (the Next Unit cycler/footer count), so this isn't
+      // load-bearing information lost, just a redundant, confusable cue.
+      const spriteAlpha = isOwnHidden ? 0.55 : 1;
       ctx.save();
       ctx.globalAlpha = spriteAlpha;
       if (unitSprite) {

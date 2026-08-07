@@ -114,6 +114,17 @@ window.UI = window.UI || {};
     // to a full pool for a city from an older save that predates this field.
     const cityMaxHp = window.GameEngine.combat.cityMaxHp(city);
     const cityHp = city.hp != null ? Math.max(0, city.hp) : cityMaxHp;
+    // Defense (2026-08-06, user-directed): combat.js's cityDefenseValue was
+    // already the real number an attack is resolved against -- base + per
+    // population level + per structure, and now + a wall-specific premium on
+    // top of that (see its own doc comment) -- it just had no row here to
+    // show it. Wall count called out separately since it's the one factor a
+    // player can act on directly (build more walls); the others are
+    // consequences of the city's size.
+    const cityDefense = window.GameEngine.combat.cityDefenseValue(city);
+    const wallCount = city.structures.filter((s) => s.hp > 0 && window.GameData.getBuilding(s.id).isWall).length;
+    const wallTag = wallCount
+      ? ` <em>(+${wallCount * window.GameConfig.combat.cityDefensePerWall} from ${wallCount} wall${wallCount === 1 ? "" : "s"})</em>` : '';
     const atCap = pop >= maxPop;
     const growthThreshold = pop * pop * (window.GameEngine.cities.GROWTH_THRESHOLD_PER_POP || 400.0);
     const growthPct = atCap ? 100 : Math.min(100, Math.floor(100 * city.harvestSurplus / growthThreshold));
@@ -153,6 +164,7 @@ window.UI = window.UI || {};
         ${race ? `<div class="stat-row"><span>Race</span><span>${escapeHtml(race.label)}</span></div>` : ''}
         <div class="stat-row"><span>HP</span><span>${cityHp} / ${cityMaxHp}</span></div>
         ${hpBarHtml(cityHp, cityMaxHp)}
+        <div class="stat-row"><span>Defense</span><span>${cityDefense.toFixed(1)}${wallTag}</span></div>
         <div class="stat-row"><span>Population</span><span>${pop} / ${maxPop}</span></div>
         <div class="stat-row"><span>Growth</span><span>${atCap ? 'Max size' : `${city.harvestSurplus.toFixed(1)} / ${growthThreshold.toFixed(0)} (${growthPct}%)`}</span></div>
         <div class="stat-row"><span>Influence Radius</span><span>${city.influenceRadius}</span></div>
@@ -222,6 +234,20 @@ window.UI = window.UI || {};
       return `<h3>Building</h3>
         <div class="stat-row"><span>Resource Production</span><span>${escapeHtml(amounts)}</span></div>
         <div class="stat-row"><em>This turn's production went to resources</em></div>`;
+    }
+
+    // The receipt for a turn spent boosting research instead -- see
+    // cities.js's applyResearchBoost. Same "information only" split as the
+    // resource-production receipt just above: the action is a ring pill,
+    // this just reports what it did.
+    if (window.GameEngine.cities.isBoostingResearch(city, gameState)) {
+      const made = city.researchBoostGain;
+      const summary = made
+        ? (made.completed ? `Completed: ${made.techLabel}` : `-${made.amount} turn${made.amount === 1 ? "" : "s"} (${made.techLabel})`)
+        : "";
+      return `<h3>Building</h3>
+        <div class="stat-row"><span>Research</span><span>${escapeHtml(summary)}</span></div>
+        <div class="stat-row"><em>This turn's production went to research</em></div>`;
     }
 
     return `<h3>Building</h3>

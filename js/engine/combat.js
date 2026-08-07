@@ -1431,15 +1431,27 @@ window.GameEngine = window.GameEngine || {};
   const CITY_BASE_DEFENSE = CFG.cityBaseDefense;
   const CITY_DEFENSE_PER_LEVEL = CFG.cityDefensePerLevel;
   const CITY_DEFENSE_PER_STRUCTURE = CFG.cityDefensePerStructure;
+  const CITY_DEFENSE_PER_WALL = CFG.cityDefensePerWall;
   const CITY_HP_PER_LEVEL = CFG.cityHpPerLevel;
 
   /** Higher for a bigger, more built-up city -- deliberately has no defender
    *  garrison bonus of its own (that's the job of an actual defending unit;
-   *  this value only matters once the city has none). */
+   *  this value only matters once the city has none).
+   *
+   *  Walls count TWICE (2026-08-06, user-directed): once via the generic
+   *  CITY_DEFENSE_PER_STRUCTURE every structure already contributes just for
+   *  existing, and again via CITY_DEFENSE_PER_WALL specifically for being a
+   *  wall -- the premium a wall is actually FOR. Only alive walls count
+   *  (s.hp > 0): a wall battered down to 0 hp is removed from
+   *  city.structures entirely elsewhere (destroyStructure), so this filter
+   *  is mostly belt-and-suspenders, but it's the correct rule regardless of
+   *  how that removal is implemented. */
   function cityDefenseValue(city) {
     const level = Math.max(1, Math.floor(city.population));
+    const wallCount = city.structures.filter((s) => s.hp > 0 && window.GameData.getBuilding(s.id).isWall).length;
     return CITY_BASE_DEFENSE + level * CITY_DEFENSE_PER_LEVEL
-      + city.structures.length * CITY_DEFENSE_PER_STRUCTURE;
+      + city.structures.length * CITY_DEFENSE_PER_STRUCTURE
+      + wallCount * CITY_DEFENSE_PER_WALL;
   }
 
   /** A city's max HP: purely population-based (CITY_HP_PER_LEVEL per level),

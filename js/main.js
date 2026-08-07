@@ -1530,10 +1530,12 @@
       items.push({ text: "No research selected" });
     }
     for (const c of civ.cities) {
-      // A city that spent this turn's production on resources (2026-08-06,
-      // user-directed -- see cities.js's applyResourceProduction) HAS made
-      // its choice; it's no more unresolved than one mid-build.
+      // A city that spent this turn's production on resources or research
+      // (2026-08-06, user-directed -- see cities.js's
+      // applyResourceProduction/applyResearchBoost) HAS made its choice;
+      // it's no more unresolved than one mid-build.
       if (window.GameEngine.cities.isProducingResources(c, gameState)) continue;
+      if (window.GameEngine.cities.isBoostingResearch(c, gameState)) continue;
       if (!c.buildQueue && window.GameEngine.ai.availableBuilds(civ, c, gameState).some((o) => o.affordable)) {
         items.push({ text: `${c.name} is not building anything`, x: c.x, y: c.y, tabKind: "city" });
       }
@@ -2267,20 +2269,35 @@
     const civ = gameState.civs[humanCivId];
     const city = civ && civ.cities.find((c) => c.x === menu.x && c.y === menu.y);
     const unit = viewState.selectedUnit;
-    let options;
+    const orders = window.GameEngine.orders;
+    let options, split = null;
     if (menu.subject === "city") {
       if (!city) return close();
-      options = window.GameEngine.orders.cityRingOptions(city, gameState, humanCivId);
+      options = orders.cityRingOptions(city, gameState, humanCivId);
     } else {
-      if (!window.GameEngine.orders.canCommand(unit, gameState, humanCivId)) return close();
-      options = window.GameEngine.orders.contextMenuOptions(unit, gameState, menu.x, menu.y, humanCivId);
-      if (city) options.push({ kind: "city:open", label: "City Actions" });
+      if (!orders.canCommand(unit, gameState, humanCivId)) return close();
+      const unitOptions = orders.contextMenuOptions(unit, gameState, menu.x, menu.y, humanCivId);
+      // MERGED RING (2026-08-06, user-directed): only when the ring's own
+      // tile IS the unit's own tile -- a unit ring aimed at a REMOTE tile
+      // (moveTo/attack against something elsewhere) still gets the single
+      // city:open cross-link a few lines down, not a merge, since there's no
+      // single shared tile to anchor a two-column ring to. See orders.js's
+      // mapMenuOptions doc comment for the same distinction made there.
+      if (city && unit.x === menu.x && unit.y === menu.y) {
+        const cityOptions = orders.cityRingOptions(city, gameState, humanCivId);
+        const merged = orders.mergeUnitCityOptions(unitOptions, cityOptions);
+        options = merged.options;
+        split = merged.split;
+      } else {
+        options = unitOptions;
+        if (city) options.push({ kind: "city:open", label: "City Actions" });
+      }
     }
 
     const center = window.UI.render.tileCenterOnMap(menu.x, menu.y, canvas, gameState, viewState);
     const ctx = {
       cx: center.x, cy: center.y, ts: center.ts,
-      mapW: canvas.width, mapH: canvas.height,
+      mapW: canvas.width, mapH: canvas.height, split,
     };
 
     // A sub-page (build list, level-up picker) replaces the ring rather than
@@ -2652,8 +2669,26 @@
       return;
     }
 
-    const city = selectCityAt(menu.x, menu.y);
+    // NOT selectCityAt for the rest of these (2026-08-06, user-directed bug
+    // fix): selectCityAt forces the sidebar's active tab to "city", and
+    // syncLegacySelection nulls every OTHER legacy selected* field the
+    // instant it does -- including viewState.selectedUnit. On a merged ring
+    // (menu.subject "unit", a unit standing on its own city), the very next
+    // renderRingMenu pass reads viewState.selectedUnit to rebuild that ring;
+    // finding it null made canCommand fail and the whole ring silently
+    // close instead of showing the build popover. A plain lookup plus a
+    // direct field write has none of that side effect -- and needs none of
+    // it, since these are incidental actions taken from wherever the ring
+    // was opened, not a request to navigate the sidebar to the city (that's
+    // what the dedicated "City Actions"/"Next City Needing Orders" pills
+    // above are for, and they still use selectCityAt on purpose). The
+    // direct write only has to survive until the switch below reads it --
+    // redraw()'s resolveSelection() re-derives selectedCity from the
+    // (unchanged) active tab right after, same as if this were never set.
+    const civ = gameState.civs[humanCivId];
+    const city = civ && civ.cities.find((c) => c.x === menu.x && c.y === menu.y);
     if (!city) { redraw(); return; }
+    viewState.selectedCity = city;
 
     switch (kind) {
       case "city:cancelBuild":
@@ -2662,13 +2697,26 @@
       case "city:resourceProduction":
         handleResourceProduction();
         break;
+      case "city:research":
+        window.GameEngine.cities.applyResearchBoost(city, gameState.civs[humanCivId], gameState);
+        break;
       case "city:buildUnit":
       case "city:buildStructure":
         // Opens the real build list as a ring sub-page (see
         // ringmenu.js's renderPopover / buildlist.js) -- the ring stays open
         // rather than closing, so Back returns to the categories.
+        //
+        // subject: menu.subject, NOT a hardcoded "city" (2026-08-06,
+        // user-directed): on the co-located tile (a unit standing on its own
+        // city), menu.subject is "unit" and renderRingMenu renders the
+        // MERGED unit+city ring for that -- see its own onUnitOwnTile check.
+        // Hardcoding "city" here would silently drop back to a city-only
+        // ring the moment Back is pressed after opening a build list from
+        // that merged view. Preserving whatever subject the ring already had
+        // keeps a standalone city ring (subject "city") behaving exactly as
+        // before.
         viewState.ringMenu = {
-          x: city.x, y: city.y, subject: "city",
+          x: city.x, y: city.y, subject: menu.subject,
           page: kind === "city:buildUnit" ? "buildUnit" : "buildStructure",
         };
         break;
@@ -2774,6 +2822,21 @@
         // list (prospecting/delving/fishing/hunting/farming).
         if (kind && kind.startsWith("startChannel:")) {
           handleStartChannel(kind.slice("startChannel:".length));
+        } else if (kind && kind.startsWith("castFlight:")) {
+          // "castFlight:X,Y" (2026-08-06, user-directed bug fix) -- same
+          // payload-in-the-kind-string convention as startChannel: above.
+          // The target's coordinates ride along because orders.js's
+          // contextMenuOptions can offer more than one of these at once (one
+          // per eligible adjacent ally), so a bare "castFlight" kind
+          // wouldn't say which. See ai.js's castFlightOnAlly, which
+          // re-validates every condition that earned this pill its spot on
+          // the ring -- the target could have moved, died, or already been
+          // flighted since the ring was drawn, same "don't trust a menu that
+          // might be stale" reasoning "attack"'s own re-lookup above uses.
+          const [tx, ty] = kind.slice("castFlight:".length).split(",").map(Number);
+          const civ = gameState.civs[humanCivId];
+          const ally = civ.units.find((u) => u.x === tx && u.y === ty && u !== unit && !u.carriedBy);
+          window.GameEngine.ai.castFlightOnAlly(civ, unit, ally, gameState);
         }
         break;
     }
@@ -2818,9 +2881,19 @@
    * completion, so walls can be planned deliberately).
    */
   function handleChooseBuild(index) {
-    const city = viewState.selectedCity;
-    if (!city || !humanCivId) return;
+    // Resolved from viewState.ringMenu, NOT viewState.selectedCity
+    // (2026-08-06, user-directed bug fix). This popover can be open while a
+    // MERGED ring's subject is "unit" (a unit standing on its own city --
+    // see orders.js's mergeUnitCityOptions), in which case the sidebar's
+    // active tab is deliberately left on the unit, so selectedCity is null
+    // by the time this fires -- resolveSelection() resets it on every
+    // redraw in between opening the popover and clicking a row in it.
+    // ringMenu.x/y always names the right city regardless: it's the tile
+    // this whole popover is anchored to.
+    if (!humanCivId || !viewState.ringMenu) return;
     const civ = gameState.civs[humanCivId];
+    const city = civ.cities.find((c) => c.x === viewState.ringMenu.x && c.y === viewState.ringMenu.y);
+    if (!city) return;
     const options = window.GameEngine.ai.availableBuilds(civ, city, gameState);
     const option = options[index];
     if (!option) return;
@@ -2857,9 +2930,17 @@
    *  building -- see cities.js's applyResourceProduction for the payout and
    *  why it lands on this turn rather than the next one. */
   function handleResourceProduction() {
-    const city = viewState.selectedCity;
-    if (!city || !humanCivId || city.civId !== humanCivId) return;
+    // Same ringMenu-based resolution as handleChooseBuild, for the same
+    // reason (2026-08-06) -- called synchronously from handleCityRingAction
+    // today, right after that function sets viewState.selectedCity by hand,
+    // so reading that field back would technically still work here; resolved
+    // independently anyway so this doesn't silently break the next time
+    // something calls it from a spot where that ordering guarantee doesn't
+    // hold.
+    if (!humanCivId || !viewState.ringMenu) return;
     const civ = gameState.civs[humanCivId];
+    const city = civ.cities.find((c) => c.x === viewState.ringMenu.x && c.y === viewState.ringMenu.y);
+    if (!city) return;
     window.GameEngine.cities.applyResourceProduction(city, civ, gameState);
     redraw();
   }

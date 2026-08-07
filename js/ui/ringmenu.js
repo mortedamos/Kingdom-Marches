@@ -48,7 +48,15 @@ window.UI = window.UI || {};
   const PILL_H = 30;        // must match .map-ring-item's rendered height
   const PITCH = 38;         // vertical centre-to-centre gap; PILL_H + 8px of air
   const PILL_W_MIN = 96;    // narrower than this and labels are unreadable -- used for the "does this side fit" test
-  const PILL_W_MAX = 160;
+  // Raised from 160 (2026-08-06, user-directed): a handful of real labels --
+  // "Next City Needing Orders", "Gather More Resources (+3H +2C +5L)", "Build
+  // Road to This Tile" -- ran past 160px and got ellipsis-clipped by the CSS
+  // .map-ring-item's overflow:hidden. Safe to raise a lot: `place()` below
+  // still clamps the actual per-pill width to whatever room is left on that
+  // side (`Math.min(PILL_W_MAX, room - R - PAD)`), so this only removes a
+  // needless cap well short of the map edge -- it can never push a pill off
+  // the visible area.
+  const PILL_W_MAX = 320;
   const BOW = 26;           // how far the middle pill bulges past the innermost ones
   const PAD = 12;           // keep-out margin against the map area's edges
 
@@ -92,19 +100,33 @@ window.UI = window.UI || {};
     // it (N>=4) AND both sides have the room; otherwise everything goes on
     // whichever single side can take it, and if neither can, on the roomier
     // one with the labels allowed to ellipsize.
+    //
+    // FORCED SPLIT (2026-08-06, user-directed): ctx.split, when present,
+    // overrides all of that -- a merged unit+city ring (see orders.js's
+    // mergeUnitCityOptions) wants unit actions on the LEFT and city actions
+    // on the RIGHT unconditionally, not a suggestion the room-fit logic
+    // above is free to renegotiate. `options` was built as [...unitOptions,
+    // ...cityOptions] to match, which is why the placement order below
+    // differs between the two branches (auto mode reads right-then-left off
+    // the front of the array; forced mode reads left-then-right).
     let rightCount, leftCount;
-    const half = Math.ceil(n / 2);
-    if (n >= 4 && fits(roomRight, half) && fits(roomLeft, n - half)) {
-      rightCount = half;
-      leftCount = n - half;
-    } else if (fits(roomRight, n)) {
-      rightCount = n; leftCount = 0;
-    } else if (fits(roomLeft, n)) {
-      rightCount = 0; leftCount = n;
-    } else if (roomRight >= roomLeft) {
-      rightCount = n; leftCount = 0;
+    if (ctx.split) {
+      leftCount = ctx.split.leftCount;
+      rightCount = ctx.split.rightCount;
     } else {
-      rightCount = 0; leftCount = n;
+      const half = Math.ceil(n / 2);
+      if (n >= 4 && fits(roomRight, half) && fits(roomLeft, n - half)) {
+        rightCount = half;
+        leftCount = n - half;
+      } else if (fits(roomRight, n)) {
+        rightCount = n; leftCount = 0;
+      } else if (fits(roomLeft, n)) {
+        rightCount = 0; leftCount = n;
+      } else if (roomRight >= roomLeft) {
+        rightCount = n; leftCount = 0;
+      } else {
+        rightCount = 0; leftCount = n;
+      }
     }
 
     // A column taller than the map area can't be placed on a circle at all --
@@ -156,8 +178,13 @@ window.UI = window.UI || {};
         };
       }
     };
-    place("right", rightCount, 0);
-    place("left", leftCount, rightCount);
+    if (ctx.split) {
+      place("left", leftCount, 0);
+      place("right", rightCount, leftCount);
+    } else {
+      place("right", rightCount, 0);
+      place("left", leftCount, rightCount);
+    }
 
     return { mode: "ring", items };
   }

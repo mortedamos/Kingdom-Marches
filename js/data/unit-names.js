@@ -38,7 +38,7 @@ window.GameData = window.GameData || {};
 
 window.GameData.UNIT_FIRST_NAMES = {
   human: {
-    male: ["Aldric", "Marcus", "Edwin", "Roland", "Cedric", "Gareth", "Osric", "Baldwin", "Thomas", "Henry", "Aethelford"],
+    male: ["Aldric", "Marcus", "Edwin", "Roland", "Cedric", "Gareth", "Osric", "Baldwin", "Thomas", "Henry", "Aethelford", "Ashford"],
     female: ["Elena", "Margaret", "Beatrice", "Isolde", "Rosalind", "Agnes", "Eleanor", "Clara", "Adelaide", "Matilda", "Emma", "Elizabeth"],
   },
   elf: {
@@ -46,7 +46,7 @@ window.GameData.UNIT_FIRST_NAMES = {
     female: ["Liriel", "Aurelune", "Mistleaf", "Sorina", "Vaelith", "Thessaly", "Ysolde", "Nimriel", "Calanthe", "Verdaine", "Suzara", "Sylvara"],
   },
   dwarf: {
-    male: ["Thrundak", "Borgrim", "Karrak", "Ottokar", "Bruntag", "Dagnar", "Grubben", "Falkir", "Torvald", "Ulfric"],
+    male: ["Thrundak", "Borgrim", "Karrak", "Ottokar", "Bruntag", "Dagnar", "Grubben", "Falkir", "Torvald", "Ulfric", "Amon"],
     female: ["Hilde", "Gudrun", "Astrid", "Freya", "Sigrun", "Ragna", "Brenna", "Ingrid", "Helga", "Kormak", "Mathilda"],
   },
   orc: {

@@ -88,10 +88,15 @@ window.GameEngine = window.GameEngine || {};
       // Forest instead of Mountains.
       const revealMountains = civ.unlockedMechanics && civ.unlockedMechanics.has("mountains_on_the_horizon");
       const revealForest = civ.unlockedMechanics && civ.unlockedMechanics.has("wind_from_distant_treetops");
+      // Human "Sea Charts" (2026-08-06, user-directed): same reveal-mechanic
+      // shape as Mountains on the Horizon/Wind From Distant Treetops just
+      // above, keyed to Ocean and Coast instead of a land terrain.
+      const revealSea = civ.unlockedMechanics && civ.unlockedMechanics.has("sea_charts");
       for (let i = 0; i < map.tiles.length; i++) {
         if (map.tiles[i].ownerCivId === civ.id
             || (revealMountains && map.tiles[i].terrain === "mountains")
-            || (revealForest && map.tiles[i].terrain === "forest")) visible.add(i);
+            || (revealForest && map.tiles[i].terrain === "forest")
+            || (revealSea && (map.tiles[i].terrain === "ocean" || map.tiles[i].terrain === "coast"))) visible.add(i);
       }
       // Mountains on the Horizon (2026-07-18, user-directed): also reveals
       // any Hills tile immediately adjacent (8-neighbor) to a Mountain tile
@@ -1029,7 +1034,22 @@ window.GameEngine = window.GameEngine || {};
       // (_seekingInvasion/_seekingLandmassId) that have no meaning for a
       // player-directed unit.
       const turnNumber = gameState.turnNumber || 0;
+      // Movement modifiers (2026-08-06, user-directed bug fix): the human
+      // civ skips beginAITurn entirely (right below this comment explains
+      // why for build queues; same reason applies here), and beginAITurn was
+      // the ONLY place that stamped unit._moveMods -- so a regular,
+      // player-moved unit never had it at all. Every mods?.xxx read in
+      // ai.js's getMoveCost/computeMovementBudget/landCostForTerrain is
+      // optional-chained, so nothing crashed; it just silently evaluated to
+      // "no bonus" for terrain-movement techs, terrain-override techs, and
+      // mountain-tunneling, for every unit the player actually clicked and
+      // moved themselves -- which is most of a human game. See ai.js's
+      // civMoveMods for the shared shape (also used by beginAITurn and
+      // primeUnitForAutomation) and landCostForTerrain for where the newer
+      // terrainDiscount/unitTerrainDiscount fields in it actually apply.
+      const moveMods = window.GameEngine.ai.civMoveMods(civ);
       for (const u of civ.units) {
+        u._moveMods = moveMods;
         window.GameEngine.combat.tickConditions(u, turnNumber, map);
         // Same as beginAITurn: a condition can expire lethally (e.g. Human
         // Flight over water) -- remove the unit immediately rather than

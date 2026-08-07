@@ -255,6 +255,15 @@ window.GameEngine = window.GameEngine || {};
       }
     }
 
+    // --- Step 4a: no tile fully walled in by Mountains (2026-08-06) ---
+    // Before landmass sizing below: whether a demoted ring tile survives
+    // enforceMinimumLandmassSize is irrelevant to it (Mountains and Hills are
+    // both land for flood-fill purposes -- this never changes which tiles
+    // ARE land, only which land tiles are Mountains), but running it first
+    // keeps this as a pure extension of Pass 2's own classification, before
+    // any other step starts reasoning about the terrain map's shape.
+    breakMountainRings(tiles, width, height, elevArr);
+
     // --- Step 5: connectivity + Step 5a: minimum landmass size enforcement ---
     // 11 (2026-07-20, user-directed, raised from 3): a landmass has to be
     // able to hold at least one city plus a spare open tile around it (see
@@ -352,6 +361,63 @@ window.GameEngine = window.GameEngine || {};
       }
     }
     return survivors;
+  }
+
+  /**
+   * Ensures no non-Mountain, non-water tile is entirely walled in by
+   * Mountains (2026-08-06, user-directed). Movement in this game is
+   * 8-directional (see ai.js's canReachByLand/buildMoveRules -- diagonal
+   * steps are legal moves, not just a rendering nicety), and Mountains are
+   * flatly IMPASSABLE for a land unit (terrain.js) short of a specific
+   * mid-tree tech (mountain tunneling) or flight -- so a tile whose every
+   * EXISTING neighbor (all 8 in the interior; fewer at a map edge, where
+   * "off map" blocks a step just as completely as Mountains would) is
+   * Mountains is a genuine, permanent trap. Left alone, that could hand one
+   * race a founding site no other civ's army could ever physically reach --
+   * an unearned, unfair advantage no amount of skill changes. Demotes the
+   * LOWEST-elevation (most Hills-like, so the fix reads as natural terrain
+   * rather than an obviously patched tile) surrounding Mountain to Hills for
+   * each ringed tile found -- the minimum edit that opens a way through.
+   *
+   * Deliberately scoped to PURE Mountain rings, matching what was asked --
+   * not "any impassable terrain" (which would also pull in Ocean/Coast, and
+   * turn this into a much larger general reachability audit rather than the
+   * specific Mountains-only unfairness this targets).
+   *
+   * A single top-to-bottom pass is sufficient: demoting a Mountain to Hills
+   * can only ever OPEN a path, never close one, so fixing tile A can't ring
+   * in some other tile B that was fine before -- there's nothing for a
+   * second pass to find that the first one wouldn't already have caught.
+   */
+  function breakMountainRings(tiles, width, height, elevArr) {
+    const TERRAIN = window.GameData.TERRAIN;
+    let fixedCount = 0;
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const idx = y * width + x;
+        const tile = tiles[idx];
+        if (tile.terrain === "mountains" || TERRAIN[tile.terrain].isWater) continue;
+
+        let allMountains = true;
+        let bestNeighborIdx = -1;
+        let bestElev = Infinity;
+        for (let dy = -1; dy <= 1; dy++) {
+          for (let dx = -1; dx <= 1; dx++) {
+            if (dx === 0 && dy === 0) continue;
+            const nx = x + dx, ny = y + dy;
+            if (nx < 0 || nx >= width || ny < 0 || ny >= height) continue; // off-map: blocks a step, doesn't break the ring
+            const nIdx = ny * width + nx;
+            if (tiles[nIdx].terrain !== "mountains") { allMountains = false; continue; }
+            if (elevArr[nIdx] < bestElev) { bestElev = elevArr[nIdx]; bestNeighborIdx = nIdx; }
+          }
+        }
+        if (allMountains && bestNeighborIdx >= 0) {
+          tiles[bestNeighborIdx].terrain = "hills";
+          fixedCount++;
+        }
+      }
+    }
+    return fixedCount;
   }
 
   function placeResources(tiles, width, height, rng, landmasses) {
@@ -480,5 +546,6 @@ window.GameEngine = window.GameEngine || {};
     isLand,
     findLandmasses,
     classifyClimate, // exported for testing
+    breakMountainRings, // exported for testing
   };
 })();

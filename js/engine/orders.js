@@ -446,6 +446,41 @@ window.GameEngine = window.GameEngine || {};
         }
       }
 
+      // Cast Fly on an ally (2026-08-06, user-directed bug fix): one pill
+      // per eligible ADJACENT ally, offered from the WIZARD'S OWN tile --
+      // not from right-clicking the ally directly. That would seem like the
+      // more natural gesture, but it's unreachable under this game's own
+      // interaction rule ("right-click always selects whichever of your own
+      // units is standing on the clicked tile" -- see mapMenuOptions' own
+      // doc comment): right-clicking an ally who is also a commandable unit
+      // of yours always retargets the ring to become THAT unit's own ring,
+      // before this function is ever even asked about the combination of
+      // "wizard selected, ally clicked". Right-click the caster instead, same
+      // as every other own-tile action here.
+      //
+      // This is the first of several AI-only caster-and-ally/enemy-target
+      // actions (ai.js's maybeGrantFlight and its siblings -- Freezing
+      // Touch, Teleport Strike, Nature's Grace, ...) promoted to a real
+      // player-facing option; see that audit's findings for why the others
+      // weren't done at the same time. See ai.js's castFlightOnAlly for the
+      // actual cast, which re-validates every one of these conditions
+      // itself rather than trusting this list stayed accurate since it was
+      // drawn.
+      if (unit.typeId === "wizard" && !unit.usedThisTurn && civ.unlockedMechanics?.has("flight_grant")) {
+        for (let dy = -1; dy <= 1; dy++) {
+          for (let dx = -1; dx <= 1; dx++) {
+            if (dx === 0 && dy === 0) continue;
+            const ax = unit.x + dx, ay = unit.y + dy;
+            const ally = civ.units.find((u) => u.x === ax && u.y === ay && u !== unit && !u.carriedBy);
+            if (!ally) continue;
+            if (window.GameData.getUnit(ally.typeId).category !== "military") continue;
+            if (window.GameEngine.combat.isFlying(ally)) continue;
+            const allyLabel = ally.name || window.GameData.getUnit(ally.typeId).label;
+            options.push({ kind: `castFlight:${ax},${ay}`, label: `Cast Fly on ${allyLabel}` });
+          }
+        }
+      }
+
       // Hidden/stealth -- sidebar.js's stealthActions.
       if (unit.conditions?.hidden) {
         options.push({ kind: "cancelHidden", label: "Cancel Hidden" });
@@ -544,18 +579,52 @@ window.GameEngine = window.GameEngine || {};
         gain.coin >= 0.5 ? `+${Math.round(gain.coin)}C` : null,
         gain.lore >= 0.5 ? `+${Math.round(gain.lore)}L` : null,
       ].filter(Boolean).join(" ");
-      if (amounts) options.push({ kind: "city:resourceProduction", label: `Resources (${amounts})` });
+      // "Gather More Resources" (2026-08-06, user-directed rename -- was
+      // "Resources", which read as a status label rather than a verb).
+      if (amounts) options.push({ kind: "city:resourceProduction", label: `Gather More Resources (${amounts})` });
+
+      // "Research" (2026-08-06, user-directed): the fourth thing this city's
+      // production can go into, alongside a unit/building/resources -- see
+      // cities.js's applyResearchBoost. Only offered when there's actually
+      // something in progress to accelerate.
+      if (civ.currentResearch) {
+        const turns = cities.researchBoostAmount(city);
+        options.push({ kind: "city:research", label: `Research (-${turns} turn${turns === 1 ? "" : "s"})` });
+      }
     }
 
     // "Next city needing production" -- same criteria main.js's
     // collectUnresolvedTurnWork nags about at End Turn. The target rides in
     // the kind string, the convention startChannel:<kind> already set.
     const next = civ.cities.find((c) => c !== city && !c.buildQueue
-      && !cities.isProducingResources(c, gameState)
+      && !cities.isProducingResources(c, gameState) && !cities.isBoostingResearch(c, gameState)
       && window.GameEngine.ai.availableBuilds(civ, c, gameState).some((o) => o.affordable));
     if (next) options.push({ kind: `city:nextProduction:${next.x},${next.y}`, label: "Next City Needing Orders" });
 
     return options;
+  }
+
+  /**
+   * Combines a unit's own action list with its co-located city's, for the
+   * MERGED RING (2026-08-06, user-directed): unit actions land in the LEFT
+   * column, city actions in the RIGHT, in one ring rather than a "City
+   * Actions" pill drilling down into a second one. `split` is consumed
+   * directly by js/ui/ringmenu.js's layout() as `ctx.split` -- see its own
+   * doc comment for why an explicit {leftCount, rightCount} bypasses that
+   * function's normal auto-fit column assignment.
+   *
+   * Returns `split: null` when there's no city to merge in, so a caller can
+   * pass the result straight through without a separate "was there
+   * anything to merge" check -- ringmenu.js's layout() already treats a
+   * missing ctx.split as "use the automatic split", which is exactly what a
+   * plain unit-only ring wants.
+   */
+  function mergeUnitCityOptions(unitOptions, cityOptions) {
+    if (!cityOptions.length) return { options: unitOptions, split: null };
+    return {
+      options: unitOptions.concat(cityOptions),
+      split: { leftCount: unitOptions.length, rightCount: cityOptions.length },
+    };
   }
 
   /**
@@ -573,13 +642,16 @@ window.GameEngine = window.GameEngine || {};
    * enemy city) leaves your current unit selected and shows what IT can do
    * about that tile. `retarget` is how that gets reported back.
    *
-   * A city under a unit is the case that forces the `city:open` cross-link: a
-   * unit standing on your own city always wins the sidebar's tab (see
-   * input.js's SELECTION MODEL), so viewState.selectedCity is null there and
-   * the city ring would otherwise be unreachable on exactly the tiles where
-   * it's most wanted. The same pill is appended when a DIFFERENT unit is
-   * selected and you right-click a city, so setting production never costs a
-   * preparatory left-click.
+   * A city under a unit is the case that merges the two rings (see
+   * mergeUnitCityOptions above): a unit standing on your own city always
+   * wins the sidebar's tab (see input.js's SELECTION MODEL), so
+   * viewState.selectedCity is null there and the city ring would otherwise
+   * be unreachable on exactly the tiles where it's most wanted. A single
+   * "city:open" cross-link pill is still used for the OTHER case -- a
+   * different unit selected elsewhere, right-clicking a REMOTE city -- so
+   * setting production never costs a preparatory left-click even then, just
+   * without the full merge (there's no shared tile to anchor a two-column
+   * ring to).
    */
   function mapMenuOptions(gameState, viewState, x, y, humanCivId) {
     const none = { subject: "none", retarget: false, options: [] };
@@ -592,16 +664,25 @@ window.GameEngine = window.GameEngine || {};
       && canCommand(u, gameState, humanCivId)) || null;
 
     // 1. One of ours is standing there: that unit becomes the subject.
+    //
+    // MERGED RING (2026-08-06, user-directed): when that tile is ALSO one of
+    // this civ's own cities -- unavoidably true here, since unitHere/cityHere
+    // both come from this civ's own units/cities -- the ring shows unit
+    // actions and city actions together (unit actions left, city actions
+    // right) instead of a single "City Actions" pill that drilled down into
+    // a separate city-only ring. See mergeUnitCityOptions below for the
+    // split main.js's ringmenu.js render reads.
     if (unitHere) {
       const selected = viewState.selectedUnit;
       const alreadyActive = selected && selected.x === x && selected.y === y
         && canCommand(selected, gameState, humanCivId);
       const subjectUnit = alreadyActive ? selected : unitHere;
-      const options = contextMenuOptions(subjectUnit, gameState, x, y, humanCivId);
-      if (cityHere) options.push({ kind: "city:open", label: "City Actions" });
+      const unitOptions = contextMenuOptions(subjectUnit, gameState, x, y, humanCivId);
+      const cityOptions = cityHere ? cityRingOptions(cityHere, gameState, humanCivId) : [];
+      const { options, split } = mergeUnitCityOptions(unitOptions, cityOptions);
       // No retarget when the selected unit is already on this tile -- right-
       // clicking a stack shouldn't shuffle which of its units is active.
-      return { subject: "unit", retarget: !alreadyActive, options };
+      return { subject: "unit", retarget: !alreadyActive, options, split };
     }
 
     // 2. A commandable unit is selected elsewhere: this tile is its target.
@@ -686,6 +767,7 @@ window.GameEngine = window.GameEngine || {};
     plannedPath,
     contextMenuOptions,
     cityRingOptions,
+    mergeUnitCityOptions,
     mapMenuOptions,
     queueBuild,
     cancelBuild,

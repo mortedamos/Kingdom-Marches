@@ -225,17 +225,17 @@ window.GameData.UNITS = {
   },
   cavalry: {
     id: "cavalry", label: "Cavalry", symbol: "♞", category: "military", raceOnly: "human",
-    attack: 6, defense: 4, movement: 3, visionRadius: 3, firstStrikePct: 0.03,
+    attack: 6, defense: 4, movement: 4, visionRadius: 3, firstStrikePct: 0.03,
     coinCost: 22, biggerPct: .2,  attackChars: ["⚔", "🗡"],
   },
   knight: {
     id: "knight", label: "Knight", symbol: "♞", category: "military", raceOnly: "human",
-    attack: 8, defense: 7, movement: 4, visionRadius: 3, // replaces Cavalry via the Knighthood tech
+    attack: 8, defense: 7, movement: 5, visionRadius: 3, // replaces Cavalry via the Knighthood tech
     coinCost: 32, firstStrikePct: 0.05, biggerPct: .25, attackChars: ["⚔", "🗡"],
   },
   paladin: {
     id: "paladin", label: "Paladin", symbol: "♞", category: "military", raceOnly: "human",
-    attack: 10, defense: 8, movement: 4, visionRadius: 4, firstStrikePct: 0.06, // replaces Knight via the Chivalric Order tech
+    attack: 10, defense: 8, movement: 5, visionRadius: 4, firstStrikePct: 0.06, // replaces Knight via the Chivalric Order tech
     coinCost: 42, biggerPct: .4, attackChars: ["⚔", "🗡", "🛡"], rare: true,
   },
   archer: {
@@ -321,7 +321,7 @@ window.GameData.UNITS = {
   // effectiveFirstStrikePct, and ai.js's operateShadowsteedCarry.
   shadowsteed: {
     id: "shadowsteed", label: "Shadowsteed", symbol: "♞", category: "military", raceOnly: "elf",
-    attack: 1, defense: 2, movement: 5, visionRadius: 4, flying: true, canCarryUnit: true, firstStrikePct: 0.05,
+    attack: 1, defense: 2, movement: 6, visionRadius: 4, flying: true, canCarryUnit: true, firstStrikePct: 0.05,
     coinCost: 40, attackChars: ["ʊ"], biggerPct: 0.2, rare: true,
     // noUpkeep (2026-07-18, user-directed): a Druid-summoned support unit,
     // not a standing-army one -- see techs.js's unitUpkeep.
@@ -342,7 +342,7 @@ window.GameData.UNITS = {
   // the Titan.
   awakened_oak: {
     id: "awakened_oak", label: "Awakened Oak", symbol: "♣", category: "military", raceOnly: "elf",
-    attack: 11, defense: 11, movement: 2, visionRadius: 3, siegePct: 1.5,
+    attack: 11, defense: 11, movement: 3, visionRadius: 3, siegePct: 1.5,
     coinCost: 65, biggerPct: 1.0, attackChars: ["🌳", "💥"],
     rare: true, neverExplores: true,
     nameSpecial: true, // a living tree, not a person -- see unit-names.js
@@ -362,7 +362,7 @@ window.GameData.UNITS = {
   },
   pony_patrol: {
     id: "pony_patrol", label: "Pony Patrol", symbol: "♞", category: "military", raceOnly: "halfellow",
-    attack: 4, defense: 6, movement: 3, visionRadius: 3, firstStrikePct: 0.02,
+    attack: 4, defense: 6, movement: 4, visionRadius: 3, firstStrikePct: 0.02,
     coinCost: 20, biggerPct: .2
   },
   militia: {
@@ -384,14 +384,14 @@ window.GameData.UNITS = {
   // works at range independent of whether Boomerang is researched yet.
   trouble_maker: {
     id: "trouble_maker", label: "Trouble Maker", symbol: "?", category: "military", raceOnly: "halfellow",
-    attack: 3, defense: 3, movement: 2, visionRadius: 3, range: 2,
+    attack: 3, defense: 3, movement: 3, visionRadius: 3, range: 2,
     coinCost: 32, attackChars: ["🪤", "🔓"], doubleStrikePct: 0.1,
   },
 
   // --- DWARF full roster (redesigned tree, no stubs -- see techs.js) ---
   foehammer: {
     id: "foehammer", label: "FoeHammer", symbol: "⚔", category: "military", raceOnly: "dwarf",
-    attack: 4, defense: 4, movement: 1, visionRadius: 2, attackChars: ["⛏", "🔨"],
+    attack: 4, defense: 4, movement: 2, visionRadius: 2, attackChars: ["⛏", "🔨"],
     coinCost: 15,
   },
   troubadour: {
@@ -475,7 +475,7 @@ window.GameData.UNITS = {
   },
   bog_witch: {
     id: "bog_witch", label: "Bog Witch", symbol: "✦", category: "military", raceOnly: "orc",
-    attack: 5, defense: 3, movement: 1, visionRadius: 3, range: 2,
+    attack: 5, defense: 3, movement: 2, visionRadius: 3, range: 2,
     coinCost: 22,
     // Baked directly into the unit rather than a tech effect -- the curse is
     // inherent to the Bog Witch herself, always active the moment you have
@@ -491,7 +491,7 @@ window.GameData.UNITS = {
   },
   ogre: {
     id: "ogre", label: "Ogre", symbol: "⚔", category: "military", raceOnly: "orc",
-    attack: 9, defense: 6, movement: 2, visionRadius: 3, siegePct: 0.50, attackChars: ["🪓", "💥", "🪨"],
+    attack: 9, defense: 6, movement: 3, visionRadius: 3, siegePct: 0.50, attackChars: ["🪓", "💥", "🪨"],
     coinCost: 32,  biggerPct: .5, rare: true,
   },
   // Pinnacle unit (2026-07-12): meant to be the single most powerful unit

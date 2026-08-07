@@ -137,6 +137,32 @@ window.GameEngine = window.GameEngine || {};
     return null;
   }
 
+  /** "Research" city ring action (2026-08-06, user-directed): cuts `amount`
+   *  turns off the civ's in-progress research outright, called from
+   *  cities.js's applyResearchBoost (which decides WHETHER a city may spend
+   *  its turn this way; this just does the civ-level countdown). Completes
+   *  the tech immediately -- same effects-application/currentResearch-clear
+   *  tickResearch does on a natural countdown to zero -- rather than leaving
+   *  it at 0 for the next turn's tick to notice, so the player sees the
+   *  payoff the instant they spend the turn on it. Returns null if there's
+   *  no research in progress to cut (the caller already checks this, but
+   *  re-checked here too since this is the function actually touching
+   *  civ.researchTurnsRemaining). */
+  function reduceResearchTurns(civ, amount) {
+    if (!civ.currentResearch) return null;
+    civ.researchTurnsRemaining = Math.max(0, (civ.researchTurnsRemaining || 0) - amount);
+    if (civ.researchTurnsRemaining > 0) {
+      return { amount, completed: false, techId: civ.currentResearch,
+        techLabel: window.GameData.getTech(civ.currentResearch).label };
+    }
+    const tech = window.GameData.getTech(civ.currentResearch);
+    civ.completedTechs.add(tech.id);
+    applyTechEffects(civ, tech);
+    civ.currentResearch = null;
+    civ.researchTotalTurns = 0;
+    return { amount, completed: true, techId: tech.id, techLabel: tech.label };
+  }
+
   function applyTechEffects(civ, tech) {
     civ.civicInfluenceBonus = civ.civicInfluenceBonus || 0;
     civ.unlockedUnits = civ.unlockedUnits || new Set();
@@ -149,6 +175,8 @@ window.GameEngine = window.GameEngine || {};
     civ.raidKillBonus = civ.raidKillBonus || { harvest: 0, coin: 0, lore: 0 };
     civ.terrainMoveOverride = civ.terrainMoveOverride || {}; // { terrainId: cappedCost }
     civ.terrainMoveBonus = civ.terrainMoveBonus || {};       // { terrainId: extraMovement }
+    civ.terrainMoveDiscount = civ.terrainMoveDiscount || {}; // { terrainId: costReduction } -- see ai.js's landCostForTerrain
+    civ.unitTerrainMoveDiscount = civ.unitTerrainMoveDiscount || {}; // { unitTypeId: { terrainId: costReduction } }
     civ.canTunnelMountains = civ.canTunnelMountains || false;
     civ.unlockedMechanics = civ.unlockedMechanics || new Set();
     civ.mechanicValues = civ.mechanicValues || {};    // { mechanicId: numericValue }
@@ -209,6 +237,26 @@ window.GameEngine = window.GameEngine || {};
             const existing = civ.unitTerrainMoveBonus[unitId] || {};
             existing[effect.terrain] = (existing[effect.terrain] || 0) + effect.value;
             civ.unitTerrainMoveBonus[unitId] = existing;
+          }
+          break;
+        // terrain_movement_discount/unit_terrain_movement_discount
+        // (2026-08-06, user-directed): the replacement for the two cases
+        // just above on every tech that used to grant a movement BONUS --
+        // see techs.js's own effect-type doc comment for why (a bonus only
+        // ever applied once, to whichever tile the unit happened to START
+        // its turn standing on; a discount applies to every tile of the
+        // matching terrain crossed all turn, which is what "movement feels
+        // wrong" turned out to actually be about). Same accumulation shape
+        // as their bonus counterparts, just into the Discount maps
+        // ai.js's landCostForTerrain reads instead of computeMovementBudget.
+        case "terrain_movement_discount":
+          civ.terrainMoveDiscount[effect.terrain] = (civ.terrainMoveDiscount[effect.terrain] || 0) + effect.value;
+          break;
+        case "unit_terrain_movement_discount":
+          for (const unitId of effect.units) {
+            const existing = civ.unitTerrainMoveDiscount[unitId] || {};
+            existing[effect.terrain] = (existing[effect.terrain] || 0) + effect.value;
+            civ.unitTerrainMoveDiscount[unitId] = existing;
           }
           break;
         case "death_lore_bonus":
@@ -378,6 +426,7 @@ window.GameEngine = window.GameEngine || {};
     hasAffordableResearch,
     nextGatedTechLayer,
     tickResearch,
+    reduceResearchTurns,
     applyTechEffects,
     chooseResearch,
     researchTurns,

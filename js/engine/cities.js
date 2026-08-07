@@ -671,6 +671,55 @@ window.GameEngine = window.GameEngine || {};
   }
 
   /**
+   * RESEARCH (city ring action, 2026-08-06, user-directed)
+   * -------------------------------------------------------
+   * A fourth thing a city's turn can go into, alongside a unit, a building,
+   * or Resource Production: throwing the city's own workforce at whatever
+   * the civ is currently researching, cutting `researchBoostAmount(city)`
+   * turns off the timer outright (see tech.js's reduceResearchTurns, which
+   * does the actual civ-level countdown and completes the tech immediately
+   * if the cut brings it to zero rather than waiting for next turn's tick).
+   *
+   * Same "once per city per turn, and only while nothing else has already
+   * claimed this city's production" shape as isProducingResources/
+   * applyResourceProduction just above -- researchBoostTurn is this
+   * mechanism's own turn-stamp, checked independently so a city that
+   * boosted research this turn can't ALSO queue a build or gather resources,
+   * and vice versa.
+   */
+  function isBoostingResearch(city, gameState) {
+    return !!city && city.researchBoostTurn === (gameState.turnNumber || 0);
+  }
+
+  /** Turns a boost would cut right now: population, floored, with a floor of
+   *  its own so even a brand-new pop-1 city does something. Pure -- the ring
+   *  menu calls this every render to label the pill. */
+  function researchBoostAmount(city) {
+    return Math.max(1, Math.floor((city && city.population) || 0));
+  }
+
+  /** Spends `city`'s production this turn accelerating the civ's current
+   *  research. Returns a receipt { amount, completed, techId, techLabel }, or
+   *  null if it wasn't allowed (already spoken for this turn, building
+   *  something, or nothing is currently being researched). */
+  function applyResearchBoost(city, civ, gameState) {
+    if (!city || !civ || city.buildQueue) return null;
+    if (isProducingResources(city, gameState) || isBoostingResearch(city, gameState)) return null;
+    if (!civ.currentResearch) return null;
+
+    const amount = researchBoostAmount(city);
+    const result = window.GameEngine.tech.reduceResearchTurns(civ, amount);
+    if (!result) return null;
+
+    city.researchBoostTurn = gameState.turnNumber || 0;
+    city.researchBoostGain = result;
+
+    window.GameEngine.floatingText.spawnFloatingText(
+      city, result.completed ? `Research complete: ${result.techLabel}` : `-${amount} Research turns`, "resource");
+    return result;
+  }
+
+  /**
    * Aggregates the effects of a city's alive structures: flat yields, influence
    * multiplier (product), radius bonus (sum), plus the road/forest-scaled yields.
    */
@@ -1020,6 +1069,9 @@ window.GameEngine = window.GameEngine || {};
     isProducingResources,
     resourceProductionPreview,
     applyResourceProduction,
+    isBoostingResearch,
+    researchBoostAmount,
+    applyResearchBoost,
     computeWorkedTileYield,
     isOffsetFilled,
     isTileFilledForCiv,

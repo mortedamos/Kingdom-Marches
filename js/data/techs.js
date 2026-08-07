@@ -46,8 +46,20 @@
  *   death_lore_bonus        { value }       +lore when this civ's own unit dies in combat
  *   raise_dead_resistance   { value }       chance (0-1) this civ's defeated units resist an enemy's raise-dead
  *   ignore_terrain_penalty  { terrain }      caps that terrain's move cost to 1
- *   terrain_movement_bonus  { terrain, value }  +movement points while starting a move on that terrain (civ-wide)
- *   unit_terrain_movement_bonus { terrain, value, units }  same, but scoped to specific unit type ids only
+ *   terrain_movement_discount  { terrain, value }  reduces the movement cost of LEAVING that terrain by
+ *                                                  `value`, floored at 0.5 (civ-wide) -- see ai.js's
+ *                                                  landCostForTerrain. Applies every time a unit steps off a
+ *                                                  matching tile, anywhere on its path, not just at the start
+ *                                                  of its turn. Replaced terrain_movement_bonus (2026-08-06,
+ *                                                  user-directed) on every tech that used to grant one: a
+ *                                                  once-per-turn budget bonus only paid off if the unit
+ *                                                  happened to START its turn on the favored terrain, and paid
+ *                                                  nothing for crossing miles of it mid-move -- this pays off
+ *                                                  on every single step instead, which is what these techs
+ *                                                  were always meant to reward. The OLD bonus effect type
+ *                                                  still exists in the engine (nothing currently emits it) --
+ *                                                  see computeMovementBudget in ai.js.
+ *   unit_terrain_movement_discount { terrain, value, units }  same, but scoped to specific unit type ids only
  *   unlock_mountain_tunneling               makes Mountains passable (slow) for this civ
  *   unlock_mechanic         { mechanic }     generic flag for bespoke mechanics (e.g. "dark_ritual")
  *   building_count_bonus    { bonus }        flat per-turn yield scaling with a city's built (non-wall) structure count
@@ -169,21 +181,35 @@ window.GameData.TECHS = {
     costBreakdown: { lore: 11, coin: 4 },
     effects: [{ type: "unlock_unit", unit: "spearguard" }],
   },
+  // Moved L2 -> L1 (2026-08-06, user-directed): a second Layer 1 military
+  // choice alongside Spears Raised, per the file header's own "Military may
+  // fork into two choices at a layer" rule. No prereq-chain risk -- archery
+  // has no prereqs of its own, and every tech that depends on it (longbow/
+  // catapult_engineering/ramparts) stays strictly later regardless of which
+  // layer archery itself sits at.
+  archery: {
+    id: "archery", label: "Archery", category: "military", layer: 1, cost: 25,
+    prereqs: [], raceOnly: "human",
+    description: "Unlocks the Archer (Ranged 2).",
+    costBreakdown: { lore: 17, coin: 8 },
+    effects: [{ type: "unlock_unit", unit: "archer" }],
+  },
   spirit_of_exploration: {
     id: "spirit_of_exploration", label: "Spirit of Exploration", category: "civic", layer: 1, cost: 14,
     prereqs: [], raceOnly: "human",
-    description: "+1 movement when starting a move on Plains.",
+    description: "Reduces the movement cost of Plains by 0.5.",
     costBreakdown: { lore: 14 },
-    effects: [{ type: "terrain_movement_bonus", terrain: "plains", value: 1 }],
+    effects: [{ type: "terrain_movement_discount", terrain: "plains", value: 0.5 }],
   },
   rivercraft: {
     id: "rivercraft", label: "Rivercraft", category: "civic", layer: 1, cost: 14,
     prereqs: [], raceOnly: "human",
-    description: "+1 movement when starting a move on Rivers.",
+    description: "Reduces the movement cost of River tiles by 0.5.",
     costBreakdown: { lore: 14 },
     // "river" is a pseudo-terrain key: rivers overlay any base terrain
-    // (tile.hasRiver), so moveUnitToward checks it separately -- see ai.js.
-    effects: [{ type: "terrain_movement_bonus", terrain: "river", value: 1 }],
+    // (tile.hasRiver), so getMoveCost/landCostForTerrain check it separately
+    // -- see ai.js.
+    effects: [{ type: "terrain_movement_discount", terrain: "river", value: 0.5 }],
   },
   homestead: {
     id: "homestead", label: "Homestead", category: "civic", layer: 1, cost: 20,
@@ -230,13 +256,6 @@ window.GameData.TECHS = {
     costBreakdown: { lore: 17, harvest: 8 },
     effects: [{ type: "unlock_unit", unit: "cavalry" }],
   },
-  archery: {
-    id: "archery", label: "Archery", category: "military", layer: 2, cost: 25,
-    prereqs: [], raceOnly: "human",
-    description: "Unlocks the Archer (Ranged 2).",
-    costBreakdown: { lore: 17, coin: 8 },
-    effects: [{ type: "unlock_unit", unit: "archer" }],
-  },
   trade_roads: {
     id: "trade_roads", label: "Trade Roads", category: "civic", layer: 2, cost: 40,
     prereqs: ["homestead"], raceOnly: "human",
@@ -250,6 +269,26 @@ window.GameData.TECHS = {
     description: "Galleys gain +2 movement and +1 vision.",
     costBreakdown: { coin: 14, lore: 8 },
     effects: [{ type: "unit_stat_upgrade", unit: "galley", changes: { movement: 2, visionRadius: 1 } }],
+  },
+  // Moved L3 -> L2 (2026-08-06, user-directed), following archery down a
+  // layer. Its own prereq (archery) is now L1, so the ordering stays sound.
+  catapult_engineering: {
+    id: "catapult_engineering", label: "Catapult Engineering", category: "military", layer: 2, cost: 40,
+    prereqs: ["archery"], raceOnly: "human",
+    description: "Unlocks the Catapult (low movement, Ranged 2, Siege 100%) -- a separate unit from Archer/Longbowman, not a replacement.",
+    costBreakdown: { lore: 28, coin: 12 },
+    effects: [{ type: "unlock_unit", unit: "catapult" }],
+  },
+  // Moved L3 -> L2 (2026-08-06, user-directed), for the same reason as
+  // catapult_engineering just above -- prereq (archery) is now L1.
+  ramparts: {
+    // category "building" (2026-07-20, user-directed) despite unlocking no
+    // building of its own -- filed there anyway per the user's explicit call.
+    id: "ramparts", label: "Ramparts", category: "building", layer: 2, cost: 40,
+    prereqs: ["archery"], raceOnly: "human",
+    description: "Walls and cities can counterattack, with an attack rating (at least the Archer's), the Archer's own Ranged reach (an attacker standing further away than that takes no counter damage at all), and a 25% discount against a First-Strike attacker -- same convention as Halfellow's Rouse the People but with no attack bonus or militia spawn.",
+    costBreakdown: { lore: 28, coin: 12 },
+    effects: [{ type: "unlock_mechanic", mechanic: "ramparts" }],
   },
 
   // --- Layer 3 ---
@@ -273,13 +312,6 @@ window.GameData.TECHS = {
     description: "Unlocks the Longbowman (higher attack, Ranged 3) -- replaces Archer.",
     costBreakdown: { lore: 28, coin: 12 },
     effects: [{ type: "replace_unit", from: "archer", to: "longbowman" }],
-  },
-  catapult_engineering: {
-    id: "catapult_engineering", label: "Catapult Engineering", category: "military", layer: 3, cost: 40,
-    prereqs: ["archery"], raceOnly: "human",
-    description: "Unlocks the Catapult (low movement, Ranged 2, Siege 100%) -- a separate unit from Archer/Longbowman, not a replacement.",
-    costBreakdown: { lore: 28, coin: 12 },
-    effects: [{ type: "unlock_unit", unit: "catapult" }],
   },
   wizardry: {
     // Moved L3 -> L2 (2026-07-17, user-directed). No prereq-chain risk: this
@@ -311,14 +343,21 @@ window.GameData.TECHS = {
     costBreakdown: { lore: 55 },
     effects: [{ type: "lore_per_city", value: 3 }],
   },
-  ramparts: {
-    // category "building" (2026-07-20, user-directed) despite unlocking no
-    // building of its own -- filed there anyway per the user's explicit call.
-    id: "ramparts", label: "Ramparts", category: "building", layer: 3, cost: 40,
-    prereqs: ["archery"], raceOnly: "human",
-    description: "Walls and cities can counterattack, with an attack rating (at least the Archer's), the Archer's own Ranged reach (an attacker standing further away than that takes no counter damage at all), and a 25% discount against a First-Strike attacker -- same convention as Halfellow's Rouse the People but with no attack bonus or militia spawn.",
-    costBreakdown: { lore: 28, coin: 12 },
-    effects: [{ type: "unlock_mechanic", mechanic: "ramparts" }],
+  // New tech (2026-08-06, user-directed): the user's own request left this
+  // tech unnamed ("HUMAN - CIVIC - L3: \"\""); "Sea Charts" was picked here
+  // as a placeholder that fits the file's naming register and Make Way's own
+  // travel/cartography flavor -- rename freely.
+  sea_charts: {
+    id: "sea_charts", label: "Sea Charts", category: "civic", layer: 3, cost: 45,
+    prereqs: ["make_way"], raceOnly: "human",
+    description: "All Ocean and Coast tiles anywhere on the map are always revealed -- no fog of war on those tiles at all.",
+    costBreakdown: { lore: 27, coin: 18 },
+    // Same "unlock_mechanic" + turns.js hand-check pattern as Elf's Wind
+    // From Distant Treetops and Dwarf's Mountains on the Horizon -- see
+    // turns.js's refreshVisibility, which is where "sea_charts" is actually
+    // read (there is no dedicated reveal-by-terrain effect type; every
+    // terrain-reveal tech in the game goes through this same generic flag).
+    effects: [{ type: "unlock_mechanic", mechanic: "sea_charts" }],
   },
   flight: {
     id: "flight", label: "Flight", category: "military", layer: 3, cost: 60,
@@ -343,8 +382,10 @@ window.GameData.TECHS = {
     costBreakdown: { lore: 35, coin: 15 },
     effects: [{ type: "unlock_building", building: "mage_college" }],
   },
+  // Moved L4 -> L3 (2026-08-06, user-directed), following catapult_engineering
+  // down a layer. Its prereq is now L2, so the ordering stays sound.
   trebuchet_engineering: {
-    id: "trebuchet_engineering", label: "Trebuchet Engineering", category: "military", layer: 4, cost: 55,
+    id: "trebuchet_engineering", label: "Trebuchet Engineering", category: "military", layer: 3, cost: 55,
     prereqs: ["catapult_engineering"], raceOnly: "human",
     description: "Unlocks the Trebuchet (very low movement, Ranged 2, Siege 200%) -- replaces Catapult.",
     costBreakdown: { lore: 38, coin: 17 },
@@ -442,9 +483,9 @@ window.GameData.TECHS = {
   elf_home_in_the_trees: {
     id: "elf_home_in_the_trees", label: "Home in the Trees", category: "civic", layer: 1, cost: 12,
     prereqs: [], raceOnly: "elf",
-    description: "+1 movement when starting a move on Forest.",
+    description: "Reduces the movement cost of Forest by 0.5.",
     costBreakdown: { lore: 12 },
-    effects: [{ type: "terrain_movement_bonus", terrain: "forest", value: 1 }],
+    effects: [{ type: "terrain_movement_discount", terrain: "forest", value: 0.5 }],
   },
   elf_nature_provides: {
     id: "elf_nature_provides", label: "Nature Provides", category: "civic", layer: 1, cost: 18,
@@ -470,9 +511,9 @@ window.GameData.TECHS = {
   elf_whispering_waters: {
     id: "elf_whispering_waters", label: "Whispering Waters", category: "civic", layer: 2, cost: 20,
     prereqs: [], raceOnly: "elf",
-    description: "+0.75 lore from river.",
+    description: "+0.5 lore from river.",
     costBreakdown: { lore: 14, coin: 6 },
-    effects: [{ type: "unlock_feature_bonus", feature: "river", bonus: { lore: 0.75 } }],
+    effects: [{ type: "unlock_feature_bonus", feature: "river", bonus: { lore: 0.5 } }],
   },
   elf_reverie_of_sunset: {
     id: "elf_reverie_of_sunset", label: "Reverie of Sunset", category: "civic", layer: 2, cost: 28,
@@ -484,9 +525,9 @@ window.GameData.TECHS = {
   elf_longstrider: {
     id: "elf_longstrider", label: "Longstrider", category: "civic", layer: 2, cost: 20,
     prereqs: [], raceOnly: "elf",
-    description: "+1 movement when starting a move on Plains.",
+    description: "Reduces the movement cost of Plains by 0.5.",
     costBreakdown: { lore: 20 },
-    effects: [{ type: "terrain_movement_bonus", terrain: "plains", value: 1 }],
+    effects: [{ type: "terrain_movement_discount", terrain: "plains", value: 0.5 }],
   },
   elf_dancing_upon_azure_waves: {
     id: "elf_dancing_upon_azure_waves", label: "Dancing Upon Azure Waves", category: "civic", layer: 3, cost: 35,
@@ -984,16 +1025,16 @@ window.GameData.TECHS = {
   orc_marsh_paths: {
     id: "orc_marsh_paths", label: "Marsh Paths", category: "civic", layer: 1, cost: 12,
     prereqs: [], raceOnly: "orc",
-    description: "+1 movement starting on Swamp.",
+    description: "Reduces the movement cost of Swamp by 0.5.",
     costBreakdown: { lore: 12 },
-    effects: [{ type: "terrain_movement_bonus", terrain: "swamp", value: 1 }],
+    effects: [{ type: "terrain_movement_discount", terrain: "swamp", value: 0.5 }],
   },
   orc_forced_march: {
     id: "orc_forced_march", label: "Forced March", category: "civic", layer: 1, cost: 14,
     prereqs: [], raceOnly: "orc",
-    description: "+1 movement starting on Plains, for Raiders, Wolf Riders, and Ogres only.",
+    description: "Reduces the movement cost of Plains by 0.5 for Raiders, Wolf Riders, and Ogres only.",
     costBreakdown: { lore: 10, harvest: 4 },
-    effects: [{ type: "unit_terrain_movement_bonus", terrain: "plains", value: 1, units: ["raider", "wolf_rider", "ogre"] }],
+    effects: [{ type: "unit_terrain_movement_discount", terrain: "plains", value: 0.5, units: ["raider", "wolf_rider", "ogre"] }],
   },
   orc_violent_momentum: {
     id: "orc_violent_momentum", label: "Violent Momentum", category: "civic", layer: 1, cost: 14,
@@ -1028,11 +1069,11 @@ window.GameData.TECHS = {
   orc_wolf_riders: {
     id: "orc_wolf_riders", label: "Wolf Riders", category: "military", layer: 2, cost: 16,
     prereqs: ["orc_dire_wolf"], raceOnly: "orc",
-    description: "Unlocks the Wolf Rider (relatively high movement). +1 movement starting on Forest.",
+    description: "Unlocks the Wolf Rider (relatively high movement). Reduces the movement cost of Forest by 0.5 for Wolf Riders only.",
     costBreakdown: { lore: 12, coin: 4 },
     effects: [
       { type: "unlock_unit", unit: "wolf_rider" },
-      { type: "unit_terrain_movement_bonus", terrain: "forest", value: 1, units: ["wolf_rider"] },
+      { type: "unit_terrain_movement_discount", terrain: "forest", value: 0.5, units: ["wolf_rider"] },
     ],
   },
   orc_bog_harvest: {
@@ -1157,9 +1198,9 @@ window.GameData.TECHS = {
   orc_wasteland_riders: {
     id: "orc_wasteland_riders", label: "Wasteland Riders", category: "military", layer: 3, cost: 24,
     prereqs: ["orc_forced_march"], raceOnly: "orc",
-    description: "+1 movement starting on Desert, for Raiders, Wolf Riders, and Ogres only.",
+    description: "Reduces the movement cost of Desert by 0.5 for Raiders, Wolf Riders, and Ogres only.",
     costBreakdown: { lore: 18, harvest: 6 },
-    effects: [{ type: "unit_terrain_movement_bonus", terrain: "desert", value: 1, units: ["raider", "wolf_rider", "ogre"] }],
+    effects: [{ type: "unit_terrain_movement_discount", terrain: "desert", value: 0.5, units: ["raider", "wolf_rider", "ogre"] }],
   },
   orc_hound_and_hunter: {
     id: "orc_hound_and_hunter", label: "Hound and Hunter", category: "military", layer: 3, cost: 28,
@@ -1257,9 +1298,9 @@ window.GameData.TECHS = {
   undead_mire_walkers: {
     id: "undead_mire_walkers", label: "Mire-Walkers", category: "civic", layer: 1, cost: 12,
     prereqs: [], raceOnly: "undead",
-    description: "The dead do not tire in the bog. +1 movement starting on Swamp.",
+    description: "The dead do not tire in the bog. Reduces the movement cost of Swamp by 0.5.",
     costBreakdown: { lore: 12 },
-    effects: [{ type: "terrain_movement_bonus", terrain: "swamp", value: 1 }],
+    effects: [{ type: "terrain_movement_discount", terrain: "swamp", value: 0.5 }],
   },
 
   undead_barrow_rite: {
@@ -1338,26 +1379,26 @@ window.GameData.TECHS = {
   halfellow_arms: {
     id: "halfellow_arms", label: "Wanderer", category: "military", layer: 1, cost: 15,
     prereqs: [], raceOnly: "halfellow",
-    description: "Unlocks the Wanderer (basic melee unit; may found a city, in addition to the normal Pioneer). +1 movement when starting on Plains.",
+    description: "Unlocks the Wanderer (basic melee unit; may found a city, in addition to the normal Pioneer). Reduces the movement cost of Plains by 0.5.",
     costBreakdown: { harvest: 15 },
     effects: [
       { type: "unlock_unit", unit: "wanderer" },
-      { type: "terrain_movement_bonus", terrain: "plains", value: 1 },
+      { type: "terrain_movement_discount", terrain: "plains", value: 0.5 },
     ],
   },
   halfellow_singing_hills: {
     id: "halfellow_singing_hills", label: "Singing Hills", category: "civic", layer: 1, cost: 12,
     prereqs: [], raceOnly: "halfellow",
-    description: "+1 movement when starting on Hills. (Does not stack with Riverfolk on a hill-with-river tile -- only the higher of the two applies.)",
+    description: "Reduces the movement cost of Hills by 0.5. (Does not stack with Riverfolk on a hill-with-river tile -- only the higher of the two applies.)",
     costBreakdown: { lore: 12 },
-    effects: [{ type: "terrain_movement_bonus", terrain: "hills", value: 1 }],
+    effects: [{ type: "terrain_movement_discount", terrain: "hills", value: 0.5 }],
   },
   halfellow_riverfolk: {
     id: "halfellow_riverfolk", label: "Riverfolk", category: "civic", layer: 1, cost: 12,
     prereqs: [], raceOnly: "halfellow",
-    description: "+1 movement when starting on Rivers. (Does not stack with Singing Hills on a hill-with-river tile -- only the higher of the two applies.)",
+    description: "Reduces the movement cost of River tiles by 0.5. (Does not stack with Singing Hills on a hill-with-river tile -- only the higher of the two applies.)",
     costBreakdown: { lore: 12 },
-    effects: [{ type: "terrain_movement_bonus", terrain: "river", value: 1 }],
+    effects: [{ type: "terrain_movement_discount", terrain: "river", value: 0.5 }],
   },
   // Moved from L2 (2026-07-12): Halfellow's stealth kit was coming online
   // too late to matter during the exact early-rush window that was

@@ -68,12 +68,12 @@ window.GameConfig = {
     /** Local date this build was cut, YYYY-MM-DD. */
     date: "2026-08-06",
     /** Local time this build was cut, 24-hour HH:MM. */
-    time: "18:25",
+    time: "20:23",
     /** Monotonic build counter. Continues the numbering the old GitHub-
      *  derived stamp used (it showed the repo's total commit count), so
      *  builds from before and after this change still sort against each
      *  other. Increment it; don't recompute it. */
-    number: 69,
+    number: 70,
   },
 
   // =========================================================================
@@ -351,6 +351,15 @@ window.GameConfig = {
     cityBaseDefense: 4,
     cityDefensePerLevel: 2.5,
     cityDefensePerStructure: 1.5,
+
+    /** +defense per alive Wall structure (2026-08-06, user-directed), ON TOP
+     *  of the generic cityDefensePerStructure every structure already gives
+     *  -- a wall is still a structure, so it was already contributing that
+     *  1.5, this is the wall-specific premium for actually being a wall. See
+     *  combat.js's cityDefenseValue for where the two add together, and
+     *  sidebar.js's renderCityPanel for the "Defense" row that surfaces the
+     *  total (base + level + structures + walls) to the player. */
+    cityDefensePerWall: 1,
 
     /** City HP (2026-08-04, user-directed): a city now has a real, damage-
      *  accumulating HP pool instead of attackCity's old single win/lose roll

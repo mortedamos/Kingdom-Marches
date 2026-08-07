@@ -572,13 +572,7 @@ window.GameEngine = window.GameEngine || {};
     // Stamp tech-unlocked movement modifiers onto each unit for this turn's
     // pathfinding (getMoveCost / moveUnitToward / canReachByLand read this).
     // Cheap reference copy, not a deep clone -- these fields are civ-wide.
-    const moveMods = {
-      terrainOverride: civ.terrainMoveOverride || {},
-      terrainBonus: civ.terrainMoveBonus || {},
-      unitTerrainBonus: civ.unitTerrainMoveBonus || {}, // { unitTypeId: { terrainId: extraMovement } }
-      unitOverrides: civ.unitOverrides || {}, // { unitTypeId: {attack,defense,movement,visionRadius,firstStrikePct,siegePct,...} }
-      canTunnel: !!civ.canTunnelMountains,
-    };
+    const moveMods = civMoveMods(civ);
     for (const u of civ.units) u._moveMods = moveMods;
 
     // Overseas-invasion readiness: which landmasses this civ already controls
@@ -1355,7 +1349,7 @@ window.GameEngine = window.GameEngine || {};
       // see getMoveCost's doc comment (cost is charged for leaving it).
       const originTile = fromIdx != null ? map.tiles[fromIdx] : map.tiles[pioneer.y * map.width + pioneer.x];
       const originTerrain = window.GameData.TERRAIN[originTile.terrain];
-      return getMoveCost(originTerrain, destTerrain, baseUnit, pioneer, originTile.hasRoad);
+      return getMoveCost(originTerrain, destTerrain, baseUnit, pioneer, originTile);
     };
     const path = window.GameEngine.pathfinding.findPath(pioneer.x, pioneer.y, targetX, targetY, map, costFn);
     if (!path || path.length === 0) return;
@@ -1783,14 +1777,45 @@ window.GameEngine = window.GameEngine || {};
    * can't be crossed even with those. Shared by getMoveCost's origin (cost)
    * and destination (passability) evaluations below, so tunneling/override
    * behave identically regardless of which side of a step they're read from.
+   *
+   * `hasRiver`/`unitTypeId` (2026-08-06, user-directed) feed the discount
+   * half only -- terrainDiscount/unitTerrainDiscount, see civMoveMods --
+   * which is why they're optional and only the ORIGIN call site in
+   * getMoveCost below ever passes them. Discounting the DESTINATION side
+   * would be pointless: that call only ever asks "is this IMPASSABLE?", and
+   * a discount can never turn IMPASSABLE finite (Infinity minus any real
+   * number is still Infinity) the way canTunnel/terrainOverride above
+   * genuinely can, so there's nothing for it to change there.
+   *
+   * Civ-wide and per-unit-type discounts ADD together, but WITHIN each of
+   * those two layers a tile matching multiple keys (e.g. a Hills tile that
+   * also has a river) takes the single best one, not the sum -- identical
+   * "add across layers, max within a layer" stacking rule
+   * computeMovementBudget's own terrain BONUS uses, so the two mechanisms
+   * read consistently even though only one of them is live on any tech
+   * right now. Floored at 0.5 (never lower, never zero) so a heavily
+   * discounted terrain still costs SOMETHING -- a 0-cost step would let a
+   * unit with movesRemaining a hair above 0 cross it for free forever.
    */
-  function landCostForTerrain(terrain, mods) {
+  function landCostForTerrain(terrain, mods, hasRiver, unitTypeId) {
     if (terrain.id === "mountains" && terrain.moveCostLand === window.GameData.IMPASSABLE && mods?.canTunnel) {
       return 3; // slow but passable
     }
     const override = mods?.terrainOverride?.[terrain.id];
-    if (override != null) return Math.min(terrain.moveCostLand, override);
-    return terrain.moveCostLand;
+    let cost = override != null ? Math.min(terrain.moveCostLand, override) : terrain.moveCostLand;
+    if (cost === window.GameData.IMPASSABLE) return cost;
+
+    const civWideDiscount = Math.max(
+      mods?.terrainDiscount?.[terrain.id] || 0,
+      hasRiver ? (mods?.terrainDiscount?.river || 0) : 0,
+    );
+    const perUnitDiscount = Math.max(
+      mods?.unitTerrainDiscount?.[unitTypeId]?.[terrain.id] || 0,
+      hasRiver ? (mods?.unitTerrainDiscount?.[unitTypeId]?.river || 0) : 0,
+    );
+    const discount = civWideDiscount + perUnitDiscount;
+    if (discount) cost = Math.max(0.5, cost - discount);
+    return cost;
   }
 
   /**
@@ -1810,17 +1835,23 @@ window.GameEngine = window.GameEngine || {};
    *   - COST ("how much of my movement does this step use?") is charged for
    *     LEAVING the ORIGIN tile. Moving out of a Forest costs 2 no matter how
    *     open the tile you're stepping onto is; moving out of Plains costs 1
-   *     even into a Forest. The discount for a unit standing on a road
-   *     (originHasRoad) is likewise about the tile you're leaving -- see
-   *     ROAD_MOVE_COST's own comment.
+   *     even into a Forest. The discount for a unit standing on a road is
+   *     likewise about the tile you're leaving -- see ROAD_MOVE_COST's own
+   *     comment.
    *
    * Callers (buildMoveRules' costFn, pioneerRoadStep, findFleeTile) all
-   * derive originTerrain/originHasRoad from whichever tile the unit is
-   * ACTUALLY stepping off of for that hop -- see pathfinding.js's `fromIdx`,
-   * which is what makes that tile available mid-search rather than just at
-   * the unit's turn-start position.
+   * derive originTerrain/originTile from whichever tile the unit is ACTUALLY
+   * stepping off of for that hop -- see pathfinding.js's `fromIdx`, which is
+   * what makes that tile available mid-search rather than just at the unit's
+   * turn-start position.
+   *
+   * `originTile` (2026-08-06, user-directed -- was a bare `originHasRoad`
+   * boolean) is now the whole raw tile object: still read for `.hasRoad`,
+   * and ALSO for `.hasRiver`, which landCostForTerrain's discount half needs
+   * to apply a river-keyed tech (e.g. Rivercraft) regardless of the terrain
+   * underneath the river.
    */
-  function getMoveCost(originTerrain, destTerrain, unitData, unit, originHasRoad) {
+  function getMoveCost(originTerrain, destTerrain, unitData, unit, originTile) {
     // Flying units "move over all terrain" (see units.js's flying doc comment) --
     // flat cost regardless of water/mountains/land movement penalties, ignoring
     // every other rule below (naval cost, tunneling, terrain overrides, roads --
@@ -1843,8 +1874,10 @@ window.GameEngine = window.GameEngine || {};
     if (landCostForTerrain(destTerrain, mods) === window.GameData.IMPASSABLE) return window.GameData.IMPASSABLE;
 
     // It can -- charge for leaving the origin.
-    if (originHasRoad) return ROAD_MOVE_COST;
-    return landCostForTerrain(originTerrain, mods);
+    if (originTile?.hasRoad) return ROAD_MOVE_COST;
+    const originHasRiver = !!(originTile?.hasRiver
+      && (originTile.hasRiver.n || originTile.hasRiver.s || originTile.hasRiver.e || originTile.hasRiver.w));
+    return landCostForTerrain(originTerrain, mods, originHasRiver, unit?.typeId);
   }
 
   /**
@@ -1973,6 +2006,43 @@ window.GameEngine = window.GameEngine || {};
   // per-civ-turn reset, same point usedThisTurn goes false), so a caller can
   // move a unit partway toward a target and still have an accurate budget
   // left to check before attempting to act.
+
+  /**
+   * Every tech-unlocked movement modifier a civ currently has, in the one
+   * shape unit._moveMods is stamped with -- shared by beginAITurn (every AI
+   * civ's units, every turn), primeUnitForAutomation (one human unit with
+   * Automate Actions on), and turns.js's beginCivTurn (the human civ's OWN
+   * units, added 2026-08-06 -- see that call site's own comment for the bug
+   * this closes: a plain, non-automated human-controlled unit never had
+   * this stamped onto it AT ALL before, silently disabling every terrain-
+   * movement tech, mountain-tunneling, and unit movement override for
+   * anything the player moved by hand -- exactly the "movement feels wrong"
+   * class of bug, and the actual majority of play in a human game).
+   *
+   * Cheap reference copy, not a deep clone -- every field here is civ-wide,
+   * so one object is shared across all of a civ's units for the turn.
+   */
+  function civMoveMods(civ) {
+    return {
+      terrainOverride: civ.terrainMoveOverride || {}, // { terrainId: cappedCost } -- hard cap (ignore_terrain_penalty)
+      terrainBonus: civ.terrainMoveBonus || {}, // { terrainId: extraMovement } -- adds to the turn's starting budget
+      unitTerrainBonus: civ.unitTerrainMoveBonus || {}, // { unitTypeId: { terrainId: extraMovement } }
+      // terrainDiscount/unitTerrainDiscount (2026-08-06, user-directed):
+      // the REPLACEMENT for terrain_movement_bonus/unit_terrain_movement_
+      // bonus on every tech that used to grant one -- see landCostForTerrain,
+      // which is where these actually apply (a per-step cost reduction on
+      // ANY tile of the matching terrain the unit leaves, not just a bonus
+      // added once for whichever tile it happened to START its turn on).
+      // *Bonus and *Discount can coexist without conflict (nothing currently
+      // sets both for the same terrain), so the old fields above are left in
+      // place rather than removed -- still real, general-purpose engine
+      // capability, just unused by any CURRENT tech.
+      terrainDiscount: civ.terrainMoveDiscount || {}, // { terrainId: costReduction }
+      unitTerrainDiscount: civ.unitTerrainMoveDiscount || {}, // { unitTypeId: { terrainId: costReduction } }
+      unitOverrides: civ.unitOverrides || {}, // { unitTypeId: {attack,defense,movement,visionRadius,firstStrikePct,siegePct,...} }
+      canTunnel: !!civ.canTunnelMountains,
+    };
+  }
 
   /** Pure movement-budget math for a unit's turn (extracted unchanged from
    *  the old moveUnitToward), so it can be computed once and persisted
@@ -2114,7 +2184,7 @@ window.GameEngine = window.GameEngine || {};
       const destTerrain = window.GameData.TERRAIN[tile.terrain];
       const originTile = fromIdx != null ? map.tiles[fromIdx] : map.tiles[unit.y * map.width + unit.x];
       const originTerrain = window.GameData.TERRAIN[originTile.terrain];
-      return getMoveCost(originTerrain, destTerrain, baseUnit, unit, originTile.hasRoad);
+      return getMoveCost(originTerrain, destTerrain, baseUnit, unit, originTile);
     };
 
     // A flier crossing OVER an enemy wall is fine; landing on it isn't --
@@ -4009,7 +4079,7 @@ window.GameEngine = window.GameEngine || {};
         const nx = unit.x + dx, ny = unit.y + dy;
         if (nx < 0 || nx >= map.width || ny < 0 || ny >= map.height) continue;
         const tile = map.tiles[ny * map.width + nx];
-        if (getMoveCost(originTerrain, TERRAIN[tile.terrain], unitData, unit, originTile.hasRoad) === window.GameData.IMPASSABLE) continue;
+        if (getMoveCost(originTerrain, TERRAIN[tile.terrain], unitData, unit, originTile) === window.GameData.IMPASSABLE) continue;
         if (Object.values(civs).some((c) => c.units.some((u) => u.x === nx && u.y === ny))) continue;
         const d = window.GameEngine.influence.chebyshev(nx, ny, threat.x, threat.y);
         if (d > bestDist) { bestDist = d; best = { x: nx, y: ny }; }
@@ -4940,6 +5010,55 @@ window.GameEngine = window.GameEngine || {};
     caster.usedThisTurn = true;
     caster.currentMission = `Granted flight to ${describeUnit(target)} at (${target.x},${target.y})`;
     log.push(`Flight: ${civ.id}'s Wizard grants flight to their ${describeUnit(target)} at (${target.x},${target.y})`);
+  }
+
+  /**
+   * PLAYER-TRIGGERED Grant Flight (2026-08-06, user-directed bug fix). Every
+   * caster-and-ally-target action in this file -- this one included -- was
+   * reachable ONLY through the AI's own decision loop (maybeGrantFlight
+   * above, called from runUnitTurn, which only ever runs for an AI civ or a
+   * human unit with Automate Actions on): js/engine/orders.js's
+   * contextMenuOptions (the human player's own right-click menu) had no
+   * branch at all for right-clicking an ALLIED unit, so a human player who
+   * researched Flight and wanted to cast it manually on a specific ally had
+   * no way to -- reported as "didn't have the option presented... with a
+   * wizard unit, and flight tech researched." This is the fix for that one
+   * case: a real entry point a player action can call with an EXPLICIT
+   * target, alongside the existing AI path that picks its own.
+   *
+   * Deliberately requires ADJACENCY rather than reusing maybeGrantFlight's
+   * "walk over first" reach -- same convention Attack already uses in this
+   * game (right-click a far enemy offers Move, not walk-then-attack); a
+   * second right-click once the Wizard is beside its target casts it. Every
+   * condition the ring's contextMenuOptions checked to decide whether to
+   * OFFER this pill is re-checked here too, rather than trusted -- the menu
+   * can go stale between being drawn and being clicked (the ally could have
+   * moved, died, or already been flying).
+   *
+   * `currentTurnNumber`/`currentGameStateRef` are stamped here before calling
+   * through to performWizardGrantFlight, which reads the former as a module-
+   * level closure var: those are normally kept current by beginAITurn (every
+   * AI civ, every turn) or primeUnitForAutomation (an automated human unit)
+   * -- neither of which ever runs for a plain, player-clicked action, so
+   * without this the expiry math could read a stale turn number left over
+   * from whichever AI civ acted most recently.
+   */
+  function castFlightOnAlly(civ, caster, target, gameState) {
+    if (!caster || !target || caster === target) return false;
+    if (caster.typeId !== "wizard") return false;
+    if (!civ.unlockedMechanics?.has("flight_grant")) return false;
+    if (caster.usedThisTurn) return false;
+    if (target.civId !== caster.civId || target.carriedBy) return false;
+    if (window.GameData.getUnit(target.typeId).category !== "military") return false;
+    if (window.GameEngine.combat.isFlying(target)) return false;
+    if (window.GameEngine.influence.chebyshev(caster.x, caster.y, target.x, target.y) > 1) return false;
+
+    currentTurnNumber = gameState.turnNumber || 0;
+    currentGameStateRef = gameState;
+    const log = [];
+    performWizardGrantFlight(civ, caster, target, log);
+    if (log.length) appendAIActionLog(gameState, civ.id, log);
+    return true;
   }
 
   /**
@@ -10706,13 +10825,7 @@ window.GameEngine = window.GameEngine || {};
    * refs several combat/quip helpers above read instead of taking a param.
    */
   function primeUnitForAutomation(unit, civ, gameState) {
-    unit._moveMods = {
-      terrainOverride: civ.terrainMoveOverride || {},
-      terrainBonus: civ.terrainMoveBonus || {},
-      unitTerrainBonus: civ.unitTerrainMoveBonus || {},
-      unitOverrides: civ.unitOverrides || {},
-      canTunnel: !!civ.canTunnelMountains,
-    };
+    unit._moveMods = civMoveMods(civ);
     const turnNumber = gameState.turnNumber || 0;
     currentTurnNumber = turnNumber;
     currentGameStateRef = gameState;
@@ -10824,6 +10937,8 @@ window.GameEngine = window.GameEngine || {};
     // same orders through the same functions, so a player move obeys exactly
     // the rules an AI move does.
     spendMovement,
+    civMoveMods,
+    castFlightOnAlly,
     computeMovementBudget,
     computeReachableTiles,
     buildMoveRules,

@@ -183,21 +183,19 @@ window.GameData.BUILDINGS = {
   // applying it raw, the way every other (defenseless) structure still does.
   wall_section: {
     id: "wall_section", label: "Wall", symbol: "▬", isWall: true,
-    coinCost: 15, maxHp: 40, defense: 8,
-    // Hard floor on build time (see ai.js buildingBuildTurns, which honors
-    // this even under the modern up-front-payment cost model as of
-    // 2026-08-06) -- a wealthy city can't just insta-build a wall. Trimmed
-    // from 14 to 10 (2026-08-06, user-directed: 14 played too slow) -- 10
-    // still lands at the SHORT end of a typical non-siege attacker's own
-    // teardown time on an existing wall (attack ~7-9 vs this wall's defense
-    // 8, ~3-4 dmg/hit after mitigation, ~10-12 turns to fully destroy it),
-    // so a wall still isn't finished meaningfully faster than an ordinary
-    // enemy could tear an existing one down, just no longer padded well
-    // past that benchmark. Dedicated siege units (Catapult/Trebuchet,
-    // already the intentional hard-counter to structures via siegePct)
-    // still break through faster -- that's their established identity, not
-    // something this is meant to stop.
-    minBuildTurns: 10,
+    // coinCost trimmed 15 -> 11, minBuildTurns 10 -> 7 (2026-08-06, user-
+    // directed: "walls should be a little cheaper and take less time to
+    // build" -- both around a 25-30% cut). This directly supersedes the
+    // 2026-08-06 reasoning just below that had settled on 10 turns as
+    // matching a non-siege attacker's own teardown time on an existing
+    // wall -- a wall now finishes a couple turns AHEAD of that benchmark
+    // instead of at the short end of it, by explicit request, not an
+    // oversight of that earlier balance pass. cityDefensePerWall (see
+    // combat.js's cityDefenseValue) also went in this same change, so a
+    // built wall is worth more defensively than it used to be even as it
+    // got cheaper to put up.
+    coinCost: 11, maxHp: 40, defense: 8,
+    minBuildTurns: 7,
   },
 };
 
