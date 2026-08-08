@@ -658,6 +658,80 @@ window.UI = window.UI || {};
     }
   }
 
+  /** Golden glow + sparkle for a unit with a pending level-up (2026-08-07,
+   *  user-directed) -- the only on-map affordance for this now that the
+   *  level-up picker lives solely in the ring menu (see sidebar.js's
+   *  info-only banner and main.js's buildRingPage): a player scanning the
+   *  map should be able to spot which units are owed a veteran bonus
+   *  without opening each one's ring. `pendingLevelUps` is combat.js's
+   *  own "earned XP thresholds minus levels already spent" count, the same
+   *  one gating the ring menu's Level Up pill -- reused directly rather
+   *  than duplicating that math here. Drawn behind the sprite (see
+   *  render.js's Units pass, which calls this before drawImage) so the
+   *  glow reads as coming from underneath the unit, with sprites already
+   *  compositing correctly on top; the sparkles are drawn back OVER
+   *  everything by the caller in a second pass so they aren't hidden
+   *  behind the sprite they're meant to twinkle in front of. */
+  function drawLevelUpGlowBehind(ctx, unit, boxX, boxY, boxSize, now) {
+    if (window.GameEngine.combat.pendingLevelUps(unit) <= 0) return;
+    const cx = boxX + boxSize / 2, cy = boxY + boxSize / 2;
+    const phase = conditionEffectPhase(unit);
+    const pulse = 0.6 + 0.4 * Math.sin(now / 320 + phase);
+    ctx.save();
+    ctx.globalCompositeOperation = "lighter";
+    const r = boxSize * 0.68;
+    const grad = ctx.createRadialGradient(cx, cy, boxSize * 0.12, cx, cy, r);
+    grad.addColorStop(0, `rgba(255, 210, 90, ${0.5 * pulse})`);
+    grad.addColorStop(0.6, `rgba(255, 190, 60, ${0.22 * pulse})`);
+    grad.addColorStop(1, "rgba(255, 190, 60, 0)");
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  /** A small 4-point sparkle shape, filled at `alpha`. */
+  function drawSparkleMark(ctx, x, y, size, alpha) {
+    if (alpha <= 0 || size <= 0) return;
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = "#fff3c4";
+    ctx.beginPath();
+    ctx.moveTo(x, y - size);
+    ctx.lineTo(x + size * 0.28, y - size * 0.28);
+    ctx.lineTo(x + size, y);
+    ctx.lineTo(x + size * 0.28, y + size * 0.28);
+    ctx.lineTo(x, y + size);
+    ctx.lineTo(x - size * 0.28, y + size * 0.28);
+    ctx.lineTo(x - size, y);
+    ctx.lineTo(x - size * 0.28, y - size * 0.28);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+  }
+
+  /** A handful of small gold sparkles orbiting the unit's box, each
+   *  twinkling in and out on its own beat (via conditionEffectPhase, so a
+   *  screen full of leveled-up units doesn't flicker in lockstep). Drawn
+   *  AFTER the sprite (see render.js) so they sit in front of it, unlike
+   *  the glow above. */
+  function drawLevelUpSparkles(ctx, unit, boxX, boxY, boxSize, now) {
+    if (window.GameEngine.combat.pendingLevelUps(unit) <= 0) return;
+    const cx = boxX + boxSize / 2, cy = boxY + boxSize / 2;
+    const phase = conditionEffectPhase(unit);
+    const orbitR = boxSize * 0.58;
+    const count = 4;
+    for (let i = 0; i < count; i++) {
+      const angle = now / 1100 + phase + (i / count) * Math.PI * 2;
+      const sx = cx + Math.cos(angle) * orbitR;
+      const sy = cy + Math.sin(angle) * orbitR * 0.82;
+      const twinkle = Math.max(0, Math.sin(now / 240 + phase * 3 + i * 2.1));
+      if (twinkle < 0.12) continue; // fully invisible beat -- skip the draw so it reads as twinkling, not just pulsing
+      drawSparkleMark(ctx, sx, sy, boxSize * 0.1 * twinkle, twinkle);
+    }
+  }
+
   /**
    * Small status badges -- one per active unit.conditions entry with a
    * mapped icon (see CONDITION_ICONS), plus a "carrying a passenger" badge
@@ -890,6 +964,7 @@ window.UI = window.UI || {};
     drawQuipBubble, drawFloatingTexts, drawDeathEffects, drawDeathEffectAt,
     hasActiveQuip, hasActiveFloatingText, getActiveCombatAnims, getActiveAreaEffects, getActiveDeathEffects,
     getUnitShakeOffset, drawConditionVisualEffects, drawConditionBadges, drawChannelStashLabel, drawIdleCityBadge,
+    drawLevelUpGlowBehind, drawLevelUpSparkles,
     hexToRgba, drawHatch, drawConstructionSite, auraInfoForUnit, drawTileScoreOverlay,
     ATTACK_ANIM_MS, SLASH_ANIM_MS, AREA_EFFECT_ANIM_MS, AREA_EFFECT_COLORS, DEATH_EFFECT_ANIM_MS,
   };

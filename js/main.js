@@ -3308,8 +3308,8 @@
     viewState.ringMenu = null;
 
     if (option.kind !== "building") {
-      window.GameEngine.orders.queueBuild(city, civ, gameState, option, null);
-      redraw();
+      const queued = window.GameEngine.orders.queueBuild(city, civ, gameState, option, null);
+      if (!queued || !goToNextIdleCityOrNextUnit()) redraw();
       return;
     }
 
@@ -3318,10 +3318,11 @@
       label: option.label,
       onPick: (slot) => {
         // A click outside the highlighted slots cancels rather than queuing
-        // the building somewhere arbitrary.
-        if (slot) window.GameEngine.orders.queueBuild(city, civ, gameState, option, slot);
+        // the building somewhere arbitrary -- and rather than navigating
+        // away, since nothing was actually queued.
+        const queued = slot ? window.GameEngine.orders.queueBuild(city, civ, gameState, option, slot) : false;
         viewState.placement = null;
-        redraw();
+        if (!queued || !goToNextIdleCityOrNextUnit()) redraw();
       },
     };
     redraw();
@@ -3347,7 +3348,7 @@
     if (!civ || !city || city.civId !== humanCivId) return;
     if (!window.GameEngine.cities.applyResourceProduction(city, civ, gameState)) return;
     maybeScheduleAutoRepeat(city, "resourceProduction");
-    redraw();
+    if (!goToNextIdleCityOrNextUnit()) redraw();
   }
 
   /** 2026-08-07, user-reported: finishing research via a city's own
@@ -3368,7 +3369,7 @@
     if (!result) return;
     if (result.completed) civ.lastCompletedTech = result.techId;
     maybeScheduleAutoRepeat(city, "research");
-    redraw();
+    if (!goToNextIdleCityOrNextUnit()) redraw();
   }
 
   /** Spends one pending level-up on `stat` for the currently selected unit
@@ -3437,6 +3438,31 @@
     centerViewOn(next.x, next.y);
     viewState.flashTile = { x: next.x, y: next.y, startTime: performance.now() };
     redraw();
+  }
+
+  /** After the player selects an action for a city (2026-08-07, user-
+   *  directed): jump straight to the next idle city if any remain,
+   *  otherwise the next unit still awaiting orders, otherwise leave the
+   *  camera where it is. Reuses the exact same cyclers the sidebar's own
+   *  "Next Idle City"/"Next Unit" buttons call (handleNextIdleCity/
+   *  handleNextUnit just above) so the player doesn't have to reach for
+   *  those by hand after every single city order. Returns whether it
+   *  actually navigated -- both cyclers already redraw() internally, so a
+   *  caller that navigated should skip its own redraw() rather than
+   *  double up. */
+  function goToNextIdleCityOrNextUnit() {
+    if (!humanCivId) return false;
+    const civ = gameState.civs[humanCivId];
+    if (!civ) return false;
+    if (civ.cities.some((c) => window.GameEngine.cities.isCityIdle(civ, c, gameState))) {
+      handleNextIdleCity();
+      return true;
+    }
+    if (window.GameEngine.orders.unitsNeedingOrders(gameState, humanCivId).length) {
+      handleNextUnit();
+      return true;
+    }
+    return false;
   }
 
   /**

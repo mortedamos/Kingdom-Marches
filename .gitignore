@@ -10,3 +10,4 @@ working/
 .git
 AE Updates.txt
 .gitignore
+.githooks/

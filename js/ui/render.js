@@ -621,6 +621,7 @@ window.UI = window.UI || {};
       // affordance already (the Next Unit cycler/footer count), so this isn't
       // load-bearing information lost, just a redundant, confusable cue.
       const spriteAlpha = isOwnHidden ? 0.55 : 1;
+      overlays.drawLevelUpGlowBehind(ctx, unit, boxX, boxY, boxSize, now);
       ctx.save();
       ctx.globalAlpha = spriteAlpha;
       if (unitSprite) {
@@ -659,6 +660,7 @@ window.UI = window.UI || {};
       }
       overlays.drawConditionBadges(ctx, unit, boxX, boxY, boxSize, ts);
       overlays.drawChannelStashLabel(ctx, unit, screenX, screenY, ts);
+      overlays.drawLevelUpSparkles(ctx, unit, boxX, boxY, boxSize, now);
 
       if (overlays.hasActiveQuip(unit)) {
         quipBubbleQueue.push({ unit, screenX, screenY });
