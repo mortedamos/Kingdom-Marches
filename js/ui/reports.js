@@ -311,6 +311,15 @@ window.UI = window.UI || {};
    */
   let _techTreesState = { civId: null };
   let _techTreesGameStateRef = null;
+  // Collapsible-layer state for the embedded tree, same shape as main.js's
+  // own viewState.techTreeExpandedLayers (keyed by civ.id) -- this screen
+  // needs its own copy since it isn't the sidebar's tech-tree overlay and
+  // has no access to that viewState. render() below requires this object
+  // (crashes on `expandedState[civ.id]` if omitted -- 2026-08-10 bug fix,
+  // this call site was never updated when render()'s signature grew the
+  // expandedState/focusTechId/hoverTechId params for the hover-relations
+  // feature).
+  let _techTreesExpandedLayers = {};
 
   function renderAITechTrees(gameState) {
     _techTreesGameStateRef = gameState;
@@ -337,7 +346,12 @@ window.UI = window.UI || {};
       </div>`;
 
     const civ = gameState.civs[_techTreesState.civId];
-    return `<h2>AI Tech Trees</h2>${controlsHtml}${window.UI.techtree.render(civ)}`;
+    // isPlayerCiv: false unconditionally -- this is a spectator view of
+    // every civ's tree, including the human's own if they have one, so the
+    // "AI intends to research next" hint should always show here rather
+    // than being suppressed the way it is on the player's own sidebar
+    // overlay. No focus/hover target in this embedding (null, null).
+    return `<h2>AI Tech Trees</h2>${controlsHtml}${window.UI.techtree.render(civ, false, _techTreesExpandedLayers, null, null)}`;
   }
 
   function refreshTechTreesView() {
