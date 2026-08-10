@@ -1,40 +1,112 @@
-HUMAN - CIVIC - L1: Spirit of Exploration - +1 movement when starting on Plains. [14 lore]
+HUMAN TECH TREE (reviewed against js/data/techs.js, 2026-08-10)
 
-HUMAN - CIVIC - L1: Rivercraft - +1 movement when starting on Rivers. [14 lore]
+Every civ also has 5 shared Level 0 techs, auto-completed for free at civ
+creation (never actually researched): Pioneer (unlocks Pioneer unit + Wall
+Section), Distant Horizons (unlocks Scout), Distant Shores (unlocks
+Galley), Hunt Game (Pioneers/Trackers can hunt Game tiles), and Farm Soil
+(Pioneers/Trackers can farm Fertile Soil tiles). Not listed below since
+they're identical for every race.
+
+COST MODEL: every tech's real cost is purely layer-based (doubling each
+layer: L1=20 total, L2=40, L3=80, L4=160, L5=320), split across
+harvest/coin/lore by column -- Civic leans Harvest (50/20/30), Building
+leans Coin (10/60/30), Military splits Coin/Lore evenly (20/40/40), Mystic
+leans Lore hardest of all (10/30/60). The numbers below are the REAL costs
+a player pays; they are NOT the `cost`/`costBreakdown` fields hand-authored
+on each tech in techs.js, which are inert leftover data no longer read by
+the game (see GameData.effectiveTechCostBreakdown). A city needs at least
+as many cities as a tech's layer number to research it (layer gate).
+
+FOUR COLUMNS, not three (2026-08-10, user-directed): Mystic split off from
+Military -- the Wizard and every one of its own ability techs moved there,
+since a caster's whole kit was crowding the Military column alongside
+straight combat techs. Wizard itself stays "the Wizard" throughout; nothing
+about the unit changed, only which tab its techs render in.
+
+UNIT STATS are no longer written into descriptions below (2026-08-10) --
+the tech tree UI now shows each unlocked/replaced unit's live stats
+(Atk/Def/Mov/Vis/Range/Siege/First Strike/Double Strike/Flying/Carry as
+applicable) computed fresh from units.js at render time, folding in
+whatever that civ has already researched. A number hand-typed into a
+description could (and did -- Catapult Engineering's "Siege 100%" was
+stale against the unit's real 150%) drift out of sync the moment a later
+tech changed the unit; the live block can't.
 
 
-HUMAN - CIVIC - L1: Homestead - +0.5 harvest from Plains [14 lore, 6 coin]
-HUMAN - CIVIC - L2: Trade Roads (requires Homestead) - +1 coin per road tile within a city's radius, up to 8 road tiles per city [40 coin]
-HUMAN - CIVIC - L2: Make Way (requires Rivercraft) - Galleys gain +2 movement and +1 vision [14 coin, 8 lore]
-HUMAN - CIVIC - L3: Common Tongue (requires Trade Roads) - +3 lore per turn for each city owned [55 lore]
-HUMAN - CIVIC - L4: Dungeon Delve (requires Wizardry) - A Wizard on a Ruin may start Delving it: a full-turn channeled action (no move/attack, continues automatically each turn until cancelled by the player/AI) that gradually claims the 1-tile radius around itself (counts toward territorial victory like any owned tile), yields +3 lore and +3 coin per turn, and harvests the resources of every tile it has claimed in that radius. Instantly loses everything it was claiming/generating if cancelled, the Wizard moves off the Ruin, or it dies. Each turn spent actively delving also carries a small chance the Ruin exhausts and is removed from the map permanently. [26 lore, 14 coin]
-HUMAN - CIVIC - L5: Sovereign Power (requires Common Tongue) - +1 influence radius in every city [60 lore, 25 coin, 15 harvest]
-HUMAN - CIVIC - L5: Cultural Influence (requires every other Human tech already researched) - True tech-tree capstone. A city may spend several turns and a steep harvest/coin/lore cost to claim influence over one additional tile within its own radius immediately (skipping the normal gradual fill-in wait). Repeatable until every tile in the city's radius is already its own. A late-game sink for otherwise-idle surplus stockpile. [40 harvest, 40 coin, 40 lore]
+--- CIVIC ---
 
-HUMAN - BUILDING - L2: Marketcraft - unlocks Bazaar building (+10% harvest per turn, this city only) [12 coin, 8 harvest]
-HUMAN - BUILDING - L3: Guild Charter - unlocks Guild Hall building (+10% coin per turn, this city only) [22 lore, 13 coin]
-HUMAN - BUILDING - L4: Mage College (requires Wizardry) - unlocks Mage College building (+20% lore per turn, this city only) [35 lore, 15 coin]
-HUMAN - BUILDING - L5: Palace (requires Sovereign Power) - unlocks Palace building, adds +1 influence radius to the city it is next to. Stacks with Sovereign Power on that same city -- deliberately, so Humans get an outsized late-game influence advantage on their capital. [25 harvest, 20 lore, 15 coin]
+HUMAN - CIVIC - L1: Spirit of Exploration - Reduces the movement cost of Plains by 0.5. [10 harvest, 4 coin, 6 lore]
+
+HUMAN - CIVIC - L1: Rivercraft - Reduces the movement cost of River tiles by 0.5. [10 harvest, 4 coin, 6 lore]
+
+HUMAN - CIVIC - L1: Homestead - +0.5 harvest from Plains. [10 harvest, 4 coin, 6 lore]
+
+HUMAN - CIVIC - L2: Trade Roads (requires Homestead) - +1 coin and +0.2 lore per road tile within a city's radius, up to 8 road tiles per city. [20 harvest, 8 coin, 12 lore]
+
+HUMAN - CIVIC - L2: Make Way (requires Rivercraft) - Galleys gain +2 movement and +1 vision. [20 harvest, 8 coin, 12 lore]
+
+HUMAN - CIVIC - L3: Common Tongue (requires Trade Roads) - +3 lore per turn for each city owned. [40 harvest, 16 coin, 24 lore]
+
+HUMAN - CIVIC - L3: Sea Charts (requires Make Way) - All Ocean and Coast tiles anywhere on the map are always revealed -- no fog of war on those tiles at all. [40 harvest, 16 coin, 24 lore]
+
+HUMAN - CIVIC - L3: Dungeon Delve (requires Wizardry) - A Wizard on a Ruin may start Delving it: a full-turn channeled action (no move/attack, continues automatically each turn until cancelled by the player/AI) that gradually claims the 1-tile radius around itself (counts toward territorial victory like any owned tile), yields +3 lore and +3 coin per turn, and harvests the resources of every tile it has claimed in that radius. Instantly loses everything it was claiming/generating if cancelled, the Wizard moves off the Ruin, or it dies. [40 harvest, 16 coin, 24 lore]
+
+HUMAN - CIVIC - L5: Sovereign Power (requires Common Tongue) - +1 influence radius in every city. [160 harvest, 64 coin, 96 lore]
+
+HUMAN - CIVIC - L5: Cultural Influence (requires every other Human tech already researched) - Tech-tree capstone. A city may spend several turns and a steep harvest/coin/lore cost to claim influence over one additional tile within its own radius immediately, skipping the normal gradual fill-in wait. Repeatable until every tile in the city's radius is already its own. [160 harvest, 64 coin, 96 lore]
 
 
+--- BUILDING ---
 
-HUMAN - MILITARY - L1: Spears Raised - unlocks Spearguard unit (a high defense, low attack, low movement unit). Granted free at civ creation, same as every other race's basic melee unit. [Atk 3, Def 5, Mov 1, Vis 2] [11 lore, 4 coin]
-HUMAN - MILITARY - L2: Defense of the Kingdom (requires Spears Raised) - Spearguard gains +5 defense while garrisoned in a city or on a building tile. [22 lore]
-HUMAN - MILITARY - L2: Longspear (requires Spears Raised) - Grants the Spearguard +2 attack and +1 defense. [22 lore]
-HUMAN - MILITARY - L2: Cavalry - unlocks Cavalry unit (a relatively high movement unit) [Atk 6, Def 4, Mov 3, Vis 3] [17 lore, 8 harvest]
-HUMAN - MILITARY - L2: Archery - unlocks Archer unit (Ranged 2) [Atk 5, Def 3, Mov 2, Vis 3] [17 lore, 8 coin]
-HUMAN - MILITARY - L3: Knighthood (requires Cavalry) - unlocks Knight unit (replaces Cavalry) (a relatively high movement and high attack unit) [Atk 8, Def 7, Mov 4, Vis 3] [20 harvest, 15 lore, 10 coin]
-HUMAN - MILITARY - L3: Longbow (requires Archery) - unlocks Longbowman unit (replaces Archer), higher attack rating and Ranged 3 [Atk 7, Def 4, Mov 2, Vis 4] [28 lore, 12 coin]
-HUMAN - MILITARY - L3: Catapult Engineering (requires Archery) - unlocks Catapult unit (relatively low movement, Ranged 2, Siege 100%) -- a separate unit from Archer/Longbowman, not a replacement; a civ can field both [Atk 7, Def 3, Mov 1, Vis 2] [28 lore, 12 coin]
-HUMAN - MILITARY - L2: Wizardry - unlocks Wizard unit (Ranged 2) [Atk 3, Def 3, Mov 2, Vis 3] [32 lore, 13 coin]
-HUMAN - MILITARY - L3: Freezing Touch (requires Wizardry) - The Wizard may use this action (costs its whole turn, no exhaustion afterward) to apply the Frozen condition to an enemy unit within short range for 3 turns: Frozen sets the target's movement to 0 (cannot move at all) and reduces its attack by 25%. Implemented AI: defensively, freezes a nearby enemy the Wizard itself would lose a straight fight against, so it can't close in or escape while the civ regroups; offensively, freezes an enemy that's about to fight (or already fighting) one of the Wizard's allies in a losing or marginal matchup, swinging the odds in the ally's favor. [30 lore, 12 coin]
-HUMAN - MILITARY - L3: Ramparts (requires Archery) - Walls AND cities can counterattack (not other buildings), with an attack rating at least the Archer's, the Archer's own Ranged reach (2 tiles -- an attacker standing further away takes no counter damage at all), and a First-Strike attacker takes 25% less counter damage -- no attack bonus multiplier and no militia spawn (unlike Halfellow's Rouse the People, which this mirrors structurally) [28 lore, 12 coin]
-HUMAN - MILITARY - L3: Flight (requires Wizardry) - As an action that consumes the Wizard's whole turn, it may grant an adjacent allied unit the Flying property, plus +2 movement and +2 vision, for 5 turns. [42 lore, 18 coin]
-HUMAN - MILITARY - L4: Trebuchet (requires Catapult Engineering) - unlocks Trebuchet unit (replaces Catapult) (very low movement, Ranged 2, Siege 200%) [Atk 9, Def 4, Mov 1, Vis 2] [38 lore, 17 coin]
-HUMAN - MILITARY - L4: Battle Mage (requires Mage College) - Wizard upgraded in place (not replaced): Ranged rises to 3, plus +3 attack and +3 defense [40 lore, 15 coin]
-HUMAN - MILITARY - L4: Teleportation (requires Wizardry) - Wizard may instantly move to any unoccupied tile the civ has ever explored (not just currently visible). This costs the Wizard's entire turn (no move/attack after), and it cannot act again until healed to 100% HP. Implemented AI: uses this both defensively (a badly hurt Wizard blinks to the safest known tile) and offensively -- scans for a confirmed-undefended enemy city/structure and teleports an adjacent ally onto it, preferring a Trebuchet if one's on hand (Teleport erases its crippling movement-1, and its Siege 200% wrecks an undefended target) over the strongest adjacent unit; self-teleports only as a Fireball-setup fallback. [60 lore, 30 coin]
-HUMAN - MILITARY - L4: Chivalric Order (requires Knighthood) - unlocks Paladin unit (replaces Knight) (high attack and defense) [Atk 10, Def 8, Mov 4, Vis 4] [22 harvest, 20 lore, 13 coin]
-HUMAN - MILITARY - L5: Fireball! (requires Battle Mage) - Wizard gains Siege 75% and +3 attack; damage also splashes to every enemy unit and structure adjacent to the target. Every hit -- the primary target and every splash victim, including units, buildings, and walls (not cities themselves) -- also catches fire: the Burning condition deals 1 damage at the start of the burning unit's turn for 3 turns, unless it's currently on Coast, Ocean, or a river tile. The splash radius briefly highlights on the map. [65 lore, 30 coin]
-HUMAN - MILITARY - L5: Invulnerability (requires Battle Mage) - The wizard unit gains 33% chance to negate all damage from both incoming attacks and counterattacks. [60 lore, 30 coin]
-HUMAN - MILITARY - L5: Invisibility (requires Battle Mage) - The wizard unit can use an action to gain the hidden condition for 3 turns. [40 lore, 20 coin]
-HUMAN - MILITARY - L5: Crusade (requires Chivalric Order and Sovereign Power) - The Paladin exudes a holy aura: in a 1-tile radius around itself (including itself), allied units heal 20% of their HP per turn regardless of whether they're resting, and gain +1 attack, +1 defense, and +25% siege [55 lore, 20 coin, 15 harvest]
+HUMAN - BUILDING - L1: Marketcraft - Unlocks the Bazaar building (+10% harvest per turn, this city only). [4 harvest, 24 coin, 12 lore]
+
+HUMAN - BUILDING - L2: Ramparts (requires Archery) - If an enemy unit is within range, there is a 50% chance each turn that each wall within range will attack that enemy unit (range 2, attack 1). [4 harvest, 24 coin, 12 lore]
+
+HUMAN - BUILDING - L2: Guild Charter - Unlocks the Guild Hall building (+10% coin per turn, this city only). [8 harvest, 48 coin, 24 lore]
+
+HUMAN - BUILDING - L3: Mage College (requires Wizardry) - Unlocks the Mage College building (+20% lore per turn, this city only). [16 harvest, 96 coin, 48 lore]
+
+HUMAN - BUILDING - L4: Palace (requires Sovereign Power) - Unlocks the Palace building, adds +1 influence radius to the city it is next to. Stacks with Sovereign Power on that same city -- deliberately, so Humans get an outsized late-game influence advantage on their capital. [32 harvest, 192 coin, 96 lore]
+
+
+--- MILITARY ---
+
+HUMAN - MILITARY - L1: Spears Raised - Unlocks the Spearguard, a sturdy defender built to hold ground rather than strike hard. Granted free at civ creation, same as every other race's basic melee unit. [4 harvest, 8 coin, 8 lore]
+
+HUMAN - MILITARY - L1: Archery - Unlocks the Archer, a ranged attacker that strikes without exposing itself to a counterattack. [4 harvest, 8 coin, 8 lore]
+
+HUMAN - MILITARY - L2: Defense of the Kingdom (requires Spears Raised) - Spearguard gains +5 defense while garrisoned in a city or on a building tile, plus a flat +2 attack and +1 defense always. [8 harvest, 16 coin, 16 lore]
+
+HUMAN - MILITARY - L2: Cavalry Training - Unlocks the Cavalry, a fast-moving mounted unit for chasing down or outrunning the enemy. [8 harvest, 16 coin, 16 lore]
+
+HUMAN - MILITARY - L2: Catapult Engineering (requires Archery) - Unlocks the Catapult, a slow-moving siege engine built to break down walls and structures. A separate unit from Archer/Longbowman, not a replacement -- a civ can field both. [8 harvest, 16 coin, 16 lore]
+
+HUMAN - MILITARY - L3: Knighthood (requires Cavalry Training) - Unlocks the Knight, a heavier mounted unit that replaces the Cavalry. [16 harvest, 32 coin, 32 lore]
+
+HUMAN - MILITARY - L3: Longbow (requires Archery) - Unlocks the Longbowman, a stronger, longer-ranged replacement for the Archer. [16 harvest, 32 coin, 32 lore]
+
+HUMAN - MILITARY - L3: Trebuchet Engineering (requires Catapult Engineering) - Unlocks the Trebuchet, a heavier, harder-hitting siege engine that replaces the Catapult. [16 harvest, 32 coin, 32 lore]
+
+HUMAN - MILITARY - L4: Chivalric Order (requires Knighthood) - Unlocks the Paladin, a mighty holy warrior that replaces the Knight. [32 harvest, 64 coin, 64 lore]
+
+HUMAN - MILITARY - L5: Crusade (requires Chivalric Order and Sovereign Power) - The Paladin exudes a holy aura: in a 1-tile radius around itself (including itself), allied units heal 20% of their HP per turn regardless of whether they're resting, and gain +1 attack, +1 defense, and +25% siege. [64 harvest, 128 coin, 128 lore]
+
+
+--- MYSTIC ---
+(split out of Military, 2026-08-10 -- see the note at the top of this file)
+
+HUMAN - MYSTIC - L2: Wizardry - Unlocks the Wizard, a utility spellcaster that strikes from range. [4 harvest, 12 coin, 24 lore]
+
+HUMAN - MYSTIC - L3: Freezing Touch (requires Wizardry) - The Wizard may use this action (costs its whole turn, no exhaustion afterward) to apply the Frozen condition to an enemy unit within short range for 3 turns: Frozen sets the target's movement to 0 and reduces its attack by 25%. [8 harvest, 24 coin, 48 lore]
+
+HUMAN - MYSTIC - L3: Flight (requires Wizardry) - As an action that consumes the Wizard's whole turn, it may grant an adjacent allied unit the Flying property, plus +2 movement and +2 vision, for 5 turns. [8 harvest, 24 coin, 48 lore]
+
+HUMAN - MYSTIC - L4: Battle Mage (requires Mage College) - The Wizard grows more powerful in every way: greater range, attack, and defense. [16 harvest, 48 coin, 96 lore]
+
+HUMAN - MYSTIC - L4: Teleportation (requires Wizardry) - The Wizard may instantly move to any unoccupied tile the civ has ever explored, not just tiles it can currently see. Costs its whole turn (no move or attack after), and it cannot act again until healed to full health. [16 harvest, 48 coin, 96 lore]
+
+HUMAN - MYSTIC - L5: Fireball! (requires Battle Mage) - The Wizard's attacks splash to every enemy unit and structure adjacent to the target, and every hit -- the primary target and every splash victim, including units, buildings, and walls (not cities themselves) -- catches fire: Burning deals 1 damage at the start of the burning unit's turn for 3 turns, unless it's currently on Coast, Ocean, or a river tile. [32 harvest, 96 coin, 192 lore]
+
+HUMAN - MYSTIC - L5: Invulnerability (requires Battle Mage) - The Wizard has a 33% chance to negate all damage from both incoming attacks and counterattacks. [32 harvest, 96 coin, 192 lore]
+
+HUMAN - MYSTIC - L5: Invisibility (requires Battle Mage) - The Wizard may spend an action to turn Hidden for 3 turns. [32 harvest, 96 coin, 192 lore]

@@ -66,14 +66,14 @@ window.GameConfig = {
   // stamp, and the only cost of forgetting is being told the wrong thing.
   build: {
     /** Local date this build was cut, YYYY-MM-DD. */
-    date: "2026-08-07",
+    date: "2026-08-10",
     /** Local time this build was cut, 24-hour HH:MM. */
-    time: "20:33",
+    time: "18:51",
     /** Monotonic build counter. Continues the numbering the old GitHub-
      *  derived stamp used (it showed the repo's total commit count), so
      *  builds from before and after this change still sort against each
      *  other. Increment it; don't recompute it. */
-    number: 78,
+    number: 79,
   },
 
   // =========================================================================
@@ -388,9 +388,12 @@ window.GameConfig = {
     maxUnitLevel: 5,
 
     /** Cumulative XP to REACH each level (index 0 == level 1). Front-loaded
-     *  (10/15/20/25/30 per level) so surviving a few fights pays off visibly
-     *  early, while level 5 stays a genuine long-game achievement. */
-    xpThresholds: [10, 25, 45, 70, 100],
+     *  (5/8/10/13/15 per level) so surviving a few fights pays off visibly
+     *  early, while level 5 stays a genuine long-game achievement. Roughly
+     *  halved from 10/15/20/25/30 (2026-08-10, user-directed: units should
+     *  level up twice as fast) and rounded to whole numbers -- sidebar.js's
+     *  "X / Y XP" readout shows this threshold raw, unrounded. */
+    xpThresholds: [5, 13, 23, 36, 51],
 
     /** XP awarded per combat action: a flat participation grant, a per-point
      *  of damage dealt grant, and a kill bonus that scales with how strong
@@ -413,12 +416,13 @@ window.GameConfig = {
      *  same flat-add convention as Attack/Defense, just on this game's
      *  already-small vision/movement scales -- see turns.js's visibility
      *  radius sum and ai.js's computeMovementBudget for where each reads
-     *  unit.levelBonuses. */
+     *  unit.levelBonuses. firstStrikePct raised 0.01->0.04 (2026-08-10,
+     *  user-directed) to feel comparable to siegePct/doubleStrikePct. */
     bonusValues: {
       attack: 1,
       defense: 1,
       siegePct: 0.10,
-      firstStrikePct: 0.01,
+      firstStrikePct: 0.04,
       doubleStrikePct: 0.07,
       visionRadius: 1,
       movement: 0.5,
@@ -440,6 +444,9 @@ window.GameConfig = {
   world: {
     /** Per-turn chance a worked resource tile is exhausted and removed. */
     resourceExhaustionChance: 0.05,
+    /** Same, for a civ with Elf's "Tending to the Earth" tech researched --
+     *  see turns.js's resourceExhaustionChanceFor. */
+    resourceExhaustionChanceTendingToTheEarth: 0.02,
   },
 
   // =========================================================================

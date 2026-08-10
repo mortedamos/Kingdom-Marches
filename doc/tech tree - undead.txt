@@ -1,0 +1,77 @@
+UNDEAD TECH TREE (new file, written against js/data/techs.js, 2026-08-07)
+
+No previous version of this file existed -- every other race has one, so
+this fills the gap. Undead's tree is genuinely much sparser than the other
+five races' and includes real placeholder ("stub") nodes -- see below.
+
+Every civ also has 5 shared Level 0 techs, auto-completed for free at civ
+creation (never actually researched): Pioneer, Distant Horizons (Scout),
+Distant Shores (Galley), Hunt Game, Farm Soil. Not listed below since
+they're identical for every race.
+
+Undead is the ONE race that hasn't been promoted to its own bespoke Civic
+column (Dwarf and Elf both were) -- it still runs on the original shared
+"civic trunk" fallback techs (Spoken Memory / The Long Telling / Wardstones
+/ Bound Lore), which every other race is explicitly excluded from. These
+are included below since they ARE Undead's real Civic column right now,
+just not written as Undead-flavored techs.
+
+STUBS: three Military nodes (Wight-Binding, Bone Archery, Grave Colossus
+Rite) are placeholders -- `stub: true` in the data, `effects: []` (they
+research and cost resources like any other tech, but currently grant
+NOTHING). Each names a planned unit it'll eventually unlock. Undead's
+Military column is otherwise just Grave-Bound Rite (the starting Skeleton)
+-- there is no real Undead military progression yet.
+
+COST MODEL: every tech's real cost is purely layer-based (doubling each
+layer: L1=20 total, L2=40, L3=80, L4=160, L5=320), split across
+harvest/coin/lore by column -- Civic leans Harvest (50/20/30), Building
+leans Coin (10/60/30), Military splits Coin/Lore evenly (20/40/40), Mystic
+leans Lore hardest of all (10/30/60). A city needs at least as many cities
+as a tech's layer number to research it.
+
+FOUR COLUMNS, not three (2026-08-10, user-directed): a Mystic column was
+added game-wide for caster/utility units (Wizard, Druid, Metal Singer, Bog
+Witch, Trouble Maker) and their own ability techs, split out of Military.
+Undead has no Mystic column content at all right now -- no caster unit
+exists yet, real or stub -- so this doesn't change anything below; noted
+here only so a future reviewer doesn't wonder why Undead was skipped.
+
+
+--- CIVIC (shared "civic trunk" fallback -- see note above) ---
+
+UNDEAD - CIVIC - L1: Spoken Memory - +5% civic influence bonus. [10 harvest, 4 coin, 6 lore]
+
+UNDEAD - CIVIC - L1: Mire-Walkers - The dead do not tire in the bog. Reduces the movement cost of Swamp by 0.5. [10 harvest, 4 coin, 6 lore]
+
+UNDEAD - CIVIC - L2: The Long Telling (requires Spoken Memory) - +10% civic influence bonus, stacking additively with Spoken Memory's own +5% (+15% total once both are researched). [20 harvest, 8 coin, 12 lore]
+
+UNDEAD - CIVIC - L2: Wardstones (requires Spoken Memory) - +1 influence radius in every city. [20 harvest, 8 coin, 12 lore]
+
+UNDEAD - CIVIC - L3: Dark Ritual (requires Mire-Walkers) - A unit stationed 2+ turns on a Ruin channels its power, projecting influence in a 1-tile radius. Vanishes the instant the unit moves off the Ruin or dies. [40 harvest, 16 coin, 24 lore]
+
+UNDEAD - CIVIC - L3: Bound Lore (requires The Long Telling and Wardstones) - +15% civic influence bonus, stacking additively with the other two civic-influence techs above (+30% total once all three are researched). Also sets a `governanceAvailable` flag on the civ -- as of this review, nothing else in the codebase reads that flag: there's no governance-path UI and no mechanical effect from it yet. [40 harvest, 16 coin, 24 lore]
+
+UNDEAD - CIVIC - L5: Cultural Influence (requires every other Undead tech already researched) - Tech-tree capstone. A city may spend several turns and a steep harvest/coin/lore cost to claim influence over one additional tile within its own radius immediately, skipping the normal gradual fill-in wait. Repeatable until every tile in the city's radius is already its own. [160 harvest, 64 coin, 96 lore]
+
+
+--- BUILDING ---
+
+UNDEAD - BUILDING - L2: Barrow Rite (requires Grave-Bound Rite) - Unlocks the Barrow building. Contested tiles this civ holds still yield 25% (instead of the usual 0% every other race gets from a contested tile). [4 harvest, 24 coin, 12 lore]
+
+UNDEAD - BUILDING - L3: Reliquary Rite (requires Barrow Rite) - Unlocks the Bone Reliquary building (+2 lore per turn). [8 harvest, 48 coin, 24 lore]
+
+UNDEAD - BUILDING - L4: Obelisk Rite (requires Reliquary Rite) - Unlocks the Cursed Obelisk building (x1.20 influence). [16 harvest, 96 coin, 48 lore]
+
+UNDEAD - BUILDING - L5: Necropolis Rite (requires Obelisk Rite) - Unlocks the Necropolis building (+1 influence radius, stronger Raise Dead). [32 harvest, 192 coin, 96 lore]
+
+
+--- MILITARY ---
+
+UNDEAD - MILITARY - L1: Grave-Bound Rite - Unlocks the Skeleton unit -- binds the first Skeletons to service. [4 harvest, 8 coin, 8 lore]
+
+UNDEAD - MILITARY - L2: Wight-Binding (requires Grave-Bound Rite) - STUB, no current effect. Planned as a fork: unlock the Wight (a spear-tier unit) OR deepen the Skeleton. [8 harvest, 16 coin, 16 lore]
+
+UNDEAD - MILITARY - L4: Bone Archery (requires Wight-Binding) - STUB, no current effect. Planned as a fork: unlock the Bone Archer (an archer-tier unit) OR deepen whichever unit Wight-Binding resolves to. [32 harvest, 64 coin, 64 lore]
+
+UNDEAD - MILITARY - L5: Grave Colossus Rite (requires Bone Archery) - STUB, no current effect. Planned as the ultimate node: unlocks the Grave Colossus (a heavy siege-tier unit) -- Undead field no cavalry. [64 harvest, 128 coin, 128 lore]

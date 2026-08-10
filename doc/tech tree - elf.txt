@@ -1,47 +1,129 @@
+ELF TECH TREE (reviewed against js/data/techs.js, 2026-08-10)
+
+Every civ also has 5 shared Level 0 techs, auto-completed for free at civ
+creation (never actually researched): Pioneer, Distant Horizons (Scout),
+Distant Shores (Galley), Hunt Game, Farm Soil. Not listed below since
+they're identical for every race.
+
+COST MODEL: every tech's real cost is purely layer-based (doubling each
+layer: L1=20 total, L2=40, L3=80, L4=160, L5=320), split across
+harvest/coin/lore by column -- Civic leans Harvest (50/20/30), Building
+leans Coin (10/60/30), Military splits Coin/Lore evenly (20/40/40), Mystic
+leans Lore hardest of all (10/30/60). The numbers below are the REAL costs
+a player pays, not the hand-authored `cost`/`costBreakdown` fields in
+techs.js (inert leftover data). A city needs at least as many cities as a
+tech's layer number to research it.
+
+FOUR COLUMNS, not three (2026-08-10, user-directed): Mystic split off from
+Military -- the Druid and every one of its own ability techs (including
+its Raptor/Shadowsteed summons) moved there, since a caster's whole kit
+was crowding the Military column alongside straight combat techs. The
+Living Forest (Awakened Oak) joined it too, same day -- not Druid-summoned
+like Raptor/Shadowsteed, but still nature-magic in flavor (requires
+Druidism) rather than a straight combat unlock. The Druid and Awakened Oak
+themselves are unchanged; only which tab their techs render in changed.
+
+UNIT STATS are no longer written into descriptions below (2026-08-10) --
+the tech tree UI now shows each unlocked unit's live stats (Atk/Def/Mov/
+Vis/Range/Siege/First Strike/Double Strike/Flying/Carry as applicable)
+computed fresh from units.js at render time, folding in whatever that civ
+has already researched, so it can never drift out of sync the way a
+hand-typed number in a description can.
+
+CORRECTIONS from the previous version of this file (numbers that had
+drifted from the actual implementation): "movement when starting on X"
+terrain techs were rewritten as flat movement-cost REDUCTIONS a while back
+(2026-08-06) -- every entry below reflects that. Whispering Waters is +0.5
+lore per river tile, not +0.75. Hunter's Soul grants +1 range and 25%
+Double Strike, not +1 attack -- and moved L3 -> L2 (2026-08-10). Silverlight
+Steel grants 10% Double Strike and 2% First Strike, not +1 attack/+1% First
+Strike. Upon the Wind grants 40% Double Strike, not +2 attack.
 
 
+--- CIVIC ---
+
+ELF - CIVIC - L1: "Home in the Trees" - Reduces the movement cost of Forest by 0.5. [10 harvest, 4 coin, 6 lore]
+
+ELF - CIVIC - L1: "Nature Provides' - +0.5 harvest from Forest. [10 harvest, 4 coin, 6 lore]
+
+ELF - CIVIC - L1: "The Murmuring of Leaves" - +0.5 lore from Forest. [10 harvest, 4 coin, 6 lore]
+
+ELF - CIVIC - L1: "Architecture of Light and Air" - +2 lore per building constructed in a city (walls don't count). [10 harvest, 4 coin, 6 lore]
+
+ELF - CIVIC - L1: "Tending to the Earth" - Any resource gathering activity only has a 2% chance per turn to exhaust the resource, not a 5% chance per normal. [10 harvest, 4 coin, 6 lore]
+
+ELF - CIVIC - L2: "Whispering Waters" - +0.5 lore per river tile within a city's radius. [20 harvest, 8 coin, 12 lore]
+
+ELF - CIVIC - L2: "Reverie of Sunset" (requires "Architecture of Light and Air") - +8 lore from any tile with a ruin covered by elven influence. [20 harvest, 8 coin, 12 lore]
+
+ELF - CIVIC - L2: "Longstrider" - Reduces the movement cost of Plains by 0.5. [20 harvest, 8 coin, 12 lore]
+
+ELF - CIVIC - L3: "Dancing Upon Azure Waves" (requires "Whispering Waters") - Galleys gain +2 movement and +1 vision. [40 harvest, 16 coin, 24 lore]
+
+ELF - CIVIC - L3: "Gems of Starlight" - +0.75 coin from Mountains. [40 harvest, 16 coin, 24 lore]
+
+ELF - CIVIC - L4: "Wind From Distant Treetops" (requires "The Murmuring of Leaves") - All Forest tiles anywhere on the map are always revealed -- no fog of war on Forest at all. [80 harvest, 32 coin, 48 lore]
+
+ELF - CIVIC - L5: "Vision Beyond Sight" (requires "Air Beneath, Eyes Above") - All elf units gain +1 vision (Ranger, Blade Dancer, Druid, Raptor, Shadowsteed, Awakened Oak). [160 harvest, 64 coin, 96 lore]
+
+ELF - CIVIC - L5: "Cultural Influence" (requires every other Elf tech already researched) - Tech-tree capstone. A city may spend several turns and a steep harvest/coin/lore cost to claim influence over one additional tile within its own radius immediately, skipping the normal gradual fill-in wait. Repeatable until every tile in the city's radius is already its own. [160 harvest, 64 coin, 96 lore]
 
 
-ELF - CIVIC - L1: "Home in the Trees" - +1 movement when starting on Forest.
-ELF - CIVIC - L1: "Nature Provides" - +0.5 harvest from Forest
-ELF - CIVIC - L1: "The Murmuring of Leaves" - +0.5 lore from Forest
-ELF - CIVIC - L1: "Architecture of Light and Air" - +2 lore per building constructed in a city (walls don't count) 
-ELF - CIVIC - L2: "Whispering Waters" - +0.75 lore from river.
-ELF - CIVIC - L2: "Reverie of Sunset" (requires "Architecture of Light and Air") - +8 lore from any tile with a ruin covered by elven influence.
-ELF - CIVIC - L2: "Longstrider" - +1 movement when starting on Plains.
-ELF - CIVIC - L3: "Dancing Upon Azure Waves" (requires "Whispering Waters") - Galleys gain +2 movement and +1 vision
-ELF - CIVIC - L3: "Gems of Starlight" - +0.75 coin from mountains.
-ELF - CIVIC - L4: "Wind From Distant Treetops" (requires "The Murmuring of Leaves") - All forest tiles anywhere on the map are always revealed (no fog of war in those tiles, all forest tiles are always visible to elf player/AI).
-ELF - CIVIC - L5: "Vision Beyond Sight" (requires "Air Beneath, Eyes Above") - All elf units gain +1 vision.
-ELF - CIVIC - L5: "Cultural Influence" (requires every other Elf tech already researched) - True tech-tree capstone. A city may spend several turns and a steep harvest/coin/lore cost to claim influence over one additional tile within its own radius immediately (skipping the normal gradual fill-in wait). Repeatable until every tile in the city's radius is already its own. A late-game sink for otherwise-idle surplus stockpile.
+--- BUILDING ---
+
+ELF - BUILDING - L1: "Aelderwatch" - Unlocks the Treetop Watch building. The city this building is adjacent to gains +2 vision radius. [4 harvest, 24 coin, 12 lore]
+
+ELF - BUILDING - L2: "Treetop Snipers" (requires "Aelderwatch") - If an enemy unit is within range, there is a 50% chance each turn that each wall within range will attack that enemy unit [4 harvest, 24 coin, 12 lore]
+
+ELF - BUILDING - L2: "Altar of Ages" (requires "Druidism" and "Reverie of Sunset") - Unlocks the Altar of Ages building. All elf units created in this city gain an extra 25% XP. [16 harvest, 96 coin, 48 lore]
+
+ELF - BUILDING - L3: "Silverleaf Atelier" (requires "Architecture of Light and Air" and "Gems of Starlight") - Unlocks the Silverleaf Atelier building (+10% coin and +10% lore, this city only). [8 harvest, 48 coin, 24 lore]
+
+ELF - BUILDING - L4: "Wellspring Grove" (requires "The Murmuring of Leaves" and "Whispering Waters") - Unlocks the Wellspring Grove building. All elf units, walls, and buildings within this city's radius heal 5% of max HP per turn (minimum 1 HP), regardless of whether they're resting. [32 harvest, 192 coin, 96 lore]
 
 
+--- MILITARY ---
 
-ELF - BUILDING - L2: "Aelderwatch" - unlocks the Treetop Watch building. The city this building is adjacent to gains +2 vision radius.
-ELF - BUILDING - L2: "Treetop Snipers" (requires "Aelderwatch" AND "Hunter's Soul") - If an enemy unit is within range, there is a 50% chance each turn that an elf wall will attack that enemy unit. The wall has range 2, attack 1.
-ELF - BUILDING - L3: "Silverleaf Atelier" (requires "Architecture of Light and Air" AND "Gems of Starlight") - unlocks the Silverleaf Atelier building, which grants +10% coin and +10% lore to its city.
-ELF - BUILDING - L4: "Altar of Ages" (requires "Druidism" AND "Reverie of Sunset") - unlocks the Altar of Ages building, granting all elf units created in this city gain an extra 25% xp. 
-ELF - BUILDING - L5: "Wellspring Grove" - (requires "The Murmuring of Leaves" AND "Whispering Waters") All elf units and walls and buildings within this city's radius heal 5% health per turn (minimum 1 HP), regardless of if they are resting or not.
+ELF - MILITARY - L1: "Watching, Hunting" - Unlocks the Ranger, a ranged skirmisher with a chance to strike before its target can react. Granted free at civ creation, same as every other race's basic unit. [4 harvest, 8 coin, 8 lore]
+
+ELF - MILITARY - L1: "Wind and Flashing Steel" - Unlocks the Blade Dancer, a melee duelist with a chance to strike before its target can react. [4 harvest, 8 coin, 8 lore]
+
+ELF - MILITARY - L1: "Shadowed Hush, Unseen" - Every elf unit may spend its whole turn to become Hidden for 3 turns (voluntarily cancellable early). Cannot activate with an enemy unit on an adjacent tile. Whenever a Hidden unit is revealed for any reason, it is forced visible for at least 1 turn before it can go Hidden again. [4 harvest, 8 coin, 8 lore]
+
+ELF - MILITARY - L2: "Whirlwind Strike" (requires Wind and Flashing Steel) - As a normal action, the Blade Dancer attacks every enemy unit within 1 tile of itself, each hit dealing 75% damage (as if attacking normally). Each target may counterattack, at 37.5% effectiveness. [8 harvest, 16 coin, 16 lore]
+
+ELF - MILITARY - L2: "Strike from the Shadows" (requires "Shadowed Hush, Unseen") - A Hidden elf unit gains +50% bonus to attack score. Attacking uses this bonus, then ends Hidden as normal. [8 harvest, 16 coin, 16 lore]
+
+ELF - MILITARY - L2: "First Frost of Autumn" - Elf unit attacks have a 10% chance to inflict the Frozen condition on the target (0 movement, -25% attack, for a few turns). [8 harvest, 16 coin, 16 lore]
+
+ELF - MILITARY - L2: "Hunter's Soul" (requires Watching, Hunting) - Rangers gain +1 range and 25% Double Strike. [8 harvest, 16 coin, 16 lore]
+
+ELF - MILITARY - L3: "Blade Storm" (requires Whirlwind Strike) - Does not replace Whirlwind Strike -- both stay independently usable. As a normal action, the Blade Dancer attacks every enemy unit within 2 tiles of itself, each hit dealing 50% damage (as if attacking normally). Only targets adjacent to the Blade Dancer may counterattack, at 25% effectiveness. [16 harvest, 32 coin, 32 lore]
+
+ELF - MILITARY - L3: "Steely Eyed" - All elf units gain +1 vision (Ranger, Blade Dancer, Druid, Raptor, Shadowsteed, Awakened Oak). [16 harvest, 32 coin, 32 lore]
+
+ELF - MILITARY - L3: "Sudden Doom" (requires Strike from the Shadows) - Replaces Strike from the Shadows: while Hidden, a unit's bonus to attack score rises to +100% (up from +50%), and it also gains +10% First Strike. Both bonuses end as soon as the unit is no longer Hidden. [16 harvest, 32 coin, 32 lore]
+
+ELF - MILITARY - L3: "Quick as a Shadow" (requires Strike from the Shadows) - A Hidden elf unit can move at full speed, unlike most Hidden units. [32 harvest, 64 coin, 64 lore]
+
+ELF - MILITARY - L3: "Silverlight Steel" (requires Silverleaf Atelier) - Blade Dancers gain 10% Double Strike and 2% First Strike. [16 harvest, 32 coin, 32 lore]
+
+ELF - MILITARY - L4: "Sanctuary under Green Boughs" - All elves gain +20% defense when in Forest. [32 harvest, 64 coin, 64 lore]
+
+ELF - MILITARY - L5: "Upon the Wind" (requires "Hunter's Soul" and "Vision Beyond Sight") - All Ranger and Blade Dancer units gain 40% Double Strike. Ranger units gain +1 range while being carried (by a Shadowsteed). [64 harvest, 128 coin, 128 lore]
 
 
+--- MYSTIC ---
+(split out of Military, 2026-08-10 -- see the note at the top of this file)
 
-ELF - MILITARY - L1: "Watching, Hunting" - unlocks the Ranger unit. Range 2, first strike. Granted free at civ creation, same as every other race's basic unit.
-ELF - MILITARY - L1: "Wind and Flashing Steel" - unlocks the Blade Dancer unit. Melee, first strike.
-ELF - MILITARY - L2: "Whirlwind Strike" (requires "Wind and Flashing Steel") - As a normal action, the Blade Dancer attacks every enemy unit within 1 tile of itself, each hit dealing 75% damage (as if attacking normally). Each target may counterattack, at 37.5% effectiveness. Floating text names the sweep, and its radius briefly highlights on the map.
-ELF - MILITARY - L3: "Blade Storm" (requires "Whirlwind Strike") - Does not replace Whirlwind Strike -- both stay independently usable, the AI picks whichever suits the current cluster of targets. As a normal action, the Blade Dancer attacks every enemy unit within 2 tiles of itself, each hit dealing 50% damage (as if attacking normally). Only targets adjacent to the Blade Dancer may counterattack, at 25% effectiveness. Floating text names the sweep, and its radius briefly highlights on the map.
-ELF - MILITARY - L1: "Shadowed Hush, Unseen" - Every elf unit may spend its whole turn to become Hidden for 3 turns (voluntarily cancellable early). Cannot activate with an enemy unit on an adjacent tile. Unit becomes unhidden when it attacks. Whenever a Hidden unit is revealed for any reason, it is forced visible for at least 1 turn before it can go Hidden again. 
-ELF - MILITARY - L2: Strike from the Shadows (requires "Shadowed Hush, Unseen") - A Hidden elf unit gains +50% bonus to attack score. Attacking uses this bonus, then ends Hidden as normal. Implemented AI: weighs an isolated sneak-ambush against a full multi-unit assault based on militarism; goes Hidden defensively when it would probably lose a straight fight, and offensively can hold its strongest nearby unit visible as bait while weaker allies go Hidden nearby to spring the ambush once this tech makes it worth the setup. Different from halfellow - elf ranger, because of their ranged attacks, may make use of this tactic even against stronger enemies or while a single unit without allies nearby - hide, attack at range with the attack bonus, then hide again. 
-ELF - MILITARY - L2: Druidism (requires "The Murmuring of Leaves" AND "Whispering Waters") - unlocks the druid unit (magic unit, like human wizard, utility unit). range 2. may found a city (in addition to the Pioneer)
-ELF - MILITARY - L2: "Air Beneath, Eyes Above" (requires "Druidism") - The druid may summon a Raptor to assist elven allies. Like a city, the druid "builds" the unit, spending resources and several rounds of time to do so. While building this unit, the druid cannot move or take other actions (but it can build this unit while hidden, if it was already hidden before it started). The raptor unit has attack 1, defense 0, flight, first strike 2%, very high movement and very high vision. Its purpose in game is to explore and scout, and should priortize doing so. Cities cannot build Raptor units.
-ELF - MILITARY - L2: "First Frost of Autumn" - Elf unit attacks have a 10% chance to inflict the Frozen condition.
-ELF - MILITARY - L3: "Hunter's Soul" (requires "Watching, Hunting") - Rangers gain +1 range and +1 attack. 
-ELF - MILITARY - L3: "Nature's Grace" (requires "Druidism" AND "Nature Provides") - The druid unit may use this action (costs its whole turn, no exhaustion afterward) to restore between 10% to 30% (random) health to an ally unit within its own range (not just adjacent) -- same clear-shot-through-mountains requirement a ranged attack uses beyond adjacency. A Druid mounted on a Shadowsteed doesn't lose access to this: the Shadowsteed itself may cast it instead, at the same range the Druid would have.
-ELF - MILITARY - L3: "Steely Eyed" - All elf units gain +1 vision. 
-ELF - MILITARY - L3: "Sudden Doom" (requires "Strike from the Shadows") - Replacing Strike from Shadows (one effect, not two stacking bonuses), the bonus to attack score while hidden increases to +100% instead of +50% and the unit also gains first strike +10%. Both of these bonuses end when the unit is no longer hidden.
-ELF - MILITARY - L3: "Silverlight Steel" (requires "Silverleaf Atelier") - Blade Dancers gain +1 attack and +1% first strike.
-ELF - MILITARY - L3: "Roots of the World" (requires "Druidism") - A druid unit may instantly move itself, or an adjacent ally, to any unoccupied tile the civ has ever explored (not just currently visible). This costs the druid's entire turn (no move/attack after), and it (the druid, not a relocated ally) cannot act again until healed to 100% HP. Implemented AI: uses this defensively (a badly hurt druid blinks itself to the safest known tile, or blinks a badly hurt ADJACENT ally to safety instead), and to expand: a druid civ looking for a place to build a city may consider far-off forest tiles, teleport the druid there, then found a new city. Overseas invasion ferry: once the civ knows of an enemy city/wall/building on a landmass other than the druid's own, druids become much more focused on teleporting Rangers, Blade Dancers, and Awakened Oaks to those places (checked ahead of healing/summoning/expansion) -- the Elf answer to the galley bottleneck, and the only way an Awakened Oak (movement 1) ever crosses water. Ferried units arrive at a staging ground 3-4 tiles from the target (clustered together, preferring Forest), go Hidden if researched, and WAIT -- accumulating as more units are ferried in -- until the gathered force has enough combined power to overcome the visible defenders (or no defenders remain, or it has waited long enough), at which point the whole force springs its ambush attack at once, any still-Hidden members attacking out of stealth with the full Strike from the Shadows bonus.
-ELF - MILITARY - L4: "Quick as a Shadow" (requires "Strike from the Shadows") - A hidden elf unit can move at full speed, unlike most hidden units. Additionally, elf units (other than the Druid, whose turn is better spent on its own kit) now prefer to be Hidden as their default resting state, going hidden proactively even with no enemy in sight, rather than only reacting to a nearby threat -- a unit already engaged in combat (adjacent to an enemy) is unaffected and fights normally.
-ELF - MILITARY - L4: "Sanctuary under Green Boughs" - All elves gain +20% defense when in forest. 
-ELF - MILITARY - L5: "Shadowsteed" (requires "Air Beneath, Eyes Above" AND "Quick as a Shadow") - The druid may summon a flying horse made of shadow to assist elven allies. Like a city, the druid "builds" the unit, spending resources and several rounds of time to do so. While building this unit, the druid cannot move or take other actions (but it can build this unit while hidden, if it was already hidden before it started). The "shadow steed" is its own unit with flying, carry, first strike 5%, attack 1, defense 1. It cannot carry an Awakened Oak, Raptor, or Galley. When it carries another unit, it gains the range, attack, defense, siege, and first strike of that unit (keeping its own first strike if higher). Then it gains 3 attack, 2 defense, and +2% first strike while carrying a unit. AI strategy: a Shadowsteed strongly prefers a Ranger as its rider -- it takes an adjacent Ranger immediately, but otherwise won't settle for an adjacent Druid/Blade Dancer as long as an uncarried Ranger exists anywhere within its seek range, holding out (and closing in on that Ranger instead) rather than reflexively mounting whichever ally -- often its own summoning Druid -- happens to be standing next to it the instant it's born. Only mounts a Druid/Blade Dancer once no Ranger is available anywhere within reach. Cities cannot build Shadow Steed units. Whenever the Shadowsteed earns combat XP, its carried rider earns the exact same amount too.
-ELF - MILITARY - L5: "The Living Forest" (requires "Druidism" AND "Sanctuary under Green Boughs") - unlocks the Awakened Oak unit, a living, walking tree. (massive, rare, very tough, high attack and defense, high siege, neverExplores).
-ELF - MILITARY - L5: "Upon the Wind" (requires "Hunter's Soul" AND "Vision Beyond Sight") - All Ranger and Blade Dancer units gain +2 attack. Ranger units gain +1 range while being carried (by a Shadowsteed).
+ELF - MYSTIC - L2: "Druidism" (requires "The Murmuring of Leaves and Whispering Waters") - Unlocks the Druid, a utility spellcaster who may also found cities, in addition to the normal Pioneer. [4 harvest, 12 coin, 24 lore]
+
+ELF - MYSTIC - L2: "Air Beneath, Eyes Above" (requires "Druidism") - The Druid may summon a Raptor to assist elven allies -- like a city, it spends resources and several turns "building" the unit, unable to move or act while doing so (though it may do this while Hidden, if already Hidden beforehand). Cities cannot build Raptor units. [4 harvest, 12 coin, 24 lore]
+
+ELF - MYSTIC - L3: "Nature's Grace" (requires Druidism and Nature Provides) - The Druid may use this action (costs its whole turn, no exhaustion afterward) to restore between 10% and 30% (random) health to an ally unit within its own range (not just adjacent). [8 harvest, 24 coin, 48 lore]
+
+ELF - MYSTIC - L3: "Roots of the World" (requires Druidism) - A Druid may instantly move itself, or an adjacent ally, to any unoccupied tile the civ has ever explored (not just currently visible). This costs the Druid's entire turn (no move/attack after), and it cannot act again until healed to 100% HP. Player-facing as of 2026-08-10: available as a "Teleport Self"/"Teleport <ally>" ring action, not AI-only. [8 harvest, 24 coin, 48 lore]
+
+ELF - MYSTIC - L5: "Shadowsteed" (requires Air Beneath, Eyes Above and Quick as a Shadow) - The Druid may summon a Shadowsteed, a flying horse made of shadow, the same way it summons a Raptor: spends resources and several turns "building" it, immobile meanwhile. It cannot carry an Awakened Oak, a Raptor, or a Galley. While carrying another unit, it takes on that unit's range, attack, defense, siege, and First Strike (keeping its own First Strike if higher), then adds its own bonuses on top. Cities cannot build Shadowsteed units directly. [32 harvest, 96 coin, 192 lore]
+
+ELF - MYSTIC - L5: "The Living Forest" (requires "Druidism" and "Sanctuary under Green Boughs") - Unlocks the Awakened Oak, a living, walking tree and the elves' own siege unit -- rare, but meant to be fielded in numbers rather than as a single centerpiece. [32 harvest, 96 coin, 192 lore]

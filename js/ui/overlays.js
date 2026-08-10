@@ -921,7 +921,11 @@ window.UI = window.UI || {};
       return { radius: 1, color: "#ffd54f", label: "Crusade" }; // holy gold
     }
     if (unit.typeId === "troubadour"
-        && (civ.unlockedMechanics.has("heavy_metal") || civ.unlockedMechanics.has("power_metal"))) {
+        && (civ.unlockedMechanics.has("heavy_metal") || civ.unlockedMechanics.has("power_metal"))
+        // Human civs must explicitly activate the aura (2026-08-10,
+        // user-directed) -- see turns.js's own matching gate. AI civs are
+        // unaffected, same always-on behavior as before.
+        && (!civ.isHuman || unit.auraActive)) {
       const hasHeavyMetal = civ.unlockedMechanics.has("heavy_metal");
       const hasPowerMetal = civ.unlockedMechanics.has("power_metal");
       const epicMetal = civ.unlockedMechanics.has("epic_metal");

@@ -68,7 +68,12 @@ window.GameEngine = window.GameEngine || {};
       let militaryTechCount = 0;
       for (const techId of civ.completedTechs) {
         const tech = window.GameData.TECHS[techId];
-        if (tech && tech.category === "military") militaryTechCount++;
+        // "mystic" counts too (2026-08-10, user-directed tech-tree column
+        // split): Making Trouble/The Riddle Game moved out of "military" but
+        // are still combat-relevant Trouble Maker techs -- this bonus is
+        // about the civ's fighting kit maturing, not literally which UI
+        // column a tech renders in.
+        if (tech && (tech.category === "military" || tech.category === "mystic")) militaryTechCount++;
       }
       bonus += militaryTechCount * HALFELLOW_MILITARISM_PER_MILITARY_TECH;
     }
@@ -1855,6 +1860,17 @@ window.GameEngine = window.GameEngine || {};
    * underneath the river.
    */
   function getMoveCost(originTerrain, destTerrain, unitData, unit, originTile) {
+    // restrictedToTerrain (e.g. the Orc Wisp, swamp-only) overrides everything
+    // below, INCLUDING the flying bypass just after it -- a unit can be both
+    // "flying" (cost-1, ignores penalties) and permanently confined to one
+    // terrain type at the same time (see units.js's restrictedToTerrain doc
+    // comment). Checked first so a restricted flier still gets blocked from
+    // ever stepping onto the wrong terrain, but keeps flying's flat cost-1
+    // once inside terrain it IS allowed on.
+    if (unitData.restrictedToTerrain && destTerrain.id !== unitData.restrictedToTerrain) {
+      return window.GameData.IMPASSABLE;
+    }
+
     // Flying units "move over all terrain" (see units.js's flying doc comment) --
     // flat cost regardless of water/mountains/land movement penalties, ignoring
     // every other rule below (naval cost, tunneling, terrain overrides, roads --
@@ -1896,7 +1912,13 @@ window.GameEngine = window.GameEngine || {};
    * water/mountains never block them from "reaching" anywhere on the map.
    */
   function canReachByLand(fromX, fromY, toX, toY, map, maxSearch = 150, unit = null) {
-    if (unit && window.GameEngine.combat.isFlying(unit)) return true;
+    // restrictedToTerrain (e.g. the Wisp) skips the flying bypass entirely --
+    // such a unit can't just fly over water/mountains to "reach" anywhere,
+    // it's confined to a single terrain type -- and the BFS below switches
+    // to an exact-terrain-match walk instead of the normal water/mountain
+    // avoidance a land unit gets.
+    const restrictedTerrain = unit ? window.GameData.getUnit(unit.typeId)?.restrictedToTerrain : null;
+    if (unit && window.GameEngine.combat.isFlying(unit) && !restrictedTerrain) return true;
     const w = map.width, h = map.height;
     const TERRAIN = window.GameData.TERRAIN;
     const canTunnel = !!(unit && unit._moveMods && unit._moveMods.canTunnel);
@@ -1916,8 +1938,12 @@ window.GameEngine = window.GameEngine || {};
           const nIdx = ny * w + nx;
           if (visited.has(nIdx)) continue;
           const t = TERRAIN[map.tiles[nIdx].terrain];
-          const blockedMountain = t.moveCostLand === window.GameData.IMPASSABLE && !(t.id === "mountains" && canTunnel);
-          if (t.isWater || blockedMountain) continue;
+          if (restrictedTerrain) {
+            if (t.id !== restrictedTerrain) continue;
+          } else {
+            const blockedMountain = t.moveCostLand === window.GameData.IMPASSABLE && !(t.id === "mountains" && canTunnel);
+            if (t.isWater || blockedMountain) continue;
+          }
           if (nIdx === targetIdx) return true;
           visited.add(nIdx);
           queue.push(nIdx);
@@ -2192,6 +2218,16 @@ window.GameEngine = window.GameEngine || {};
       if (occupied.has(`${nx},${ny}`)) return window.GameData.IMPASSABLE;
       if (isEnemyStructureBlockingTile(tile, unit)) return window.GameData.IMPASSABLE;
       if (isEnemyCityBlockingTile(civs, nx, ny, unit)) return window.GameData.IMPASSABLE;
+      // restrictedToTerrain (e.g. the Wisp) is absolute -- checked BEFORE the
+      // allied-structure freebie just below, so a friendly city/wall built on
+      // the wrong terrain can't be used as a loophole to leave it.
+      if (baseUnit.restrictedToTerrain && tile.terrain !== baseUnit.restrictedToTerrain) return window.GameData.IMPASSABLE;
+      // Free movement over an allied wall/building/city (2026-08-10,
+      // user-directed) -- terrain under your own civ's own structure or
+      // city no longer costs anything to cross, regardless of what the
+      // terrain itself would otherwise charge.
+      if (tile.structure && tile.structure.civId === unit.civId) return 0;
+      if ((civs[unit.civId]?.cities || []).some((c) => c.x === nx && c.y === ny)) return 0;
       const destTerrain = window.GameData.TERRAIN[tile.terrain];
       const originTile = fromIdx != null ? map.tiles[fromIdx] : map.tiles[unit.y * map.width + unit.x];
       const originTerrain = window.GameData.TERRAIN[originTile.terrain];
@@ -4174,6 +4210,27 @@ window.GameEngine = window.GameEngine || {};
         continue;
       }
 
+      // Orc "Bog Spirit": a Bog Witch mid-summon cannot move or act at all
+      // until it finishes (or a spawn retry is pending) -- mirrors the Druid
+      // case just above, see progressBogWitchSummon/startBogWitchWispSummon.
+      if (unit.typeId === "bog_witch" && unit.summonBuild) {
+        progressBogWitchSummon(civ, unit, gameState, log);
+        continue;
+      }
+
+      // Orc Wisp "lurk and watch" (2026-08-10, user-directed: "it is not an
+      // offensive unit, but rather meant to lurk and watch... if it sees
+      // enemy units come near, the orc swarm triggers"): an exclusive
+      // branch, checked before EVERY other consideration including the
+      // attack-first check below -- a Wisp never fights, explores, or
+      // otherwise acts, full stop. See maybeWispSentinelPlay's own doc
+      // comment for how "the swarm triggers" actually happens with no new
+      // alarm plumbing at all.
+      if (unit.typeId === "wisp") {
+        maybeWispSentinelPlay(civ, unit, gameState, log);
+        continue;
+      }
+
       // currentMission: a short, human-readable "what is this unit doing right
       // now" label, read by sidebar.js for spectator mode's unit inspection.
       // Reset to a generic default here so every branch below overwrites it
@@ -4353,6 +4410,9 @@ window.GameEngine = window.GameEngine || {};
       // Elf Druid: Nature's Grace healing, Raptor/Shadowsteed summon
       // management, and Roots of the World expansion -- see maybeElfDruidPlay.
       if (maybeElfDruidPlay(civ, unit, gameState, weights, difficulty, log)) continue;
+
+      // Orc Bog Witch: Wisp summon management -- see maybeOrcBogWitchPlay.
+      if (maybeOrcBogWitchPlay(civ, unit, gameState, log)) continue;
 
       // Elf Blade Dancer: Whirlwind Strike/Blade Storm -- checked before the
       // ordinary single-target attack below, since a worthwhile sweep (2+
@@ -6249,6 +6309,24 @@ window.GameEngine = window.GameEngine || {};
     return true;
   }
 
+  /** Player-facing "Roots of the World" (2026-08-10, user-directed): same
+   *  currentTurnNumber/currentGameStateRef + log-capture wrapper shape as
+   *  castFlightOnAlly above, promoting performDruidTeleport (previously only
+   *  ever called from the AI's own attemptDruidTeleport/maybeRootsExpansion)
+   *  to something main.js's ring-menu handler can call directly. Re-validates
+   *  nothing itself beyond what performDruidTeleport/resolveTeleportLanding
+   *  already check -- main.js's own startDruidTeleportPlacement only ever
+   *  offers slots isValidTeleportTile already approved, same "menu built
+   *  from the same predicate that re-validates" pattern used elsewhere. */
+  function performPlayerDruidTeleport(civ, druid, targetUnit, destX, destY, gameState) {
+    currentTurnNumber = gameState.turnNumber || 0;
+    currentGameStateRef = gameState;
+    const log = [];
+    const ok = performDruidTeleport(civ, druid, targetUnit, destX, destY, gameState, log);
+    if (log.length) appendAIActionLog(gameState, civ.id, log);
+    return ok;
+  }
+
   /** Defensive trigger: blinks `targetUnit` to the safest remembered tile,
    *  mirrors attemptWizardTeleport exactly. `targetUnit` is `druid` itself
    *  for the self-flee case (see the main HP-threshold check further up the
@@ -6685,6 +6763,212 @@ window.GameEngine = window.GameEngine || {};
     druid.summonBuild = null;
     druid.currentMission = `Summoned a ${build.id} at (${spawned.x},${spawned.y})`;
     log.push(`Summon: ${civ.id}'s Druid completes a ${build.id} at (${spawned.x},${spawned.y})`);
+  }
+
+  /** Orc "Bog Spirit" Wisp summon target: any swamp tile the civ has EVER
+   *  explored (gameState.explored, not necessarily currently visible),
+   *  unoccupied by any unit and not sitting under an enemy wall/building/
+   *  city. Mirrors isValidTeleportTile's shape but restricted to swamp
+   *  terrain specifically -- a Wisp can never leave swamp (see units.js's
+   *  restrictedToTerrain), so nowhere else is a legal place to land one. */
+  function isValidWispSummonTile(gameState, civId, x, y) {
+    const { map, civs } = gameState;
+    if (x < 0 || x >= map.width || y < 0 || y >= map.height) return false;
+    const tile = map.tiles[y * map.width + x];
+    if (tile.terrain !== "swamp") return false;
+    if (Object.values(civs).some((c) => c.units.some((u) => u.x === x && u.y === y))) return false;
+    if (hasEnemyStructure(tile, civId)) return false;
+    if (hasEnemyCity(civs, x, y, civId)) return false;
+    return true;
+  }
+
+  /** Civ-wide Wisp population cap (2026-08-10, user-directed: "the Orc
+   *  kingdom can only have wisp count equal to the number of big [bog]
+   *  witches") -- unlike Elf's Raptor/Shadowsteed (one each PER Druid), this
+   *  is a single shared pool across every Bog Witch. A Bog Witch already
+   *  mid-summon counts as having claimed its slot too, so two Bog Witches
+   *  can't both start summoning off the same one free slot in the same
+   *  turn. Self-cleaning the same way druidHasLiveSummon is -- a dead Wisp
+   *  or dead Bog Witch simply drops out of civ.units, freeing/shrinking the
+   *  cap next time this is checked. */
+  function wispCapReached(civ) {
+    const bogWitches = civ.units.filter((u) => u.typeId === "bog_witch").length;
+    const claimed = civ.units.filter((u) =>
+      u.typeId === "wisp" || (u.typeId === "bog_witch" && u.summonBuild && u.summonBuild.id === "wisp")).length;
+    return claimed >= bogWitches;
+  }
+
+  /** Non-adjacent counterpart to spawnUnitAdjacentToUnit -- spawns `unitId`
+   *  at the EXACT (x,y) already chosen (see startBogWitchWispSummon), used
+   *  by Orc's Wisp summon which -- unlike Elf's Raptor/Shadowsteed -- lands
+   *  at a player/AI-picked remembered swamp tile, not just next to the
+   *  caster. Returns null (nothing spawned, resources already spent) if
+   *  that tile is no longer open by the time the summon finishes; the
+   *  caller keeps retrying next turn, same convention as
+   *  spawnUnitAdjacentToUnit's own dead-end case. */
+  function spawnUnitAtTile(civ, unitId, x, y, gameState) {
+    const occupied = buildOccupancySet(gameState.civs, null);
+    if (occupied.has(`${x},${y}`)) return null;
+    const newUnit = { typeId: unitId, civId: civ.id, x, y };
+    window.GameEngine.combat.initUnitHP(newUnit, civ);
+    civ.units.push(newUnit);
+    return newUnit;
+  }
+
+  /** Starts a Bog Witch "building" a Wisp at (targetX,targetY) -- same
+   *  power-based cost/turn-count convention as startDruidSummon, and the
+   *  same `confirmed`-gated pendingIntent staging for an automated (AI or
+   *  human-auto-piloted) Bog Witch. Checked against the civ-wide Wisp cap
+   *  FIRST (wispCapReached), since unlike Druid's summons this pool isn't
+   *  per-caster. `targetX`/`targetY` must already be a legal swamp tile --
+   *  callers (the player's placement UI, maybeOrcBogWitchPlay) are
+   *  responsible for picking one via isValidWispSummonTile; this doesn't
+   *  re-validate terrain itself, only occupancy at spawn time (see
+   *  progressBogWitchSummon). */
+  function startBogWitchWispSummon(civ, bogWitch, targetX, targetY, gameState, log, confirmed = false) {
+    if (wispCapReached(civ)) return false;
+    if (!canAffordUnitUpkeep(civ, "wisp", window.GameData.getRace(civ.raceId))) return false;
+    const cost = window.GameData.unitBuildCost("wisp");
+    if (!cost || !canAffordBuildCost(civ, cost)) return false;
+    if (bogWitch.automated && !confirmed) {
+      bogWitch.pendingIntent = {
+        kind: "summonWisp",
+        label: "Summon a Wisp",
+        summonTargetX: targetX,
+        summonTargetY: targetY,
+      };
+      bogWitch.usedThisTurn = true;
+      bogWitch.currentMission = "Proposing to summon a Wisp — awaiting confirmation";
+      log.push(`Bog Witch proposing to summon a Wisp at (${targetX},${targetY}) — awaiting player confirmation`);
+      return true; // consumes the turn either way -- same "decided, just paused" contract startDruidSummon uses
+    }
+    civ.stockpile = civ.stockpile || { harvest: 0, coin: 0, lore: 0 };
+    for (const [k, v] of Object.entries(cost)) civ.stockpile[k] = Math.max(0, (civ.stockpile[k] || 0) - v);
+    const turns = unitBuildTurns(civ, "wisp");
+    bogWitch.summonBuild = { id: "wisp", turnsRemaining: turns, targetX, targetY };
+    bogWitch.usedThisTurn = true;
+    bogWitch.currentMission = `Summoning a Wisp (${turns} turns remaining)`;
+    log.push(`Summon: ${civ.id}'s Bog Witch begins summoning a Wisp at (${targetX},${targetY})`);
+    return true;
+  }
+
+  /** Ticks an in-progress Bog Witch summon (see startBogWitchWispSummon) --
+   *  the Bog Witch cannot move or act while summoning, mirrors
+   *  progressDruidSummon exactly except the landing tile is the one already
+   *  chosen at start time (build.targetX/Y) rather than a neighbor picked
+   *  now. */
+  function progressBogWitchSummon(civ, bogWitch, gameState, log) {
+    const build = bogWitch.summonBuild;
+    if (build.turnsRemaining > 0) build.turnsRemaining--;
+    bogWitch.usedThisTurn = true;
+    if (build.turnsRemaining > 0) {
+      bogWitch.currentMission = `Summoning a Wisp (${build.turnsRemaining} turns remaining)`;
+      return;
+    }
+    const spawned = spawnUnitAtTile(civ, build.id, build.targetX, build.targetY, gameState);
+    if (!spawned) {
+      bogWitch.currentMission = "Summoning a Wisp (waiting for the tile to clear)";
+      return;
+    }
+    bogWitch.summonBuild = null;
+    bogWitch.currentMission = `Summoned a Wisp at (${spawned.x},${spawned.y})`;
+    log.push(`Summon: ${civ.id}'s Bog Witch completes a Wisp at (${spawned.x},${spawned.y})`);
+  }
+
+  /** Direct player-invoked Wisp summon (2026-08-10, user-directed): the
+   *  ring-menu "Summon Wisp" action hands off to main.js's tile-placement
+   *  mode (viewState.placement), and picking a slot calls straight into
+   *  this -- same "always confirmed, bypasses the automated/pendingIntent
+   *  gate entirely" shape as performPlayerDruidTeleport, since a manual
+   *  ring click + tile pick already IS the confirmation, regardless of
+   *  whether this Bog Witch happens to be flagged automated from some
+   *  earlier turn. */
+  function performPlayerBogWitchSummon(civ, bogWitch, targetX, targetY, gameState) {
+    currentTurnNumber = gameState.turnNumber || 0;
+    currentGameStateRef = gameState;
+    const log = [];
+    const ok = startBogWitchWispSummon(civ, bogWitch, targetX, targetY, gameState, log, true);
+    if (log.length) appendAIActionLog(gameState, civ.id, log);
+    return ok;
+  }
+
+  /** Orc Bog Witch AI: if Bog Spirit is researched, there's a free slot
+   *  under the civ-wide cap (wispCapReached), and this Bog Witch isn't
+   *  already mid-summon, starts summoning a Wisp at the frontier-most
+   *  remembered swamp tile -- the candidate with the greatest MINIMUM
+   *  distance to any of the civ's own cities (2026-08-10, user-directed:
+   *  "the intent of the wisp is a scout that orc can use to monitor an
+   *  area... lurk and watch"; a random pick could just as easily land deep
+   *  in safe home territory, which is useless as a watch post -- pushing
+   *  it to the farthest-out candidate instead approximates "post the
+   *  lookout on the approach," without needing real pathing/threat-map
+   *  analysis for what's still a light, opportunistic play, not a
+   *  strategic centerpiece. Returns true if it consumed the Bog Witch's
+   *  turn. */
+  function maybeOrcBogWitchPlay(civ, unit, gameState, log) {
+    if (unit.typeId !== "bog_witch" || !civ.unlockedMechanics) return false;
+    if (!civ.unlockedMechanics.has("wisp_summon") || unit.usedThisTurn || unit.summonBuild) return false;
+    if (wispCapReached(civ)) return false;
+    const { map } = gameState;
+    const explored = gameState.explored[civ.id] || new Set();
+    let pick = null, bestMinDist = -1;
+    for (const idx of explored) {
+      const x = idx % map.width, y = Math.floor(idx / map.width);
+      if (!isValidWispSummonTile(gameState, civ.id, x, y)) continue;
+      const minDist = civ.cities.length
+        ? civ.cities.reduce((min, c) => Math.min(min, window.GameEngine.influence.chebyshev(x, y, c.x, c.y)), Infinity)
+        : 0;
+      if (minDist > bestMinDist) { bestMinDist = minDist; pick = { x, y }; }
+    }
+    if (!pick) return false;
+    return startBogWitchWispSummon(civ, unit, pick.x, pick.y, gameState, log);
+  }
+
+  /** Orc Wisp "lurk and watch" (2026-08-10, user-directed): a Wisp never
+   *  moves, explores, or attacks -- see its exclusive dispatch branch in
+   *  runUnitTurn, checked ahead of every other consideration including the
+   *  attack-first check. It always tries to sit Hidden right where it was
+   *  summoned, holding position indefinitely (no expiry, unlike Halfellow's
+   *  timed "Keep an Eye Out" -- watching IS this unit's entire job, not a
+   *  toggled tactical choice).
+   *
+   *  "The orc swarm triggers" when it spots an enemy needs no bespoke alarm
+   *  mechanism at all: turns.js's refreshVisibility grants every one of a
+   *  civ's units its full vision radius regardless of that unit's OWN
+   *  hidden status (Hidden only affects being SEEN by others, never a
+   *  unit's own sight) -- so a Wisp sitting still and hidden still projects
+   *  its full 6-tile vision into gameState.visibility[civ.id] every turn,
+   *  exactly like any other unit. computeOrcSwarmSignal/maybeOrcSwarm
+   *  (called every Orc turn, see beginAITurn) already scan that exact same
+   *  civ-wide visibility set for the nearest visible, non-hidden enemy and
+   *  pull every otherwise-idle Orc unit toward it -- a Wisp posted on the
+   *  frontier (see maybeOrcBogWitchPlay's targeting) just gives that signal
+   *  something to find sooner, out past where the civ's cities/army would
+   *  otherwise have spotted it. A unit already fighting its own battle
+   *  (considerAttackOrGarrison, checked before maybeOrcSwarm in the
+   *  dispatch cascade) is untouched -- "if not already in combat" per the
+   *  user's own wording is already how that ordering works. */
+  function maybeWispSentinelPlay(civ, unit, gameState, log) {
+    if (unit.conditions?.hidden) {
+      unit.resting = true;
+      unit.usedThisTurn = true;
+      unit.currentMission = "Watching from hiding";
+      return;
+    }
+    if (window.GameEngine.combat.canGoHidden(unit, civ, gameState.civs)) {
+      window.GameEngine.combat.enterHidden(unit, currentTurnNumber);
+      unit.resting = true;
+      unit.usedThisTurn = true;
+      unit.currentMission = "Settling in to watch";
+      log.push(`Wisp: ${civ.id}'s wisp takes up a watch post at (${unit.x},${unit.y})`);
+      return;
+    }
+    // Can't hide (an enemy is already adjacent, canGoHidden's shared rule)
+    // -- holds position and keeps watching anyway rather than fleeing or
+    // fighting; it's a lookout, not a combatant.
+    unit.resting = true;
+    unit.usedThisTurn = true;
+    unit.currentMission = "Watching (exposed)";
   }
 
   /**
@@ -7525,6 +7809,13 @@ window.GameEngine = window.GameEngine || {};
       }
     }
     if (!nearest) return false;
+    // +2 movement while hunting (2026-08-10, user-directed): granted
+    // straight onto this turn's already-lazily-initialized movesRemaining
+    // (see computeMovementBudget/spendMovement's own lazy-init) rather than
+    // a cross-turn condition like Violent Momentum's killMomentum -- this
+    // needs to apply to THIS turn's hunting move, not a later one.
+    if (unit.movesRemaining == null) unit.movesRemaining = computeMovementBudget(unit, map, civs);
+    unit.movesRemaining += 2;
     moveTowardWithStandoff(civ, unit, nearest.x, nearest.y, map, civs);
     unit.usedThisTurn = true;
     unit.currentMission = `Hunting an enemy ${describeUnit(nearest)} near (${nearest.x},${nearest.y})`;
@@ -9765,8 +10056,15 @@ window.GameEngine = window.GameEngine || {};
       // reachability.
       return hasRangedLineOfSight(map, unit.x, unit.y, enemyUnit.x, enemyUnit.y);
     }
-    // Melee: skip enemies that can't be reached on foot (across water or mountains)
-    return canReachByLand(unit.x, unit.y, enemyUnit.x, enemyUnit.y, map, 150, unit);
+    // Melee (dist <= 1, i.e. truly adjacent): no footpath-reachability check
+    // needed -- Chebyshev-adjacent already means standing right next to each
+    // other. Used to additionally require canReachByLand here, which blocked
+    // a land unit from ever melee-attacking a unit standing on an adjacent
+    // WATER tile (a Galley) and vice versa; removed (2026-08-10, user-
+    // directed: "land units adjacent to a unit on the water... should be
+    // able to attack that unit. similarly, a unit on the water adjacent to
+    // a land unit should be able to attack that unit").
+    return true;
   }
 
   /**
@@ -9884,10 +10182,19 @@ window.GameEngine = window.GameEngine || {};
       // confirm via main.js's offerNextPendingIntent, which re-invokes this
       // exact function with opts.forcedTarget set once confirmed (see
       // orders.js's attack()) -- that's what the `!opts.forcedTarget` guard
-      // lets through unchanged. Every OTHER caller (a non-automated unit,
-      // or a full AI civ, neither of which ever sets unit.automated) is
-      // completely unaffected.
-      if (unit.automated && !opts.forcedTarget) {
+      // lets through unchanged.
+      //
+      // Pre-attack notice (2026-08-10, user-directed): the SAME stage-
+      // don't-resolve mechanism now also fires whenever the DEFENDER is the
+      // human civ, regardless of whether the attacker is "automated" -- this
+      // is what lets an enemy AI civ's own decision to attack the player
+      // pause here, before any damage happens, instead of the player finding
+      // out only after a post-hoc hp-diff (see main.js's processBatch, which
+      // resolves this exact pendingIntent via a forcedTarget call once the
+      // "X is about to attack Y" notice is dismissed). Every OTHER caller (a
+      // non-automated unit attacking a non-human civ) is unaffected.
+      const defenderIsHuman = !!civs[bestTarget.civId]?.isHuman;
+      if ((unit.automated || defenderIsHuman) && !opts.forcedTarget) {
         unit.pendingIntent = {
           kind: "attack",
           label: `Attack ${describeUnit(bestTarget)} at (${bestTarget.x},${bestTarget.y})`,
@@ -9976,9 +10283,15 @@ window.GameEngine = window.GameEngine || {};
       const isRangedFirebrand = (unit.typeId === "scout" || unit.typeId === "dragon")
         && window.GameEngine.influence.chebyshev(unit.x, unit.y, bestTarget.x, bestTarget.y) > 1;
       const isMeleeGoblinFirebrand = unit.typeId === "goblin_miscreant";
+      // burnChancePct (2026-08-10, user-directed): chance to ignite is now
+      // per-unit data, same convention as siegePct/doubleStrikePct -- see
+      // orc_burn_it_all_down's unit_stat_upgrade effects -- rather than
+      // always igniting on every qualifying hit.
+      const burnItAllDownChance = window.GameEngine.combat.getUnitProperty(unit, civ, "burnChancePct", 0);
       if ((isRangedFirebrand || isMeleeGoblinFirebrand)
           && civ.unlockedMechanics && civ.unlockedMechanics.has("burn_it_all_down")
-          && !result.fullNegated && !result.fullMissed) {
+          && !result.fullNegated && !result.fullMissed
+          && burnItAllDownChance > 0 && Math.random() < burnItAllDownChance) {
         applyBurning(bestTarget, "unit", gameState);
         log.push(`Burn It All Down: ${civ.id}'s ${describeUnit(unit)} sets ${bestTarget.civId}'s ${describeUnit(bestTarget)} ablaze`);
       }
@@ -9986,11 +10299,17 @@ window.GameEngine = window.GameEngine || {};
       // Human "Fireball!": Wizard splash damage to everything adjacent to the
       // target, PLUS Burning (2026-07-22, user-directed) on the primary
       // target and every splash victim -- units and buildings/walls, but
-      // NOT cities themselves (2026-07-22, user-directed removal).
+      // NOT cities themselves (2026-07-22, user-directed removal). Ignite
+      // chance is the Wizard's own burnChancePct (2026-08-10, user-directed),
+      // rolled independently per hit -- see fireball's unit_stat_upgrade effect.
       if (unit.typeId === "wizard" && civ.unlockedMechanics && civ.unlockedMechanics.has("fireball_splash")) {
-        if (!result.fullNegated && !result.fullMissed) applyBurning(bestTarget, "unit", gameState);
+        const fireballBurnChance = window.GameEngine.combat.getUnitProperty(unit, civ, "burnChancePct", 0);
+        if (!result.fullNegated && !result.fullMissed && fireballBurnChance > 0 && Math.random() < fireballBurnChance) {
+          applyBurning(bestTarget, "unit", gameState);
+        }
         const hits = window.GameEngine.combat.applySplashDamage(unit, civ, bestTarget.x, bestTarget.y, gameState);
         for (const hit of hits) {
+          if (fireballBurnChance <= 0 || Math.random() >= fireballBurnChance) continue;
           if (hit.kind === "unit") applyBurning(hit.unit, "unit", gameState);
           else if (hit.kind === "structure") applyBurning(hit.record, "structure", gameState);
         }
@@ -10661,7 +10980,7 @@ window.GameEngine = window.GameEngine || {};
     }
   }
 
-  const CURSE_DURATION = 3;
+  const CURSE_DURATION = 5; // 3->5, 2026-08-10, user-directed
 
   // Violent Momentum: +2 movement, +10% First Strike, +10% Double Strike
   // (2026-08-03, user-directed: added the latter two) for a unit that
@@ -10722,22 +11041,21 @@ window.GameEngine = window.GameEngine || {};
     }
   }
 
-  // Elf "First Frost of Autumn": flat 10% chance per landed hit -- same
-  // shape as Malefic Malediction above (any hit, not just a kill), same
-  // Frozen condition Human's Freezing Touch grants (attackMult 0.75,
-  // FROZEN_DURATION turns), just passive instead of a cast action.
-  const FIRST_FROST_CHANCE = 0.10;
-
   /** Elf-specific post-combat effect layered on top of the core damage/
    *  counter exchange in resolveRound, same convention as
-   *  applyOrcCombatMechanics above. */
+   *  applyOrcCombatMechanics above. Chance is per-unit data (2026-08-10,
+   *  user-directed), same shape as siegePct/doubleStrikePct -- see
+   *  elf_first_frost_of_autumn's unit_stat_upgrade effects -- not a hardcoded
+   *  module constant any more. */
   function applyElfCombatMechanics(attackerUnit, attackerCiv, defenderUnit, defenderCiv, result, gameState) {
     if (!attackerCiv.unlockedMechanics || !attackerCiv.unlockedMechanics.has("first_frost_of_autumn")) return;
+    const chance = window.GameEngine.combat.getUnitProperty(attackerUnit, attackerCiv, "frozenChancePct", 0);
+    if (chance <= 0) return;
     // A landed hit only -- mirrors Malefic Malediction's fullNegated/
     // fullMissed guard (a Flying-evasion miss or Invulnerability-negated hit
     // never connected, so there's nothing to freeze).
     if (result.fullNegated || result.fullMissed) return;
-    if (Math.random() >= FIRST_FROST_CHANCE) return;
+    if (Math.random() >= chance) return;
     window.GameEngine.combat.setCondition(defenderUnit, "frozen", {
       attackMult: 0.75, expiresAtTurn: (gameState.turnNumber || 0) + FROZEN_DURATION,
     });
@@ -10952,6 +11270,8 @@ window.GameEngine = window.GameEngine || {};
     spendMovement,
     civMoveMods,
     castFlightOnAlly,
+    isValidTeleportTile,
+    performPlayerDruidTeleport,
     computeMovementBudget,
     computeReachableTiles,
     buildMoveRules,
@@ -10962,6 +11282,9 @@ window.GameEngine = window.GameEngine || {};
     availableBuilds,
     maybeFoundCity,
     startDruidSummon,
+    isValidWispSummonTile,
+    performPlayerBogWitchSummon,
+    wispCapReached,
     primeUnitForAutomation,
     runAutomatedUnitTurn,
   };

@@ -1501,14 +1501,24 @@
       gameState,
     };
     const json = window.GameEngine.savegame.serialize(payload);
-    // .kms extension, not .json (2026-08-07, user-directed) -- the payload
-    // itself is still plain JSON text (savegame.js's serialize/deserialize
-    // are untouched), this only changes what the downloaded file is named.
+    // .kmsg extension, not .json (2026-08-07, user-directed; renamed
+    // .kms->.kmsg 2026-08-10) -- the payload itself is still plain JSON text
+    // (savegame.js's serialize/deserialize are untouched), this only changes
+    // what the downloaded file is named.
     const blob = new Blob([json], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `kingdom-marches-turn${gameState.turnNumber}.kms`;
+    // Filename includes the kingdom's race and a save timestamp (2026-08-10,
+    // user-directed) so multiple saves/games don't collide or read as
+    // interchangeable in a downloads folder.
+    const civ = gameState.civs[humanCivId];
+    const raceName = civ ? window.GameData.getRace(civ.raceId).label : "kingdom";
+    const now = new Date();
+    const pad = (n) => String(n).padStart(2, "0");
+    const timestamp = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`
+      + `_${pad(now.getHours())}-${pad(now.getMinutes())}-${pad(now.getSeconds())}`;
+    a.download = `kingdom-marches-${raceName}-${timestamp}.kmsg`;
     a.click();
     URL.revokeObjectURL(url);
   }
@@ -1658,7 +1668,10 @@
     // up. window.GameEngine.ai.availableBuilds already tags every option
     // with `affordable` (see its own doc comment).
     if (!civ.currentResearch && window.GameEngine.tech.hasAffordableResearch(civ)) {
-      items.push({ text: "No research selected" });
+      // chooseResearch (2026-08-10, user-directed): renders a "Choose
+      // Research" button instead of a tile "Go to" link -- see dialog.js's
+      // confirmEndTurn branch and wireDialogButtons below.
+      items.push({ text: "No research selected", chooseResearch: true });
     }
     for (const c of civ.cities) {
       // Shared with the sidebar's per-city idle tag and the map's idle
@@ -1861,6 +1874,24 @@
         return;
       }
 
+      // Enter = End Turn (2026-08-10, user-directed). Checked before the
+      // overlay gate below so it also confirms the "There's still work you
+      // can do this turn" dialog (game-dialog-confirm-btn is already wired
+      // to its End Turn action by wireDialogButtons) -- every OTHER overlay
+      // still blocks it via the early return, same as every shortcut below.
+      if (e.key === "Enter") {
+        if (e.repeat) return;
+        if (viewState && viewState.dialog && viewState.dialog.kind === "confirmEndTurn") {
+          const btn = $("game-dialog-confirm-btn");
+          if (btn) btn.click();
+          return;
+        }
+        if (!gameState || !viewState || !humanCivId || anyOverlayOpen()) return;
+        e.preventDefault();
+        handleEndTurnClick();
+        return;
+      }
+
       if (!gameState || !viewState || !humanCivId || anyOverlayOpen()) return;
 
       const key = e.key.toLowerCase();
@@ -1876,6 +1907,12 @@
           handleRestAndDefend();
         } else if (viewState.selectedCity && viewState.selectedCity.civId === humanCivId) {
           handleResourceProduction(viewState.selectedCity);
+        } else {
+          // Nothing selected (2026-08-10, user-directed): jump to the next
+          // idle city, or the next unit needing orders if there's no idle
+          // city -- same priority goToNextIdleCityOrNextUnit already gives
+          // the Next Idle City/Next Unit sidebar buttons.
+          if (goToNextIdleCityOrNextUnit()) redraw();
         }
         return;
       }
@@ -2040,12 +2077,22 @@
       // openTechResearchedDialog/offerNextUnitBuiltNotice).
       if (!victoryResult && !humanLost) {
         const afterUnitBuilt = () => offerNextPendingIntent(civ, () => offerFoundCityIfPending(civ));
-        if (finishedTechId) {
-          openTechResearchedDialog(civ, finishedTechId, () => offerNextUnitBuiltNotice(civ, afterUnitBuilt));
-        } else {
-          offerNextUnitBuiltNotice(civ, afterUnitBuilt);
-        }
+        const afterTech = () => {
+          if (finishedTechId) {
+            openTechResearchedDialog(civ, finishedTechId, () => offerNextUnitBuiltNotice(civ, afterUnitBuilt));
+          } else {
+            offerNextUnitBuiltNotice(civ, afterUnitBuilt);
+          }
+        };
+        // Starvation disband choice goes first (2026-08-10, user-directed) --
+        // it's the one entry in this chain reporting a LOSS rather than
+        // progress, so it leads rather than getting buried behind good news.
+        // The Wisp-cap disband choice (also a loss notice, see turns.js's
+        // beginCivTurn wisp-cap enforcement) chains right behind it.
+        offerNextStarvationDisband(civ, () => offerNextWispDisband(civ, afterTech));
       } else {
+        civ.pendingStarvationDisbands = [];
+        civ.pendingWispDisbands = [];
         civ.pendingUnitBuiltNotices = [];
         for (const unit of civ.units) { unit.pendingIntent = null; unit._foundCityPending = false; }
       }
@@ -2108,6 +2155,78 @@
    *  answered either way (same chaining convention offerNextUnitBuiltNotice
    *  uses), so finishRoundBookkeeping can queue the
    *  unit-built notices right behind it. */
+  /** Starvation unit-loss choice (2026-08-10, user-directed): drains
+   *  civ.pendingStarvationDisbands one at a time -- turns.js pushes one
+   *  entry per round the human civ's stockpile goes negative with units
+   *  left to lose (see its own doc comment for why the AI doesn't use this
+   *  path). Same one-at-a-time blocking-modal chaining convention as
+   *  offerNextUnitBuiltNotice. Defensively drops a candidate that's somehow
+   *  already gone (died/carried off/etc. since the round processed) rather
+   *  than crash on a stale reference -- if that empties the list entirely,
+   *  no dialog needed after all. */
+  function offerNextStarvationDisband(civ, onDone) {
+    const pending = civ.pendingStarvationDisbands;
+    if (!pending || !pending.length) { if (onDone) onDone(); return; }
+    const entry = pending.shift();
+    const candidates = entry.candidates.filter((u) => civ.units.includes(u));
+    if (!candidates.length) { offerNextStarvationDisband(civ, onDone); return; }
+    const race = window.GameData.getRace(civ.raceId);
+    viewState.dialog = {
+      kind: "chooseStarvationDisband",
+      civLabel: race.label,
+      candidates: candidates.map((u) => {
+        const baseUnit = window.GameData.getUnit(u.typeId);
+        return {
+          label: u.name || baseUnit.label,
+          description: `${baseUnit.label} -- at (${u.x}, ${u.y})`,
+        };
+      }),
+      onAnswer: (index) => {
+        const victim = candidates[index];
+        if (victim && civ.units.includes(victim)) {
+          if (victim.carries) victim.carries.carriedBy = null;
+          civ.units = civ.units.filter((u) => u !== victim);
+        }
+        offerNextStarvationDisband(civ, onDone);
+      },
+    };
+    redraw();
+  }
+
+  /** Orc "Bog Spirit" Wisp cap choice (2026-08-10, user-directed): drains
+   *  civ.pendingWispDisbands one at a time -- turns.js's beginCivTurn pushes
+   *  one entry per excess Wisp a dead Bog Witch left behind (see its own
+   *  doc comment for why the AI doesn't use this path). Same shape as
+   *  offerNextStarvationDisband right above, down to the defensive re-filter
+   *  against a candidate that's somehow already gone. */
+  function offerNextWispDisband(civ, onDone) {
+    const pending = civ.pendingWispDisbands;
+    if (!pending || !pending.length) { if (onDone) onDone(); return; }
+    const entry = pending.shift();
+    const candidates = entry.candidates.filter((u) => civ.units.includes(u));
+    if (!candidates.length) { offerNextWispDisband(civ, onDone); return; }
+    const race = window.GameData.getRace(civ.raceId);
+    viewState.dialog = {
+      kind: "chooseWispDisband",
+      civLabel: race.label,
+      candidates: candidates.map((u) => {
+        const baseUnit = window.GameData.getUnit(u.typeId);
+        return {
+          label: u.name || baseUnit.label,
+          description: `${baseUnit.label} -- at (${u.x}, ${u.y})`,
+        };
+      }),
+      onAnswer: (index) => {
+        const victim = candidates[index];
+        if (victim && civ.units.includes(victim)) {
+          civ.units = civ.units.filter((u) => u !== victim);
+        }
+        offerNextWispDisband(civ, onDone);
+      },
+    };
+    redraw();
+  }
+
   function openTechResearchedDialog(civ, techId, onDone) {
     const tech = window.GameData.getTech(techId);
     if (!tech) { if (onDone) onDone(); return; }
@@ -2116,16 +2235,16 @@
     // rather than genuinely "unlocked by" any single one of them, so naming
     // it here on every last prerequisite read like noise rather than a
     // meaningful "here's what just opened up" callout.
-    const unlockedLabels = window.GameData.techsForRace(civ.raceId)
+    const unlockedTechs = window.GameData.techsForRace(civ.raceId)
       .filter((id) => window.GameData.getTech(id).prereqs.includes(techId))
-      .map((id) => window.GameData.getTech(id).label)
-      .filter((label) => label !== "Cultural Influence");
+      .map((id) => ({ id, label: window.GameData.getTech(id).label }))
+      .filter((t) => t.label !== "Cultural Influence");
     window.SfxSystem.playResearchComplete();
     viewState.dialog = {
       kind: "techResearched",
       techLabel: tech.label,
       techDescription: tech.description || "",
-      unlockedLabels,
+      unlockedTechs,
       onChooseResearch: () => {
         // Defer onDone until the tech tree is actually CLOSED (2026-08-07,
         // user-directed bug fix), rather than firing it the instant the
@@ -2139,6 +2258,17 @@
         // once, by the tech tree's own close button below.
         viewState.techTreeCivId = civ.id;
         viewState.onTechTreeClosed = onDone;
+        lastRenderedTechTreeKey = null;
+      },
+      // "View" link next to each unlocked tech (2026-08-10, user-directed):
+      // opens the tree already scrolled to and pulsing on that tech, with
+      // its layer forced open even if it would otherwise be collapsed (see
+      // techtree.js's render/renderNode focusTechId handling).
+      onViewTech: (viewTechId) => {
+        viewState.techTreeCivId = civ.id;
+        viewState.techTreeFocusTechId = viewTechId;
+        viewState.onTechTreeClosed = onDone;
+        lastRenderedTechTreeKey = null;
       },
       onDismiss: () => { if (onDone) onDone(); },
     };
@@ -2228,6 +2358,8 @@
         } else if (intent.kind === "summon") {
           const log = civ.lastAILog || [];
           window.GameEngine.ai.startDruidSummon(civ, unit, intent.summonUnitId, gameState, log, true);
+        } else if (intent.kind === "summonWisp") {
+          window.GameEngine.ai.performPlayerBogWitchSummon(civ, unit, intent.summonTargetX, intent.summonTargetY, gameState);
         }
         finish();
       },
@@ -2301,6 +2433,33 @@
     redraw();
   }
 
+  /** Fires the attack an enemy AI unit staged instead of resolving
+   *  immediately (2026-08-10, user-directed pre-attack notice -- see
+   *  processBatch's pendingAttack check and ai.js's considerAttackOrGarrison
+   *  defenderIsHuman branch). Same forcedTarget re-invocation shape
+   *  offerNextPendingIntent uses for the human's OWN automated units, minus
+   *  the Confirm/Decline choice -- the player gets advance notice of an
+   *  enemy's attack, not a veto over it, so this always proceeds once
+   *  called. `unit.usedThisTurn` has to be undone first (the staging gate
+   *  set it so runUnitTurn wouldn't also move/act this same civ-turn) --
+   *  considerAttackOrGarrison/canAttackUnitNow would otherwise refuse a unit
+   *  already marked used. */
+  function resolvePendingAIAttack(civ, unit) {
+    const intent = unit.pendingIntent;
+    unit.pendingIntent = null;
+    if (!civ || !intent || intent.kind !== "attack") return;
+    unit.usedThisTurn = false;
+    const weights = window.GameEngine.ai.racialWeights(civ);
+    const log = civ.lastAILog || [];
+    const didAttack = window.GameEngine.ai.considerAttackOrGarrison(
+      civ, unit, gameState, weights, aiDifficulty, log, { forcedTarget: intent.target.unit });
+    if (log.length) window.GameEngine.ai.appendAIActionLog(gameState, civ.id, log);
+    if (didAttack) {
+      window.GameEngine.orders.invalidateReachCache();
+      window.GameEngine.turns.refreshVisibility(gameState);
+    }
+  }
+
   /**
    * Advances exactly ONE unit's turn (per gameState.turnOrder/turnStepIndex/
    * _civTurnCtx -- see turns.js's advanceOneUnitStep), redraws, and runs the
@@ -2369,22 +2528,42 @@
           redraw();
           return;
         }
+
+        // Pre-attack notice (2026-08-10, user-directed): a true BEFORE-the-
+        // hit hook, not the post-hoc snapshot-diff below. An AI unit that
+        // just decided to attack a human-owned unit stages that decision
+        // instead of resolving it (see ai.js's considerAttackOrGarrison's
+        // defenderIsHuman branch) -- stepResult.steppedUnit is that exact
+        // unit, so its pendingIntent (if any) is checked here, BEFORE the
+        // loop's own detectHumanAttack call below, and resolved via
+        // resolvePendingAIAttack only once the player has seen the notice.
+        const steppedUnit = stepResult.steppedUnit;
+        const pendingAttack = steppedUnit && steppedUnit.civId !== humanCivId
+          && steppedUnit.pendingIntent && steppedUnit.pendingIntent.kind === "attack"
+          ? steppedUnit.pendingIntent : null;
+        if (pendingAttack && pendingAttack.target.civ?.isHuman) {
+          const targetUnit = pendingAttack.target.unit;
+          if (!window.UI.render.isTileOnScreen(targetUnit.x, targetUnit.y, $("map-canvas"), gameState, viewState)) {
+            centerViewOn(targetUnit.x, targetUnit.y);
+          }
+          redraw();
+          const attackerBaseUnit = window.GameData.getUnit(steppedUnit.typeId);
+          offerAttackNotice(
+            { x: targetUnit.x, y: targetUnit.y, label: steppedUnit.name || attackerBaseUnit.label },
+            () => { resolvePendingAIAttack(gameState.civs[steppedUnit.civId], steppedUnit); processBatch(); },
+          );
+          return;
+        }
+
         const notice = detectHumanAttack(preAttackSnap);
         if (notice && !window.UI.render.isTileOnScreen(notice.x, notice.y, $("map-canvas"), gameState, viewState)) {
-          // Arrive at the attack site immediately (2026-08-07, user-
-          // directed), not only once the player manually clicks "Go to" on
-          // the dialog below. The step that just ran already queued this
-          // attack's floating-text/death-fx events (see floatingtext.js/
-          // deathfx.js) and applied its HP change -- advanceOneUnitStep is
-          // atomic, so there's no engine hook to pause mid-resolution and
-          // truly show the attack unfolding. What IS achievable: those
-          // effects animate over a couple of real seconds once render.js's
-          // per-frame drain first sees them, so recentering the camera HERE
-          // -- before the player has had time to read the dialog and click,
-          // let alone the several seconds an off-screen "Go to" click used
-          // to take before this fix -- means the animation is still playing
-          // when they land, rather than long since finished. See
-          // offerAttackNotice for the dialog itself.
+          // Fallback for damage that doesn't come through the pre-attack
+          // hook above -- wall auto-attacks, Burning ticks, Fireball splash,
+          // siege, anything else that changes the human civ's hp without an
+          // ai.js considerAttackOrGarrison decision to hang a pre-attack
+          // pause on. Arrive at the site immediately (2026-08-07,
+          // user-directed), not only once the player manually clicks "Go to"
+          // on the dialog below -- see offerAttackNotice for the dialog itself.
           centerViewOn(notice.x, notice.y);
           redraw();
           offerAttackNotice(notice, processBatch);
@@ -2507,11 +2686,24 @@
       viewState.techTreeExpandedLayers = viewState.techTreeExpandedLayers || {};
       const key = `${viewState.techTreeCivId}:${gameState.turnNumber}:${civ.currentResearch || ""}`;
       if (key !== lastRenderedTechTreeKey) {
-        $("techtree-content").innerHTML = window.UI.techtree.render(civ, isPlayerCiv, viewState.techTreeExpandedLayers);
+        const focusTechId = viewState.techTreeFocusTechId || null;
+        $("techtree-content").innerHTML = window.UI.techtree.render(civ, isPlayerCiv, viewState.techTreeExpandedLayers, focusTechId, viewState.techTreeHoverId || null);
         lastRenderedTechTreeKey = key;
+        if (focusTechId) {
+          viewState.techTreeFocusTechId = null; // one-shot: scroll/pulse once, not on every future open
+          // display has to be "flex" (not the pre-open "none") BEFORE
+          // scrollIntoView runs, or the overlay's still-unlaid-out subtree
+          // gives it nothing to scroll (2026-08-10 bug fix -- overlay.style.
+          // display used to be set only at the bottom of this block, after
+          // this ran).
+          overlay.style.display = "flex";
+          const node = $("techtree-content").querySelector(`.techtree-node[data-tech-id="${focusTechId}"]`);
+          if (node) node.scrollIntoView({ block: "center", behavior: "smooth" });
+        }
       }
       $("techtree-close-btn").onclick = () => {
         viewState.techTreeCivId = null;
+        viewState.techTreeHoverId = null;
         // Fires the deferred unit-built-notice/pendingIntent chain
         // (2026-08-07, user-directed bug fix) -- see openTechResearchedDialog's
         // onChooseResearch, which stashes it here instead of firing it the
@@ -2541,8 +2733,39 @@
         header.onclick = () => {
           const civExpanded = viewState.techTreeExpandedLayers[civ.id] || {};
           const layer = header.dataset.toggleLayer;
-          civExpanded[layer] = !civExpanded[layer];
+          // entry is always populated by the last render (techtree.js's
+          // render()) before this handler can ever fire.
+          civExpanded[layer].expanded = !civExpanded[layer].expanded;
           viewState.techTreeExpandedLayers[civ.id] = civExpanded;
+          lastRenderedTechTreeKey = null;
+          redraw();
+        };
+      }
+      // Hover prereq/unlock highlighting (2026-08-10, user-directed):
+      // hovering any node highlights its prereq ancestors and whatever it
+      // unlocks, dims everything unrelated, and temporarily force-opens any
+      // collapsed layer holding a DIRECT relation -- see techtree.js's
+      // computeRelations for the direct/indirect split and why indirect
+      // relations don't force anything open. Forces a rebuild the same way
+      // the toggle handler above does (mouseenter/mouseleave aren't part of
+      // the identity key), so the highlight/dim classes and any temporary
+      // layer expansion actually appear. The node the cursor is physically
+      // over gets swapped out by that rebuild, but browsers don't re-fire
+      // mouseenter for a DOM swap under a stationary cursor -- that's fine
+      // here, since the highlight comes from viewState.techTreeHoverId
+      // (already set) being baked into the fresh render, not from a second
+      // mouseenter; the freshly-wired node's own mouseleave still fires
+      // normally on real pointer movement.
+      for (const node of document.querySelectorAll(".techtree-node[data-tech-id]")) {
+        node.onmouseenter = () => {
+          if (viewState.techTreeHoverId === node.dataset.techId) return;
+          viewState.techTreeHoverId = node.dataset.techId;
+          lastRenderedTechTreeKey = null;
+          redraw();
+        };
+        node.onmouseleave = () => {
+          if (!viewState.techTreeHoverId) return;
+          viewState.techTreeHoverId = null;
           lastRenderedTechTreeKey = null;
           redraw();
         };
@@ -2809,10 +3032,18 @@
       // Playing" (finish(false)) rather than leaving it open over the map.
       const modal = $("game-dialog-modal");
       if (modal) {
-        for (const btn of modal.querySelectorAll(".tile-link")) {
+        for (const btn of modal.querySelectorAll(".tile-link[data-tile-x]")) {
           btn.onclick = () => {
             finish(false);
             goToTile(Number(btn.dataset.tileX), Number(btn.dataset.tileY), btn.dataset.tileTab || null);
+          };
+        }
+        const chooseResearchBtn = modal.querySelector("[data-choose-research]");
+        if (chooseResearchBtn) {
+          chooseResearchBtn.onclick = () => {
+            viewState.techTreeCivId = humanCivId;
+            lastRenderedTechTreeKey = null;
+            finish(false);
           };
         }
       }
@@ -2850,6 +3081,18 @@
           };
         }
       }
+    } else if (dialog.kind === "chooseStarvationDisband" || dialog.kind === "chooseWispDisband") {
+      const modal = $("game-dialog-modal");
+      if (modal) {
+        for (const btn of modal.querySelectorAll("[data-disband-index]")) {
+          btn.onclick = () => {
+            viewState.dialog = null;
+            lastRenderedDialog = null;
+            dialog.onAnswer(Number(btn.dataset.disbandIndex));
+            redraw();
+          };
+        }
+      }
     } else if (dialog.kind === "techResearched") {
       const okBtn = $("game-dialog-ok-btn");
       const confirmBtn = $("game-dialog-confirm-btn");
@@ -2861,6 +3104,17 @@
       };
       if (okBtn) okBtn.onclick = () => finish(false);
       if (confirmBtn) confirmBtn.onclick = () => finish(true);
+      const modal = $("game-dialog-modal");
+      if (modal) {
+        for (const btn of modal.querySelectorAll("[data-goto-tech-id]")) {
+          btn.onclick = () => {
+            viewState.dialog = null;
+            lastRenderedDialog = null;
+            dialog.onViewTech(btn.dataset.gotoTechId);
+            redraw();
+          };
+        }
+      }
     } else if (dialog.kind === "unitBuilt") {
       const cityBtn = $("game-dialog-cancel-btn"); // "Go to City"
       const unitBtn = $("game-dialog-confirm-btn"); // "Go to Unit"
@@ -3216,6 +3470,9 @@
       case "stopOrder":
         handleStopOrder();
         break;
+      case "deactivateAura":
+        unit.auraActive = false;
+        break;
       default:
         // "startChannel:<kind>" (2026-08-06, user-directed full-list mirror)
         // -- one case per channel type would just repeat this same call
@@ -3239,10 +3496,118 @@
           const civ = gameState.civs[humanCivId];
           const ally = civ.units.find((u) => u.x === tx && u.y === ty && u !== unit && !u.carriedBy);
           window.GameEngine.ai.castFlightOnAlly(civ, unit, ally, gameState);
+        } else if (kind && kind.startsWith("carryUnit:")) {
+          // "carryUnit:X,Y" (2026-08-10, user-directed): `unit` is the
+          // carrier, the target at (X,Y) is the passenger it's picking up --
+          // same payload-in-kind-string convention as castFlight above.
+          handleCarryUnit(unit, kind.slice("carryUnit:".length));
+        } else if (kind && kind.startsWith("boardCarrier:")) {
+          // "boardCarrier:X,Y" -- `unit` is the passenger, the target at
+          // (X,Y) is the carrier it's boarding. Mirrors carryUnit above with
+          // the two roles swapped.
+          handleCarryUnit(null, kind.slice("boardCarrier:".length), unit);
+        } else if (kind === "summonWisp") {
+          startWispSummonPlacement(unit);
+        } else if (kind === "teleportSelf") {
+          startDruidTeleportPlacement(unit, unit);
+        } else if (kind && kind.startsWith("teleportAlly:")) {
+          const [tx, ty] = kind.slice("teleportAlly:".length).split(",").map(Number);
+          const civ = gameState.civs[humanCivId];
+          const ally = civ.units.find((u) => u.x === tx && u.y === ty && u !== unit && !u.carriedBy);
+          if (ally) startDruidTeleportPlacement(unit, ally);
+        } else if (kind && kind.startsWith("activateAura:")) {
+          // "activateAura:heavy_metal"/"activateAura:power_metal"
+          // (2026-08-10, user-directed) -- a free toggle, not a spent
+          // action: see orders.js's contextMenuOptions for the two-techs-
+          // known case offering both as separate pills.
+          unit.activeAura = kind.slice("activateAura:".length);
+          unit.auraActive = true;
         }
         break;
     }
     redraw();
+  }
+
+  /** Elf "Roots of the World" (2026-08-10, user-directed): opens tile-
+   *  placement mode (same viewState.placement mechanism handleOpenBuildPicker
+   *  uses for structure slots) with every currently-EXPLORED, currently-legal
+   *  teleport tile as a slot -- see ai.js's isValidTeleportTile, the same
+   *  gate performDruidTeleport itself re-checks at landing time. Picking one
+   *  commits the teleport via performDruidTeleport; clicking outside every
+   *  highlighted tile cancels, same convention as building placement. */
+  function startDruidTeleportPlacement(druid, targetUnit) {
+    if (!humanCivId) return;
+    const civ = gameState.civs[humanCivId];
+    if (!civ) return;
+    const explored = gameState.explored[civ.id] || new Set();
+    const { map } = gameState;
+    const slots = [];
+    for (const idx of explored) {
+      const x = idx % map.width, y = Math.floor(idx / map.width);
+      if (window.GameEngine.ai.isValidTeleportTile(gameState, x, y, targetUnit)) slots.push({ x, y });
+    }
+    viewState.placement = {
+      slots,
+      label: targetUnit === druid ? "Roots of the World" : `Roots of the World: ${targetUnit.name || window.GameData.getUnit(targetUnit.typeId).label}`,
+      onPick: (slot) => {
+        viewState.placement = null;
+        if (slot) {
+          window.GameEngine.ai.performPlayerDruidTeleport(civ, druid, targetUnit, slot.x, slot.y, gameState);
+        }
+        redraw();
+      },
+    };
+    redraw();
+  }
+
+  /** Orc "Bog Spirit" (2026-08-10, user-directed): same tile-placement
+   *  mechanism as Roots of the World above, but the slot list is every
+   *  ever-EXPLORED swamp tile (see ai.js's isValidWispSummonTile) -- a Wisp
+   *  is permanently confined to swamp terrain, so nowhere else is legal to
+   *  summon one into. Picking a slot commits via performPlayerBogWitchSummon;
+   *  clicking outside every highlighted tile cancels, same convention as
+   *  every other placement flow. */
+  function startWispSummonPlacement(bogWitch) {
+    if (!humanCivId) return;
+    const civ = gameState.civs[humanCivId];
+    if (!civ) return;
+    const explored = gameState.explored[civ.id] || new Set();
+    const { map } = gameState;
+    const slots = [];
+    for (const idx of explored) {
+      const x = idx % map.width, y = Math.floor(idx / map.width);
+      if (window.GameEngine.ai.isValidWispSummonTile(gameState, civ.id, x, y)) slots.push({ x, y });
+    }
+    viewState.placement = {
+      slots,
+      label: "Summon Wisp",
+      onPick: (slot) => {
+        viewState.placement = null;
+        if (slot) {
+          window.GameEngine.ai.performPlayerBogWitchSummon(civ, bogWitch, slot.x, slot.y, gameState);
+        }
+        redraw();
+      },
+    };
+    redraw();
+  }
+
+  /** Carry/Board (2026-08-10, user-directed): resolves the OTHER unit from
+   *  its (x,y) coordinates -- exactly one of `carrier`/`passenger` is passed
+   *  in already selected (whichever ring the player clicked from), the other
+   *  is null and gets looked up here. Delegates the actual eligibility
+   *  re-check and state mutation to orders.js's performCarry, same
+   *  "re-validate, don't trust a menu that might be stale" reasoning
+   *  castFlight's handler above already follows. */
+  function handleCarryUnit(carrier, coordStr, passenger) {
+    if (!humanCivId) return;
+    const civ = gameState.civs[humanCivId];
+    if (!civ) return;
+    const [tx, ty] = coordStr.split(",").map(Number);
+    if (!carrier) carrier = civ.units.find((u) => u.x === tx && u.y === ty);
+    if (!passenger) passenger = civ.units.find((u) => u.x === tx && u.y === ty);
+    if (!carrier || !passenger) return;
+    window.GameEngine.orders.performCarry(carrier, passenger, civ);
   }
 
   function handleCancelChannel() {
@@ -3282,6 +3647,32 @@
    * (2026-08-01, user-directed: placement is chosen at queue time, not on
    * completion, so walls can be planned deliberately).
    */
+  /** Whether building one more `unitId` would push the civ's net income
+   *  (income minus total unit upkeep) negative on any resource -- same math
+   *  as sidebar.js's own Economy panel "Net (H/C/L)" row, just with this
+   *  one hypothetical extra unit's upkeep folded in before committing
+   *  (2026-08-10, user-directed). Returns a "H/C/L" label naming the
+   *  resource(s) that would go negative, or null if the build is safe. */
+  function wouldUpkeepGoNegative(civ, unitId) {
+    const res = civ.resources || { harvest: 0, coin: 0, lore: 0 };
+    const newUpkeep = window.GameData.unitUpkeep(unitId, civ);
+    const totals = civ.units.reduce((acc, u) => {
+      const up = window.GameData.unitUpkeep(u.typeId, civ, u);
+      acc.harvest += up.harvest || 0; acc.coin += up.coin || 0; acc.lore += up.lore || 0;
+      return acc;
+    }, { harvest: 0, coin: 0, lore: 0 });
+    const net = {
+      harvest: res.harvest - totals.harvest - (newUpkeep.harvest || 0),
+      coin: res.coin - totals.coin - (newUpkeep.coin || 0),
+      lore: res.lore - totals.lore - (newUpkeep.lore || 0),
+    };
+    const negatives = [];
+    if (net.harvest < 0) negatives.push("Harvest");
+    if (net.coin < 0) negatives.push("Coin");
+    if (net.lore < 0) negatives.push("Lore");
+    return negatives.length ? negatives.join(", ") : null;
+  }
+
   function handleChooseBuild(index) {
     // Resolved from viewState.ringMenu, NOT viewState.selectedCity
     // (2026-08-06, user-directed bug fix). This popover can be open while a
@@ -3308,6 +3699,30 @@
     viewState.ringMenu = null;
 
     if (option.kind !== "building") {
+      // Negative-net-upkeep warning (2026-08-10, user-directed): same "Net
+      // (H/C/L)" math as the sidebar's own Economy panel (js/ui/sidebar.js),
+      // just previewing this one MORE unit's upkeep added on top before
+      // committing, rather than only showing it after the fact.
+      const wouldGoNegative = wouldUpkeepGoNegative(civ, option.id);
+      if (wouldGoNegative) {
+        viewState.dialog = {
+          kind: "confirm",
+          title: "Build Anyway?",
+          text: `Building this unit would put your net income into the negative (${wouldGoNegative}). Build anyway?`,
+          confirmLabel: "Build Anyway",
+          // wireDialogButtons' "confirm" branch already nulls viewState.dialog
+          // and calls redraw() after this returns -- goToNextIdleCityOrNextUnit
+          // triggers its own selection change, which that redraw() picks up.
+          onAnswer: (ok) => {
+            if (ok) {
+              const queued = window.GameEngine.orders.queueBuild(city, civ, gameState, option, null);
+              if (queued) goToNextIdleCityOrNextUnit();
+            }
+          },
+        };
+        redraw();
+        return;
+      }
       const queued = window.GameEngine.orders.queueBuild(city, civ, gameState, option, null);
       if (!queued || !goToNextIdleCityOrNextUnit()) redraw();
       return;

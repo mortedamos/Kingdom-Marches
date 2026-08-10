@@ -39,22 +39,38 @@ window.GameEngine = window.GameEngine || {};
   const STAGNATION_CYCLES = 3; // recompute cycles to judge a choice as stalled (~24 turns)
   const MIN_PROGRESS = 0.02; // minimum land-share gain over that window to count as "working"
   const DEMOTION_COOLDOWN_CYCLES = 2; // cycles a stalled choice is excluded before it's eligible again
-  const SPINES = ["civic", "building", "military"];
+  // "mystic" (2026-08-10, user-directed): a 4th spine for the caster/utility
+  // techs (Wizard, Druid, Metal Singer, Bog Witch, Trouble Maker) split out
+  // of Military -- see techs.js's category reassignment. Added here too, not
+  // just in techtree.js's column list: without it, every mystic tech would
+  // permanently take scoreNextResearch's off-spine 0.85x penalty and never
+  // its 1.6x favored-spine bonus (see ai.js), a de-facto nerf nobody asked
+  // for. findCapstone (just below) is what makes "mystic" a no-op rather
+  // than a trap for a race with no mystic techs at all (Undead, currently) --
+  // spineScores zeroes it out for exactly that case.
+  const SPINES = ["civic", "building", "military", "mystic"];
   const MACRO_GOALS = ["expand", "consolidate", "conquest"];
 
-  /** How strongly this race's traits favor each of the 3 tech spines. Civic
+  /** How strongly this race's traits favor each of the 4 tech spines. Civic
    *  now also carries what used to be the separate "mechanics" spine
    *  (terrain movement, race-flavor abilities) since that column was folded
-   *  into Civic across every race's tree. */
+   *  into Civic across every race's tree. Mystic leans on curiosity (an
+   *  interest in magic/knowledge) tempered by militarism (these techs are
+   *  still combat-relevant) -- scored -Infinity for a race with no mystic
+   *  techs of its own (findCapstone returns null), so it can never win the
+   *  pick and leave that race's doctrine pointed at an empty spine.
+   */
   function spineScores(civ, race) {
     const militarism = window.GameEngine.ai.effectiveMilitarism(civ);
     const expansionism = race.expansionism ?? 0.5;
     const curiosity = race.curiosity ?? 0.5;
     const industriousness = race.industriousness ?? 0.5;
+    const hasMystic = !!findCapstone(civ.raceId, "mystic");
     return {
       civic: expansionism * 0.6 + curiosity * 0.4,
       building: industriousness,
       military: militarism,
+      mystic: hasMystic ? (curiosity * 0.6 + militarism * 0.4) : -Infinity,
     };
   }
 

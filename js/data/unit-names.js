@@ -188,6 +188,10 @@ window.GameData.UNIT_TYPE_PROPER_NAMES = {
     "Bloodfang", "Grimjaw", "Nightstalker", "Ashclaw", "Ironhowl", "The Grey Terror",
     "Bonecrusher", "Redmuzzle", "Widowfang", "The Long Howl",
   ],
+  wisp: [
+    "Marshlight", "Foxfire", "The Drowned Flame", "Bogglow", "Willowisp",
+    "The Peat Ember", "Mireflicker", "Fenspark", "The Sunken Candle",
+  ],
 };
 
 /**

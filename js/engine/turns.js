@@ -209,6 +209,15 @@ window.GameEngine = window.GameEngine || {};
   // include in this request.
   const RESOURCE_EXHAUSTION_CHANCE = window.GameConfig.world.resourceExhaustionChance;
 
+  /** Elf's "Tending to the Earth" tech (2026-08-10, user-directed) halves
+   *  RESOURCE_EXHAUSTION_CHANCE for the researching civ. */
+  function resourceExhaustionChanceFor(civ) {
+    if (civ.unlockedMechanics && civ.unlockedMechanics.has("tending_to_the_earth")) {
+      return window.GameConfig.world.resourceExhaustionChanceTendingToTheEarth;
+    }
+    return RESOURCE_EXHAUSTION_CHANCE;
+  }
+
   /**
    * RESOURCE RESPAWN (2026-08-06, user-directed)
    * --------------------------------------------
@@ -434,7 +443,7 @@ window.GameEngine = window.GameEngine || {};
         // ownership/_ritualTurns bookkeeping below, makes exhaustion fall
         // through the exact same "no longer on anchor" cleanup path as
         // moving away or dying -- no separate cleanup logic needed.
-        if ((isDelveWizard || isClaimUnit) && onAnchor && Math.random() < RESOURCE_EXHAUSTION_CHANCE) {
+        if ((isDelveWizard || isClaimUnit) && onAnchor && Math.random() < resourceExhaustionChanceFor(civ)) {
           if (isDelveWizard) {
             tile.isRuin = false;
           } else {
@@ -766,7 +775,7 @@ window.GameEngine = window.GameEngine || {};
       // Accumulates instead of paying out directly -- see
       // accumulateChannelStash's doc comment above.
       accumulateChannelStash(unit, { harvest: 5, coin: 2 });
-      if (Math.random() < RESOURCE_EXHAUSTION_CHANCE) {
+      if (Math.random() < resourceExhaustionChanceFor(civ)) {
         scheduleResourceRespawn(gameState, tile.resource);
         tile.resource = null;
         window.GameEngine.floatingText.spawnFloatingText(unit, "Shoal Exhausted!", "warning");
@@ -802,7 +811,7 @@ window.GameEngine = window.GameEngine || {};
         continue;
       }
       accumulateChannelStash(unit, { harvest: 3 });
-      if (Math.random() < RESOURCE_EXHAUSTION_CHANCE) {
+      if (Math.random() < resourceExhaustionChanceFor(civ)) {
         scheduleResourceRespawn(gameState, tile.resource);
         tile.resource = null;
         window.GameEngine.floatingText.spawnFloatingText(unit, "Game Depleted!", "warning");
@@ -820,7 +829,7 @@ window.GameEngine = window.GameEngine || {};
         continue;
       }
       accumulateChannelStash(unit, { harvest: 3 });
-      if (Math.random() < RESOURCE_EXHAUSTION_CHANCE) {
+      if (Math.random() < resourceExhaustionChanceFor(civ)) {
         scheduleResourceRespawn(gameState, tile.resource);
         tile.resource = null;
         window.GameEngine.floatingText.spawnFloatingText(unit, "Soil Exhausted!", "warning");
@@ -896,6 +905,14 @@ window.GameEngine = window.GameEngine || {};
       const healed = new Set();
       for (const troubadour of civ.units) {
         if (troubadour.typeId !== "troubadour") continue;
+        // Human-controlled Troubadours (2026-08-10, user-directed): the
+        // aura is opt-in/opt-out via the ring menu (see orders.js's
+        // contextMenuOptions Carry/Board-style "Activate"/"Deactivate Aura"
+        // pills), not automatically on the instant the tech is researched.
+        // AI civs are unaffected -- their Troubadour's aura stays always-on,
+        // same as before this change; only ai.js's maybeSwitchTroubadourAura
+        // ever touches activeAura for them.
+        if (civ.isHuman && !troubadour.auraActive) continue;
         const aura = (hasHeavyMetal && hasPowerMetal)
           ? (troubadour.activeAura || "heavy_metal")
           : (hasPowerMetal ? "power_metal" : "heavy_metal");
@@ -994,9 +1011,51 @@ window.GameEngine = window.GameEngine || {};
       }
       const disbandable = civ.units.filter(u => u.typeId !== "pioneer" && !u.carriedBy);
       if (disbandable.length > 0) {
-        const victim = disbandable[Math.floor(Math.random() * disbandable.length)];
-        if (victim.carries) victim.carries.carriedBy = null;
-        civ.units = civ.units.filter(u => u !== victim);
+        // Starvation unit loss (2026-08-10, user-directed): the human
+        // player is asked which unit to lose instead of one vanishing at
+        // random with no warning -- see main.js's
+        // offerStarvationDisbandChoice, which drains this queue once the
+        // round finishes (civ.pendingUnitBuiltNotices' own convention: live
+        // unit references, not ids, consumed same-session -- see
+        // ai.js's queueUnitBuiltNotice). An AI civ has no one to ask, so it
+        // keeps the old immediate random pick.
+        if (civ.isHuman) {
+          civ.pendingStarvationDisbands = civ.pendingStarvationDisbands || [];
+          civ.pendingStarvationDisbands.push({ candidates: disbandable });
+        } else {
+          const victim = disbandable[Math.floor(Math.random() * disbandable.length)];
+          if (victim.carries) victim.carries.carriedBy = null;
+          civ.units = civ.units.filter(u => u !== victim);
+        }
+      }
+    }
+
+    // Orc "Bog Spirit" Wisp population cap (2026-08-10, user-directed): the
+    // kingdom may field at most one Wisp per living Bog Witch. A Bog Witch
+    // can die anywhere -- combat, starvation just above, anywhere else --
+    // so rather than hook every individual death site, this re-checks the
+    // cap once at the top of the civ's own turn, the same "catch it here"
+    // timing the starvation check just above uses. Same human/AI split as
+    // starvation: the human player picks which Wisp to lose (see main.js's
+    // offerNextWispDisband, drained the same way offerNextStarvationDisband
+    // is); an AI civ has no one to ask, so it disbands at random, repeatedly,
+    // until back under the cap.
+    {
+      const bogWitchCount = civ.units.filter((u) => u.typeId === "bog_witch").length;
+      let wisps = civ.units.filter((u) => u.typeId === "wisp");
+      let excess = wisps.length - bogWitchCount;
+      if (excess > 0) {
+        if (civ.isHuman) {
+          civ.pendingWispDisbands = civ.pendingWispDisbands || [];
+          for (let i = 0; i < excess; i++) civ.pendingWispDisbands.push({ candidates: wisps });
+        } else {
+          while (excess > 0 && wisps.length > 0) {
+            const victim = wisps[Math.floor(Math.random() * wisps.length)];
+            civ.units = civ.units.filter((u) => u !== victim);
+            wisps = wisps.filter((u) => u !== victim);
+            excess--;
+          }
+        }
       }
     }
 

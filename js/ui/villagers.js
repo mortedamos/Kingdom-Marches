@@ -33,10 +33,12 @@ window.UI = window.UI || {};
   const MAX_PER_CITY = 6; // safety cap so a huge city can't flood the screen
   const BASE_SPEED_RANGE = [0.16, 0.3]; // tiles/second baseline pace, before the per-figure variable-speed wobble
 
-  // Orc: olive green / brown / green. Everyone else (human, elf, dwarf,
-  // halfellow, and undead as an unspecified fallback): human skin tones.
+  // Orc: olive green / brown / green. Undead: pale/bone white (2026-08-10,
+  // user-directed). Everyone else (human, elf, dwarf, halfellow): human
+  // skin tones.
   const SKIN_TONES = {
     orc: ["#6b8e23", "#7b5233", "#4f7942"],
+    undead: ["#f5f5f0", "#eceae4", "#e3e1da"],
     default: ["#f1c27d", "#e0ac69", "#c68642", "#8d5524", "#ffdbac"],
   };
 

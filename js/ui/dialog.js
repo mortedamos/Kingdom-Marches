@@ -12,7 +12,9 @@
  *   { kind: "confirm", title, text, confirmLabel, danger, onAnswer(bool) }
  *   { kind: "message", title, text, onDismiss() }
  *   { kind: "chooseTech", title, text, options: [{id,label,description}], onAnswer(techId) }
- *   { kind: "techResearched", techLabel, techDescription, unlockedLabels[], onChooseResearch(), onDismiss() }
+ *   { kind: "chooseStarvationDisband", civLabel, candidates: [{label,description}], onAnswer(index) }
+ *   { kind: "chooseWispDisband", civLabel, candidates: [{label,description}], onAnswer(index) }
+ *   { kind: "techResearched", techLabel, techDescription, unlockedTechs[{id,label}], onChooseResearch(), onViewTech(techId), onDismiss() }
  *   { kind: "unitBuilt", cityName, unitLabel, unitProperName, onGoToCity(), onGoToUnit(), onDismiss() }
  *   { kind: "confirmAutomatedAction", unitLabel, actionLabel, onConfirm(), onDecline() }
  *   { kind: "attackNotice", unitLabel, onGoTo(), onSkip() }
@@ -59,7 +61,12 @@ window.UI = window.UI || {};
       // buttons) existed.
       const items = (dialog.items || []).map((item) => {
         const label = escapeHtml(item.text);
-        const link = Number.isFinite(item.x) && Number.isFinite(item.y)
+        // "No research selected" (2026-08-10, user-directed) isn't tied to
+        // a tile, so it gets its own jump-straight-to-the-tech-tree button
+        // instead of a tile-link "Go to" -- see wireDialogButtons.
+        const link = item.chooseResearch
+          ? ` <button class="dialog-action-link" data-choose-research="1">Choose Research</button>`
+          : Number.isFinite(item.x) && Number.isFinite(item.y)
           ? ` <button class="tile-link" data-tile-x="${item.x}" data-tile-y="${item.y}"${item.tabKind ? ` data-tile-tab="${escapeHtml(item.tabKind)}"` : ""}>Go to</button>`
           : "";
         return `<li>${label}${link}</li>`;
@@ -106,15 +113,53 @@ window.UI = window.UI || {};
         <p>${escapeHtml(dialog.text)}</p>
         <div class="game-dialog-choices">${options}</div>`;
     }
+    if (dialog.kind === "chooseStarvationDisband") {
+      // Starvation unit loss (2026-08-10, user-directed): upkeep ran the
+      // stockpile negative, so a unit has to go -- the player picks which
+      // one instead of a random pick vanishing with no warning. Same N-way
+      // .game-dialog-choice shape as chooseTech above, just data-disband-
+      // index (an array index into this round's candidate list, not a
+      // stable id -- units don't have one) instead of data-tech-id.
+      const options = (dialog.candidates || []).map((c, i) => `
+        <button class="menu-dropdown-btn game-dialog-choice game-dialog-danger" data-disband-index="${i}">
+          <div class="game-dialog-choice-label">${escapeHtml(c.label)}</div>
+          <div class="game-dialog-choice-desc">${escapeHtml(c.description)}</div>
+        </button>`).join("");
+      return `
+        <h2>Starvation!</h2>
+        <p>Upkeep has outrun ${escapeHtml(dialog.civLabel)}'s stockpile. Choose a unit to disband:</p>
+        <div class="game-dialog-choices">${options}</div>`;
+    }
+    if (dialog.kind === "chooseWispDisband") {
+      // Orc "Bog Spirit" Wisp cap (2026-08-10, user-directed): a Bog Witch
+      // died and left more Wisps than living Bog Witches to sustain them --
+      // same N-way .game-dialog-choice/data-disband-index shape as
+      // chooseStarvationDisband above, just a different trigger and wording.
+      const options = (dialog.candidates || []).map((c, i) => `
+        <button class="menu-dropdown-btn game-dialog-choice game-dialog-danger" data-disband-index="${i}">
+          <div class="game-dialog-choice-label">${escapeHtml(c.label)}</div>
+          <div class="game-dialog-choice-desc">${escapeHtml(c.description)}</div>
+        </button>`).join("");
+      return `
+        <h2>A Bog Witch Has Died</h2>
+        <p>${escapeHtml(dialog.civLabel)} now has more Wisps than living Bog Witches to sustain them. Choose a Wisp to disband:</p>
+        <div class="game-dialog-choices">${options}</div>`;
+    }
     if (dialog.kind === "techResearched") {
       // Tech-researched announcement (2026-08-06, user-directed): fires once
       // per completed tech (see main.js's finishRoundBookkeeping). Lists
       // every OTHER tech this one was a prerequisite for -- "here's what
       // just opened up" -- alongside a direct shortcut into the tech tree so
       // picking the next one doesn't need a separate menu hunt.
-      const unlocked = (dialog.unlockedLabels || []).length
+      // Each entry links back into the tech tree at that exact node
+      // (2026-08-10, user-directed) via a data-goto-tech-id button, wired by
+      // main.js's wireDialogButtons -- same tile-link visual treatment as
+      // the confirmEndTurn dialog's own "Go to" jump buttons.
+      const unlocked = (dialog.unlockedTechs || []).length
         ? `<p class="game-dialog-unlocked-label">Unlocks:</p>
-           <ul class="game-dialog-list">${dialog.unlockedLabels.map((l) => `<li>${escapeHtml(l)}</li>`).join("")}</ul>`
+           <ul class="game-dialog-list">${dialog.unlockedTechs.map((t) =>
+             `<li>${escapeHtml(t.label)} <button class="dialog-action-link" data-goto-tech-id="${escapeHtml(t.id)}">View</button></li>`
+           ).join("")}</ul>`
         : "";
       return `
         <h2>Research Complete</h2>

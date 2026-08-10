@@ -93,6 +93,7 @@ window.GameData.TECHS = {
   pioneer_infrastructure: {
     id: "pioneer_infrastructure", label: "Pioneer", category: "civic", layer: 0, cost: 10,
     prereqs: [],
+    description: "Unlocks the Pioneer, who can found new cities and build roads, and the Wall Section.",
     // costBreakdown (2026-08-05, originally shared_infrastructure's):
     // gives Pioneer the same power-derived, multi-resource build-cost
     // MODEL every other teched unit already uses (see techs.js's
@@ -114,12 +115,14 @@ window.GameData.TECHS = {
   distant_horizons: {
     id: "distant_horizons", label: "Distant Horizons", category: "military", layer: 0, cost: 10,
     prereqs: [],
+    description: "Unlocks the Scout, a fast, far-seeing unit for exploring the map.",
     costBreakdown: { harvest: 2, coin: 3 },
     effects: [{ type: "unlock_unit", unit: "scout" }],
   },
   distant_shores: {
     id: "distant_shores", label: "Distant Shores", category: "military", layer: 0, cost: 10,
     prereqs: [],
+    description: "Unlocks the Galley, a naval unit for crossing water and carrying other units aboard.",
     costBreakdown: { harvest: 2, coin: 3 },
     effects: [{ type: "unlock_unit", unit: "galley" }],
   },
@@ -177,7 +180,7 @@ window.GameData.TECHS = {
   spears_raised: {
     id: "spears_raised", label: "Spears Raised", category: "military", layer: 1, cost: 15,
     prereqs: [], raceOnly: "human",
-    description: "Unlocks the Spearguard (high defense, low attack, low movement).",
+    description: "Unlocks the Spearguard, a sturdy defender built to hold ground rather than strike hard.",
     costBreakdown: { lore: 11, coin: 4 },
     effects: [{ type: "unlock_unit", unit: "spearguard" }],
   },
@@ -190,7 +193,7 @@ window.GameData.TECHS = {
   archery: {
     id: "archery", label: "Archery", category: "military", layer: 1, cost: 25,
     prereqs: [], raceOnly: "human",
-    description: "Unlocks the Archer (Ranged 2).",
+    description: "Unlocks the Archer, a ranged attacker that strikes without exposing itself to a counterattack.",
     costBreakdown: { lore: 17, coin: 8 },
     effects: [{ type: "unlock_unit", unit: "archer" }],
   },
@@ -244,7 +247,7 @@ window.GameData.TECHS = {
   cavalry_training: {
     id: "cavalry_training", label: "Cavalry Training", category: "military", layer: 2, cost: 25,
     prereqs: [], raceOnly: "human",
-    description: "Unlocks the Cavalry (relatively high movement).",
+    description: "Unlocks the Cavalry, a fast-moving mounted unit for chasing down or outrunning the enemy.",
     costBreakdown: { lore: 17, harvest: 8 },
     effects: [{ type: "unlock_unit", unit: "cavalry" }],
   },
@@ -267,7 +270,7 @@ window.GameData.TECHS = {
   catapult_engineering: {
     id: "catapult_engineering", label: "Catapult Engineering", category: "military", layer: 2, cost: 40,
     prereqs: ["archery"], raceOnly: "human",
-    description: "Unlocks the Catapult (low movement, Ranged 2, Siege 100%) -- a separate unit from Archer/Longbowman, not a replacement.",
+    description: "Unlocks the Catapult, a slow-moving siege engine built to break down walls and structures. A separate unit from Archer/Longbowman, not a replacement -- a civ can field both.",
     costBreakdown: { lore: 28, coin: 12 },
     effects: [{ type: "unlock_unit", unit: "catapult" }],
   },
@@ -294,14 +297,14 @@ window.GameData.TECHS = {
   knighthood: {
     id: "knighthood", label: "Knighthood", category: "military", layer: 3, cost: 45,
     prereqs: ["cavalry_training"], raceOnly: "human",
-    description: "Unlocks the Knight (high movement, high attack) -- replaces Cavalry.",
+    description: "Unlocks the Knight, a heavier mounted unit that replaces the Cavalry.",
     costBreakdown: { harvest: 20, lore: 15, coin: 10 },
     effects: [{ type: "replace_unit", from: "cavalry", to: "knight" }],
   },
   longbow: {
     id: "longbow", label: "Longbow", category: "military", layer: 3, cost: 40,
     prereqs: ["archery"], raceOnly: "human",
-    description: "Unlocks the Longbowman (higher attack, Ranged 3) -- replaces Archer.",
+    description: "Unlocks the Longbowman, a stronger, longer-ranged replacement for the Archer.",
     costBreakdown: { lore: 28, coin: 12 },
     effects: [{ type: "replace_unit", from: "archer", to: "longbowman" }],
   },
@@ -315,14 +318,14 @@ window.GameData.TECHS = {
     // its layer, so the L3->L2 move alone already halves it (tierGrowth's
     // 2.0x per layer), plus the Wizard unit's own build-cost/upkeep layer
     // premiums (which key off this tech's layer too).
-    id: "wizardry", label: "Wizardry", category: "military", layer: 2, cost: 45,
+    id: "wizardry", label: "Wizardry", category: "mystic", layer: 2, cost: 45,
     prereqs: [], raceOnly: "human",
-    description: "Unlocks the Wizard (Ranged 2).",
+    description: "Unlocks the Wizard, a utility spellcaster that strikes from range.",
     costBreakdown: { lore: 32, coin: 13 },
     effects: [{ type: "unlock_unit", unit: "wizard" }],
   },
   freezing_touch: {
-    id: "freezing_touch", label: "Freezing Touch", category: "military", layer: 3, cost: 42,
+    id: "freezing_touch", label: "Freezing Touch", category: "mystic", layer: 3, cost: 42,
     prereqs: ["wizardry"], raceOnly: "human",
     description: "The Wizard may use this action to apply the Frozen condition (0 movement, -25% attack) to an enemy unit within short range for 3 turns.",
     costBreakdown: { lore: 30, coin: 12 },
@@ -352,7 +355,7 @@ window.GameData.TECHS = {
     effects: [{ type: "unlock_mechanic", mechanic: "sea_charts" }],
   },
   flight: {
-    id: "flight", label: "Flight", category: "military", layer: 3, cost: 60,
+    id: "flight", label: "Flight", category: "mystic", layer: 3, cost: 60,
     prereqs: ["wizardry"], raceOnly: "human",
     description: "As an action (that consumes their turn), a Wizard may grant an adjacent allied unit the Flying property, along with +2 movement and +2 vision, for 5 turns.",
     costBreakdown: { lore: 42, coin: 18 },
@@ -379,12 +382,12 @@ window.GameData.TECHS = {
   trebuchet_engineering: {
     id: "trebuchet_engineering", label: "Trebuchet Engineering", category: "military", layer: 3, cost: 55,
     prereqs: ["catapult_engineering"], raceOnly: "human",
-    description: "Unlocks the Trebuchet (very low movement, Ranged 2, Siege 200%) -- replaces Catapult.",
+    description: "Unlocks the Trebuchet, a heavier, harder-hitting siege engine that replaces the Catapult.",
     costBreakdown: { lore: 38, coin: 17 },
     effects: [{ type: "replace_unit", from: "catapult", to: "trebuchet" }],
   },
   battle_mage: {
-    id: "battle_mage", label: "Battle Mage", category: "military", layer: 4, cost: 55,
+    id: "battle_mage", label: "Battle Mage", category: "mystic", layer: 4, cost: 55,
     prereqs: ["mage_college_tech"], raceOnly: "human",
     // This used to raise the Wizard's firstStrikePct (0.50->0.75) -- Wizard
     // no longer has that property at all (its identity moved to `range`, see
@@ -392,21 +395,21 @@ window.GameData.TECHS = {
     // of the existing attack/defense bump. range is additive here (see
     // combat.js's effectiveRange), same as attack/defense -- it adds to the
     // Wizard's base 2 rather than replacing it.
-    description: "Wizard upgraded in place (not replaced): Ranged rises to 3, plus improved attack and defense.",
+    description: "The Wizard grows more powerful in every way: greater range, attack, and defense.",
     costBreakdown: { lore: 40, coin: 15 },
     effects: [{ type: "unit_stat_upgrade", unit: "wizard", changes: { range: 1, attack: 3, defense: 3 } }],
   },
   teleportation: {
-    id: "teleportation", label: "Teleportation", category: "military", layer: 4, cost: 60,
+    id: "teleportation", label: "Teleportation", category: "mystic", layer: 4, cost: 60,
     prereqs: ["wizardry"], raceOnly: "human",
-    description: "Wizard may instantly move to any unoccupied tile the civ can see -- costs the whole turn (no move/attack after). The Wizard cannot act again until healed to 100% HP.",
+    description: "The Wizard may instantly move to any unoccupied tile the civ has ever explored, not just tiles it can currently see. Costs its whole turn (no move or attack after), and it cannot act again until healed to full health.",
     costBreakdown: { lore: 60, coin: 30 },
     effects: [{ type: "unlock_mechanic", mechanic: "teleportation" }],
   },
   chivalric_order: {
     id: "chivalric_order", label: "Chivalric Order", category: "military", layer: 4, cost: 55,
     prereqs: ["knighthood"], raceOnly: "human",
-    description: "Unlocks the Paladin (high attack and defense) -- replaces Knight.",
+    description: "Unlocks the Paladin, a mighty holy warrior that replaces the Knight.",
     costBreakdown: { harvest: 22, lore: 20, coin: 13 },
     effects: [{ type: "replace_unit", from: "knight", to: "paladin" }],
   },
@@ -427,26 +430,31 @@ window.GameData.TECHS = {
     effects: [{ type: "unlock_building", building: "palace" }],
   },
   fireball: {
-    id: "fireball", label: "Fireball!", category: "military", layer: 5, cost: 65,
+    id: "fireball", label: "Fireball!", category: "mystic", layer: 5, cost: 65,
     prereqs: ["battle_mage"], raceOnly: "human",
-    description: "Wizard gains Siege 75% and higher attack; damage also splashes to every enemy unit and structure adjacent to the target. Every hit -- the primary target and every splash victim, including units, buildings, and walls (not cities themselves) -- also catches fire: the Burning condition deals 1 damage at the start of the burning unit's turn for 3 turns, unless it's currently on Coast, Ocean, or a river tile.",
+    description: "The Wizard's attacks splash to every enemy unit and structure adjacent to the target, and every hit -- the primary target and every splash victim, including units, buildings, and walls (not cities themselves) -- catches fire: Burning deals 1 damage at the start of the burning unit's turn for 3 turns, unless it's currently on Coast, Ocean, or a river tile.",
     costBreakdown: { lore: 65, coin: 30 },
     effects: [
-      { type: "unit_stat_upgrade", unit: "wizard", changes: { siegePct: 0.75, attack: 3 } },
+      // burnChancePct (2026-08-10, user-directed): chance to apply Burning
+      // now lives as a per-unit data field, same convention as siegePct/
+      // doubleStrikePct, instead of ai.js unconditionally igniting every
+      // hit -- see applyBurning's callers. 1.0 preserves this tech's
+      // existing "every hit ignites" behavior exactly.
+      { type: "unit_stat_upgrade", unit: "wizard", changes: { siegePct: 0.75, attack: 3, burnChancePct: 1.0 } },
       { type: "unlock_mechanic", mechanic: "fireball_splash" },
     ],
   },
   invulnerability: {
-    id: "invulnerability", label: "Invulnerability", category: "military", layer: 5, cost: 60,
+    id: "invulnerability", label: "Invulnerability", category: "mystic", layer: 5, cost: 60,
     prereqs: ["battle_mage"], raceOnly: "human",
-    description: "The wizard unit gains 33% chance to negate all damage from both incoming attacks and counterattacks.",
+    description: "The Wizard has a 33% chance to negate all damage from both incoming attacks and counterattacks.",
     costBreakdown: { lore: 60, coin: 30 },
     effects: [{ type: "unlock_mechanic", mechanic: "invulnerability_chance", value: 0.33 }],
   },
   invisibility: {
-    id: "invisibility", label: "Invisibility", category: "military", layer: 5, cost: 60,
+    id: "invisibility", label: "Invisibility", category: "mystic", layer: 5, cost: 60,
     prereqs: ["battle_mage"], raceOnly: "human",
-    description: "The wizard unit can use an action to gain the hidden condition for 3 turns.",
+    description: "The Wizard may spend an action to turn Hidden for 3 turns.",
     costBreakdown: { lore: 40, coin: 20 },
     effects: [{ type: "unlock_mechanic", mechanic: "invisibility" }],
   },
@@ -499,6 +507,16 @@ window.GameData.TECHS = {
     description: "+2 lore per building constructed in a city (walls don't count).",
     costBreakdown: { lore: 14, coin: 6 },
     effects: [{ type: "building_count_bonus", bonus: { lore: 2 } }],
+  },
+  // 2026-08-10, user-directed: halves the flat RESOURCE_EXHAUSTION_CHANCE
+  // (5%->2%) for this civ's Ruin/Gold Vein/Iron Vein/Fish Shoal/Game/Fertile
+  // Soil channels -- see turns.js's resourceExhaustionChanceFor.
+  elf_tending_to_the_earth: {
+    id: "elf_tending_to_the_earth", label: "Tending to the Earth", category: "civic", layer: 1, cost: 18,
+    prereqs: [], raceOnly: "elf",
+    description: "Any resource gathering activity only has a 2% chance per turn to exhaust the resource, not the normal 5%.",
+    costBreakdown: { lore: 12, coin: 6 },
+    effects: [{ type: "unlock_mechanic", mechanic: "tending_to_the_earth" }],
   },
   elf_whispering_waters: {
     id: "elf_whispering_waters", label: "Whispering Waters", category: "civic", layer: 2, cost: 20,
@@ -604,14 +622,14 @@ window.GameData.TECHS = {
   elf_watching_hunting: {
     id: "elf_watching_hunting", label: "Watching, Hunting", category: "military", layer: 1, cost: 15,
     prereqs: [], raceOnly: "elf",
-    description: "Unlocks the Ranger (Ranged 2, First Strike). Granted free at civ creation, same as every other race's basic unit.",
+    description: "Unlocks the Ranger, a ranged skirmisher with a chance to strike before its target can react. Granted free at civ creation, same as every other race's basic unit.",
     costBreakdown: { lore: 11, coin: 4 },
     effects: [{ type: "unlock_unit", unit: "ranger" }],
   },
   elf_wind_and_flashing_steel: {
     id: "elf_wind_and_flashing_steel", label: "Wind and Flashing Steel", category: "military", layer: 1, cost: 16,
     prereqs: [], raceOnly: "elf",
-    description: "Unlocks the Blade Dancer (melee, First Strike).",
+    description: "Unlocks the Blade Dancer, a melee duelist with a chance to strike before its target can react.",
     costBreakdown: { lore: 12, coin: 4 },
     effects: [{ type: "unlock_unit", unit: "blade_dancer" }],
   },
@@ -656,14 +674,14 @@ window.GameData.TECHS = {
     effects: [{ type: "unlock_mechanic", mechanic: "strike_from_the_shadows" }],
   },
   elf_druidism: {
-    id: "elf_druidism", label: "Druidism", category: "military", layer: 2, cost: 32,
+    id: "elf_druidism", label: "Druidism", category: "mystic", layer: 2, cost: 32,
     prereqs: ["elf_murmuring_of_leaves", "elf_whispering_waters"], raceOnly: "elf",
-    description: "Unlocks the Druid (magic unit, like the Human Wizard -- utility unit, Ranged 2). May found a city, in addition to the normal Pioneer.",
+    description: "Unlocks the Druid, a utility spellcaster who may also found cities, in addition to the normal Pioneer.",
     costBreakdown: { lore: 22, coin: 10 },
     effects: [{ type: "unlock_unit", unit: "druid" }],
   },
   elf_air_beneath_eyes_above: {
-    id: "elf_air_beneath_eyes_above", label: "Air Beneath, Eyes Above", category: "military", layer: 2, cost: 34,
+    id: "elf_air_beneath_eyes_above", label: "Air Beneath, Eyes Above", category: "mystic", layer: 2, cost: 34,
     prereqs: ["elf_druidism"], raceOnly: "elf",
     description: "The Druid may summon a Raptor to assist elven allies -- like a city, it spends resources and several turns \"building\" the unit, unable to move or act while doing so (though it may do this while Hidden, if already Hidden beforehand). Cities cannot build Raptor units.",
     costBreakdown: { lore: 22, coin: 12 },
@@ -683,17 +701,30 @@ window.GameData.TECHS = {
     prereqs: [], raceOnly: "elf",
     description: "Elf unit attacks have a 10% chance to inflict the Frozen condition on the target (0 movement, -25% attack, for a few turns).",
     costBreakdown: { lore: 20, coin: 10 },
-    effects: [{ type: "unlock_mechanic", mechanic: "first_frost_of_autumn" }],
+    // frozenChancePct (2026-08-10, user-directed): chance to inflict Frozen
+    // now lives as a per-unit data field, same convention as siegePct/
+    // doubleStrikePct, instead of ai.js's hardcoded FIRST_FROST_CHANCE
+    // constant -- see applyElfCombatMechanics. 0.10 on every elf combat
+    // unit preserves this tech's existing civ-wide 10% exactly.
+    effects: [
+      { type: "unit_stat_upgrade", unit: "ranger", changes: { frozenChancePct: 0.10 } },
+      { type: "unit_stat_upgrade", unit: "blade_dancer", changes: { frozenChancePct: 0.10 } },
+      { type: "unit_stat_upgrade", unit: "druid", changes: { frozenChancePct: 0.10 } },
+      { type: "unit_stat_upgrade", unit: "raptor", changes: { frozenChancePct: 0.10 } },
+      { type: "unit_stat_upgrade", unit: "shadowsteed", changes: { frozenChancePct: 0.10 } },
+      { type: "unit_stat_upgrade", unit: "awakened_oak", changes: { frozenChancePct: 0.10 } },
+      { type: "unlock_mechanic", mechanic: "first_frost_of_autumn" },
+    ],
   },
   elf_hunters_soul: {
-    id: "elf_hunters_soul", label: "Hunter's Soul", category: "military", layer: 3, cost: 38,
+    id: "elf_hunters_soul", label: "Hunter's Soul", category: "military", layer: 2, cost: 38, // moved L3->L2, 2026-08-10, user-directed
     prereqs: ["elf_watching_hunting"], raceOnly: "elf",
     description: "Rangers gain +1 range and 25% Double Strike.",
     costBreakdown: { lore: 24, coin: 14 },
     effects: [{ type: "unit_stat_upgrade", unit: "ranger", changes: { range: 1, doubleStrikePct: 0.25 } }],
   },
   elf_natures_grace: {
-    id: "elf_natures_grace", label: "Nature's Grace", category: "military", layer: 3, cost: 36,
+    id: "elf_natures_grace", label: "Nature's Grace", category: "mystic", layer: 3, cost: 36,
     prereqs: ["elf_druidism", "elf_nature_provides"], raceOnly: "elf",
     description: "The Druid may use this action (costs its whole turn, no exhaustion afterward) to restore between 10% and 30% (random) health to an ally unit within its own range (not just adjacent).",
     costBreakdown: { lore: 24, harvest: 12 },
@@ -716,7 +747,7 @@ window.GameData.TECHS = {
   elf_sudden_doom: {
     id: "elf_sudden_doom", label: "Sudden Doom", category: "military", layer: 3, cost: 50,
     prereqs: ["elf_strike_from_the_shadows"], raceOnly: "elf",
-    description: "Replacing Strike from the Shadows (one effect, not two stacking bonuses), the bonus to attack score while Hidden increases to +100% instead of +50%, and the unit also gains First Strike +10%. Both bonuses end when the unit is no longer Hidden.",
+    description: "Replaces Strike from the Shadows: while Hidden, a unit's bonus to attack score rises to +100% (up from +50%), and it also gains +10% First Strike. Both bonuses end as soon as the unit is no longer Hidden.",
     costBreakdown: { lore: 50 },
     effects: [{ type: "unlock_mechanic", mechanic: "sudden_doom" }],
   },
@@ -728,7 +759,7 @@ window.GameData.TECHS = {
     effects: [{ type: "unit_stat_upgrade", unit: "blade_dancer", changes: { doubleStrikePct: 0.10, firstStrikePct: 0.02 } }],
   },
   elf_roots_of_the_world: {
-    id: "elf_roots_of_the_world", label: "Roots of the World", category: "military", layer: 3, cost: 45,
+    id: "elf_roots_of_the_world", label: "Roots of the World", category: "mystic", layer: 3, cost: 45,
     prereqs: ["elf_druidism"], raceOnly: "elf",
     description: "A Druid may instantly move itself, or an adjacent ally, to any unoccupied tile the civ has ever explored (not just currently visible). This costs the Druid's entire turn (no move/attack after), and it cannot act again until healed to 100% HP.",
     costBreakdown: { lore: 45 },
@@ -749,9 +780,9 @@ window.GameData.TECHS = {
     effects: [{ type: "unlock_mechanic", mechanic: "sanctuary_under_green_boughs" }],
   },
   elf_shadowsteed: {
-    id: "elf_shadowsteed", label: "Shadowsteed", category: "military", layer: 5, cost: 95,
+    id: "elf_shadowsteed", label: "Shadowsteed", category: "mystic", layer: 5, cost: 95,
     prereqs: ["elf_air_beneath_eyes_above", "elf_quick_as_a_shadow"], raceOnly: "elf",
-    description: "The Druid may summon a Shadowsteed, a flying horse made of shadow, the same way it summons a Raptor (spends resources and several turns \"building\" it, immobile meanwhile). The Shadowsteed has Flying, Carry, First Strike 5%, Atk 1/Def 1. It cannot carry an Awakened Oak, a Raptor, or a Galley. While carrying another unit, it takes on that unit's range, attack, defense, siege, and First Strike (keeping its own First Strike if higher), then adds +3 attack, +2 defense, and +2% First Strike of its own on top. Cities cannot build Shadowsteed units.",
+    description: "The Druid may summon a Shadowsteed, a flying horse made of shadow, the same way it summons a Raptor: spends resources and several turns \"building\" it, immobile meanwhile. It cannot carry an Awakened Oak, a Raptor, or a Galley. While carrying another unit, it takes on that unit's range, attack, defense, siege, and First Strike (keeping its own First Strike if higher), then adds its own bonuses on top. Cities cannot build Shadowsteed units directly.",
     costBreakdown: { lore: 55, coin: 25, harvest: 15 },
     effects: [
       { type: "unlock_unit", unit: "shadowsteed" },
@@ -759,9 +790,9 @@ window.GameData.TECHS = {
     ],
   },
   elf_the_living_forest: {
-    id: "elf_the_living_forest", label: "The Living Forest", category: "military", layer: 5, cost: 95,
+    id: "elf_the_living_forest", label: "The Living Forest", category: "mystic", layer: 5, cost: 95,
     prereqs: ["elf_druidism", "elf_sanctuary_under_green_boughs"], raceOnly: "elf",
-    description: "Unlocks the Awakened Oak, a living, walking tree -- massive, rare, very tough, high attack and defense, high siege. The elves' own siege unit: less singular and less rare than a Dwarf Titan, meant to be fielded in numbers.",
+    description: "Unlocks the Awakened Oak, a living, walking tree and the elves' own siege unit -- rare, but meant to be fielded in numbers rather than as a single centerpiece.",
     costBreakdown: { harvest: 30, lore: 40, coin: 20 },
     effects: [{ type: "unlock_unit", unit: "awakened_oak" }],
   },
@@ -915,21 +946,21 @@ window.GameData.TECHS = {
   dwarf_foe_hammer: {
     id: "dwarf_foe_hammer", label: "Foe Hammer", category: "military", layer: 1, cost: 15,
     prereqs: [], raceOnly: "dwarf",
-    description: "Unlocks the FoeHammer (basic melee unit).",
+    description: "Unlocks the FoeHammer, the dwarves' basic melee fighter.",
     costBreakdown: { coin: 10, lore: 5 },
     effects: [{ type: "unlock_unit", unit: "foehammer" }],
   },
   dwarf_thunder_from_stone: {
     id: "dwarf_thunder_from_stone", label: "Thunder from Stone", category: "military", layer: 2, cost: 24,
     prereqs: [], raceOnly: "dwarf",
-    description: "Unlocks the Musketeer (Ranged 2).",
+    description: "Unlocks the Musketeer, a ranged gunner that strikes without exposing itself to a counterattack.",
     costBreakdown: { coin: 16, lore: 8 },
     effects: [{ type: "unlock_unit", unit: "musketeer" }],
   },
   dwarf_warrior_poets: {
-    id: "dwarf_warrior_poets", label: "Warrior Poets", category: "military", layer: 2, cost: 26,
+    id: "dwarf_warrior_poets", label: "Warrior Poets", category: "mystic", layer: 2, cost: 26,
     prereqs: ["dwarf_deep_lore"], raceOnly: "dwarf",
-    description: "Unlocks the Metal Singer (Ranged 2, utility/caster/buff). Heavy metal / Norwegian black metal inspired appearance: has an axe that is also an electric guitar.",
+    description: "Unlocks the Metal Singer, a utility unit that rallies allies with an aura -- wields an axe that's also an electric guitar.",
     costBreakdown: { coin: 17, lore: 9 },
     effects: [{ type: "unlock_unit", unit: "troubadour" }],
   },
@@ -941,25 +972,25 @@ window.GameData.TECHS = {
     effects: [{ type: "unit_stat_upgrade", unit: "musketeer", changes: { range: 1, attack: 1, firstStrikePct: 0.025 } }],
   },
   dwarf_heavy_metal: {
-    id: "dwarf_heavy_metal", label: "Heavy Metal", category: "military", layer: 3, cost: 58,
+    id: "dwarf_heavy_metal", label: "Heavy Metal", category: "mystic", layer: 3, cost: 58,
     prereqs: ["dwarf_warrior_poets"], raceOnly: "dwarf",
-    description: "The Metal Singer exudes an aura in a 1-tile radius around itself (including itself): allied units heal 5% of their HP per turn (minimum 1), regardless of whether they're resting, and gain +1 defense and +25% siege. If the Metal Singer also has Power Metal, it can switch between the two auras as an action (never both active at once).",
+    description: "Grants the Metal Singer an aura it can activate from its ring menu: allied units within a 1-tile radius (including itself) heal 5% of their HP per turn (minimum 1), regardless of whether they're resting, and gain +1 defense and +25% siege. If the Metal Singer also knows Power Metal, only one of the two auras can be active at a time.",
     costBreakdown: { coin: 34, lore: 24 },
     effects: [
       { type: "unlock_mechanic", mechanic: "heavy_metal" },
     ],
   },
   dwarf_power_metal: {
-    id: "dwarf_power_metal", label: "Power Metal", category: "military", layer: 3, cost: 58,
+    id: "dwarf_power_metal", label: "Power Metal", category: "mystic", layer: 3, cost: 58,
     prereqs: ["dwarf_warrior_poets"], raceOnly: "dwarf",
-    description: "The Metal Singer exudes an aura in a 1-tile radius around itself (including itself): allied units gain +2 attack and +5% First Strike. If the Metal Singer also has Heavy Metal, it can switch between the two auras as an action (never both active at once).",
+    description: "Grants the Metal Singer an aura it can activate from its ring menu: allied units within a 1-tile radius (including itself) gain +2 attack and +5% First Strike. If the Metal Singer also knows Heavy Metal, only one of the two auras can be active at a time.",
     costBreakdown: { coin: 34, lore: 24 },
     effects: [
       { type: "unlock_mechanic", mechanic: "power_metal" },
     ],
   },
   dwarf_epic_metal: {
-    id: "dwarf_epic_metal", label: "Epic Metal", category: "military", layer: 4, cost: 50,
+    id: "dwarf_epic_metal", label: "Epic Metal", category: "mystic", layer: 4, cost: 50,
     prereqs: ["dwarf_heavy_metal"], raceOnly: "dwarf",
     description: "The Metal Singer's active aura (Heavy Metal or Power Metal, whichever is currently active) extends to a 2-tile radius.",
     costBreakdown: { coin: 32, lore: 18 },
@@ -1001,7 +1032,7 @@ window.GameData.TECHS = {
   dwarf_runeforged_titan: {
     id: "dwarf_runeforged_titan", label: "Runeforged Titan", category: "military", layer: 5, cost: 90,
     prereqs: ["dwarf_stonebreaker", "dwarf_runeforged_armory"], raceOnly: "dwarf",
-    description: "Unlocks the Runeforged Titan: a massive, slow-moving stone golem with a very high defense and a high siege score. Like a wall or city, it takes damage from an ordinary attacker as if brushing it off, but a Siege-property attacker cuts through it just as easily. A rare unit -- meant to plod overland slowly toward an enemy city, defending itself along the way, escorted by other Dwarf units.",
+    description: "Unlocks the Runeforged Titan, a massive, slow-moving stone golem. Like a wall or city, it shrugs off an ordinary attacker almost unharmed, but a Siege-property attacker cuts through it just as easily. A rare unit meant to plod overland slowly toward an enemy city, defending itself along the way, escorted by other Dwarf units.",
     costBreakdown: { coin: 55, lore: 28, harvest: 7 },
     effects: [{ type: "unlock_unit", unit: "runeforged_titan" }],
   },
@@ -1024,9 +1055,13 @@ window.GameData.TECHS = {
   orc_forced_march: {
     id: "orc_forced_march", label: "Forced March", category: "civic", layer: 1, cost: 14,
     prereqs: [], raceOnly: "orc",
-    description: "Reduces the movement cost of Plains by 0.5 for Raiders, Wolf Riders, and Ogres only.",
+    // Civ-wide, not unit-restricted (2026-08-10, user-directed: "should
+    // reduce this cost for all orc units") -- terrain_movement_discount
+    // applies to every unit this civ owns, unlike the old unit_terrain_
+    // movement_discount's units:[] allowlist (raider/wolf_rider/ogre only).
+    description: "Reduces the movement cost of Plains by 0.5.",
     costBreakdown: { lore: 10, harvest: 4 },
-    effects: [{ type: "unit_terrain_movement_discount", terrain: "plains", value: 0.5, units: ["raider", "wolf_rider", "ogre"] }],
+    effects: [{ type: "terrain_movement_discount", terrain: "plains", value: 0.5 }],
   },
   orc_violent_momentum: {
     id: "orc_violent_momentum", label: "Violent Momentum", category: "civic", layer: 1, cost: 14,
@@ -1038,14 +1073,14 @@ window.GameData.TECHS = {
   orc_raiders: {
     id: "orc_raiders", label: "Raiders", category: "military", layer: 1, cost: 15,
     prereqs: [], raceOnly: "orc",
-    description: "Unlocks the Raider (basic melee unit).",
+    description: "Unlocks the Raider, the orcs' basic melee fighter.",
     costBreakdown: { lore: 11, coin: 4 },
     effects: [{ type: "unlock_unit", unit: "raider" }],
   },
   orc_miscreant: {
     id: "orc_miscreant", label: "Miscreant", category: "military", layer: 1, cost: 12,
     prereqs: [], raceOnly: "orc",
-    description: "Unlocks the Goblin Miscreant (Atk 1/Def 1/Mov 2/Vis 2) -- a fast, cheap, disposable gap-filler unit, not a real fighter. 30% cheaper, faster to build, and lower upkeep than its stats alone would suggest; Orc falls back to building these when nothing better is affordable or worth building right now. Building one actually produces two -- the second spawns on a random adjacent tile next to the city. Every death still triggers Honor the Dead's +5 lore bonus like any other Orc unit.",
+    description: "Unlocks the Goblin Miscreant, a fast, cheap, disposable gap-filler unit rather than a real fighter -- cheaper to build and maintain than its stats alone suggest. Building one actually produces two: the second spawns on a random adjacent tile next to the city.",
     costBreakdown: { lore: 8, coin: 4 },
     effects: [{ type: "unlock_unit", unit: "goblin_miscreant" }],
   },
@@ -1061,7 +1096,7 @@ window.GameData.TECHS = {
   orc_wolf_riders: {
     id: "orc_wolf_riders", label: "Wolf Riders", category: "military", layer: 2, cost: 16,
     prereqs: ["orc_dire_wolf"], raceOnly: "orc",
-    description: "Unlocks the Wolf Rider (relatively high movement). Reduces the movement cost of Forest by 0.5 for Wolf Riders only.",
+    description: "Unlocks the Wolf Rider, a fast-moving mounted raider. Also reduces the movement cost of Forest by 0.5 for Wolf Riders only.",
     costBreakdown: { lore: 12, coin: 4 },
     effects: [
       { type: "unlock_unit", unit: "wolf_rider" },
@@ -1096,14 +1131,14 @@ window.GameData.TECHS = {
   orc_impaler_rite: {
     id: "orc_impaler_rite", label: "Impaler Rites", category: "military", layer: 2, cost: 15,
     prereqs: [], raceOnly: "orc",
-    description: "Unlocks the Impaler (high defense, low attack, low movement).",
+    description: "Unlocks the Impaler, a sturdy defender built to hold ground rather than strike hard.",
     costBreakdown: { lore: 11, coin: 4 },
     effects: [{ type: "unlock_unit", unit: "impaler" }],
   },
   orc_bog_witch: {
-    id: "orc_bog_witch", label: "Bog Witch", category: "military", layer: 2, cost: 25,
+    id: "orc_bog_witch", label: "Bog Witch", category: "mystic", layer: 2, cost: 25,
     prereqs: [], raceOnly: "orc",
-    description: "Unlocks the Bog Witch (Ranged 2). Any unit that kills a Bog Witch loses 50% attack and 50% movement for 3 turns.",
+    description: "Unlocks the Bog Witch. Any unit that kills a Bog Witch loses 50% attack and 50% movement for 5 turns -- a death-curse for whoever finishes her off.",
     costBreakdown: { lore: 18, coin: 7 },
     effects: [{ type: "unlock_unit", unit: "bog_witch" }],
   },
@@ -1162,37 +1197,64 @@ window.GameData.TECHS = {
   orc_battering_ram: {
     id: "orc_battering_ram", label: "Battering Ram", category: "military", layer: 3, cost: 40,
     prereqs: [], raceOnly: "orc",
-    description: "Unlocks the Battering Ram (relatively low movement, Siege 150%).",
+    description: "Unlocks the Battering Ram, a slow-moving siege engine built to break down walls and structures.",
     costBreakdown: { lore: 26, coin: 14 },
     effects: [{ type: "unlock_unit", unit: "battering_ram" }],
   },
   orc_ogre: {
     id: "orc_ogre", label: "Ogre", category: "military", layer: 3, cost: 42,
     prereqs: [], raceOnly: "orc",
-    description: "Unlocks the Ogre (high attack, Siege 50%).",
+    description: "Unlocks the Ogre, a hard-hitting brute that can also help break down walls and structures.",
     costBreakdown: { lore: 28, coin: 14 },
     effects: [{ type: "unlock_unit", unit: "ogre" }],
   },
   orc_malefic_malediction: {
-    id: "orc_malefic_malediction", label: "Malefic Malediction", category: "military", layer: 3, cost: 38,
+    id: "orc_malefic_malediction", label: "Malefic Malediction", category: "mystic", layer: 3, cost: 38,
     prereqs: ["orc_bog_witch"], raceOnly: "orc",
-    description: "Any unit damaged by a Bog Witch loses 50% attack and 50% movement for 3 turns. Stacks alongside the Bog Witch's own death-curse.",
+    description: "Any unit damaged by a Bog Witch loses 50% attack and 50% movement for 5 turns. Stacks alongside the Bog Witch's own death-curse.",
     costBreakdown: { lore: 38 },
     effects: [{ type: "unlock_mechanic", mechanic: "malefic_malediction" }],
+  },
+  orc_bog_spirit: {
+    id: "orc_bog_spirit", label: "Bog Spirit", category: "mystic", layer: 3, cost: 40,
+    prereqs: ["orc_bog_witch"], raceOnly: "orc",
+    description: "The Bog Witch may summon a Wisp, a small flying spirit of the swamp, into any swamp tile the Orc kingdom has ever explored -- even one it can't currently see. Like a city, the summon spends resources and several turns \"building\" the Wisp, during which the Bog Witch cannot move or act. A Wisp can hide, and is permanently bound to swamp terrain: it flies at speed over swamp but can never cross onto any other kind of tile. The Orc kingdom may field at most one Wisp per living Bog Witch -- if a Bog Witch dies and that leaves too many Wisps behind, one must be disbanded.",
+    // unlock_unit registers "wisp" with techForUnit (so unitBuildCost can
+    // derive its resource split from this tech's costBreakdown) even though
+    // no CITY can ever build one -- see units.js's cityBuildable: false.
+    // Mirrors Elf's Raptor/Shadowsteed summon pattern (elf_air_beneath_
+    // eyes_above/elf_shadowsteed): a Bog Witch's own summon action is the
+    // only thing that ever spends this.
+    costBreakdown: { harvest: 4, coin: 12, lore: 24 },
+    effects: [
+      { type: "unlock_unit", unit: "wisp" },
+      { type: "unlock_mechanic", mechanic: "wisp_summon" },
+    ],
   },
   orc_burn_it_all_down: {
     id: "orc_burn_it_all_down", label: "Burn It All Down", category: "military", layer: 3, cost: 35,
     prereqs: [], raceOnly: "orc",
-    description: "Ranged attacks (not adjacent melee) from a Scout or a Dragon set their target ablaze: the Burning condition deals 1 damage at the start of the burning unit's turn for 3 turns, unless it's currently on Coast, Ocean, or a river tile.",
+    description: "Ranged attacks (not adjacent melee) from a Scout or a Dragon set their target ablaze: the Burning condition deals 1 damage at the start of the burning unit's turn for 3 turns, unless it's currently on Coast, Ocean, or a river tile. Goblin Miscreant's melee attacks ignite too, having no ranged option of its own.",
     costBreakdown: { lore: 22, coin: 13 },
-    effects: [{ type: "unlock_mechanic", mechanic: "burn_it_all_down" }],
+    effects: [
+      // burnChancePct (2026-08-10, user-directed): same per-unit data field
+      // as Fireball's own burnChancePct above, replacing ai.js's previous
+      // unconditional "every qualifying hit ignites". 1.0 preserves this
+      // tech's existing behavior exactly.
+      { type: "unit_stat_upgrade", unit: "scout", changes: { burnChancePct: 1.0 } },
+      { type: "unit_stat_upgrade", unit: "dragon", changes: { burnChancePct: 1.0 } },
+      { type: "unit_stat_upgrade", unit: "goblin_miscreant", changes: { burnChancePct: 1.0 } },
+      { type: "unlock_mechanic", mechanic: "burn_it_all_down" },
+    ],
   },
   orc_wasteland_riders: {
     id: "orc_wasteland_riders", label: "Wasteland Riders", category: "military", layer: 3, cost: 24,
     prereqs: ["orc_forced_march"], raceOnly: "orc",
-    description: "Reduces the movement cost of Desert by 0.5 for Raiders, Wolf Riders, and Ogres only.",
+    // Civ-wide, not unit-restricted (2026-08-10, user-directed), same fix
+    // and same reasoning as orc_forced_march above.
+    description: "Reduces the movement cost of Desert by 0.5.",
     costBreakdown: { lore: 18, harvest: 6 },
-    effects: [{ type: "unit_terrain_movement_discount", terrain: "desert", value: 0.5, units: ["raider", "wolf_rider", "ogre"] }],
+    effects: [{ type: "terrain_movement_discount", terrain: "desert", value: 0.5 }],
   },
   orc_hound_and_hunter: {
     id: "orc_hound_and_hunter", label: "Hound and Hunter", category: "military", layer: 3, cost: 28,
@@ -1254,7 +1316,7 @@ window.GameData.TECHS = {
     // Dragon a civ already owns compounds the cost/build time of the next
     // one (see units.js's `rare` flag, ai.js's buildUnitOption). See
     // project_dragon_rebalance memory for the before/after data.
-    description: "Unlocks the Dragon (Flying, Ranged 2, Siege 66%, the single most powerful unit in the game) -- but each Dragon a civ already owns makes the next one substantially more expensive and slower to build, so fielding many at once is deliberately punishing.",
+    description: "Unlocks the Dragon, a flying terror and the single most powerful unit in the game -- but each Dragon a civ already owns makes the next one substantially more expensive and slower to build, so fielding many at once is deliberately punishing.",
     costBreakdown: { lore: 67, coin: 25 },
     effects: [{ type: "unlock_unit", unit: "dragon" }],
   },
@@ -1283,7 +1345,7 @@ window.GameData.TECHS = {
   undead_arms: {
     id: "undead_arms", label: "Grave-Bound Rite", category: "military", layer: 1, cost: 15,
     prereqs: [], raceOnly: "undead",
-    description: "Bind the first Skeletons to service.",
+    description: "Unlocks the Skeleton, binding the first of the risen dead to service.",
     costBreakdown: { lore: 15 },
     effects: [{ type: "unlock_unit", unit: "skeleton" }],
   },
@@ -1371,7 +1433,7 @@ window.GameData.TECHS = {
   halfellow_arms: {
     id: "halfellow_arms", label: "Wanderer", category: "military", layer: 1, cost: 15,
     prereqs: [], raceOnly: "halfellow",
-    description: "Unlocks the Wanderer (basic melee unit; may found a city, in addition to the normal Pioneer). Reduces the movement cost of Plains by 0.5.",
+    description: "Unlocks the Wanderer, the halfellows' basic melee fighter -- may also found a city, in addition to the normal Pioneer. Also reduces the movement cost of Plains by 0.5.",
     costBreakdown: { harvest: 15 },
     effects: [
       { type: "unlock_unit", unit: "wanderer" },
@@ -1448,7 +1510,7 @@ window.GameData.TECHS = {
   halfellow_pony_patrol: {
     id: "halfellow_pony_patrol", label: "Pony Patrol", category: "military", layer: 2, cost: 24,
     prereqs: ["halfellow_road_goes_ever_on"], raceOnly: "halfellow",
-    description: "Unlocks the Pony Patrol (high movement).",
+    description: "Unlocks the Pony Patrol, a fast-moving scout-fighter.",
     costBreakdown: { harvest: 14, coin: 10 },
     effects: [{ type: "unlock_unit", unit: "pony_patrol" }],
   },
@@ -1545,7 +1607,7 @@ window.GameData.TECHS = {
   // first, each spell behind its own tech). Rumors of a tavern-born rascal
   // makes for a fitting requirement on Pub Crawl.
   halfellow_making_trouble: {
-    id: "halfellow_making_trouble", label: "Making Trouble", category: "military", layer: 3, cost: 45,
+    id: "halfellow_making_trouble", label: "Making Trouble", category: "mystic", layer: 3, cost: 45,
     prereqs: ["halfellow_pub_crawl"], raceOnly: "halfellow",
     description: "Unlocks the Trouble Maker, a stealthy rogue with two built-in tricks: Resource Heist (steal a targeted enemy unit's accumulated prospecting/delving/fishing stash, resetting their claim to zero, and leaves the victim Befuddled) and Unlock the Gate (disables a targeted wall and every wall adjacent to it -- zeroing their defense and suppressing any special wall defenses -- for 3 rounds).",
     costBreakdown: { harvest: 22, lore: 23 },
@@ -1634,7 +1696,7 @@ window.GameData.TECHS = {
   halfellow_rouse_the_militia: {
     id: "halfellow_rouse_the_militia", label: "Rouse the Militia", category: "military", layer: 4, cost: 55,
     prereqs: ["halfellow_historical_society"], raceOnly: "halfellow",
-    description: "Unlocks the Militia (higher attack and defense than the Wanderer).",
+    description: "Unlocks the Militia, a stronger standing fighter than the Wanderer.",
     costBreakdown: { harvest: 30, coin: 25 },
     effects: [{ type: "unlock_unit", unit: "militia" }],
   },
@@ -1659,9 +1721,9 @@ window.GameData.TECHS = {
   // applies Befuddled (see combat.js's applyBefuddled) -- -50% attack, 75%
   // defense, movement capped at 1, 0% First Strike, for 2 turns.
   halfellow_riddle_game: {
-    id: "halfellow_riddle_game", label: "The Riddle Game", category: "military", layer: 4, cost: 48,
+    id: "halfellow_riddle_game", label: "The Riddle Game", category: "mystic", layer: 4, cost: 48,
     prereqs: ["halfellow_making_trouble"], raceOnly: "halfellow",
-    description: "Trouble Maker and Wanderer may pose a riddle to an enemy unit at range. The target resists (nothing happens) with a chance equal to its race's curiosity x 0.75 -- otherwise it becomes Befuddled for 2 turns: -50% attack, 75% defense, movement capped at 1, 0% First Strike.",
+    description: "Trouble Maker and Wanderer may pose a riddle to an enemy unit at range. A more curious race is more likely to resist and shrug it off; otherwise the target becomes Befuddled for 2 turns: -50% attack, 75% defense, movement capped at 1, 0% First Strike.",
     costBreakdown: { lore: 26, harvest: 22 },
     effects: [{ type: "unlock_mechanic", mechanic: "riddle" }],
   },
@@ -1809,10 +1871,16 @@ window.GameData.effectiveTechCost = function (tech) {
 // already uses for display. The TOTAL magnitude is unchanged
 // (effectiveTechCost's own pure-layer formula) -- only how it's split
 // across resources changes.
+// mystic (2026-08-10, user-directed 4th column -- Wizard/Druid/Metal Singer/
+// Bog Witch/Trouble Maker split out of Military): leans Lore harder than
+// Military does, reflecting arcane study rather than martial drilling --
+// its own distinct economic identity, same as how each of the other three
+// already leans a different resource.
 window.GameData.TECH_COST_RATIO = {
   civic: { harvest: 0.5, coin: 0.2, lore: 0.3 },
   building: { harvest: 0.1, coin: 0.6, lore: 0.3 },
   military: { harvest: 0.2, coin: 0.4, lore: 0.4 },
+  mystic: { harvest: 0.1, coin: 0.3, lore: 0.6 },
 };
 
 window.GameData.techCostRatio = function (tech) {

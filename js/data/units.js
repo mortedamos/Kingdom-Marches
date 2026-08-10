@@ -76,6 +76,19 @@
  *                          via a "flying" condition (e.g. Human's Flight
  *                          tech) -- see combat.js's isFlying, which checks
  *                          both.
+ *   restrictedToTerrain
+ *                   string a `flying` unit that's ALSO permanently locked to
+ *                          one terrain type (e.g. Orc's Wisp -- "swamp"):
+ *                          moves at flying speed within it, but every
+ *                          non-matching tile is impassable, full stop --
+ *                          no evasion/ignoring-penalties benefit crosses
+ *                          over into "can leave." Checked ahead of the
+ *                          `flying` bypass in ai.js's getMoveCost/canLandOn/
+ *                          canReachByLand (2026-08-10, user-directed: "even
+ *                          though it has flying it cannot leave swamp
+ *                          tiles"). Unset for every other unit -- a plain
+ *                          `flying` unit with no restriction behaves exactly
+ *                          as before.
  *   biggerPct       0-1   purely cosmetic render-size boost -- no gameplay
  *                          effect at all (occupies one tile like any other
  *                          unit, hitbox/selection unchanged). The unit's
@@ -297,6 +310,12 @@ window.GameData.UNITS = {
     id: "druid", label: "Druid", symbol: "✦", category: "military", raceOnly: "elf",
     attack: 3, defense: 3, movement: 2, visionRadius: 3, range: 2, siegePct: 0.1,
     canFoundCity: true, // additional settler option alongside the shared Pioneer -- see elf_druidism
+    // canProspect (2026-08-10, user-directed): "like a pioneer, a druid
+    // should have the option to gather resources from soil or game" --
+    // orders.js's contextMenuOptions/turns.js's Hunt Game/Farm Soil channels
+    // both gate purely on this flag already, no race/unit-type restriction,
+    // so this is the only change needed.
+    canProspect: true,
     coinCost: 30, attackChars: ["🍃", "✨", "🌙"],
   },
   // Druid-summoned only (see elf_air_beneath_eyes_above/ai.js's
@@ -308,8 +327,8 @@ window.GameData.UNITS = {
   // its job).
   raptor: {
     id: "raptor", label: "Raptor", symbol: "◈", category: "military", raceOnly: "elf",
-    attack: 1, defense: 0, movement: 5, visionRadius: 7, flying: true, firstStrikePct: 0.02,
-    coinCost: 20, attackChars: ["🦅"], biggerPct: -0.1, rare: true,
+    attack: 0, defense: 1, movement: 5, visionRadius: 7, flying: true, firstStrikePct: 0.02,
+    coinCost: 20, attackChars: ["彡"], biggerPct: -0.1, rare: true,
     // noUpkeep (2026-07-18, user-directed): a Druid-summoned support unit,
     // not a standing-army one -- see techs.js's unitUpkeep.
     cityBuildable: false, noUpkeep: true, nameSpecial: true, // a beast, not a person -- see unit-names.js
@@ -459,8 +478,8 @@ window.GameData.UNITS = {
   // its own dedicated AI job and isn't a person to be gendered/epitheted.
   dire_wolf: {
     id: "dire_wolf", label: "Dire Wolf", symbol: "🐺", category: "military", raceOnly: "orc",
-    attack: 2, defense: 1, movement: 3, visionRadius: 3, firstStrikePct: 0.03,
-    coinCost: 12, attackChars: ["🐾"],
+    attack: 2, defense: 1, movement: 4, visionRadius: 4, firstStrikePct: 0.03,
+    coinCost: 12, attackChars: ["𓆩"], doubleStrikePct: 0.1,
     neverExplores: true, nameSpecial: true,
   },
   impaler: {
@@ -470,8 +489,8 @@ window.GameData.UNITS = {
   },
   wolf_rider: {
     id: "wolf_rider", label: "Wolf Rider", symbol: "♞", category: "military", raceOnly: "orc",
-    attack: 5, defense: 2, movement: 4, visionRadius: 3, firstStrikePct: 0.05, attackChars: ["➵", "➳"],
-    coinCost: 20, biggerPct: .2,
+    attack: 5, defense: 2, movement: 4, visionRadius: 4, firstStrikePct: 0.1, attackChars: ["➵", "➳"],
+    coinCost: 20, biggerPct: .2, doubleStrikePct: 0.2,
   },
   bog_witch: {
     id: "bog_witch", label: "Bog Witch", symbol: "✦", category: "military", raceOnly: "orc",
@@ -481,7 +500,26 @@ window.GameData.UNITS = {
     // inherent to the Bog Witch herself, always active the moment you have
     // one (Bog Witch tech only grants unlock_unit). Read by combat.js
     // whenever this unit dies -- applies to whichever unit lands the kill.
-    curseOnDeath: { attackMult: 0.5, moveMult: 0.5, duration: 3 },
+    curseOnDeath: { attackMult: 0.5, moveMult: 0.5, duration: 5 },
+  },
+  // Bog Spirit summon (2026-08-10, user-directed): a Druid-summon-style
+  // unit, but the Bog Witch calls it into being at a player-chosen SWAMP
+  // tile the civ has ever explored, not adjacent to herself -- see ai.js's
+  // maybeOrcBogWitchPlay/startWispSummon (mirrors Elf's Raptor/Shadowsteed
+  // convention, just with a chosen-tile destination instead of adjacent-
+  // spawn). Flying (flying-speed movement, 25% evasion vs. a non-Ranged
+  // hitter) but restrictedToTerrain: "swamp" means it can never actually
+  // LEAVE swamp -- see this file's own FIELD REFERENCE doc comment above
+  // and ai.js's getMoveCost/canLandOn/canReachByLand. cityBuildable: false
+  // + noUpkeep mirror Raptor/Shadowsteed exactly (never a city build-menu
+  // option, no ongoing cost) -- capped civ-wide at the current Bog Witch
+  // count instead (see ai.js's enforceWispCap), not built freely.
+  wisp: {
+    id: "wisp", label: "Wisp", symbol: "◌", category: "military", raceOnly: "orc",
+    attack: 1, defense: 0, movement: 1, visionRadius: 6, flying: true,
+    restrictedToTerrain: "swamp", burnChancePct: 0.20,
+    coinCost: 15, attackChars: ["🔥"], biggerPct: -0.2,
+    cityBuildable: false, noUpkeep: true, nameSpecial: true, // a spirit, not a person
   },
   battering_ram: {
     id: "battering_ram", label: "Battering Ram", symbol: "⚙", category: "military", raceOnly: "orc",

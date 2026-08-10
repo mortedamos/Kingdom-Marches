@@ -448,6 +448,48 @@ window.GameEngine = window.GameEngine || {};
    * needs to render or a click needs resolving (same "recompute, don't cache
    * a closure" convention availableBuilds/handleChooseBuild already use).
    */
+  /** Whether `carrierUnit` could carry `passengerUnit` right now (2026-08-10,
+   *  user-directed: player-facing Carry/Board ring options, mirroring the
+   *  AI's own galley-boarding/Shadowsteed-carry rules -- see ai.js's Naval
+   *  boarding block and techs.js's elf_shadowsteed doc comment for where
+   *  each restriction below comes from). Both directions (carrier's own
+   *  ring offering "Carry X", passenger's own ring offering "Board Y") share
+   *  this one predicate so they can never disagree with each other. */
+  function canCarryPassenger(carrierUnit, passengerUnit, civ) {
+    if (carrierUnit === passengerUnit) return false;
+    if (!window.GameEngine.combat.getUnitProperty(carrierUnit, civ, "canCarryUnit", false)) return false;
+    if (carrierUnit.carries || carrierUnit.carriedBy) return false; // already full, or itself a passenger
+    if (passengerUnit.carries || passengerUnit.carriedBy) return false; // already carrying, or already a passenger
+    if (passengerUnit.usedThisTurn) return false;
+    const passengerBase = window.GameData.getUnit(passengerUnit.typeId);
+    if (carrierUnit.typeId === "shadowsteed") {
+      // "It cannot carry an Awakened Oak, a Raptor, or a Galley." --
+      // techs.js's elf_shadowsteed.
+      if (passengerUnit.typeId === "awakened_oak" || passengerUnit.typeId === "raptor" || passengerUnit.typeId === "galley") return false;
+    } else if (window.GameData.getUnit(carrierUnit.typeId).isNaval) {
+      // A Galley (or any future naval carrier) doesn't ferry another boat,
+      // or a flier that doesn't need ferrying -- mirrors ai.js's own
+      // militaryAtTile boarding filter (!ud.isNaval).
+      if (passengerBase.isNaval || passengerBase.flying) return false;
+    }
+    return true;
+  }
+
+  /** Actually loads `passengerUnit` onto `carrierUnit` -- re-validates via
+   *  canCarryPassenger first (the ring that offered this may be stale by the
+   *  time the player clicks it: either unit could have moved, died, or
+   *  acted since), same "don't trust a menu that might be stale" reasoning
+   *  attack/castFlight already follow. Both units spend their turn, mirroring
+   *  ai.js's own galley-boarding block (boarder.usedThisTurn/unit.usedThisTurn). */
+  function performCarry(carrierUnit, passengerUnit, civ) {
+    if (!canCarryPassenger(carrierUnit, passengerUnit, civ)) return false;
+    carrierUnit.carries = passengerUnit;
+    passengerUnit.carriedBy = carrierUnit;
+    passengerUnit.usedThisTurn = true;
+    carrierUnit.usedThisTurn = true;
+    return true;
+  }
+
   function contextMenuOptions(unit, gameState, x, y, humanCivId) {
     const options = [];
     if (!canCommand(unit, gameState, humanCivId)) return options;
@@ -531,6 +573,84 @@ window.GameEngine = window.GameEngine || {};
         }
       }
 
+      // Carry / Board (2026-08-10, user-directed): one pill per eligible
+      // adjacent unit, same "offered from the ACTING unit's own tile" shape
+      // as "Cast Fly on an ally" above -- Carry from the carrier's ring,
+      // Board from the passenger's, both gated by the shared
+      // canCarryPassenger predicate so they can never disagree.
+      if (!unit.usedThisTurn) {
+        for (let dy = -1; dy <= 1; dy++) {
+          for (let dx = -1; dx <= 1; dx++) {
+            if (dx === 0 && dy === 0) continue;
+            const ax = unit.x + dx, ay = unit.y + dy;
+            const neighbor = civ.units.find((u) => u.x === ax && u.y === ay && u !== unit && u.civId === unit.civId);
+            if (!neighbor) continue;
+            if (canCarryPassenger(unit, neighbor, civ)) {
+              const label = neighbor.name || window.GameData.getUnit(neighbor.typeId).label;
+              options.push({ kind: `carryUnit:${ax},${ay}`, label: `Carry ${label}` });
+            } else if (canCarryPassenger(neighbor, unit, civ)) {
+              const label = neighbor.name || window.GameData.getUnit(neighbor.typeId).label;
+              options.push({ kind: `boardCarrier:${ax},${ay}`, label: `Board ${label}` });
+            }
+          }
+        }
+      }
+
+      // Troubadour aura activate/deactivate (2026-08-10, user-directed):
+      // researching Heavy Metal/Power Metal used to turn the aura on
+      // automatically and permanently -- now it's an opt-in/opt-out ring
+      // action, same shape as Hidden/Garrison below. See turns.js's own
+      // gate (civ.isHuman && !troubadour.auraActive) for where this
+      // actually takes effect; AI Troubadours are unaffected.
+      if (unit.typeId === "troubadour"
+          && civ.unlockedMechanics && (civ.unlockedMechanics.has("heavy_metal") || civ.unlockedMechanics.has("power_metal"))) {
+        const hasHeavyMetal = civ.unlockedMechanics.has("heavy_metal");
+        const hasPowerMetal = civ.unlockedMechanics.has("power_metal");
+        if (unit.auraActive) {
+          options.push({ kind: "deactivateAura", label: "Deactivate Aura", danger: true });
+        } else if (hasHeavyMetal && hasPowerMetal) {
+          options.push({ kind: "activateAura:heavy_metal", label: "Activate Heavy Metal Aura" });
+          options.push({ kind: "activateAura:power_metal", label: "Activate Power Metal Aura" });
+        } else {
+          options.push({ kind: `activateAura:${hasPowerMetal ? "power_metal" : "heavy_metal"}`, label: "Activate Aura" });
+        }
+      }
+
+      // Elf "Roots of the World" (2026-08-10, user-directed): promotes the
+      // AI-only teleport (ai.js's performDruidTeleport/attemptDruidTeleport)
+      // to a player-facing ring action, same "AI mechanic promoted to a real
+      // option" precedent as "Cast Fly on an ally" above. Two variants --
+      // teleport the Druid itself, or an adjacent ally -- both hand off to
+      // main.js's tile-placement mode (viewState.placement) to pick the
+      // destination, since unlike every other ring pill this one needs an
+      // arbitrary explored tile, not a fixed slot list.
+      if (unit.typeId === "druid" && !unit.usedThisTurn && !unit.conditions?.exhausted
+          && civ.unlockedMechanics?.has("roots_of_the_world")) {
+        options.push({ kind: "teleportSelf", label: "Roots of the World (Teleport Self)" });
+        for (let dy = -1; dy <= 1; dy++) {
+          for (let dx = -1; dx <= 1; dx++) {
+            if (dx === 0 && dy === 0) continue;
+            const ax = unit.x + dx, ay = unit.y + dy;
+            const ally = civ.units.find((u) => u.x === ax && u.y === ay && u !== unit && !u.carriedBy && !u.conditions?.exhausted);
+            if (!ally) continue;
+            const label = ally.name || window.GameData.getUnit(ally.typeId).label;
+            options.push({ kind: `teleportAlly:${ax},${ay}`, label: `Roots of the World (Teleport ${label})` });
+          }
+        }
+      }
+
+      // Orc "Bog Spirit" (2026-08-10, user-directed): promotes the Bog
+      // Witch's Wisp summon to a player-facing ring action, same "hand off
+      // to main.js's tile-placement mode" shape as Roots of the World above
+      // -- the destination is any ever-explored swamp tile, not a fixed
+      // slot list, so it needs the same arbitrary-tile picker. Gated on the
+      // civ-wide Wisp cap (see ai.js's wispCapReached) so the option simply
+      // doesn't appear once every Bog Witch's slot is already spoken for.
+      if (unit.typeId === "bog_witch" && !unit.usedThisTurn && !unit.summonBuild
+          && civ.unlockedMechanics?.has("wisp_summon") && !window.GameEngine.ai.wispCapReached(civ)) {
+        options.push({ kind: "summonWisp", label: "Summon Wisp" });
+      }
+
       // Hidden/stealth -- sidebar.js's stealthActions.
       if (unit.conditions?.hidden) {
         options.push({ kind: "cancelHidden", label: "Cancel Hidden" });
@@ -560,10 +680,17 @@ window.GameEngine = window.GameEngine || {};
       }
       // Automate Actions -- sidebar.js's automateBtn. Added here (2026-08-06)
       // when the ring menu became the way actions are given, so it stops
-      // being the one unit verb reachable only from the sidebar.
+      // being the one unit verb reachable only from the sidebar. Same
+      // underlying unit.automated flag/handler for every unit type -- Dire
+      // Wolf just gets wolf-appropriate wording (2026-08-10, user-directed:
+      // "Hunt for Prey" in its ring menu, triggering "hunt automation"),
+      // since runAutomatedUnitTurn's cascade for a Dire Wolf is in practice
+      // almost entirely maybeDireWolfHunt (see ai.js) -- there's very little
+      // else for it to automate.
+      const isDireWolf = unit.typeId === "dire_wolf";
       options.push({
         kind: "automate",
-        label: unit.automated ? "Stop Automating" : "Automate Actions",
+        label: unit.automated ? (isDireWolf ? "Stop Hunting" : "Stop Automating") : (isDireWolf ? "Hunt for Prey" : "Automate Actions"),
         danger: !!unit.automated,
       });
       // Level up -- opens the stat picker as a ring SUB-PAGE rather than as
@@ -634,7 +761,16 @@ window.GameEngine = window.GameEngine || {};
     } else if (!cities.isProducingResources(city, gameState)) {
       const builds = window.GameEngine.ai.availableBuilds(civ, city, gameState);
       if (builds.some((o) => o.kind === "unit")) options.push({ kind: "city:buildUnit", label: "Build Unit" });
-      if (builds.some((o) => o.kind === "building")) options.push({ kind: "city:buildStructure", label: "Build Structure" });
+      const buildingOptions = builds.filter((o) => o.kind === "building");
+      if (buildingOptions.length) {
+        // Count excludes walls (2026-08-10, user-directed) -- a city can
+        // only ever have one wall per edge tile (see cities.js's isWall
+        // cap), so "N available" is only meaningful for the actual
+        // structure roster, not the wall count.
+        const nonWallCount = buildingOptions.filter((o) => !window.GameData.getBuilding(o.id).isWall).length;
+        const label = nonWallCount > 0 ? `Build Structure (${nonWallCount} available)` : "Build Structure";
+        options.push({ kind: "city:buildStructure", label });
+      }
       // Same "nothing to take a share of yet" suppression sidebar.js uses for
       // a city founded this turn -- see cities.js's resourceProductionPreview.
       const gain = cities.resourceProductionPreview(city);
@@ -835,6 +971,8 @@ window.GameEngine = window.GameEngine || {};
     performRestAndDefend,
     plannedPath,
     contextMenuOptions,
+    canCarryPassenger,
+    performCarry,
     cityRingOptions,
     mergeUnitCityOptions,
     mapMenuOptions,

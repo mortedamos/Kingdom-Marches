@@ -21,8 +21,14 @@
 window.UI = window.UI || {};
 
 (function () {
-  const COLUMNS = ["civic", "building", "military"];
-  const COLUMN_LABEL = { civic: "Civic", building: "Building", military: "Military" };
+  // "Mystic" (2026-08-10, user-directed): a 4th column for spellcaster/
+  // utility units and their own abilities -- Wizard, Druid, Metal Singer,
+  // Bog Witch, Trouble Maker -- split out of Military, which was carrying
+  // both straight combat techs and every caster's whole kit. Not every race
+  // has mystic content (Undead has none yet); techtree.js's own layer-
+  // skipping already handles a column/layer with nothing in it.
+  const COLUMNS = ["civic", "building", "military", "mystic"];
+  const COLUMN_LABEL = { civic: "Civic", building: "Building", military: "Military", mystic: "Mystic" };
 
   // Old-model races still tag their ability nodes "mechanics" -- these render
   // in the Civic column, matching how Human's tree folded Mechanics into Civic.
@@ -32,21 +38,114 @@ window.UI = window.UI || {};
   }
 
   /**
-   * `expandedState` (2026-08-06, user-directed): the collapse/expand state
-   * for each layer row, `{ [civId]: { [layer]: true|false } }` -- OWNED by
-   * main.js as part of viewState (this module stays a pure render
-   * function, same split as every other UI module) and passed in by
-   * reference so a click on a layer header can mutate it directly and
-   * force a rebuild. A layer's entry is populated with its DEFAULT the
-   * first time it's ever rendered (expanded if the civ already meets that
-   * layer's city-count gate, collapsed if not -- "not yet researchable
-   * because of too few cities" per the user's own wording) and never
-   * recomputed after that, so a manual toggle sticks even if the civ's
-   * city count later changes -- same "collapsed by default, not forced
-   * collapsed" spirit as everything else in this tree that only ever
-   * gates the very first render.
+   * `expandedState` (2026-08-06, user-directed; auto collapse/expand added
+   * 2026-08-10): the collapse/expand state for each layer row,
+   * `{ [civId]: { [layer]: { expanded, avail } } }` -- OWNED by main.js as
+   * part of viewState (this module stays a pure render function, same
+   * split as every other UI module) and passed in by reference so a click
+   * on a layer header can mutate it directly and force a rebuild.
+   *
+   * `avail` is whether that layer currently has any tech worth showing
+   * (available to research, or actively being researched -- see
+   * layerHasAvailable). Each render compares the layer's CURRENT avail
+   * against the stored one: unchanged means a prior manual toggle (or the
+   * initial default) still stands, changed means the tech tree just gained
+   * or lost its last actionable node in that layer, so `expanded` is reset
+   * to match -- "collapse a level with nothing left to build, uncollapse
+   * one with something available" per the user's own wording, while still
+   * letting a manual toggle stick between those transitions.
    */
-  function render(civ, isPlayerCiv, expandedState) {
+  function layerHasAvailable(civ, cols) {
+    for (const col of COLUMNS) {
+      for (const tech of cols[col]) {
+        if (civ.completedTechs.has(tech.id)) continue;
+        if (civ.currentResearch === tech.id) return true; // in progress -- keep visible so its % is watchable
+        if (!window.GameEngine.tech.meetsCityGate(civ, tech)) continue;
+        if (tech.prereqs.some((p) => !civ.completedTechs.has(p))) continue;
+        const cost = window.GameData.effectiveTechCostBreakdown(tech);
+        const stock = civ.stockpile || { harvest: 0, coin: 0, lore: 0 };
+        if (cost.harvest > (stock.harvest || 0) || cost.coin > (stock.coin || 0) || cost.lore > (stock.lore || 0)) continue;
+        return true;
+      }
+    }
+    return false;
+  }
+  /**
+   * Prereq/unlock relations for whichever tech is currently hovered
+   * (2026-08-10, user-directed: "show what techs unlocked the current tech,
+   * and what techs are unlocked by the current tech" without cluttering the
+   * screen with permanent arrows). Returns null if nothing's hovered.
+   *
+   * DIRECT ancestors/descendants are one hop away (tech.prereqs itself, and
+   * whatever else's prereqs name this tech) -- render() force-opens any
+   * collapsed layer that holds one of these, since otherwise the highlighted
+   * node just wouldn't be visible. INDIRECT ones are everything further up/
+   * down the chain -- render() does NOT force those layers open (a deep
+   * chain could otherwise unroll the whole tree, defeating collapsing
+   * entirely); a still-collapsed layer holding indirect relations instead
+   * gets a small "N related" badge on its header so it's discoverable
+   * without being forced open.
+   */
+  function computeRelations(civ, hoverTechId) {
+    if (!hoverTechId) return null;
+    const techIds = window.GameData.techsForRace(civ.raceId);
+    const techById = {};
+    for (const id of techIds) techById[id] = window.GameData.getTech(id);
+    const hoverTech = techById[hoverTechId];
+    if (!hoverTech) return null;
+
+    const directAncestors = new Set(hoverTech.prereqs.filter((p) => techById[p]));
+    const directDescendants = new Set();
+    for (const id of techIds) {
+      if (techById[id].prereqs.includes(hoverTechId)) directDescendants.add(id);
+    }
+
+    const allAncestors = new Set();
+    (function walkUp(id) {
+      const t = techById[id];
+      if (!t) return;
+      for (const p of t.prereqs) {
+        if (!techById[p] || allAncestors.has(p)) continue;
+        allAncestors.add(p);
+        walkUp(p);
+      }
+    })(hoverTechId);
+    const indirectAncestors = new Set([...allAncestors].filter((id) => !directAncestors.has(id)));
+
+    // Reverse-dependency map, built fresh each hover -- these tech lists are
+    // small (a few dozen per race at most), so this is cheap enough to not
+    // need caching across hovers.
+    const dependents = {};
+    for (const id of techIds) {
+      for (const p of techById[id].prereqs) {
+        (dependents[p] = dependents[p] || []).push(id);
+      }
+    }
+    const allDescendants = new Set();
+    (function walkDown(id) {
+      for (const child of dependents[id] || []) {
+        if (allDescendants.has(child)) continue;
+        allDescendants.add(child);
+        walkDown(child);
+      }
+    })(hoverTechId);
+    const indirectDescendants = new Set([...allDescendants].filter((id) => !directDescendants.has(id)));
+
+    return { directAncestors, directDescendants, indirectAncestors, indirectDescendants };
+  }
+
+  /** Which relation (if any) `techId` has to the currently-hovered tech,
+   *  as a stateClass-style string renderNode can turn into a CSS class. */
+  function relationKindFor(relations, techId) {
+    if (!relations) return null;
+    if (relations.directAncestors.has(techId)) return "ancestor-direct";
+    if (relations.indirectAncestors.has(techId)) return "ancestor-indirect";
+    if (relations.directDescendants.has(techId)) return "descendant-direct";
+    if (relations.indirectDescendants.has(techId)) return "descendant-indirect";
+    return null;
+  }
+
+  function render(civ, isPlayerCiv, expandedState, focusTechId, hoverTechId) {
     const race = window.GameData.getRace(civ.raceId);
     // The AI's "intends to research next" hint is meaningless for the human's
     // own tree -- nothing is going to pick for them, that's the whole point.
@@ -62,25 +161,64 @@ window.UI = window.UI || {};
       // into Level 1 instead of its own Level 0 row.
       const layer = tech.layer ?? 1;
       maxLayer = Math.max(maxLayer, layer);
-      byLayer[layer] = byLayer[layer] || { civic: [], building: [], military: [] };
+      byLayer[layer] = byLayer[layer] || { civic: [], building: [], military: [], mystic: [] };
       byLayer[layer][columnFor(tech)].push(tech);
     }
 
     const civExpanded = expandedState[civ.id] = expandedState[civ.id] || {};
+    const relations = computeRelations(civ, hoverTechId);
 
     let rows = "";
     for (let layer = 0; layer <= maxLayer; layer++) {
       const cols = byLayer[layer];
       if (!cols) continue;
-      if (civExpanded[layer] === undefined) civExpanded[layer] = civ.cities.length >= layer;
-      const expanded = civExpanded[layer];
+      const avail = layerHasAvailable(civ, cols);
+      let entry = civExpanded[layer];
+      if (!entry || entry.avail !== avail) {
+        entry = { expanded: avail, avail };
+        civExpanded[layer] = entry;
+      }
+      // A "jump to this tech" link (research-complete modal, 2026-08-10,
+      // user-directed) always forces its target's layer open, even if it
+      // would otherwise be collapsed -- otherwise the linked entry wouldn't
+      // actually be visible/readable. This one PERSISTS (writes into `entry`).
+      const layerHasFocus = focusTechId && COLUMNS.some((col) => cols[col].some((t) => t.id === focusTechId));
+      if (layerHasFocus) entry.expanded = true;
+
+      // Hover-driven force-open (2026-08-10, user-directed) is the opposite:
+      // TEMPORARY, computed fresh every render and never written back to
+      // `entry` -- it should evaporate the instant the hover ends, unlike a
+      // manual toggle or the focus-link case above. Only DIRECT relations
+      // force a layer open; indirect ones just earn a "N related" badge on
+      // the still-collapsed header (see the doc comment on computeRelations).
+      let hoverForcesOpen = false;
+      let indirectRelatedCount = 0;
+      if (relations) {
+        for (const col of COLUMNS) {
+          for (const t of cols[col]) {
+            if (t.id === hoverTechId || relations.directAncestors.has(t.id) || relations.directDescendants.has(t.id)) {
+              hoverForcesOpen = true;
+            } else if (relations.indirectAncestors.has(t.id) || relations.indirectDescendants.has(t.id)) {
+              indirectRelatedCount++;
+            }
+          }
+        }
+      }
+      const expanded = entry.expanded || hoverForcesOpen;
+      const badge = !expanded && indirectRelatedCount > 0
+        ? `<span class="techtree-layer-related-badge">${indirectRelatedCount} related</span>` : "";
+
       rows += `<div class="techtree-layer">
         <div class="techtree-layer-label techtree-layer-toggle" data-toggle-layer="${layer}">
           <span class="techtree-arrow${expanded ? " techtree-arrow-expanded" : ""}">▸</span>
           <span>Level ${layer}</span>
+          ${badge}
         </div>
         ${expanded ? COLUMNS.map((col) => `<div class="techtree-column">${
-          cols[col].map((tech) => renderNode(civ, tech, nextPick, isPlayerCiv)).join("") || ""
+          cols[col].map((tech) => renderNode(
+            civ, tech, nextPick, isPlayerCiv, tech.id === focusTechId,
+            tech.id === hoverTechId ? "self" : relationKindFor(relations, tech.id), !!relations,
+          )).join("") || ""
         }</div>`).join("") : ""}
       </div>`;
     }
@@ -110,7 +248,40 @@ window.UI = window.UI || {};
       </div>`;
   }
 
-  function renderNode(civ, tech, nextPick, isPlayerCiv) {
+  /** Live stat line for a unit a tech unlocks (2026-08-10, user-directed):
+   *  computed from units.js/combat.js at RENDER time -- via getUnitProperty,
+   *  which already folds in any unit_stat_upgrade this CIV has researched
+   *  for it -- rather than baked into the tech's static description text,
+   *  which used to drift out of sync whenever a unit's numbers changed.
+   *  Passes a synthetic { typeId } "unit" (getUnitProperty only ever reads
+   *  that one field) since there's no real unit instance to ask about here,
+   *  just what a freshly-built one would look like right now. */
+  function unitStatsHtml(civ, unitId) {
+    const combat = window.GameEngine.combat;
+    const base = window.GameData.getUnit(unitId);
+    if (!base) return "";
+    const fake = { typeId: unitId };
+    const get = (key, fallback) => combat.getUnitProperty(fake, civ, key, fallback);
+    const parts = [
+      `Atk ${get("attack", 0)}`,
+      `Def ${get("defense", 0)}`,
+      `Mov ${get("movement", 0)}`,
+      `Vis ${get("visionRadius", 0)}`,
+    ];
+    const range = get("range", 1);
+    if (range > 1) parts.push(`Range ${range}`);
+    const siegePct = get("siegePct", 0);
+    if (siegePct > 0) parts.push(`Siege ${Math.round(siegePct * 100)}%`);
+    const firstStrikePct = get("firstStrikePct", 0);
+    if (firstStrikePct > 0) parts.push(`First Strike ${Math.round(firstStrikePct * 100)}%`);
+    const doubleStrikePct = get("doubleStrikePct", 0);
+    if (doubleStrikePct > 0) parts.push(`Double Strike ${Math.round(doubleStrikePct * 100)}%`);
+    if (get("flying", false)) parts.push("Flying");
+    if (get("canCarryUnit", false)) parts.push("Carry");
+    return `<div class="techtree-node-unit-stats">${escapeHtml(base.label)}: ${escapeHtml(parts.join(" · "))}</div>`;
+  }
+
+  function renderNode(civ, tech, nextPick, isPlayerCiv, isFocused, relationKind, hoverActive) {
     const completed = civ.completedTechs.has(tech.id);
     const researching = civ.currentResearch === tech.id;
     const isNextPick = !completed && !researching && tech.id === nextPick;
@@ -197,8 +368,19 @@ window.UI = window.UI || {};
       turnsTag = ` (${turns} turn${turns === 1 ? "" : "s"})`;
     }
 
+    // Live unit stat block (2026-08-10, user-directed): one per unit this
+    // tech's effects actually unlock or replace-in (almost always zero or
+    // one, never baked into the description text itself -- see
+    // unitStatsHtml). replace_unit counts too -- Knighthood/Longbow/etc.
+    // swap in a new unit just as much as a plain unlock_unit does.
+    const unlockedUnitStats = (tech.effects || [])
+      .filter((e) => e.type === "unlock_unit" || e.type === "replace_unit")
+      .map((e) => unitStatsHtml(civ, e.unit || e.to))
+      .join("");
+
     const body = `<div class="techtree-node-name">${escapeHtml(tech.label)}</div>
       ${tech.description ? `<div class="techtree-node-desc">${escapeHtml(tech.description)}</div>` : ''}
+      ${unlockedUnitStats}
       <div class="techtree-node-tag">${escapeHtml(tag)} · ${costHtml}${escapeHtml(turnsTag)}</div>`;
 
     // Extra fade for tiers that are genuinely FAR off (2026-08-04, user-
@@ -217,11 +399,30 @@ window.UI = window.UI || {};
       if (citiesAway >= 2) extraFadeClass = " techtree-node-far";
     }
 
+    // data-tech-id is on BOTH branches (2026-08-10, user-directed) so the
+    // research-complete modal's "jump to this tech" links can locate and
+    // scroll to any node, not just clickable ones -- and now so the hover-
+    // relation feature can attach mouseenter/mouseleave to every node too.
+    const focusClass = isFocused ? " techtree-node-focused" : "";
+    // Hover relation highlighting (2026-08-10, user-directed): "self" is the
+    // hovered node itself; ancestor/descendant are its prereq chain both
+    // ways, indirect ones a notch dimmer than direct so the eye reads
+    // "closer" vs "further" at a glance. Anything with NO relation gets
+    // dimmed instead, the instant any hover is active, so the highlighted
+    // path actually stands out rather than just gaining a thin outline
+    // among forty other identically-bright nodes.
+    let relationClass = "";
+    if (relationKind === "self") relationClass = " techtree-node-relation-self";
+    else if (relationKind === "ancestor-direct") relationClass = " techtree-node-relation-ancestor";
+    else if (relationKind === "ancestor-indirect") relationClass = " techtree-node-relation-ancestor techtree-node-relation-indirect";
+    else if (relationKind === "descendant-direct") relationClass = " techtree-node-relation-descendant";
+    else if (relationKind === "descendant-indirect") relationClass = " techtree-node-relation-descendant techtree-node-relation-indirect";
+    else if (hoverActive) relationClass = " techtree-node-dimmed";
     if (selectable) {
-      return `<button class="techtree-node ${stateClass} techtree-node-selectable"
+      return `<button class="techtree-node ${stateClass} techtree-node-selectable${focusClass}${relationClass}"
         data-tech-id="${escapeHtml(tech.id)}">${body}</button>`;
     }
-    return `<div class="techtree-node ${stateClass}${extraFadeClass}">${body}</div>`;
+    return `<div class="techtree-node ${stateClass}${extraFadeClass}${focusClass}${relationClass}" data-tech-id="${escapeHtml(tech.id)}">${body}</div>`;
   }
 
   function escapeHtml(s) {

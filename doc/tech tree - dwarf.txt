@@ -1,63 +1,114 @@
+DWARF TECH TREE (reviewed against js/data/techs.js, 2026-08-10)
 
-=== CIVIC ===
+Every civ also has 5 shared Level 0 techs, auto-completed for free at civ
+creation (never actually researched): Pioneer, Distant Horizons (Scout),
+Distant Shores (Galley), Hunt Game, Farm Soil. Not listed below since
+they're identical for every race.
 
-DWARF - CIVIC - L1: Stonecunning - Dwarves read stone like a map: ignores Hills movement penalty and is able to move on Mountain terrain. Dwarves still cannot build cities, buildings, or walls on mountains. 
-DWARF - CIVIC - L1: Wealth of the Earth - +0.75 coin from mountains.
-DWARF - CIVIC - L1: Imported Goods - +1 harvest per road tile within a city's radius, up to 8 road tiles per city 
-DWARF - CIVIC - L2: Quarry (requires Stonecunning) - +0.75 coin from Hills
-DWARF - CIVIC - L2: Deep Lore (requires Stonecunning) - +0.75 lore from Mountains
-DWARF - CIVIC - L3: The Long Reckoning (requires Chronicle in Stone) - Dwarves do not forgive. If an enemy civ ever destroys one of this civ's cities or buildings (not walls), that civ is permanently marked as a rival: this civ's units gain +25% attack against that specific civ's units, cities, and structures forever after (tracked per-enemy -civ, never expires, does not require the mark-holder to still be alive) 
+COST MODEL: every tech's real cost is purely layer-based (doubling each
+layer: L1=20 total, L2=40, L3=80, L4=160, L5=320), split across
+harvest/coin/lore by column -- Civic leans Harvest (50/20/30), Building
+leans Coin (10/60/30), Military splits Coin/Lore evenly (20/40/40), Mystic
+leans Lore hardest of all (10/30/60). The numbers below are the REAL costs
+a player pays, not the hand-authored `cost`/`costBreakdown` fields in
+techs.js (inert leftover data). A city needs at least as many cities as a
+tech's layer number to research it.
 
-DWARF - CIVIC - L3: Prospector's Claim - Any dwarven unit on a Gold Vein or Iron Vein may start Prospecting it: a full-turn channeled action (no move/attack, continues automatically each turn until cancelled by the player/AI) that gradually claims the 1-tile radius around itself, exactly like a city fills in its own tiles (counts toward territorial victory like any owned tile), and harvests the terrain/resource yield of every claimed tile in that radius. Yields +3 coin/+1 lore per turn on a Gold Vein, or +1 harvest/+3 coin/+1 lore per turn on an Iron Vein. Instantly loses everything it was claiming/generating if cancelled, the unit moves off the vein, or it dies. Each turn spent actively working the vein also carries a small chance the vein exhausts and is removed from the map permanently.
+FOUR COLUMNS, not three (2026-08-10, user-directed): Mystic split off from
+Military -- the Metal Singer and its own aura techs moved there, since a
+caster/buffer's whole kit was crowding the Military column alongside
+straight combat techs. The Metal Singer itself is unchanged; only which
+tab its techs render in changed.
 
-DWARF - CIVIC - L3: Chronicle in Stone (requires Deep Lore) - +3 lore per building constructed in a city (walls don't count) 
+AURA ACTIVATION (2026-08-10, user-directed): Heavy Metal/Power Metal used
+to apply automatically the instant the tech finished researching. Now the
+Metal Singer's ring menu offers an explicit "Activate <Aura>"/"Deactivate
+Aura" action -- the aura only affects allies while switched on. This is a
+player-facing behavior change, not just a description update; the entries
+below reflect it.
 
-DWARF - CIVIC - L4: Runeforged Tools (requires Runecraft) - Dwarf units gain an extra +25% XP whenever they earn XP.
+UNIT STATS are no longer written into descriptions below (2026-08-10) --
+the tech tree UI now shows each unlocked unit's live stats (Atk/Def/Mov/
+Vis/Range/Siege/First Strike/Double Strike/Flying/Carry as applicable)
+computed fresh from units.js at render time, folding in whatever that civ
+has already researched, so it can never drift out of sync the way a
+hand-typed number in a description can.
 
-DWARF - CIVIC - L5: The Deep Mines (requires Prospector's Claim) - Any dwarven unit that has kept Prospecting the same Gold Vein or Iron Vein for 6+ turns (continuing straight through the same channel that triggered Prospector's Claim at 2+ turns) has the payout REPLACED (not stacked): +5 coin/+4 lore per turn on a Gold Vein, or +1 harvest/+6 coin/+2 lore per turn on an Iron Vein, plus +2 defense while it remains there.
-
-DWARF - CIVIC - L5: Council of the Deep (requires Chronicle in Stone AND Meeting of the Clans) - Dwarven influence counts as 1.25 tiles of influence, in terms of map-filled in toward victory condition. Deliberately NOT a +1 radius bonus like Human/Halfellow's capstone -- Dwarves deepen what they hold rather than spreading wider, so their capstone makes existing holds stronger instead of claiming more ground
-
-DWARF - CIVIC - L5: Cultural Influence (requires every other Dwarf tech already researched) - True tech-tree capstone. A city may spend several turns and a steep harvest/coin/lore cost to claim influence over one additional tile within its own radius immediately (skipping the normal gradual fill-in wait). Repeatable until every tile in the city's radius is already its own. A late-game sink for otherwise-idle surplus stockpile.
-
-
-=== BUILDING ===
-
-DWARF - BUILDING - L2: Forgecraft - unlocks the Deep Forge building (+10% coin per turn, this city only) 
-DWARF - BUILDING - L3: Runecraft - unlocks Runewall building (walls heal 5% per turn.)
-DWARF - BUILDING - L4: Meeting of the Clans (requires Imported Goods) - unlocks the Great Hall building (+5% harvest and +5% lore per turn, this city only)
-DWARF - BUILDING - L5: Deep Roads Rite (requires The Deep Mines) - unlocks Deep Gate building. A Dwarf unit standing on any Deep Gate may instantly relocate to any other Deep Gate this civ owns (owner's choice of destination) -- the whole turn is spent arriving, no move or attack after. Dwarf-only: no other race can ever use one. implement pathfinding logic where dwarven units will use Deep Gate to get to their destination, if it is the best option - and new cities will priortize Deep Gate above other buildings, if the tech is unlocked.
-
-
-=== MILITARY ===
-
-DWARF - MILITARY - L1: Foe Hammer - unlocks FoeHammer unit (basic melee unit)
-
-DWARF - MILITARY - L2: Warrior Poets (requires Deep Lore) - unlocks the Metal Singer unit. Heavy metal / norwegian black metal inspired appearance: has an axe that is also an electric guitar. (utility / caster / buff). range 2.
-
-DWARF - MILITARY - L3: Heavy Metal (requires Warrior Poets) - The Metal Singer exudes an aura in a 1-tile radius around itself (including itself), allied units heal 5% of their HP per turn (minimum 1) regardless of whether they're resting, gain +1 defense, and +25% siege. If the Metal Singer has both this and the Power Metal tech, it can switch between them as an action (both are not active at the same time).
-
-DWARF - MILITARY - L3: Power Metal (requires Warrior Poets) - The Metal Singer exudes an aura in a 1-tile radius around itself (including itself), allied units gain +2 attack and +5% first strike. If the Metal Singer has both this and the Heavy Metal tech, it can switch between them as an action (both are not active at the same time).
-
-DWARF - MILITARY - L2: Thunder from Stone - unlocks the Musketeer unit (range 2).
-
-DWARF - MILITARY - L3: Arquebus Engineering (requires Thunder from Stone) - Musketeer unit gains +1 range, +1 attack, and first strike 50%.
-
-DWARF - MILITARY - L3: Shield Wall - Any Dwarf military unit standing adjacent to another Dwarf military unit gains +2 defense. (Implement dwarf combat strategy to stand near other dwarves during a fight)
-
-DWARF - MILITARY - L3: Runeforged Armory (requires Runecraft) - All dwarf units gain +1 defense, +1 attack.
-
-DWARF - MILITARY - L4: Stonebreaker - All dwarf units gain +50% siege.
-
-DWARF - MILITARY - L4: Epic Metal (requires Heavy Metal) - The Metal Singer's active aura extends to a 2-tile radius.
-
-DWARF - MILITARY - L5: Unyielding (requires Chronicle in Stone) - If the next hit against a unit (forward or counter) would kill it, 50% chance to negate all of that damage instead. Triggering has a 50% chance to force the unit to rest the next turn, and permanently reduces that unit's own trigger chance by 15 percentage points (floored at 0%) -- diminishing returns per unit, never resets.
+CORRECTIONS from the previous version of this file: Arquebus Engineering
+grants 2.5% First Strike, not 50%. "Mountains on the Horizon" (a Civic L2
+map-reveal tech) existed in the code but was missing from this doc entirely
+-- added below. Two speculative implementation notes ("implement
+pathfinding logic...", "Implement dwarf combat strategy...") were dropped
+from Deep Roads Rite and Shield Wall since they described intended future
+behavior, not anything the tech's actual effect currently does.
 
 
-DWARF - MILITARY - L5: Runeforged Titan (requires Stonebreaker AND Runeforged Armory) - unlocks the Runeforged Titan unit. This is a massive stone golem, slow moving, with a very high defense and a high siege score. Like a wall or city, it takes damage from an ordinary attacker as if brushing it off, but a Siege-property attacker cuts through it just as easily. This is a rare unit. This is meant to plod overland slowly, like a growing threat, and is a city crusher. Other dwarven units will walk alongside this unit and escort it to its target city. This unit never explores and rarely deviates, only to defend itself from attackers along its path to an enemy city.
+--- CIVIC ---
+
+DWARF - CIVIC - L1: Stonecunning - Dwarves read stone like a map: ignores the Hills movement penalty and tunnels through Mountains. Dwarves still cannot build cities, buildings, or walls on Mountains. [10 harvest, 4 coin, 6 lore]
+
+DWARF - CIVIC - L1: Wealth of the Earth - +0.75 coin from Mountains. [10 harvest, 4 coin, 6 lore]
+
+DWARF - CIVIC - L1: Imported Goods - +1 harvest per road tile within a city's radius, up to 8 road tiles per city. [10 harvest, 4 coin, 6 lore]
+
+DWARF - CIVIC - L2: Quarry (requires Stonecunning) - +0.75 coin from Hills. [20 harvest, 8 coin, 12 lore]
+
+DWARF - CIVIC - L2: Deep Lore (requires Stonecunning) - +0.75 lore from Mountains. [20 harvest, 8 coin, 12 lore]
+
+DWARF - CIVIC - L2: Mountains on the Horizon (requires Stonecunning) - All Mountain tiles anywhere on the map, and all Hill tiles immediately adjacent to a Mountain tile, are always revealed -- no fog of war on those tiles at all. [20 harvest, 8 coin, 12 lore]
+
+DWARF - CIVIC - L3: Prospector's Claim - Any dwarven unit on a Gold Vein or Iron Vein may start Prospecting it: a full-turn action that continues automatically (no move/attack) until cancelled, gradually claiming the 1-tile radius around itself just like a city fills in its own tiles (counts toward territorial victory like any owned tile), and harvesting the terrain/resource yield of every claimed tile in that radius. Yields +3 coin/+1 lore per turn on a Gold Vein, or +1 harvest/+3 coin/+1 lore per turn on an Iron Vein. Instantly loses everything it was claiming/generating if cancelled, the unit moves off the vein, or it dies. [40 harvest, 16 coin, 24 lore]
+
+DWARF - CIVIC - L3: Chronicle in Stone (requires Deep Lore) - +3 lore per building constructed in a city (walls don't count). [40 harvest, 16 coin, 24 lore]
+
+DWARF - CIVIC - L3: The Long Reckoning (requires Chronicle in Stone) - Dwarves do not forgive. If an enemy civ ever destroys one of this civ's cities or buildings (not walls), that civ is permanently marked as a rival: this civ's units gain +25% attack against that specific civ's units, cities, and structures forever after (tracked per-enemy-civ, never expires, does not require the mark-holder to still be alive). [40 harvest, 16 coin, 24 lore]
+
+DWARF - CIVIC - L4: Runeforged Tools (requires Runecraft) - Dwarf units gain an extra +25% XP whenever they earn XP. [80 harvest, 32 coin, 48 lore]
+
+DWARF - CIVIC - L5: The Deep Mines (requires Prospector's Claim) - Any dwarven unit stationed 6+ turns on a Gold Vein or Iron Vein (i.e. it already triggered Prospector's Claim at 2+ turns and stayed) increases the resources earned to +5 coin/+4 lore per turn on a Gold Vein, or +1 harvest/+6 coin/+2 lore per turn on an Iron Vein (replacing Prospector's Claim's yield either way), and gains +2 defense while it remains there. [160 harvest, 64 coin, 96 lore]
+
+DWARF - CIVIC - L5: Council of the Deep (requires Chronicle in Stone and Meeting of the Clans) - Dwarven influence counts as 1.25 tiles of influence, in terms of map-filled-in toward the territorial victory condition. Deliberately NOT a +1 radius bonus like Human/Halfellow's capstone -- Dwarves deepen what they hold rather than spreading wider. [160 harvest, 64 coin, 96 lore]
+
+DWARF - CIVIC - L5: Cultural Influence (requires every other Dwarf tech already researched) - Tech-tree capstone. A city may spend several turns and a steep harvest/coin/lore cost to claim influence over one additional tile within its own radius immediately, skipping the normal gradual fill-in wait. Repeatable until every tile in the city's radius is already its own. [160 harvest, 64 coin, 96 lore]
 
 
+--- BUILDING ---
+
+DWARF - BUILDING - L2: Forgecraft - Unlocks the Deep Forge building (+10% coin per turn, this city only). [4 harvest, 24 coin, 12 lore]
+
+DWARF - BUILDING - L3: Runecraft - Unlocks the Runewall building. Walls heal 5% of their max HP per turn. [8 harvest, 48 coin, 24 lore]
+
+DWARF - BUILDING - L4: Meeting of the Clans (requires Imported Goods) - Unlocks the Great Hall building (+5% harvest and +5% lore per turn, this city only). [16 harvest, 96 coin, 48 lore]
+
+DWARF - BUILDING - L5: Deep Roads Rite (requires The Deep Mines) - Unlocks the Deep Gate building. A Dwarf unit standing on any Deep Gate may instantly relocate to any other Deep Gate this civ owns (owner's choice of destination) -- the whole turn is spent arriving, no move or attack after. Dwarf-only: no other race can ever use one. [32 harvest, 192 coin, 96 lore]
 
 
+--- MILITARY ---
+
+DWARF - MILITARY - L1: Foe Hammer - Unlocks the FoeHammer, the dwarves' basic melee fighter. [4 harvest, 8 coin, 8 lore]
+
+DWARF - MILITARY - L2: Thunder from Stone - Unlocks the Musketeer, a ranged gunner that strikes without exposing itself to a counterattack. [8 harvest, 16 coin, 16 lore]
+
+DWARF - MILITARY - L3: Arquebus Engineering (requires Thunder from Stone) - Musketeer gains +1 range, +1 attack, and 2.5% First Strike. [16 harvest, 32 coin, 32 lore]
+
+DWARF - MILITARY - L3: Shield Wall - Any Dwarf military unit standing adjacent to at least one other Dwarf military unit gains a flat +2 defense. [16 harvest, 32 coin, 32 lore]
+
+DWARF - MILITARY - L3: Runeforged Armory (requires Runecraft) - All Dwarf units gain +1 defense, +1 attack. [16 harvest, 32 coin, 32 lore]
+
+DWARF - MILITARY - L4: Stonebreaker - All Dwarf units gain +50% siege. [32 harvest, 64 coin, 64 lore]
+
+DWARF - MILITARY - L5: Unyielding (requires Chronicle in Stone) - If the next hit against a unit (forward or counter) would kill it, 50% chance to negate all of that damage instead. Triggering has a 50% chance to force the unit to rest the next turn, and permanently reduces that unit's own trigger chance by 15 percentage points (floored at 0%) -- diminishing returns per unit, never resets. [64 harvest, 128 coin, 128 lore]
+
+DWARF - MILITARY - L5: Runeforged Titan (requires Stonebreaker and Runeforged Armory) - Unlocks the Runeforged Titan, a massive, slow-moving stone golem. Like a wall or city, it shrugs off an ordinary attacker almost unharmed, but a Siege-property attacker cuts through it just as easily. A rare unit meant to plod overland slowly toward an enemy city, defending itself along the way, escorted by other Dwarf units. [64 harvest, 128 coin, 128 lore]
 
 
+--- MYSTIC ---
+(split out of Military, 2026-08-10 -- see the note at the top of this file)
+
+DWARF - MYSTIC - L2: Warrior Poets (requires Deep Lore) - Unlocks the Metal Singer, a utility unit that rallies allies with an aura -- wields an axe that's also an electric guitar. [4 harvest, 12 coin, 24 lore]
+
+DWARF - MYSTIC - L3: Heavy Metal (requires Warrior Poets) - Grants the Metal Singer an aura it can activate from its ring menu: allied units within a 1-tile radius (including itself) heal 5% of their HP per turn (minimum 1), regardless of whether they're resting, and gain +1 defense and +25% siege. If the Metal Singer also knows Power Metal, only one of the two auras can be active at a time. [8 harvest, 24 coin, 48 lore]
+
+DWARF - MYSTIC - L3: Power Metal (requires Warrior Poets) - Grants the Metal Singer an aura it can activate from its ring menu: allied units within a 1-tile radius (including itself) gain +2 attack and +5% First Strike. If the Metal Singer also knows Heavy Metal, only one of the two auras can be active at a time. [8 harvest, 24 coin, 48 lore]
+
+DWARF - MYSTIC - L4: Epic Metal (requires Heavy Metal) - The Metal Singer's active aura (Heavy Metal or Power Metal, whichever is currently active) extends to a 2-tile radius. [16 harvest, 48 coin, 96 lore]

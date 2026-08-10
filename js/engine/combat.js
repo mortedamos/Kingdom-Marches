@@ -545,7 +545,12 @@ window.GameEngine = window.GameEngine || {};
     // Halfellow "Keep an Eye Out": civ-wide, ANY Halfellow unit -- same
     // unrestricted shape as Elf's own sneaking_around unlock.
     const hasKeepWatch = !!(mechanics && mechanics.has("keep_an_eye_out") && civ.raceId === "halfellow");
-    if (!hasSneak && !hasInvisibility && !hasTroubleStealth && !hasKeepWatch) return false;
+    // Orc "Bog Spirit" (2026-08-10, user-directed: "the wisp can hide"):
+    // the Wisp's own innate stealth, same unit-restricted shape as
+    // Invisibility/Trouble Maker above -- doesn't need Sneaking Around
+    // researched separately, just the summon tech that lets Wisps exist at all.
+    const hasWispStealth = !!(mechanics && mechanics.has("wisp_summon") && unit.typeId === "wisp");
+    if (!hasSneak && !hasInvisibility && !hasTroubleStealth && !hasKeepWatch && !hasWispStealth) return false;
     if (hasCondition(unit, "hidden") || hasCondition(unit, "forcedVisible")) return false;
     const adjacent = (x, y) => Math.max(Math.abs(x - unit.x), Math.abs(y - unit.y)) <= 1;
     for (const otherCiv of Object.values(civs)) {
