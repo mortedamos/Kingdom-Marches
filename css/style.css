@@ -1109,6 +1109,14 @@ html, body {
 }
 
 .reports-modal { width: min(800px, 94vw); }
+/* AI Tech Trees (2026-08-10, user-directed): the embedded tree reuses
+   .techtree-layer's 4-column grid (civic/building/military/mystic), which
+   .reports-modal's normal 800px (sized for the 720px-wide charts/log)
+   crams badly -- widened to match .techtree-modal's own 1240px whenever
+   this specific report is showing. Toggled in main.js's redraw() based on
+   viewState.reportView, since every other report type still wants the
+   narrower default. */
+.reports-modal.reports-modal-wide { width: min(1240px, 94vw); }
 /* Keyboard Shortcuts window (2026-08-07, user-directed) -- reuses
    .techtree-modal for the backdrop/frame, same as .reports-modal. */
 .shortcuts-modal { width: min(520px, 94vw); }

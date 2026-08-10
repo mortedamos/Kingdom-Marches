@@ -2792,7 +2792,18 @@
       if (key !== lastRenderedReportKey && !hasFocusedControlIn($("reports-content"))) {
         $("reports-content").innerHTML = window.UI.reports.render(gameState, viewState.reportView);
         lastRenderedReportKey = key;
+        // AI Tech Trees only (2026-08-10, user-directed): wires the "Level N"
+        // collapse/expand toggle headers this report's own embedded tree
+        // renders -- harmless no-op for every other report type (they never
+        // render that markup). reports.js's own re-renders (civ-picker,
+        // clicking a toggle) already wire themselves; this covers the
+        // render just above, which reports.js has no hook into.
+        if (viewState.reportView === "ai_tech_trees") window.UI.reports.wireTechTreeToggles();
       }
+      // Widen the modal for AI Tech Trees' 4-column grid (see .reports-modal-
+      // wide in style.css) -- every other report type keeps the narrower
+      // default sized for its chart/log content.
+      $("reports-modal").classList.toggle("reports-modal-wide", viewState.reportView === "ai_tech_trees");
       $("reports-close-btn").onclick = () => { viewState.reportView = null; redraw(); };
       reportsOverlay.style.display = "flex";
     } else {
