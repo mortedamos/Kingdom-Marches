@@ -3090,6 +3090,14 @@ window.GameEngine = window.GameEngine || {};
     for (const unitId of unitIds) {
       const unitData = window.GameData.getUnit(unitId);
       if (!unitData) continue;
+      // cityBuildable: false (2026-08-11, user-reported bug fix -- an Orc
+      // city offered to build a Wisp): Wisp/Raptor/Shadowsteed exist only
+      // via their caster's own summon action (Bog Witch/Druid), never a
+      // city's build queue. chooseBuildAction's own unlockedMilitary filter
+      // (above in this file) already respects this same flag for the AI's
+      // OWN production decisions -- this loop, which feeds the player-facing
+      // "Build Unit" menu (buildlist.js), had never actually checked it.
+      if (unitData.cityBuildable === false) continue;
       if (unitData.isNaval && !(city.isPort || isCoastalTile(map, city.x, city.y))) continue;
       const option = buildUnitOption(civ, unitId, 0, unitCostMult);
       if (option) {
