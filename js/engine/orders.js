@@ -639,14 +639,16 @@ window.GameEngine = window.GameEngine || {};
         }
       }
 
-      // Orc "Bog Spirit" (2026-08-10, user-directed): promotes the Bog
-      // Witch's Wisp summon to a player-facing ring action, same "hand off
-      // to main.js's tile-placement mode" shape as Roots of the World above
-      // -- the destination is any ever-explored swamp tile, not a fixed
-      // slot list, so it needs the same arbitrary-tile picker. Gated on the
-      // civ-wide Wisp cap (see ai.js's wispCapReached) so the option simply
-      // doesn't appear once every Bog Witch's slot is already spoken for.
-      if (unit.typeId === "bog_witch" && !unit.usedThisTurn && !unit.summonBuild
+      // Orc "Bog Spirit" (2026-08-10, user-directed; summon made instant
+      // 2026-08-10, user-reported bug fix -- see ai.js's
+      // startBogWitchWispSummon doc comment): promotes the Bog Witch's Wisp
+      // summon to a player-facing ring action, same "hand off to main.js's
+      // tile-placement mode" shape as Roots of the World above -- the
+      // destination is any ever-explored swamp tile, not a fixed slot list,
+      // so it needs the same arbitrary-tile picker. Gated on the civ-wide
+      // Wisp cap (see ai.js's wispCapReached) so the option simply doesn't
+      // appear once every Bog Witch's slot is already spoken for.
+      if (unit.typeId === "bog_witch" && !unit.usedThisTurn
           && civ.unlockedMechanics?.has("wisp_summon") && !window.GameEngine.ai.wispCapReached(civ)) {
         options.push({ kind: "summonWisp", label: "Summon Wisp" });
       }

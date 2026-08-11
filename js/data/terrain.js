@@ -20,7 +20,7 @@ window.GameData.TERRAIN = {
     isWater: true, isDeepWater: true,
     yield: { harvest: 0, coin: 0, lore: 0 },
     moveCostLand: window.GameData.IMPASSABLE,
-    moveCostNaval: 2,
+    moveCostNaval: 1,
   },
   coast: {
     id: "coast", label: "Shallow Water / Coast", color: "#3a6f8f",

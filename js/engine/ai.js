@@ -4210,14 +4210,6 @@ window.GameEngine = window.GameEngine || {};
         continue;
       }
 
-      // Orc "Bog Spirit": a Bog Witch mid-summon cannot move or act at all
-      // until it finishes (or a spawn retry is pending) -- mirrors the Druid
-      // case just above, see progressBogWitchSummon/startBogWitchWispSummon.
-      if (unit.typeId === "bog_witch" && unit.summonBuild) {
-        progressBogWitchSummon(civ, unit, gameState, log);
-        continue;
-      }
-
       // Orc Wisp "lurk and watch" (2026-08-10, user-directed: "it is not an
       // offensive unit, but rather meant to lurk and watch... if it sees
       // enemy units come near, the orc swarm triggers"): an exclusive
@@ -6785,27 +6777,23 @@ window.GameEngine = window.GameEngine || {};
   /** Civ-wide Wisp population cap (2026-08-10, user-directed: "the Orc
    *  kingdom can only have wisp count equal to the number of big [bog]
    *  witches") -- unlike Elf's Raptor/Shadowsteed (one each PER Druid), this
-   *  is a single shared pool across every Bog Witch. A Bog Witch already
-   *  mid-summon counts as having claimed its slot too, so two Bog Witches
-   *  can't both start summoning off the same one free slot in the same
-   *  turn. Self-cleaning the same way druidHasLiveSummon is -- a dead Wisp
-   *  or dead Bog Witch simply drops out of civ.units, freeing/shrinking the
-   *  cap next time this is checked. */
+   *  is a single shared pool across every Bog Witch. Self-cleaning -- a dead
+   *  Wisp or dead Bog Witch simply drops out of civ.units, freeing/shrinking
+   *  the cap next time this is checked. Summoning is instant (see
+   *  startBogWitchWispSummon), so there's no "mid-summon, already claimed a
+   *  slot" state to account for the way Elf's summon-in-progress used to. */
   function wispCapReached(civ) {
     const bogWitches = civ.units.filter((u) => u.typeId === "bog_witch").length;
-    const claimed = civ.units.filter((u) =>
-      u.typeId === "wisp" || (u.typeId === "bog_witch" && u.summonBuild && u.summonBuild.id === "wisp")).length;
-    return claimed >= bogWitches;
+    const wisps = civ.units.filter((u) => u.typeId === "wisp").length;
+    return wisps >= bogWitches;
   }
 
   /** Non-adjacent counterpart to spawnUnitAdjacentToUnit -- spawns `unitId`
    *  at the EXACT (x,y) already chosen (see startBogWitchWispSummon), used
    *  by Orc's Wisp summon which -- unlike Elf's Raptor/Shadowsteed -- lands
    *  at a player/AI-picked remembered swamp tile, not just next to the
-   *  caster. Returns null (nothing spawned, resources already spent) if
-   *  that tile is no longer open by the time the summon finishes; the
-   *  caller keeps retrying next turn, same convention as
-   *  spawnUnitAdjacentToUnit's own dead-end case. */
+   *  caster. Returns null (nothing spawned, caller must not charge for it)
+   *  if that tile is no longer open. */
   function spawnUnitAtTile(civ, unitId, x, y, gameState) {
     const occupied = buildOccupancySet(gameState.civs, null);
     if (occupied.has(`${x},${y}`)) return null;
@@ -6815,16 +6803,31 @@ window.GameEngine = window.GameEngine || {};
     return newUnit;
   }
 
-  /** Starts a Bog Witch "building" a Wisp at (targetX,targetY) -- same
-   *  power-based cost/turn-count convention as startDruidSummon, and the
-   *  same `confirmed`-gated pendingIntent staging for an automated (AI or
-   *  human-auto-piloted) Bog Witch. Checked against the civ-wide Wisp cap
-   *  FIRST (wispCapReached), since unlike Druid's summons this pool isn't
+  /** A Bog Witch summons a Wisp at (targetX,targetY) IMMEDIATELY -- no
+   *  multi-turn "building" delay (2026-08-10, user-directed: "with the
+   *  limit on number of wisps per bog witch, lets remove the summoning
+   *  time, and make the summon happen right away" -- this replaced an
+   *  earlier Druid-Raptor-style multi-turn version that had a real bug: its
+   *  progress only ever ticked inside runUnitTurn, which turns.js/ai.js
+   *  never call for an ordinary human-controlled unit doing a MANUAL action
+   *  -- only for AI civs and units explicitly flagged `.automated`. A
+   *  player-triggered summon via the ring menu would set summonBuild and
+   *  then simply never advance again, permanently consuming the Bog
+   *  Witch's usedThisTurn/ring-menu slot with nothing to show for it. Going
+   *  instant removes the whole class of bug along with the delay).
+   *
+   *  Still keeps the same power-based cost (unitBuildCost) and the
+   *  `confirmed`-gated pendingIntent staging for an automated (AI or
+   *  human-auto-piloted) Bog Witch -- see offerNextPendingIntent's
+   *  "summonWisp" branch in main.js, which re-invokes this with
+   *  confirmed:true. Checked against the civ-wide Wisp cap FIRST
+   *  (wispCapReached), since unlike Druid's summons this pool isn't
    *  per-caster. `targetX`/`targetY` must already be a legal swamp tile --
    *  callers (the player's placement UI, maybeOrcBogWitchPlay) are
    *  responsible for picking one via isValidWispSummonTile; this doesn't
    *  re-validate terrain itself, only occupancy at spawn time (see
-   *  progressBogWitchSummon). */
+   *  spawnUnitAtTile). Returns false (nothing spent) if the tile turned out
+   *  to be occupied by the time this actually runs. */
   function startBogWitchWispSummon(civ, bogWitch, targetX, targetY, gameState, log, confirmed = false) {
     if (wispCapReached(civ)) return false;
     if (!canAffordUnitUpkeep(civ, "wisp", window.GameData.getRace(civ.raceId))) return false;
@@ -6842,37 +6845,14 @@ window.GameEngine = window.GameEngine || {};
       log.push(`Bog Witch proposing to summon a Wisp at (${targetX},${targetY}) — awaiting player confirmation`);
       return true; // consumes the turn either way -- same "decided, just paused" contract startDruidSummon uses
     }
+    const spawned = spawnUnitAtTile(civ, "wisp", targetX, targetY, gameState);
+    if (!spawned) return false; // tile no longer open -- nothing spent, turn not consumed
     civ.stockpile = civ.stockpile || { harvest: 0, coin: 0, lore: 0 };
     for (const [k, v] of Object.entries(cost)) civ.stockpile[k] = Math.max(0, (civ.stockpile[k] || 0) - v);
-    const turns = unitBuildTurns(civ, "wisp");
-    bogWitch.summonBuild = { id: "wisp", turnsRemaining: turns, targetX, targetY };
     bogWitch.usedThisTurn = true;
-    bogWitch.currentMission = `Summoning a Wisp (${turns} turns remaining)`;
-    log.push(`Summon: ${civ.id}'s Bog Witch begins summoning a Wisp at (${targetX},${targetY})`);
+    bogWitch.currentMission = `Summoned a Wisp at (${targetX},${targetY})`;
+    log.push(`Summon: ${civ.id}'s Bog Witch summons a Wisp at (${targetX},${targetY})`);
     return true;
-  }
-
-  /** Ticks an in-progress Bog Witch summon (see startBogWitchWispSummon) --
-   *  the Bog Witch cannot move or act while summoning, mirrors
-   *  progressDruidSummon exactly except the landing tile is the one already
-   *  chosen at start time (build.targetX/Y) rather than a neighbor picked
-   *  now. */
-  function progressBogWitchSummon(civ, bogWitch, gameState, log) {
-    const build = bogWitch.summonBuild;
-    if (build.turnsRemaining > 0) build.turnsRemaining--;
-    bogWitch.usedThisTurn = true;
-    if (build.turnsRemaining > 0) {
-      bogWitch.currentMission = `Summoning a Wisp (${build.turnsRemaining} turns remaining)`;
-      return;
-    }
-    const spawned = spawnUnitAtTile(civ, build.id, build.targetX, build.targetY, gameState);
-    if (!spawned) {
-      bogWitch.currentMission = "Summoning a Wisp (waiting for the tile to clear)";
-      return;
-    }
-    bogWitch.summonBuild = null;
-    bogWitch.currentMission = `Summoned a Wisp at (${spawned.x},${spawned.y})`;
-    log.push(`Summon: ${civ.id}'s Bog Witch completes a Wisp at (${spawned.x},${spawned.y})`);
   }
 
   /** Direct player-invoked Wisp summon (2026-08-10, user-directed): the
@@ -6882,7 +6862,8 @@ window.GameEngine = window.GameEngine || {};
    *  gate entirely" shape as performPlayerDruidTeleport, since a manual
    *  ring click + tile pick already IS the confirmation, regardless of
    *  whether this Bog Witch happens to be flagged automated from some
-   *  earlier turn. */
+   *  earlier turn. Completes synchronously (see startBogWitchWispSummon) --
+   *  the Wisp exists in civ.units by the time this returns. */
   function performPlayerBogWitchSummon(civ, bogWitch, targetX, targetY, gameState) {
     currentTurnNumber = gameState.turnNumber || 0;
     currentGameStateRef = gameState;
@@ -6892,22 +6873,21 @@ window.GameEngine = window.GameEngine || {};
     return ok;
   }
 
-  /** Orc Bog Witch AI: if Bog Spirit is researched, there's a free slot
-   *  under the civ-wide cap (wispCapReached), and this Bog Witch isn't
-   *  already mid-summon, starts summoning a Wisp at the frontier-most
-   *  remembered swamp tile -- the candidate with the greatest MINIMUM
-   *  distance to any of the civ's own cities (2026-08-10, user-directed:
-   *  "the intent of the wisp is a scout that orc can use to monitor an
-   *  area... lurk and watch"; a random pick could just as easily land deep
-   *  in safe home territory, which is useless as a watch post -- pushing
-   *  it to the farthest-out candidate instead approximates "post the
-   *  lookout on the approach," without needing real pathing/threat-map
-   *  analysis for what's still a light, opportunistic play, not a
-   *  strategic centerpiece. Returns true if it consumed the Bog Witch's
-   *  turn. */
+  /** Orc Bog Witch AI: if Bog Spirit is researched and there's a free slot
+   *  under the civ-wide cap (wispCapReached), summons a Wisp (instant, see
+   *  startBogWitchWispSummon) at the frontier-most remembered swamp tile --
+   *  the candidate with the greatest MINIMUM distance to any of the civ's
+   *  own cities (2026-08-10, user-directed: "the intent of the wisp is a
+   *  scout that orc can use to monitor an area... lurk and watch"; a random
+   *  pick could just as easily land deep in safe home territory, which is
+   *  useless as a watch post -- pushing it to the farthest-out candidate
+   *  instead approximates "post the lookout on the approach," without
+   *  needing real pathing/threat-map analysis for what's still a light,
+   *  opportunistic play, not a strategic centerpiece. Returns true if it
+   *  consumed the Bog Witch's turn. */
   function maybeOrcBogWitchPlay(civ, unit, gameState, log) {
     if (unit.typeId !== "bog_witch" || !civ.unlockedMechanics) return false;
-    if (!civ.unlockedMechanics.has("wisp_summon") || unit.usedThisTurn || unit.summonBuild) return false;
+    if (!civ.unlockedMechanics.has("wisp_summon") || unit.usedThisTurn) return false;
     if (wispCapReached(civ)) return false;
     const { map } = gameState;
     const explored = gameState.explored[civ.id] || new Set();

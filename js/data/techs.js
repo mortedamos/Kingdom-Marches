@@ -1218,7 +1218,7 @@ window.GameData.TECHS = {
   orc_bog_spirit: {
     id: "orc_bog_spirit", label: "Bog Spirit", category: "mystic", layer: 3, cost: 40,
     prereqs: ["orc_bog_witch"], raceOnly: "orc",
-    description: "The Bog Witch may summon a Wisp, a small flying spirit of the swamp, into any swamp tile the Orc kingdom has ever explored -- even one it can't currently see. Like a city, the summon spends resources and several turns \"building\" the Wisp, during which the Bog Witch cannot move or act. A Wisp can hide, and is permanently bound to swamp terrain: it flies at speed over swamp but can never cross onto any other kind of tile. The Orc kingdom may field at most one Wisp per living Bog Witch -- if a Bog Witch dies and that leaves too many Wisps behind, one must be disbanded.",
+    description: "The Bog Witch may instantly summon a Wisp, a small flying spirit of the swamp, into any swamp tile the Orc kingdom has ever explored -- even one it can't currently see. A Wisp can hide, and is permanently bound to swamp terrain: it flies at speed over swamp but can never cross onto any other kind of tile. The Orc kingdom may field at most one Wisp per living Bog Witch -- if a Bog Witch dies and that leaves too many Wisps behind, one must be disbanded.",
     // unlock_unit registers "wisp" with techForUnit (so unitBuildCost can
     // derive its resource split from this tech's costBreakdown) even though
     // no CITY can ever build one -- see units.js's cityBuildable: false.

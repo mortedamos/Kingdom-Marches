@@ -2741,21 +2741,22 @@
           redraw();
         };
       }
-      // Hover prereq/unlock highlighting (2026-08-10, user-directed):
-      // hovering any node highlights its prereq ancestors and whatever it
-      // unlocks, dims everything unrelated, and temporarily force-opens any
-      // collapsed layer holding a DIRECT relation -- see techtree.js's
-      // computeRelations for the direct/indirect split and why indirect
-      // relations don't force anything open. Forces a rebuild the same way
-      // the toggle handler above does (mouseenter/mouseleave aren't part of
-      // the identity key), so the highlight/dim classes and any temporary
-      // layer expansion actually appear. The node the cursor is physically
-      // over gets swapped out by that rebuild, but browsers don't re-fire
-      // mouseenter for a DOM swap under a stationary cursor -- that's fine
-      // here, since the highlight comes from viewState.techTreeHoverId
-      // (already set) being baked into the fresh render, not from a second
-      // mouseenter; the freshly-wired node's own mouseleave still fires
-      // normally on real pointer movement.
+      // Hover prereq/unlock highlighting (2026-08-10, user-directed;
+      // dimming + layer force-open removed 2026-08-10, user-directed
+      // follow-up -- too much visual "flicker" as the cursor moved
+      // around): hovering any node highlights its prereq ancestors and
+      // whatever it unlocks with a colored border, nothing else -- no
+      // dimming of unrelated nodes, and layers never expand/collapse from a
+      // hover (see techtree.js's computeRelations/relationKindFor). Forces
+      // a rebuild the same way the toggle handler above does
+      // (mouseenter/mouseleave aren't part of the identity key), so the
+      // highlight classes actually appear. The node the cursor is
+      // physically over gets swapped out by that rebuild, but browsers
+      // don't re-fire mouseenter for a DOM swap under a stationary cursor
+      // -- that's fine here, since the highlight comes from
+      // viewState.techTreeHoverId (already set) being baked into the fresh
+      // render, not from a second mouseenter; the freshly-wired node's own
+      // mouseleave still fires normally on real pointer movement.
       for (const node of document.querySelectorAll(".techtree-node[data-tech-id]")) {
         node.onmouseenter = () => {
           if (viewState.techTreeHoverId === node.dataset.techId) return;

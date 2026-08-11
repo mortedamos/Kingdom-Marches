@@ -502,18 +502,22 @@ window.GameData.UNITS = {
     // whenever this unit dies -- applies to whichever unit lands the kill.
     curseOnDeath: { attackMult: 0.5, moveMult: 0.5, duration: 5 },
   },
-  // Bog Spirit summon (2026-08-10, user-directed): a Druid-summon-style
-  // unit, but the Bog Witch calls it into being at a player-chosen SWAMP
-  // tile the civ has ever explored, not adjacent to herself -- see ai.js's
-  // maybeOrcBogWitchPlay/startWispSummon (mirrors Elf's Raptor/Shadowsteed
-  // convention, just with a chosen-tile destination instead of adjacent-
-  // spawn). Flying (flying-speed movement, 25% evasion vs. a non-Ranged
-  // hitter) but restrictedToTerrain: "swamp" means it can never actually
-  // LEAVE swamp -- see this file's own FIELD REFERENCE doc comment above
-  // and ai.js's getMoveCost/canLandOn/canReachByLand. cityBuildable: false
-  // + noUpkeep mirror Raptor/Shadowsteed exactly (never a city build-menu
-  // option, no ongoing cost) -- capped civ-wide at the current Bog Witch
-  // count instead (see ai.js's enforceWispCap), not built freely.
+  // Bog Spirit summon (2026-08-10, user-directed; made INSTANT 2026-08-10,
+  // user-reported bug fix -- see ai.js's startBogWitchWispSummon doc
+  // comment for why the original Druid-summon-style multi-turn build never
+  // actually completed for a human player's own manual summon): the Bog
+  // Witch calls it into being at a player-chosen SWAMP tile the civ has
+  // ever explored, not adjacent to herself -- see ai.js's
+  // maybeOrcBogWitchPlay/startBogWitchWispSummon (mirrors Elf's Raptor/
+  // Shadowsteed's unlock_unit/cost-derivation convention, just instant and
+  // with a chosen-tile destination instead of adjacent-spawn). Flying
+  // (flying-speed movement, 25% evasion vs. a non-Ranged hitter) but
+  // restrictedToTerrain: "swamp" means it can never actually LEAVE swamp --
+  // see this file's own FIELD REFERENCE doc comment above and ai.js's
+  // getMoveCost/canLandOn/canReachByLand. cityBuildable: false + noUpkeep
+  // mirror Raptor/Shadowsteed exactly (never a city build-menu option, no
+  // ongoing cost) -- capped civ-wide at the current Bog Witch count instead
+  // (see ai.js's wispCapReached), not built freely.
   wisp: {
     id: "wisp", label: "Wisp", symbol: "◌", category: "military", raceOnly: "orc",
     attack: 1, defense: 0, movement: 1, visionRadius: 6, flying: true,

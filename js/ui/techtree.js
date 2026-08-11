@@ -77,14 +77,15 @@ window.UI = window.UI || {};
    * screen with permanent arrows). Returns null if nothing's hovered.
    *
    * DIRECT ancestors/descendants are one hop away (tech.prereqs itself, and
-   * whatever else's prereqs name this tech) -- render() force-opens any
-   * collapsed layer that holds one of these, since otherwise the highlighted
-   * node just wouldn't be visible. INDIRECT ones are everything further up/
-   * down the chain -- render() does NOT force those layers open (a deep
-   * chain could otherwise unroll the whole tree, defeating collapsing
-   * entirely); a still-collapsed layer holding indirect relations instead
-   * gets a small "N related" badge on its header so it's discoverable
-   * without being forced open.
+   * whatever else's prereqs name this tech); INDIRECT ones are everything
+   * further up/down the chain. Both get their own relationKindFor() CSS
+   * class on any node that's actually visible; a still-collapsed layer
+   * holding either kind of relation gets a small "N related" badge on its
+   * header instead (2026-08-10, user-directed: hovering used to force such
+   * a layer open, but that -- plus dimming every unrelated node -- caused
+   * too much visual "flicker" as the cursor moved around, so neither
+   * happens anymore; a layer's expand/collapse state now comes ONLY from a
+   * manual toggle).
    */
   function computeRelations(civ, hoverTechId) {
     if (!hoverTechId) return null;
@@ -185,28 +186,30 @@ window.UI = window.UI || {};
       const layerHasFocus = focusTechId && COLUMNS.some((col) => cols[col].some((t) => t.id === focusTechId));
       if (layerHasFocus) entry.expanded = true;
 
-      // Hover-driven force-open (2026-08-10, user-directed) is the opposite:
-      // TEMPORARY, computed fresh every render and never written back to
-      // `entry` -- it should evaporate the instant the hover ends, unlike a
-      // manual toggle or the focus-link case above. Only DIRECT relations
-      // force a layer open; indirect ones just earn a "N related" badge on
-      // the still-collapsed header (see the doc comment on computeRelations).
-      let hoverForcesOpen = false;
-      let indirectRelatedCount = 0;
-      if (relations) {
+      // Hover-driven relation badge (2026-08-10, user-directed: hovering
+      // used to force a collapsed layer open to reveal a related tech, plus
+      // dim every unrelated node -- both caused too much "flicker" as the
+      // cursor moved around, so neither happens anymore. A layer's
+      // expand/collapse state now comes ONLY from `entry` (manual toggle or
+      // the focus-link case above) -- hovering never changes it. A still-
+      // collapsed layer holding a related tech (direct or indirect, either
+      // direction) just earns a small "N related" badge on its header
+      // instead, so the relation is still discoverable without any layout
+      // shift. See computeRelations for what counts as a relation.
+      const expanded = entry.expanded;
+      let relatedCount = 0;
+      if (relations && !expanded) {
         for (const col of COLUMNS) {
           for (const t of cols[col]) {
-            if (t.id === hoverTechId || relations.directAncestors.has(t.id) || relations.directDescendants.has(t.id)) {
-              hoverForcesOpen = true;
-            } else if (relations.indirectAncestors.has(t.id) || relations.indirectDescendants.has(t.id)) {
-              indirectRelatedCount++;
+            if (relations.directAncestors.has(t.id) || relations.directDescendants.has(t.id)
+                || relations.indirectAncestors.has(t.id) || relations.indirectDescendants.has(t.id)) {
+              relatedCount++;
             }
           }
         }
       }
-      const expanded = entry.expanded || hoverForcesOpen;
-      const badge = !expanded && indirectRelatedCount > 0
-        ? `<span class="techtree-layer-related-badge">${indirectRelatedCount} related</span>` : "";
+      const badge = relatedCount > 0
+        ? `<span class="techtree-layer-related-badge">${relatedCount} related</span>` : "";
 
       rows += `<div class="techtree-layer">
         <div class="techtree-layer-label techtree-layer-toggle" data-toggle-layer="${layer}">
@@ -217,7 +220,7 @@ window.UI = window.UI || {};
         ${expanded ? COLUMNS.map((col) => `<div class="techtree-column">${
           cols[col].map((tech) => renderNode(
             civ, tech, nextPick, isPlayerCiv, tech.id === focusTechId,
-            tech.id === hoverTechId ? "self" : relationKindFor(relations, tech.id), !!relations,
+            tech.id === hoverTechId ? "self" : relationKindFor(relations, tech.id),
           )).join("") || ""
         }</div>`).join("") : ""}
       </div>`;
@@ -281,7 +284,7 @@ window.UI = window.UI || {};
     return `<div class="techtree-node-unit-stats">${escapeHtml(base.label)}: ${escapeHtml(parts.join(" · "))}</div>`;
   }
 
-  function renderNode(civ, tech, nextPick, isPlayerCiv, isFocused, relationKind, hoverActive) {
+  function renderNode(civ, tech, nextPick, isPlayerCiv, isFocused, relationKind) {
     const completed = civ.completedTechs.has(tech.id);
     const researching = civ.currentResearch === tech.id;
     const isNextPick = !completed && !researching && tech.id === nextPick;
@@ -407,17 +410,16 @@ window.UI = window.UI || {};
     // Hover relation highlighting (2026-08-10, user-directed): "self" is the
     // hovered node itself; ancestor/descendant are its prereq chain both
     // ways, indirect ones a notch dimmer than direct so the eye reads
-    // "closer" vs "further" at a glance. Anything with NO relation gets
-    // dimmed instead, the instant any hover is active, so the highlighted
-    // path actually stands out rather than just gaining a thin outline
-    // among forty other identically-bright nodes.
+    // "closer" vs "further" at a glance. Nodes with NO relation are left
+    // completely alone now (2026-08-10, user-directed follow-up: dimming
+    // every unrelated node on every hover move caused too much visual
+    // "flicker") -- only the related path itself ever changes appearance.
     let relationClass = "";
     if (relationKind === "self") relationClass = " techtree-node-relation-self";
     else if (relationKind === "ancestor-direct") relationClass = " techtree-node-relation-ancestor";
     else if (relationKind === "ancestor-indirect") relationClass = " techtree-node-relation-ancestor techtree-node-relation-indirect";
     else if (relationKind === "descendant-direct") relationClass = " techtree-node-relation-descendant";
     else if (relationKind === "descendant-indirect") relationClass = " techtree-node-relation-descendant techtree-node-relation-indirect";
-    else if (hoverActive) relationClass = " techtree-node-dimmed";
     if (selectable) {
       return `<button class="techtree-node ${stateClass} techtree-node-selectable${focusClass}${relationClass}"
         data-tech-id="${escapeHtml(tech.id)}">${body}</button>`;

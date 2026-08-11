@@ -1079,24 +1079,26 @@ html, body {
 }
 .techtree-node.techtree-node-focused { animation: techtree-node-focus-pulse 0.9s ease-in-out 2; }
 
-/* Prereq/unlock hover highlighting (2026-08-10, user-directed): hovering
-   any node highlights its prereq chain both directions and dims everything
-   unrelated -- see techtree.js's computeRelations/relationKindFor and
-   main.js's mouseenter/mouseleave wiring. Indirect (2+ hops) relations get
-   the same color at lower opacity, so "how far away" reads at a glance
-   without a second color scale. Declared after every other state rule so
-   an active hover always wins visually over completed/next-pick/etc. */
-.techtree-node.techtree-node-dimmed { opacity: 0.25; transition: opacity 0.15s ease; }
+/* Prereq/unlock hover highlighting (2026-08-10, user-directed; dimming of
+   unrelated nodes removed 2026-08-10, user-directed follow-up -- it caused
+   too much visual "flicker" as the cursor moved around): hovering any node
+   highlights its prereq chain both directions -- see techtree.js's
+   computeRelations/relationKindFor and main.js's mouseenter/mouseleave
+   wiring. Indirect (2+ hops) relations get the same color at lower
+   opacity, so "how far away" reads at a glance without a second color
+   scale. Every OTHER node is left exactly as it already was -- no dimming,
+   no transition. Declared after every other state rule so an active hover
+   always wins visually over completed/next-pick/etc. */
 .techtree-node.techtree-node-relation-self { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent) inset; }
 .techtree-node.techtree-node-relation-ancestor { border-color: #8a7fd6; box-shadow: 0 0 0 1px #8a7fd6 inset; }
 .techtree-node.techtree-node-relation-descendant { border-color: #e0a050; box-shadow: 0 0 0 1px #e0a050 inset; }
 .techtree-node.techtree-node-relation-indirect { opacity: 0.6; }
 
-/* Collapsed layer holding an indirect (2+ hop) relation to the hovered
-   node (2026-08-10, user-directed): discoverable without being forced
-   open -- only a DIRECT relation does that (see computeRelations's doc
-   comment for why: a deep chain forcing open every layer it touches would
-   defeat collapsing entirely). */
+/* Collapsed layer holding a related (direct OR indirect) tech to the
+   hovered node (2026-08-10, user-directed): discoverable without being
+   forced open -- hovering never expands/collapses a layer anymore (see
+   techtree.js's render(), same "too much flicker" fix as the dimming
+   removal above). */
 .techtree-layer-related-badge {
   font-size: 9px;
   margin-left: 2px;
