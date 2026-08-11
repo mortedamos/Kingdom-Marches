@@ -1540,14 +1540,53 @@
   }
 
   /**
-   * Replaces the live session with a loaded save. gameState/viewState are
-   * mutated IN PLACE (properties cleared then reassigned) rather than
-   * pointed at new objects -- window.UI.input.attach (called once, back in
-   * startGame) closed over the original gameState/viewState object
-   * references, so swapping in fresh objects here would leave mouse input
-   * silently operating on the discarded pre-load state.
-   */
+   * Replaces the live session with a loaded save -- but first makes sure
+   * every race the save actually needs has its art loaded (2026-08-10,
+   * user-directed: "when loading a save game, we should make sure all
+   * relevant graphics are loaded as well"). startGame's own
+   * preloadAll(racesInPlay) call only ever fetched art for the CURRENT
+   * session's own races -- e.g. a Human-vs-Dwarf game never touched Orc or
+   * Undead art at all -- so loading an old save with a different race mix
+   * would otherwise leave those civs rendering as bare color/symbol
+   * placeholders (sprites.js's pick() silently falls back when nothing's
+   * in its registry) until something else happened to trigger a fetch.
+   * window.UI.sprites.preloadAll is idempotent per race (loadVariants' own
+   * `if (registry[key]) return` guard skips anything already cached this
+   * session), so re-calling it here with the SAVE's actual races is cheap
+   * when they overlap the current session and correctly fills the gap when
+   * they don't. Reuses the same loading screen startGame shows; the actual
+   * state swap (finishApplyLoadedPayload) only happens once loading
+   * settles, so the player is never looking at placeholder art for a race
+   * that should have real art. Music/sfx are deliberately left alone here
+   * -- out of scope for this fix, and forcing their progress rows to
+   * a fake 100% just keeps the shared loading-screen markup honest about
+   * what this specific reload actually touches. */
   function applyLoadedPayload(payload) {
+    // Stopped immediately, not deferred to finishApplyLoadedPayload -- a
+    // spectator autoplay tick firing against the soon-to-be-discarded OLD
+    // gameState during the (up to several seconds) art-loading wait would
+    // be pure wasted work at best, a stray redraw glitch at worst.
+    clearInterval(autoplayTimer);
+    const racesInPlay = [...new Set(Object.values(payload.gameState.civs).map((c) => c.raceId))];
+    showLoadingScreen();
+    setLoadingProgress("music", 1, 1);
+    setLoadingProgress("sfx", 1, 1);
+    const spritesPromise = window.UI.sprites.preloadAll(racesInPlay, (done, total) => setLoadingProgress("sprites", done, total));
+    const LOADING_FAILSAFE_MS = 30000;
+    Promise.race([
+      spritesPromise,
+      new Promise((resolve) => setTimeout(resolve, LOADING_FAILSAFE_MS)),
+    ]).then(() => finishApplyLoadedPayload(payload));
+  }
+
+  /** The actual state swap, deferred until applyLoadedPayload's art preload
+   *  settles (see its own doc comment). gameState/viewState are mutated IN
+   *  PLACE (properties cleared then reassigned) rather than pointed at new
+   *  objects -- window.UI.input.attach (called once, back in startGame)
+   *  closed over the original gameState/viewState object references, so
+   *  swapping in fresh objects here would leave mouse input silently
+   *  operating on the discarded pre-load state. */
+  function finishApplyLoadedPayload(payload) {
     for (const k of Object.keys(gameState)) delete gameState[k];
     Object.assign(gameState, payload.gameState);
 
@@ -1591,6 +1630,7 @@
     updateFogMenuVisibility();
     updateAiReportsMenuVisibility();
     if (spectatorMode) startAutoplay();
+    hideLoadingScreen();
     redraw();
   }
 
