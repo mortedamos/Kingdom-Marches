@@ -68,10 +68,23 @@ window.UI = window.UI || {};
       // fourth resource abbreviation rather than a turn count.
       const time = o.turns ? `${o.turns} turn${o.turns === 1 ? "" : "s"}` : "";
       const needsPlacement = o.kind === "building";
+      // Stat line (2026-08-11, user-directed): "the sub-menu allowing you to
+      // select from available units should also show their attack, defense,
+      // movement etc." -- reuses techtree.js's own unlocked-unit stat
+      // summary (unitStatParts, shared rather than duplicated) so a
+      // building's Armory bonus or a race's movement tech shows up here
+      // too, same civ-aware numbers the tech tree already displays.
+      // Buildings have no combat stats, so this is empty for them.
+      const statParts = o.kind === "unit" ? window.UI.techtree.unitStatParts(civ, o.id) : null;
+      const statsHtml = statParts
+        ? `<div class="build-option-stats">${escapeHtml(statParts.join(" · "))}</div>` : "";
       return `<button class="build-option${o.affordable ? "" : " build-option-unaffordable"}"
           data-build-index="${i}" ${o.affordable ? "" : "disabled"}>
-        <span>${escapeHtml(o.label)}${needsPlacement ? " ⌂" : ""}</span>
-        <span>${priceHtml}${time ? ` · ${escapeHtml(time)}` : ""}</span>
+        <div class="build-option-row">
+          <span>${escapeHtml(o.label)}${needsPlacement ? " ⌂" : ""}</span>
+          <span>${priceHtml}${time ? ` · ${escapeHtml(time)}` : ""}</span>
+        </div>
+        ${statsHtml}
       </button>`;
     };
 

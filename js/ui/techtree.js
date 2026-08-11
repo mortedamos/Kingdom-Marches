@@ -259,10 +259,19 @@ window.UI = window.UI || {};
    *  Passes a synthetic { typeId } "unit" (getUnitProperty only ever reads
    *  that one field) since there's no real unit instance to ask about here,
    *  just what a freshly-built one would look like right now. */
-  function unitStatsHtml(civ, unitId) {
+  /** Compact stat summary for one unit type, as a plain array of strings
+   *  ("Atk 5", "Def 3", ...) -- civ-aware (race/tech overrides via
+   *  combat.getUnitProperty), so a Halfellow Armory bonus or an Orc Swift
+   *  Hunters movement buff shows up here too, not just the raw units.js
+   *  base stats. Returns null if unitId doesn't resolve to a real unit.
+   *  Shared by the tech tree's unlocked-unit callout (unitStatsHtml below)
+   *  and the city build list's per-row preview (buildlist.js) -- pulled out
+   *  on its own (2026-08-11, user-directed) so both render their own HTML
+   *  around the same numbers instead of one duplicating the other. */
+  function unitStatParts(civ, unitId) {
     const combat = window.GameEngine.combat;
     const base = window.GameData.getUnit(unitId);
-    if (!base) return "";
+    if (!base) return null;
     const fake = { typeId: unitId };
     const get = (key, fallback) => combat.getUnitProperty(fake, civ, key, fallback);
     const parts = [
@@ -281,6 +290,13 @@ window.UI = window.UI || {};
     if (doubleStrikePct > 0) parts.push(`Double Strike ${Math.round(doubleStrikePct * 100)}%`);
     if (get("flying", false)) parts.push("Flying");
     if (get("canCarryUnit", false)) parts.push("Carry");
+    return parts;
+  }
+
+  function unitStatsHtml(civ, unitId) {
+    const base = window.GameData.getUnit(unitId);
+    const parts = unitStatParts(civ, unitId);
+    if (!base || !parts) return "";
     return `<div class="techtree-node-unit-stats">${escapeHtml(base.label)}: ${escapeHtml(parts.join(" · "))}</div>`;
   }
 
@@ -431,5 +447,5 @@ window.UI = window.UI || {};
     return String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
   }
 
-  window.UI.techtree = { render };
+  window.UI.techtree = { render, unitStatParts };
 })();
