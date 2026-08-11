@@ -3642,6 +3642,12 @@
     viewState.placement = {
       slots,
       label: "Summon Wisp",
+      // kind: "wispSummon" (2026-08-10, user-directed): distinguishes this
+      // placement from the generic building/teleport slot highlight -- see
+      // render.js's drawPlacementOverlay, which draws a rotating sickly-
+      // green eldritch rune on the hovered tile for this kind specifically,
+      // instead of the plain gold rectangle every other placement uses.
+      kind: "wispSummon",
       onPick: (slot) => {
         viewState.placement = null;
         if (slot) {
