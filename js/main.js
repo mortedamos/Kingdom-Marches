@@ -3562,6 +3562,20 @@
           // (X,Y) is the carrier it's boarding. Mirrors carryUnit above with
           // the two roles swapped.
           handleCarryUnit(null, kind.slice("boardCarrier:".length), unit);
+        } else if (kind === "dropOff") {
+          // "Drop Off" (2026-08-11, user-directed): commits instantly, no
+          // placement mode -- see orders.js's ring option, gated on
+          // hasOpenDisembarkTile so this only ever appears when there's
+          // somewhere to actually put the passenger down.
+          const civ = gameState.civs[humanCivId];
+          if (civ) {
+            window.GameEngine.ai.performPlayerDisembark(civ, unit, gameState);
+            // Same immediate-visibility fix as every other summon/placement
+            // flow (2026-08-11, user-directed) -- the dropped passenger
+            // otherwise wouldn't render until this civ's next visibility
+            // refresh.
+            window.GameEngine.turns.refreshVisibility(gameState);
+          }
         } else if (kind === "summonWisp") {
           startWispSummonPlacement(unit);
         } else if (kind && kind.startsWith("setTrap:")) {

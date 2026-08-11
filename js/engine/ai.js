@@ -9011,6 +9011,60 @@ window.GameEngine = window.GameEngine || {};
     return true;
   }
 
+  /** True if `carrier` has at least one open adjacent tile to drop its
+   *  passenger onto right now -- the "Drop Off" ring option's eligibility
+   *  check (orders.js), kept separate from performPlayerDisembark below so
+   *  the ring menu can decide whether to even offer the pill without
+   *  actually performing the drop. */
+  function hasOpenDisembarkTile(civ, carrier, gameState) {
+    if (!carrier.carries) return false;
+    const { map, civs } = gameState;
+    const occupied = buildOccupancySet(civs, carrier.carries);
+    for (let dy = -1; dy <= 1; dy++) {
+      for (let dx = -1; dx <= 1; dx++) {
+        if (dx === 0 && dy === 0) continue;
+        if (isOpenPlacementTile(carrier.x + dx, carrier.y + dy, map, civs, occupied, civ.id)) return true;
+      }
+    }
+    return false;
+  }
+
+  /** Direct player-invoked "Drop Off" (2026-08-11, user-directed: "a unit
+   *  carrying another unit doesn't appear to have a ring menu option to
+   *  drop off"): promotes the disembark half of operateDragonCarry/
+   *  operateGalley's own AI-only cargo logic to a real ring action --
+   *  previously only the AI itself (or an automated human unit) ever chose
+   *  when to disembark. Drops the passenger onto the first open adjacent
+   *  tile found -- no player tile choice, same "arbitrary open adjacent
+   *  tile, no picker" shape as Elf's Raptor/Shadowsteed summon. Deliberately
+   *  does NOT mark either unit usedThisTurn: the carrier "hasn't acted yet"
+   *  (mirrors operateDragonCarry's own `return false` right after dropping
+   *  cargo above -- it can still move/act the same turn), and the freshly-
+   *  dropped passenger is immediately available for its own orders this
+   *  same turn too. Returns true if it found a tile and dropped the
+   *  passenger. */
+  function performPlayerDisembark(civ, carrier, gameState) {
+    if (!carrier.carries) return false;
+    const { map, civs } = gameState;
+    const cargo = carrier.carries;
+    const occupied = buildOccupancySet(civs, cargo);
+    for (let dy = -1; dy <= 1; dy++) {
+      for (let dx = -1; dx <= 1; dx++) {
+        if (dx === 0 && dy === 0) continue;
+        const nx = carrier.x + dx, ny = carrier.y + dy;
+        if (!isOpenPlacementTile(nx, ny, map, civs, occupied, civ.id)) continue;
+        cargo.carriedBy = null;
+        cargo.x = nx; cargo.y = ny;
+        snapVisualPos(cargo, nx, ny);
+        carrier.carries = null;
+        appendAIActionLog(gameState, civ.id,
+          [`Drop Off: ${civ.id}'s ${describeUnit(carrier)} drops off ${describeUnit(cargo)} at (${nx},${ny})`]);
+        return true;
+      }
+    }
+    return false;
+  }
+
   const COMPANION_INJURY_THRESHOLD = 0.6; // "significantly injured" -- worth carrying to heal
 
   /**
@@ -11559,6 +11613,8 @@ window.GameEngine = window.GameEngine || {};
     performPlayerRiddle,
     performPlayerResourceHeist,
     performPlayerUnlockTheGate,
+    hasOpenDisembarkTile,
+    performPlayerDisembark,
     computeMovementBudget,
     computeReachableTiles,
     buildMoveRules,

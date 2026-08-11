@@ -605,6 +605,20 @@ window.GameEngine = window.GameEngine || {};
         }
       }
 
+      // Drop Off (2026-08-11, user-directed: "a unit carrying another unit
+      // doesn't appear to have a ring menu option to drop off"): promotes
+      // the disembark half of ai.js's operateDragonCarry/operateGalley cargo
+      // logic -- previously AI-only -- to a real ring action. Gated on
+      // hasOpenDisembarkTile so the pill never appears when there's nowhere
+      // to actually put the passenger down (e.g. a Galley boxed in by water
+      // on every side). Same "!unit.usedThisTurn" gate as Carry/Board above
+      // for consistency, even though the drop itself doesn't consume the
+      // turn (see performPlayerDisembark's own doc comment).
+      if (!unit.usedThisTurn && unit.carries && window.GameEngine.ai.hasOpenDisembarkTile(civ, unit, gameState)) {
+        const label = unit.carries.name || window.GameData.getUnit(unit.carries.typeId).label;
+        options.push({ kind: "dropOff", label: `Drop Off ${label}` });
+      }
+
       // Troubadour aura activate/deactivate (2026-08-10, user-directed):
       // researching Heavy Metal/Power Metal used to turn the aura on
       // automatically and permanently -- now it's an opt-in/opt-out ring
