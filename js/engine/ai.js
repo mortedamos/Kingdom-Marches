@@ -2085,6 +2085,14 @@ window.GameEngine = window.GameEngine || {};
    *  it's standing when this is first called each turn, not any tile
    *  crossed mid-path. */
   function computeMovementBudget(unit, map, civs) {
+    // Halfellow "Set the Trap": an inert trap NEVER moves, full stop, no
+    // exceptions -- checked before anything else in this function because
+    // Hidden's own floor-at-1 rule below (Math.max(1, ...)) would otherwise
+    // push a trap's 0 base movement back up to 1 (a permanently-Hidden
+    // trap is exactly the case that rule was never meant to touch), which
+    // silently broke orders.js's isSpent -- see its "budget > 0" fallback --
+    // and made an inert trap wrongly nag the player for orders every turn.
+    if (unit.typeId === "trap_frost" || unit.typeId === "trap_fire") return 0;
     const baseUnit = window.GameData.getUnit(unit.typeId);
     // civ.unitOverrides movement delta (e.g. Orc's Swift Hunters: +1 Wolf Rider movement)
     const overrideMovement = unit._moveMods?.unitOverrides?.[unit.typeId]?.movement || 0;
@@ -2304,6 +2312,11 @@ window.GameEngine = window.GameEngine || {};
       unit.x = step.x;
       unit.y = step.y;
       unit.movesRemaining -= step.cost;
+
+      // Halfellow "Set the Trap": a hidden trap adjacent to (or under) this
+      // landing spot springs immediately, same "something interrupted this
+      // move" break as the Hidden-enemy reveal above.
+      if (checkTrapSpring(civs, unit, currentTurnNumber)) break;
     }
     return unit.movesRemaining;
   }
@@ -4215,6 +4228,23 @@ window.GameEngine = window.GameEngine || {};
         continue;
       }
 
+      // Halfellow "Set the Trap" (2026-08-11, user-directed: "trap units
+      // have no player defined actions other than to disband... it just
+      // sits there"): an exclusive branch, same "checked before every other
+      // consideration" shape as the Wisp above -- a trap never fights,
+      // moves, or is asked for orders (movement:0 already keeps it out of a
+      // human player's own unitsNeedingOrders for free, see orders.js's
+      // isSpent; this is what keeps an AI-controlled one from trying
+      // anything else with it). Its permanent Hidden condition is set once,
+      // at creation (startTroubleMakerTrapSet), and never needs refreshing
+      // here the way the Wisp's timed Hidden grant does.
+      if (unit.typeId === "trap_frost" || unit.typeId === "trap_fire") {
+        unit.resting = true;
+        unit.usedThisTurn = true;
+        unit.currentMission = "Lying in wait";
+        continue;
+      }
+
       // currentMission: a short, human-readable "what is this unit doing right
       // now" label, read by sidebar.js for spectator mode's unit inspection.
       // Reset to a generic default here so every branch below overwrites it
@@ -4917,6 +4947,22 @@ window.GameEngine = window.GameEngine || {};
     return true;
   }
 
+  /** Direct player-invoked Wizard teleport (2026-08-11, user-directed):
+   *  promotes performWizardTeleport above -- previously AI-only, fired only
+   *  by attemptWizardTeleport's defensive flee trigger or
+   *  maybeTeleportStrike's offensive ally-repositioning play -- to a real
+   *  ring action. Same "always confirmed, bypasses any automated/
+   *  pendingIntent gate entirely" shape as performPlayerDruidTeleport,
+   *  since a manual ring click + tile pick already IS the confirmation. */
+  function performPlayerWizardTeleport(civ, wizard, targetUnit, destX, destY, gameState) {
+    currentTurnNumber = gameState.turnNumber || 0;
+    currentGameStateRef = gameState;
+    const log = [];
+    const ok = performWizardTeleport(civ, wizard, targetUnit, destX, destY, gameState, log);
+    if (log.length) appendAIActionLog(gameState, civ.id, log);
+    return ok;
+  }
+
   // How far a Wizard's Freezing Touch can reach -- a "touch" spell, so short
   // range rather than Teleportation's whole-map reach. Same order of
   // magnitude as Halfellow's short-range tactical checks (HALFELLOW_STEALTH_RANGE).
@@ -4963,6 +5009,20 @@ window.GameEngine = window.GameEngine || {};
     caster.usedThisTurn = true;
     caster.currentMission = `Froze ${target.civId}'s ${describeUnit(target)} at (${target.x},${target.y})`;
     log.push(`Freezing Touch: ${civ.id}'s Wizard freezes ${target.civId}'s ${describeUnit(target)} at (${target.x},${target.y})`);
+  }
+
+  /** Direct player-invoked Freezing Touch (2026-08-11, user-directed):
+   *  promotes performFreezingTouch above -- previously AI-only, fired only
+   *  by maybeFreezingTouch's defensive/offensive triggers -- to a real ring
+   *  action. `target` must already be within FREEZING_TOUCH_RANGE -- the
+   *  "Freeze: [target]" ring option only ever offers in-range candidates. */
+  function performPlayerFreezingTouch(civ, wizard, target, gameState) {
+    currentTurnNumber = gameState.turnNumber || 0;
+    currentGameStateRef = gameState;
+    const log = [];
+    performFreezingTouch(civ, wizard, target, log);
+    if (log.length) appendAIActionLog(gameState, civ.id, log);
+    return true;
   }
 
   /**
@@ -5468,17 +5528,12 @@ window.GameEngine = window.GameEngine || {};
    * curiosity) of being spotted and revealed -- otherwise the heist goes
    * fully unnoticed. Returns true if it consumed the turn (either executing
    * the heist, or closing distance toward a target). */
-  function maybeResourceHeistPlay(civ, unit, gameState, log) {
-    if (unit.typeId !== "trouble_maker" || !civ.unlockedMechanics || !civ.unlockedMechanics.has("resource_heist")) return false;
-    const target = findResourceHeistTarget(civ, unit, gameState);
-    if (!target) return false;
-    const dist = window.GameEngine.influence.chebyshev(unit.x, unit.y, target.x, target.y);
-    if (dist > 1) {
-      moveUnitToward(unit, target.x, target.y, gameState.map, gameState.civs);
-      unit.usedThisTurn = true;
-      unit.currentMission = `Sneaking up on ${target.civId}'s ${describeUnit(target)} to steal its claim`;
-      return true;
-    }
+  /** Resource Heist commit: steals `target`'s stash right now, already
+   *  confirmed adjacent by the caller. Split out (2026-08-11, user-directed
+   *  promotion) so both maybeResourceHeistPlay's chase-then-steal and the
+   *  "Resource Heist: [target]" ring option share the exact same
+   *  bank/Befuddle/spotted-chance logic. */
+  function performResourceHeist(civ, unit, target, gameState, log) {
     const targetCiv = gameState.civs[target.civId];
     window.GameEngine.turns.bankChannelStash(target, civ);
     target.channeling = null;
@@ -5497,6 +5552,34 @@ window.GameEngine = window.GameEngine || {};
     log.push(`Resource Heist: ${civ.id}'s ${describeUnit(unit)} steals ${targetCiv.id}'s ${describeUnit(target)}'s accumulated claim` +
       (spotted ? " and is spotted doing it" : ""));
     return true;
+  }
+
+  function maybeResourceHeistPlay(civ, unit, gameState, log) {
+    if (unit.typeId !== "trouble_maker" || !civ.unlockedMechanics || !civ.unlockedMechanics.has("resource_heist")) return false;
+    const target = findResourceHeistTarget(civ, unit, gameState);
+    if (!target) return false;
+    const dist = window.GameEngine.influence.chebyshev(unit.x, unit.y, target.x, target.y);
+    if (dist > 1) {
+      moveUnitToward(unit, target.x, target.y, gameState.map, gameState.civs);
+      unit.usedThisTurn = true;
+      unit.currentMission = `Sneaking up on ${target.civId}'s ${describeUnit(target)} to steal its claim`;
+      return true;
+    }
+    return performResourceHeist(civ, unit, target, gameState, log);
+  }
+
+  /** Direct player-invoked Resource Heist (2026-08-11, user-directed):
+   *  promotes performResourceHeist above to a real ring action. `target`
+   *  must already be adjacent -- the "Resource Heist: [target]" ring
+   *  option only ever offers adjacent candidates, same as this ability's
+   *  own melee-range requirement. */
+  function performPlayerResourceHeist(civ, unit, target, gameState) {
+    currentTurnNumber = gameState.turnNumber || 0;
+    currentGameStateRef = gameState;
+    const log = [];
+    const ok = performResourceHeist(civ, unit, target, gameState, log);
+    if (log.length) appendAIActionLog(gameState, civ.id, log);
+    return ok;
   }
 
   /** Nearest visible enemy wall not already suppressed -- Unlock the Gate's
@@ -5530,18 +5613,15 @@ window.GameEngine = window.GameEngine || {};
    * Returns true if it consumed the turn (executing, or closing distance).
    */
   const UNLOCK_THE_GATE_ROUNDS = 3;
-  function maybeUnlockTheGatePlay(civ, unit, gameState, log) {
-    if (unit.typeId !== "trouble_maker" || !civ.unlockedMechanics || !civ.unlockedMechanics.has("unlock_the_gate")) return false;
-    const target = findUnlockTheGateTarget(civ, unit, gameState);
-    if (!target) return false;
+
+  /** Unlock the Gate commit: disables `target.structure` and its neighbors
+   *  right now, already confirmed adjacent by the caller. Split out
+   *  (2026-08-11, user-directed promotion) so both maybeUnlockTheGatePlay's
+   *  chase-then-disable and the "Unlock the Gate: [wall]" ring option share
+   *  the exact same suppression logic. `target` is the
+   *  `{ structure, city, civId }` shape findUnlockTheGateTarget returns. */
+  function performUnlockTheGate(civ, unit, target, gameState, log) {
     const { structure, city } = target;
-    const dist = window.GameEngine.influence.chebyshev(unit.x, unit.y, structure.x, structure.y);
-    if (dist > 1) {
-      moveUnitToward(unit, structure.x, structure.y, gameState.map, gameState.civs);
-      unit.usedThisTurn = true;
-      unit.currentMission = `Sneaking up on ${target.civId}'s wall at (${structure.x},${structure.y})`;
-      return true;
-    }
     const expiresAtTurn = currentTurnNumber + UNLOCK_THE_GATE_ROUNDS;
     let affected = 0;
     for (const s of city.structures) {
@@ -5554,6 +5634,36 @@ window.GameEngine = window.GameEngine || {};
     unit.currentMission = `Unlocked the gate at (${structure.x},${structure.y})`;
     log.push(`Unlock the Gate: ${civ.id}'s ${describeUnit(unit)} disables ${target.civId}'s wall at (${structure.x},${structure.y}) and ${affected - 1} adjacent segment(s) for ${UNLOCK_THE_GATE_ROUNDS} rounds`);
     return true;
+  }
+
+  function maybeUnlockTheGatePlay(civ, unit, gameState, log) {
+    if (unit.typeId !== "trouble_maker" || !civ.unlockedMechanics || !civ.unlockedMechanics.has("unlock_the_gate")) return false;
+    const target = findUnlockTheGateTarget(civ, unit, gameState);
+    if (!target) return false;
+    const { structure } = target;
+    const dist = window.GameEngine.influence.chebyshev(unit.x, unit.y, structure.x, structure.y);
+    if (dist > 1) {
+      moveUnitToward(unit, structure.x, structure.y, gameState.map, gameState.civs);
+      unit.usedThisTurn = true;
+      unit.currentMission = `Sneaking up on ${target.civId}'s wall at (${structure.x},${structure.y})`;
+      return true;
+    }
+    return performUnlockTheGate(civ, unit, target, gameState, log);
+  }
+
+  /** Direct player-invoked Unlock the Gate (2026-08-11, user-directed):
+   *  promotes performUnlockTheGate above to a real ring action. `target`
+   *  must already be the `{ structure, city, civId }` shape
+   *  findUnlockTheGateTarget/the ring option itself builds, already
+   *  confirmed adjacent -- same melee-range requirement as this ability
+   *  always had. */
+  function performPlayerUnlockTheGate(civ, unit, target, gameState) {
+    currentTurnNumber = gameState.turnNumber || 0;
+    currentGameStateRef = gameState;
+    const log = [];
+    const ok = performUnlockTheGate(civ, unit, target, gameState, log);
+    if (log.length) appendAIActionLog(gameState, civ.id, log);
+    return ok;
   }
 
   /** Nearest visible enemy unit within `radius` that isn't already
@@ -5594,20 +5704,14 @@ window.GameEngine = window.GameEngine || {};
   // guarantees at least 1 clean turn between one Befuddled expiring and
   // the same caster being able to reapply it.
   const RIDDLE_COOLDOWN_ROUNDS = 3;
-  function maybeRiddlePlay(civ, unit, gameState, log) {
-    if ((unit.typeId !== "trouble_maker" && unit.typeId !== "wanderer")
-        || !civ.unlockedMechanics || !civ.unlockedMechanics.has("riddle")) return false;
-    if ((unit._riddleCooldownUntilTurn || 0) > currentTurnNumber) return false;
-    const radius = window.GameEngine.combat.effectiveRange(unit, civ);
-    const target = findRiddleTarget(civ, unit, gameState, radius);
-    if (!target) return false;
-    const dist = window.GameEngine.influence.chebyshev(unit.x, unit.y, target.x, target.y);
-    if (dist > radius) {
-      moveUnitToward(unit, target.x, target.y, gameState.map, gameState.civs);
-      unit.usedThisTurn = true;
-      unit.currentMission = `Approaching ${target.civId}'s ${describeUnit(target)} to pose a riddle`;
-      return true;
-    }
+
+  /** Riddle commit: poses a riddle to `target`, already confirmed in range
+   *  by the caller (maybeRiddlePlay's chase-then-cast, or the "Riddle"
+   *  ring-menu option -- see orders.js/main.js, 2026-08-11, user-directed
+   *  promotion). Split out from maybeRiddlePlay so both paths share the
+   *  exact same resist roll/cooldown/flavor-quip logic instead of
+   *  duplicating it. */
+  function performRiddle(civ, unit, target, gameState, log) {
     const targetCiv = gameState.civs[target.civId];
     const targetRace = window.GameData.getRace(targetCiv.raceId);
     const resistChance = (targetRace.curiosity ?? 0.5) * 0.75;
@@ -5631,12 +5735,46 @@ window.GameEngine = window.GameEngine || {};
     return true;
   }
 
+  function maybeRiddlePlay(civ, unit, gameState, log) {
+    if ((unit.typeId !== "trouble_maker" && unit.typeId !== "wanderer")
+        || !civ.unlockedMechanics || !civ.unlockedMechanics.has("riddle")) return false;
+    if ((unit._riddleCooldownUntilTurn || 0) > currentTurnNumber) return false;
+    const radius = window.GameEngine.combat.effectiveRange(unit, civ);
+    const target = findRiddleTarget(civ, unit, gameState, radius);
+    if (!target) return false;
+    const dist = window.GameEngine.influence.chebyshev(unit.x, unit.y, target.x, target.y);
+    if (dist > radius) {
+      moveUnitToward(unit, target.x, target.y, gameState.map, gameState.civs);
+      unit.usedThisTurn = true;
+      unit.currentMission = `Approaching ${target.civId}'s ${describeUnit(target)} to pose a riddle`;
+      return true;
+    }
+    return performRiddle(civ, unit, target, gameState, log);
+  }
+
+  /** Direct player-invoked Riddle (2026-08-11, user-directed): promotes
+   *  performRiddle above to a real ring action -- same "always confirmed"
+   *  shape as every other performPlayer* wrapper in this file. `target`
+   *  must already be within this unit's effectiveRange -- callers (the
+   *  "Riddle: [target]" ring option, built off the same range) are
+   *  responsible for that; this doesn't re-check distance itself. */
+  function performPlayerRiddle(civ, unit, target, gameState) {
+    currentTurnNumber = gameState.turnNumber || 0;
+    currentGameStateRef = gameState;
+    const log = [];
+    const ok = performRiddle(civ, unit, target, gameState, log);
+    if (log.length) appendAIActionLog(gameState, civ.id, log);
+    return ok;
+  }
+
   /**
    * Halfellow Trouble Maker: proactive use of its full kit, same "full kit
    * dispatcher" shape as maybeHumanWizardPlay. Priority order: Resource
    * Heist (denies + steals a real investment, time-sensitive since the
    * victim might cash out first), Unlock the Gate (sets up an assault),
-   * Riddle (a debuff, least urgent of the three). All gated on the
+   * Riddle (a debuff, least urgent of the three), Set the Trap (a
+   * standing/passive play with no urgency of its own -- last in line,
+   * behind anything more immediately impactful). All gated on the
    * relevant mechanic being unlocked. Returns true if it consumed the
    * Trouble Maker's turn. */
   function maybeTroubleMakerPlay(civ, unit, gameState, log) {
@@ -5644,6 +5782,7 @@ window.GameEngine = window.GameEngine || {};
     if (maybeResourceHeistPlay(civ, unit, gameState, log)) return true;
     if (maybeUnlockTheGatePlay(civ, unit, gameState, log)) return true;
     if (maybeRiddlePlay(civ, unit, gameState, log)) return true;
+    if (maybeHalfellowTrapPlay(civ, unit, gameState, log)) return true;
     return false;
   }
 
@@ -6942,6 +7081,176 @@ window.GameEngine = window.GameEngine || {};
     unit.resting = true;
     unit.usedThisTurn = true;
     unit.currentMission = "Watching (exposed)";
+  }
+
+  // Halfellow "Set the Trap" (2026-08-11, user-directed): see units.js's
+  // "trap_frost"/"trap_fire" for the unit shape.
+  const TRAP_PLACEMENT_RANGE = 2; // matches the Trouble Maker's own `range` stat
+  const TRAP_DAMAGE = 4;
+
+  /** Halfellow "Set the Trap" placement target: any tile within
+   *  TRAP_PLACEMENT_RANGE of `troubleMaker` (a short-range plant, unlike the
+   *  Wisp's arbitrary-explored-tile reach -- this is snuck in right under
+   *  the Trouble Maker's own feet, not summoned from afar), unoccupied by
+   *  any unit and not sitting under an enemy wall/building/city. No
+   *  terrain restriction of any kind -- a Fire Trap on a Coast/Ocean/river
+   *  tile is legal to place, it just won't do anything if it ever springs
+   *  there (same exemption every other source of Burning already respects,
+   *  see turns.js's isBurningExempt -- user-directed: "yes, same exemption
+   *  applies"). */
+  function isValidTrapPlacementTile(gameState, civId, x, y, troubleMaker) {
+    const { map, civs } = gameState;
+    if (x < 0 || x >= map.width || y < 0 || y >= map.height) return false;
+    if (window.GameEngine.influence.chebyshev(x, y, troubleMaker.x, troubleMaker.y) > TRAP_PLACEMENT_RANGE) return false;
+    const tile = map.tiles[y * map.width + x];
+    if (window.GameData.TERRAIN[tile.terrain].moveCostLand === window.GameData.IMPASSABLE) return false;
+    if (Object.values(civs).some((c) => c.units.some((u) => u.x === x && u.y === y))) return false;
+    if (hasEnemyStructure(tile, civId)) return false;
+    if (hasEnemyCity(civs, x, y, civId)) return false;
+    return true;
+  }
+
+  /** Civ-wide trap population cap (2026-08-11, user-directed: "one trap per
+   *  troublemaker" -- both flavors share a single pool, same "self-cleaning"
+   *  shape as wispCapReached: a dead trap or dead Trouble Maker simply drops
+   *  out of civ.units, freeing/shrinking the cap next time this is checked. */
+  function trapCapReached(civ) {
+    const troubleMakers = civ.units.filter((u) => u.typeId === "trouble_maker").length;
+    const traps = civ.units.filter((u) => u.typeId === "trap_frost" || u.typeId === "trap_fire").length;
+    return traps >= troubleMakers;
+  }
+
+  /** A Trouble Maker plants a trap at (targetX,targetY) IMMEDIATELY -- no
+   *  multi-turn build delay, same "instant, cap-gated, confirmed-staged for
+   *  an automated caster" shape as startBogWitchWispSummon. `trapKind` is
+   *  "frost" or "fire" (see TRAP_KINDS), picking which typeId gets spawned.
+   *  `targetX`/`targetY` must already be a legal tile -- callers (the
+   *  player's placement UI, maybeHalfellowTrapPlay) are responsible for
+   *  picking one via isValidTrapPlacementTile; this only re-validates
+   *  occupancy at spawn time (see spawnUnitAtTile). Returns false (nothing
+   *  spent) if the tile turned out to be occupied by the time this runs, or
+   *  the cap/cost checks fail. */
+  function startTroubleMakerTrapSet(civ, troubleMaker, trapKind, targetX, targetY, gameState, log, confirmed = false) {
+    const unitId = trapKind === "fire" ? "trap_fire" : "trap_frost";
+    if (trapCapReached(civ)) return false;
+    if (!canAffordUnitUpkeep(civ, unitId, window.GameData.getRace(civ.raceId))) return false;
+    const cost = window.GameData.unitBuildCost(unitId);
+    if (!cost || !canAffordBuildCost(civ, cost)) return false;
+    if (troubleMaker.automated && !confirmed) {
+      troubleMaker.pendingIntent = {
+        kind: "setTrap", label: `Set a ${trapKind === "fire" ? "Fire" : "Frost"} Trap`,
+        trapKind, trapTargetX: targetX, trapTargetY: targetY,
+      };
+      troubleMaker.usedThisTurn = true;
+      troubleMaker.currentMission = "Proposing to set a trap — awaiting confirmation";
+      log.push(`Trouble Maker proposing to set a ${trapKind} trap at (${targetX},${targetY}) — awaiting player confirmation`);
+      return true; // consumes the turn either way -- same "decided, just paused" contract startBogWitchWispSummon uses
+    }
+    const spawned = spawnUnitAtTile(civ, unitId, targetX, targetY, gameState);
+    if (!spawned) return false; // tile no longer open -- nothing spent, turn not consumed
+    // Permanently Hidden from the instant it exists -- set directly rather
+    // than via canGoHidden/enterHidden (that grant is a temporary 3-turn
+    // window meant for a unit that can still move/re-hide; this trap never
+    // does either, so it skips straight to the condition with no
+    // expiresAtTurn at all, which tickConditions (combat.js) only ever
+    // clears when expiresAtTurn is set -- omitting it makes this hidden
+    // status permanent by construction, not by some separate "never expire"
+    // flag).
+    window.GameEngine.combat.setCondition(spawned, "hidden", {});
+    civ.stockpile = civ.stockpile || { harvest: 0, coin: 0, lore: 0 };
+    for (const [k, v] of Object.entries(cost)) civ.stockpile[k] = Math.max(0, (civ.stockpile[k] || 0) - v);
+    troubleMaker.usedThisTurn = true;
+    troubleMaker.currentMission = `Set a ${trapKind} trap at (${targetX},${targetY})`;
+    log.push(`Set the Trap: ${civ.id}'s Trouble Maker sets a ${trapKind} trap at (${targetX},${targetY})`);
+    return true;
+  }
+
+  /** Direct player-invoked trap placement (2026-08-11): the ring-menu "Set
+   *  Frost Trap"/"Set Fire Trap" actions hand off to main.js's tile-
+   *  placement mode, and picking a slot calls straight into this -- same
+   *  "always confirmed, bypasses the automated/pendingIntent gate entirely"
+   *  shape as performPlayerBogWitchSummon. Completes synchronously -- the
+   *  trap exists in civ.units by the time this returns. */
+  function performPlayerTrapSet(civ, troubleMaker, trapKind, targetX, targetY, gameState) {
+    currentTurnNumber = gameState.turnNumber || 0;
+    currentGameStateRef = gameState;
+    const log = [];
+    const ok = startTroubleMakerTrapSet(civ, troubleMaker, trapKind, targetX, targetY, gameState, log, true);
+    if (log.length) appendAIActionLog(gameState, civ.id, log);
+    return ok;
+  }
+
+  /** Halfellow Trouble Maker AI: if Set the Trap is researched and there's a
+   *  free slot under the civ-wide cap (trapCapReached), plants a trap
+   *  (instant, see startTroubleMakerTrapSet) at the nearest legal tile to
+   *  the Trouble Maker's own position -- unlike the Wisp's frontier-seeking
+   *  pick, this is a short-range plant right under its own feet
+   *  (TRAP_PLACEMENT_RANGE), so "nearest legal tile" is really just "pick
+   *  any open adjacent-ish tile" rather than a real strategic search.
+   *  Alternates flavor by a coin flip -- no tactical reasoning about which
+   *  is better here, just variety. Returns true if it consumed the Trouble
+   *  Maker's turn. */
+  function maybeHalfellowTrapPlay(civ, unit, gameState, log) {
+    if (unit.typeId !== "trouble_maker" || !civ.unlockedMechanics) return false;
+    if (!civ.unlockedMechanics.has("trap_summon") || unit.usedThisTurn) return false;
+    if (trapCapReached(civ)) return false;
+    let pick = null, bestDist = Infinity;
+    for (let dy = -TRAP_PLACEMENT_RANGE; dy <= TRAP_PLACEMENT_RANGE; dy++) {
+      for (let dx = -TRAP_PLACEMENT_RANGE; dx <= TRAP_PLACEMENT_RANGE; dx++) {
+        if (dx === 0 && dy === 0) continue;
+        const x = unit.x + dx, y = unit.y + dy;
+        if (!isValidTrapPlacementTile(gameState, civ.id, x, y, unit)) continue;
+        const dist = Math.abs(dx) + Math.abs(dy);
+        if (dist < bestDist) { bestDist = dist; pick = { x, y }; }
+      }
+    }
+    if (!pick) return false;
+    const trapKind = Math.random() < 0.5 ? "frost" : "fire";
+    return startTroubleMakerTrapSet(civ, unit, trapKind, pick.x, pick.y, gameState, log);
+  }
+
+  /** Halfellow "Set the Trap" spring check (2026-08-11, user-directed):
+   *  called from spendMovement right after a moving unit lands on each step
+   *  of its path. Finds any live trap_frost/trap_fire belonging to a
+   *  DIFFERENT civ within 1 tile (adjacent OR the same tile -- a mover can
+   *  walk straight onto a Hidden trap's tile the same way it can onto any
+   *  other Hidden unit's, see buildOccupancySet's exclusion) of `mover`'s
+   *  new position. Springs at most one trap per call (first found): flat
+   *  TRAP_DAMAGE plus the trap's own condition (Frozen for trap_frost,
+   *  Burning for trap_fire -- reusing both conditions' existing engine
+   *  support wholesale, see FROZEN_DURATION/applyBurning above), a floating
+   *  text callout, then the trap is removed from its owner's civ.units
+   *  (one-shot, consumed on spring regardless of whether the hit killed
+   *  anything). Returns true if a trap sprang (the caller breaks the
+   *  mover's remaining path steps this call, same "something interrupted
+   *  this move" contract the Hidden-enemy-reveal check right above it in
+   *  spendMovement already follows). */
+  function checkTrapSpring(civs, mover, turnNumber) {
+    for (const ownerCiv of Object.values(civs)) {
+      if (ownerCiv.id === mover.civId || ownerCiv.eliminated) continue;
+      const trap = ownerCiv.units.find((u) =>
+        (u.typeId === "trap_frost" || u.typeId === "trap_fire")
+        && window.GameEngine.influence.chebyshev(u.x, u.y, mover.x, mover.y) <= 1);
+      if (!trap) continue;
+      mover.hp = Math.max(0, mover.hp - TRAP_DAMAGE);
+      window.GameEngine.floatingText.spawnFloatingText(mover, `-${TRAP_DAMAGE} (Trap!)`, "warning");
+      if (trap.typeId === "trap_frost") {
+        window.GameEngine.combat.setCondition(mover, "frozen", { attackMult: 0.75, expiresAtTurn: turnNumber + FROZEN_DURATION });
+      } else {
+        // applyBurning only reads gameState.turnNumber -- currentGameStateRef
+        // is this file's own established stand-in for threading gameState
+        // through deep call stacks (see its doc comment up top), same
+        // convention findHiddenEnemyAt's sibling checks in spendMovement rely
+        // on already.
+        applyBurning(mover, "unit", currentGameStateRef);
+      }
+      window.GameEngine.combat.revealHidden(trap, turnNumber);
+      ownerCiv.units = ownerCiv.units.filter((u) => u !== trap);
+      const moverCiv = civs[mover.civId];
+      if (moverCiv) moverCiv.units = moverCiv.units.filter((u) => u.hp > 0);
+      return true;
+    }
+    return false;
   }
 
   /**
@@ -11245,6 +11554,11 @@ window.GameEngine = window.GameEngine || {};
     castFlightOnAlly,
     isValidTeleportTile,
     performPlayerDruidTeleport,
+    performPlayerWizardTeleport,
+    performPlayerFreezingTouch,
+    performPlayerRiddle,
+    performPlayerResourceHeist,
+    performPlayerUnlockTheGate,
     computeMovementBudget,
     computeReachableTiles,
     buildMoveRules,
@@ -11260,6 +11574,9 @@ window.GameEngine = window.GameEngine || {};
     isValidWispSummonTile,
     performPlayerBogWitchSummon,
     wispCapReached,
+    isValidTrapPlacementTile,
+    performPlayerTrapSet,
+    trapCapReached,
     primeUnitForAutomation,
     runAutomatedUnitTurn,
   };

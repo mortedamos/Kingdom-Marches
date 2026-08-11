@@ -493,6 +493,15 @@ window.GameEngine = window.GameEngine || {};
   function contextMenuOptions(unit, gameState, x, y, humanCivId) {
     const options = [];
     if (!canCommand(unit, gameState, humanCivId)) return options;
+
+    // Halfellow "Set the Trap" (2026-08-11, user-directed: "trap units have
+    // no player defined actions other than to disband"): short-circuits
+    // every other branch below -- a trap has nothing to move, attack,
+    // channel, garrison, or automate, full stop.
+    if (unit.typeId === "trap_frost" || unit.typeId === "trap_fire") {
+      return [{ kind: "disband", label: "Disband Unit", danger: true }];
+    }
+
     const civ = gameState.civs[unit.civId];
     const baseUnit = window.GameData.getUnit(unit.typeId);
     const tile = gameState.map.tiles[y * gameState.map.width + x];
@@ -639,6 +648,119 @@ window.GameEngine = window.GameEngine || {};
         }
       }
 
+      // Human "Teleportation" (2026-08-11, user-directed): same promotion as
+      // Roots of the World above -- the AI-only teleport (ai.js's
+      // performWizardTeleport/attemptWizardTeleport/maybeTeleportStrike) had
+      // NO player-facing UI at all until now, only ever firing automatically
+      // (a badly-hurt Wizard fleeing, or the AI repositioning a Trebuchet/
+      // strongest adjacent ally onto an undefended enemy target). Reuses the
+      // SAME "teleportSelf"/"teleportAlly:X,Y" ring kinds as Druid above --
+      // main.js's handler picks performPlayerWizardTeleport vs.
+      // performPlayerDruidTeleport off the acting unit's own typeId, so
+      // there's no need for a second set of kind strings.
+      if (unit.typeId === "wizard" && !unit.usedThisTurn && !unit.conditions?.exhausted
+          && civ.unlockedMechanics?.has("teleportation")) {
+        options.push({ kind: "teleportSelf", label: "Teleportation (Teleport Self)" });
+        for (let dy = -1; dy <= 1; dy++) {
+          for (let dx = -1; dx <= 1; dx++) {
+            if (dx === 0 && dy === 0) continue;
+            const ax = unit.x + dx, ay = unit.y + dy;
+            const ally = civ.units.find((u) => u.x === ax && u.y === ay && u !== unit && !u.carriedBy && !u.conditions?.exhausted);
+            if (!ally) continue;
+            const label = ally.name || window.GameData.getUnit(ally.typeId).label;
+            options.push({ kind: `teleportAlly:${ax},${ay}`, label: `Teleportation (Teleport ${label})` });
+          }
+        }
+      }
+
+      // Human "Freezing Touch" (2026-08-11, user-directed): same promotion
+      // as Teleportation above -- previously fired only by maybeFreezingTouch's
+      // defensive/offensive AI triggers. One pill per enemy unit currently
+      // within FREEZING_TOUCH_RANGE (2, mirrored here as a literal -- see
+      // ai.js), excluding Hidden (can't be targeted) or already-Frozen (no
+      // point) targets, same shape as findRiddleTarget's own filter below.
+      // Commits instantly on click (performPlayerFreezingTouch) -- no
+      // placement mode needed, this targets a unit, not a tile.
+      if (unit.typeId === "wizard" && !unit.usedThisTurn && civ.unlockedMechanics?.has("freezing_touch")) {
+        const range = 2; // FREEZING_TOUCH_RANGE, ai.js
+        for (const otherCiv of Object.values(gameState.civs)) {
+          if (otherCiv.id === civ.id || otherCiv.eliminated) continue;
+          for (const eu of otherCiv.units) {
+            if (eu.carriedBy || eu.conditions?.hidden || eu.conditions?.frozen) continue;
+            if (window.GameEngine.influence.chebyshev(unit.x, unit.y, eu.x, eu.y) > range) continue;
+            const label = eu.name || window.GameData.getUnit(eu.typeId).label;
+            options.push({ kind: `freeze:${eu.x},${eu.y}`, label: `Freeze ${label}` });
+          }
+        }
+      }
+
+      // Halfellow "Riddle" (2026-08-11, user-directed): same promotion,
+      // previously fired only by maybeRiddlePlay. One pill per enemy unit
+      // within this caster's own effectiveRange (scales with Boomerang,
+      // same as a normal attack -- see ai.js's maybeRiddlePlay), excluding
+      // Hidden or already-Befuddled targets, and respecting the per-caster
+      // cooldown (ai.js's RIDDLE_COOLDOWN_ROUNDS) the same way the AI does.
+      if ((unit.typeId === "trouble_maker" || unit.typeId === "wanderer") && !unit.usedThisTurn
+          && civ.unlockedMechanics?.has("riddle") && (unit._riddleCooldownUntilTurn || 0) <= (gameState.turnNumber || 0)) {
+        const range = window.GameEngine.combat.effectiveRange(unit, civ);
+        for (const otherCiv of Object.values(gameState.civs)) {
+          if (otherCiv.id === civ.id || otherCiv.eliminated) continue;
+          for (const eu of otherCiv.units) {
+            if (eu.carriedBy || eu.conditions?.hidden || eu.conditions?.befuddled) continue;
+            if (window.GameEngine.influence.chebyshev(unit.x, unit.y, eu.x, eu.y) > range) continue;
+            const label = eu.name || window.GameData.getUnit(eu.typeId).label;
+            options.push({ kind: `riddle:${eu.x},${eu.y}`, label: `Riddle ${label}` });
+          }
+        }
+      }
+
+      // Halfellow "Resource Heist" (2026-08-11, user-directed): same
+      // promotion, previously fired only by maybeResourceHeistPlay. Melee-
+      // range only (this ability requires adjacency to execute, unlike the
+      // two ranged ones above) -- one pill per adjacent enemy unit that's
+      // currently channeling (Prospector's Claim/Dungeon Delve/Fishing)
+      // with a non-empty stash, same eligibility findResourceHeistTarget
+      // itself checks.
+      if (unit.typeId === "trouble_maker" && !unit.usedThisTurn && civ.unlockedMechanics?.has("resource_heist")) {
+        for (let dy = -1; dy <= 1; dy++) {
+          for (let dx = -1; dx <= 1; dx++) {
+            if (dx === 0 && dy === 0) continue;
+            const ax = unit.x + dx, ay = unit.y + dy;
+            for (const otherCiv of Object.values(gameState.civs)) {
+              if (otherCiv.id === civ.id || otherCiv.eliminated) continue;
+              const eu = otherCiv.units.find((u) => u.x === ax && u.y === ay && !u.carriedBy);
+              if (!eu || !eu.channeling || eu.conditions?.hidden) continue;
+              const stash = eu._channelStash;
+              if (!stash || ((stash.harvest || 0) + (stash.coin || 0) + (stash.lore || 0)) <= 0) continue;
+              const label = eu.name || window.GameData.getUnit(eu.typeId).label;
+              options.push({ kind: `resourceHeist:${ax},${ay}`, label: `Resource Heist: ${label}` });
+            }
+          }
+        }
+      }
+
+      // Halfellow "Unlock the Gate" (2026-08-11, user-directed): same
+      // promotion, previously fired only by maybeUnlockTheGatePlay. Melee-
+      // range only, same as Resource Heist above -- one pill per adjacent
+      // enemy wall that isn't already suppressed (combat.js's
+      // isWallDefenseSuppressed), same eligibility findUnlockTheGateTarget
+      // itself checks. Targets a structure, not a unit -- uses
+      // cities.js's findStructureAt (returns { civ, city, record, building
+      // }) to get the parent city performUnlockTheGate needs to walk its
+      // neighboring wall segments.
+      if (unit.typeId === "trouble_maker" && !unit.usedThisTurn && civ.unlockedMechanics?.has("unlock_the_gate")) {
+        for (let dy = -1; dy <= 1; dy++) {
+          for (let dx = -1; dx <= 1; dx++) {
+            if (dx === 0 && dy === 0) continue;
+            const ax = unit.x + dx, ay = unit.y + dy;
+            const found = window.GameEngine.cities.findStructureAt(gameState, ax, ay);
+            if (!found || found.civ.id === civ.id || !found.building.isWall) continue;
+            if (window.GameEngine.combat.isWallDefenseSuppressed(found.record, gameState.turnNumber || 0)) continue;
+            options.push({ kind: `unlockTheGate:${ax},${ay}`, label: `Unlock the Gate: wall (${ax},${ay})` });
+          }
+        }
+      }
+
       // Elf "Air Beneath, Eyes Above"/"Shadowsteed" (2026-08-10, user-
       // directed: "mirror this setup for elf druid" -- same instant-summon
       // + player-facing ring option as Orc's Bog Spirit/Wisp below): the
@@ -673,6 +795,22 @@ window.GameEngine = window.GameEngine || {};
       if (unit.typeId === "bog_witch" && !unit.usedThisTurn
           && civ.unlockedMechanics?.has("wisp_summon") && !window.GameEngine.ai.wispCapReached(civ)) {
         options.push({ kind: "summonWisp", label: "Summon Wisp" });
+      }
+
+      // Halfellow "Set the Trap" (2026-08-11, user-directed): same
+      // "tile-placement mode, gated on the civ-wide trap cap" shape as the
+      // Wisp above, but the destination is any tile within the Trouble
+      // Maker's own short range (see ai.js's TRAP_PLACEMENT_RANGE), not an
+      // arbitrary ever-explored tile -- still needs the picker (more than
+      // one legal tile) rather than a single-click adjacent-spawn like
+      // Raptor/Shadowsteed. Two separate pills, one per flavor, both gated
+      // on the SAME shared cap (ai.js's trapCapReached counts both
+      // typeIds together) -- picking either one still only ever nets one
+      // trap for this cap slot.
+      if (unit.typeId === "trouble_maker" && !unit.usedThisTurn
+          && civ.unlockedMechanics?.has("trap_summon") && !window.GameEngine.ai.trapCapReached(civ)) {
+        options.push({ kind: "setTrap:frost", label: "Set Frost Trap" });
+        options.push({ kind: "setTrap:fire", label: "Set Fire Trap" });
       }
 
       // Hidden/stealth -- sidebar.js's stealthActions.

@@ -769,34 +769,21 @@ window.UI = window.UI || {};
    * handleOpenBuildPicker flow); the slot list comes from
    * cities.js's validStructureSlots, the same rules placeStructure enforces.
    *
-   * Orc Wisp summon (2026-08-10, user-directed: placement.kind ===
-   * "wispSummon", see main.js's startWispSummonPlacement) gets its own
-   * distinct treatment instead of the plain gold rectangle every other
-   * placement kind uses below -- every valid swamp tile gets a faint sickly-
-   * green wash so the candidate set still reads at a glance, and the tile
-   * currently under the cursor (the one that would actually be picked)
-   * additionally gets a rotating eldritch rune (drawWispSummonRune) so
-   * "this exact tile is the destination" is unmistakable.
+   * Unit-summon placements (Orc Wisp, Halfellow Frost/Fire Trap -- see
+   * main.js's startWispSummonPlacement/startTrapPlacement) additionally set
+   * placement.previewUnitId/previewRaceId (2026-08-11, user-directed: "the
+   * graphic to indicate the target tile ... should instead be the semi
+   * transparent graphic of the unit to be placed"): every valid slot still
+   * gets the plain gold wash below so the candidate set reads at a glance,
+   * but the tile currently under the cursor (the one that would actually be
+   * picked) additionally gets a real, half-transparent render of the unit
+   * that would appear there (drawPlacementPreviewUnit), replacing the old
+   * placeholder-rune/brighter-rectangle-only affordance.
    */
   function drawPlacementOverlay(ctx, viewState, offsetX, offsetY, ts) {
     const placement = viewState.placement;
     if (!placement || !placement.slots || !placement.slots.length) return;
     const hover = viewState.hoverTile;
-
-    if (placement.kind === "wispSummon") {
-      const now = performance.now();
-      const washPulse = 0.5 + 0.25 * Math.sin(now / 500);
-      for (const slot of placement.slots) {
-        const screenX = slot.x * ts + offsetX;
-        const screenY = slot.y * ts + offsetY;
-        if (screenX < -ts || screenX > ctx.canvas.width || screenY < -ts || screenY > ctx.canvas.height) continue;
-        const isHovered = hover && hover.x === slot.x && hover.y === slot.y;
-        ctx.fillStyle = isHovered ? "rgba(140, 255, 90, 0.18)" : `rgba(140, 255, 90, ${0.10 * washPulse + 0.06})`;
-        ctx.fillRect(screenX, screenY, ts, ts);
-        if (isHovered) drawWispSummonRune(ctx, screenX, screenY, ts, now);
-      }
-      return;
-    }
 
     const pulse = 0.5 + 0.25 * Math.sin(performance.now() / 300);
     for (const slot of placement.slots) {
@@ -804,49 +791,33 @@ window.UI = window.UI || {};
       const screenY = slot.y * ts + offsetY;
       if (screenX < -ts || screenX > ctx.canvas.width || screenY < -ts || screenY > ctx.canvas.height) continue;
       const isHovered = hover && hover.x === slot.x && hover.y === slot.y;
-      ctx.fillStyle = isHovered ? "rgba(255, 215, 90, 0.55)" : `rgba(255, 215, 90, ${0.22 * pulse + 0.12})`;
+      ctx.fillStyle = isHovered ? "rgba(255, 215, 90, 0.35)" : `rgba(255, 215, 90, ${0.22 * pulse + 0.12})`;
       ctx.fillRect(screenX, screenY, ts, ts);
       ctx.strokeStyle = isHovered ? "#ffd75a" : "rgba(255, 215, 90, 0.8)";
       ctx.lineWidth = isHovered ? 3 : 1.5;
       ctx.strokeRect(screenX + 1, screenY + 1, ts - 2, ts - 2);
+      if (isHovered && placement.previewUnitId) {
+        drawPlacementPreviewUnit(ctx, placement.previewUnitId, placement.previewRaceId, screenX, screenY, ts);
+      }
     }
   }
 
-  /** The rotating eldritch rune drawn on the currently-hovered tile during a
-   *  Wisp summon placement (see drawPlacementOverlay) -- a circle crossed by
-   *  three lines through its center (six spokes total), continuously
-   *  rotating, in a sickly bright green with a soft glow. Purely decorative
-   *  placeholder art for "a Wisp will appear here" -- no gameplay meaning
-   *  beyond marking the exact tile a click would target. */
-  function drawWispSummonRune(ctx, screenX, screenY, ts, now) {
-    const cx = screenX + ts / 2, cy = screenY + ts / 2;
-    const radius = ts * 0.32;
-    const rotation = (now / 4000) * Math.PI * 2; // one full turn every 4s
-    const glowPulse = 0.6 + 0.4 * Math.sin(now / 260);
-    const color = "#9dff5e"; // sickly bright green
-
+  /** Half-transparent preview of the unit a summon placement would actually
+   *  create, drawn on the hovered tile (see drawPlacementOverlay above).
+   *  Reuses the exact same sprite lookup the real Units draw pass uses
+   *  (pickUnit + currentFrame) rather than any bespoke placeholder art --
+   *  seed is null since every summon-placeable unit (Wisp, the two traps)
+   *  ships exactly one art variant and a single-frame idle animation, so
+   *  there's nothing for a stable per-instance seed to disambiguate here. */
+  function drawPlacementPreviewUnit(ctx, unitId, raceId, screenX, screenY, ts) {
+    const unitSprite = window.UI.sprites.pickUnit(unitId, raceId, null);
+    if (!unitSprite) return;
+    const f = window.UI.sprites.currentFrame(unitSprite.manifest, "idle", null);
+    const pad = ts * 0.11;
+    const boxSize = ts - pad * 2;
     ctx.save();
-    ctx.translate(cx, cy);
-    ctx.rotate(rotation);
-    ctx.shadowColor = color;
-    ctx.shadowBlur = 6 + 6 * glowPulse;
-    ctx.strokeStyle = color;
-    ctx.lineWidth = 2;
-
-    ctx.beginPath();
-    ctx.arc(0, 0, radius, 0, Math.PI * 2);
-    ctx.stroke();
-
-    const spokeCount = 3; // 3 lines through center = 6 spokes, evenly spaced
-    for (let i = 0; i < spokeCount; i++) {
-      const angle = (Math.PI / spokeCount) * i;
-      const dx = Math.cos(angle) * radius * 1.15;
-      const dy = Math.sin(angle) * radius * 1.15;
-      ctx.beginPath();
-      ctx.moveTo(-dx, -dy);
-      ctx.lineTo(dx, dy);
-      ctx.stroke();
-    }
+    ctx.globalAlpha = 0.6;
+    ctx.drawImage(unitSprite.image, f.sx, f.sy, f.sw, f.sh, screenX + pad, screenY + pad, boxSize, boxSize);
     ctx.restore();
   }
 

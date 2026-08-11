@@ -106,6 +106,20 @@ window.GameData.SPRITE_MANIFESTS = {
     frameWidth: 128, frameHeight: 128, layout: "horizontal",
     animations: { idle: { frames: [0, 1, 2, 3], fps: 1 } },
   },
+  "unit/trouble_maker": {
+    frameWidth: 128, frameHeight: 128, layout: "horizontal",
+    animations: { idle: { frames: [0, 1, 2, 3], fps: 1 } },
+  },
+  // Inert, never-animated objects -- one frame only, see units.js's
+  // "trap_frost"/"trap_fire".
+  "unit/trap_frost": {
+    frameWidth: 128, frameHeight: 128, layout: "horizontal",
+    animations: { idle: { frames: [0], fps: 1 } },
+  },
+  "unit/trap_fire": {
+    frameWidth: 128, frameHeight: 128, layout: "horizontal",
+    animations: { idle: { frames: [0], fps: 1 } },
+  },
   "unit/spearguard": {
     frameWidth: 128, frameHeight: 128, layout: "horizontal",
     animations: { idle: { frames: [0, 1, 2, 3], fps: 1 } },

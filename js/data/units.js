@@ -406,6 +406,37 @@ window.GameData.UNITS = {
     attack: 3, defense: 3, movement: 3, visionRadius: 3, range: 2,
     coinCost: 32, attackChars: ["🪤", "🔓"], doubleStrikePct: 0.1,
   },
+  // "Set the Trap" (Halfellow mystic L5): a Trouble Maker plants one of
+  // these into an unoccupied tile within its own range (see ai.js's
+  // isValidTrapPlacementTile/startTroubleMakerTrapSet), choosing the flavor
+  // at placement time -- two separate typeIds rather than one unit with a
+  // "kind" field, matching how every other distinct unit in this file gets
+  // its own id. 0 attack/defense/movement on purpose, it never fights,
+  // moves, or is asked for orders (see orders.js's isSpent, which reads
+  // movement:0 as "always spent" for free -- no bespoke exclusion needed
+  // there). Permanently Hidden from the moment it's placed (set directly,
+  // not via the normal canGoHidden/enterHidden 3-turn grant -- see
+  // startTroubleMakerTrapSet) and never voluntarily revealed, though it's
+  // still vulnerable to the same "AoE splash catches a Hidden unit by
+  // accident" rule every other Hidden unit already follows (combat.js's
+  // revealHidden call sites). Springs the instant an enemy unit ends a move
+  // step adjacent to it (see ai.js's checkTrapSpring, hooked into
+  // spendMovement) -- flat damage plus the Frozen or Burning condition
+  // (whichever this trap is), reusing those conditions' existing engine
+  // support wholesale rather than inventing a third one, then the trap is
+  // consumed. cityBuildable: false + noUpkeep mirror Wisp exactly -- capped
+  // civ-wide at the current Trouble Maker count (both flavors share one
+  // pool, ai.js's trapCapReached), never built freely.
+  trap_frost: {
+    id: "trap_frost", label: "Frost Trap", symbol: "🪤", category: "military", raceOnly: "halfellow",
+    attack: 0, defense: 0, movement: 0, visionRadius: 1,
+    coinCost: 20, cityBuildable: false, noUpkeep: true, nameSpecial: true, // an object, not a person
+  },
+  trap_fire: {
+    id: "trap_fire", label: "Fire Trap", symbol: "🪤", category: "military", raceOnly: "halfellow",
+    attack: 0, defense: 0, movement: 0, visionRadius: 1,
+    coinCost: 20, cityBuildable: false, noUpkeep: true, nameSpecial: true, // an object, not a person
+  },
 
   // --- DWARF full roster (redesigned tree, no stubs -- see techs.js) ---
   foehammer: {

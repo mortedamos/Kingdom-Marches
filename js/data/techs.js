@@ -1763,6 +1763,27 @@ window.GameData.TECHS = {
     costBreakdown: { lore: 55, harvest: 40 },
     effects: [{ type: "unlock_mechanic", mechanic: "rouse_the_people" }],
   },
+  // "Set the Trap" (2026-08-11, user-directed): the Trouble Maker's third
+  // trick, gated behind The Riddle Game as the capstone of its own
+  // sub-tree. Unlocks BOTH trap flavors at once -- the player picks Frost
+  // or Fire per placement, not a separate tech per flavor (user-directed:
+  // "one tech, but no snare option, just frozen or burning along with some
+  // damage"). Two unlock_unit effects register both "trap_frost"/"trap_fire"
+  // with techForUnit (so unitBuildCost can derive each one's resource split
+  // from this tech's shared costBreakdown) even though no city can ever
+  // build either -- see units.js's cityBuildable: false, mirrors Orc's Bog
+  // Spirit/Wisp pattern exactly.
+  halfellow_set_the_trap: {
+    id: "halfellow_set_the_trap", label: "Set the Trap", category: "mystic", layer: 5, cost: 90,
+    prereqs: ["halfellow_riddle_game"], raceOnly: "halfellow",
+    description: "The Trouble Maker may set a Frost Trap or a Fire Trap on any unoccupied tile within its own range. Either trap stays hidden indefinitely -- it is never spotted by normal means, though a splash/area attack that happens to land on it can still catch it by accident, same as any other hidden unit. The instant an enemy unit ends a move adjacent to it, the trap springs: 4 damage plus Frozen (0 movement, -25% attack, 3 turns) for a Frost Trap, or 4 damage plus Burning (1 damage/turn for 3 turns, no effect on Coast/Ocean/river) for a Fire Trap -- then the trap is spent. The Halfellow kingdom may field at most one trap (of either flavor) per living Trouble Maker.",
+    costBreakdown: { harvest: 8, coin: 12, lore: 20 },
+    effects: [
+      { type: "unlock_unit", unit: "trap_frost" },
+      { type: "unlock_unit", unit: "trap_fire" },
+      { type: "unlock_mechanic", mechanic: "trap_summon" },
+    ],
+  },
 
   // --- "Cultural Influence" -- one per race, the tech-tree capstone
   // (2026-07-21, user-directed): a true late-game resource sink, only

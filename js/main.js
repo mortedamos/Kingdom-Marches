@@ -2400,6 +2400,10 @@
           window.GameEngine.ai.startDruidSummon(civ, unit, intent.summonUnitId, gameState, log, true);
         } else if (intent.kind === "summonWisp") {
           window.GameEngine.ai.performPlayerBogWitchSummon(civ, unit, intent.summonTargetX, intent.summonTargetY, gameState);
+          window.GameEngine.turns.refreshVisibility(gameState);
+        } else if (intent.kind === "setTrap") {
+          window.GameEngine.ai.performPlayerTrapSet(civ, unit, intent.trapKind, intent.trapTargetX, intent.trapTargetY, gameState);
+          window.GameEngine.turns.refreshVisibility(gameState);
         }
         finish();
       },
@@ -3560,6 +3564,11 @@
           handleCarryUnit(null, kind.slice("boardCarrier:".length), unit);
         } else if (kind === "summonWisp") {
           startWispSummonPlacement(unit);
+        } else if (kind && kind.startsWith("setTrap:")) {
+          // Halfellow "Set the Trap" (2026-08-11, user-directed): "setTrap:
+          // frost"/"setTrap:fire" -- same payload-in-kind-string convention
+          // as castFlight/carryUnit above.
+          startTrapPlacement(unit, kind.slice("setTrap:".length));
         } else if (kind === "summonRaptor" || kind === "summonShadowsteed") {
           // Elf Druid (2026-08-10, user-directed): a single click, no
           // placement mode needed -- Raptor/Shadowsteed always land on an
@@ -3568,14 +3577,64 @@
           const civ = gameState.civs[humanCivId];
           if (civ) {
             window.GameEngine.ai.performPlayerDruidSummon(civ, unit, kind === "summonRaptor" ? "raptor" : "shadowsteed", gameState);
+            // Same immediate-visibility fix as Summon Wisp/Set the Trap
+            // (2026-08-11, user-directed) -- a freshly-spawned Raptor/
+            // Shadowsteed otherwise wouldn't render until this civ's next
+            // visibility refresh. Usually a no-op in practice (it lands
+            // adjacent to a unit whose own vision almost always already
+            // covers that tile), but there's no reason to leave this path
+            // inconsistent with the other two summon flows.
+            window.GameEngine.turns.refreshVisibility(gameState);
           }
         } else if (kind === "teleportSelf") {
-          startDruidTeleportPlacement(unit, unit);
+          startTeleportPlacement(unit, unit);
         } else if (kind && kind.startsWith("teleportAlly:")) {
           const [tx, ty] = kind.slice("teleportAlly:".length).split(",").map(Number);
           const civ = gameState.civs[humanCivId];
           const ally = civ.units.find((u) => u.x === tx && u.y === ty && u !== unit && !u.carriedBy);
-          if (ally) startDruidTeleportPlacement(unit, ally);
+          if (ally) startTeleportPlacement(unit, ally);
+        } else if (kind && kind.startsWith("freeze:")) {
+          // Human "Freezing Touch" (2026-08-11, user-directed): commits
+          // instantly, no placement mode -- see orders.js's "Freeze:
+          // [target]" ring option, which only ever offers in-range enemy
+          // units. attackTargetAt reuses the same "what's standing on this
+          // tile that isn't mine" lookup right-click-to-attack already uses.
+          const [tx, ty] = kind.slice("freeze:".length).split(",").map(Number);
+          const civ = gameState.civs[humanCivId];
+          const found = window.GameEngine.orders.attackTargetAt(unit, gameState, tx, ty, humanCivId);
+          if (civ && found && found.kind === "unit") {
+            window.GameEngine.ai.performPlayerFreezingTouch(civ, unit, found.unit, gameState);
+          }
+        } else if (kind && kind.startsWith("riddle:")) {
+          // Halfellow "Riddle" (2026-08-11, user-directed) -- same shape as
+          // Freezing Touch above.
+          const [tx, ty] = kind.slice("riddle:".length).split(",").map(Number);
+          const civ = gameState.civs[humanCivId];
+          const found = window.GameEngine.orders.attackTargetAt(unit, gameState, tx, ty, humanCivId);
+          if (civ && found && found.kind === "unit") {
+            window.GameEngine.ai.performPlayerRiddle(civ, unit, found.unit, gameState);
+          }
+        } else if (kind && kind.startsWith("resourceHeist:")) {
+          // Halfellow "Resource Heist" (2026-08-11, user-directed) -- same
+          // shape as Freezing Touch above.
+          const [tx, ty] = kind.slice("resourceHeist:".length).split(",").map(Number);
+          const civ = gameState.civs[humanCivId];
+          const found = window.GameEngine.orders.attackTargetAt(unit, gameState, tx, ty, humanCivId);
+          if (civ && found && found.kind === "unit") {
+            window.GameEngine.ai.performPlayerResourceHeist(civ, unit, found.unit, gameState);
+          }
+        } else if (kind && kind.startsWith("unlockTheGate:")) {
+          // Halfellow "Unlock the Gate" (2026-08-11, user-directed):
+          // targets a wall structure, not a unit -- uses cities.js's
+          // findStructureAt (same lookup orders.js's ring option used to
+          // build the pill) instead of attackTargetAt.
+          const [tx, ty] = kind.slice("unlockTheGate:".length).split(",").map(Number);
+          const civ = gameState.civs[humanCivId];
+          const found = window.GameEngine.cities.findStructureAt(gameState, tx, ty);
+          if (civ && found) {
+            window.GameEngine.ai.performPlayerUnlockTheGate(
+              civ, unit, { structure: found.record, city: found.city, civId: found.civ.id }, gameState);
+          }
         } else if (kind && kind.startsWith("activateAura:")) {
           // "activateAura:heavy_metal"/"activateAura:power_metal"
           // (2026-08-10, user-directed) -- a free toggle, not a spent
@@ -3589,14 +3648,20 @@
     redraw();
   }
 
-  /** Elf "Roots of the World" (2026-08-10, user-directed): opens tile-
-   *  placement mode (same viewState.placement mechanism handleOpenBuildPicker
-   *  uses for structure slots) with every currently-EXPLORED, currently-legal
-   *  teleport tile as a slot -- see ai.js's isValidTeleportTile, the same
-   *  gate performDruidTeleport itself re-checks at landing time. Picking one
-   *  commits the teleport via performDruidTeleport; clicking outside every
-   *  highlighted tile cancels, same convention as building placement. */
-  function startDruidTeleportPlacement(druid, targetUnit) {
+  /** Elf "Roots of the World" / Human "Teleportation" (2026-08-10/11,
+   *  user-directed -- the latter promotes what used to be an AI-only
+   *  mechanic, see ai.js's performWizardTeleport/attemptWizardTeleport/
+   *  maybeTeleportStrike, to this exact same player-facing flow): opens
+   *  tile-placement mode (same viewState.placement mechanism
+   *  handleOpenBuildPicker uses for structure slots) with every currently-
+   *  EXPLORED, currently-legal teleport tile as a slot -- see ai.js's
+   *  isValidTeleportTile, the same gate performDruidTeleport/
+   *  performWizardTeleport themselves re-check at landing time. `caster` is
+   *  the Druid or Wizard doing the teleporting; picking a slot commits via
+   *  whichever of performPlayerDruidTeleport/performPlayerWizardTeleport
+   *  matches caster.typeId -- clicking outside every highlighted tile
+   *  cancels, same convention as building placement. */
+  function startTeleportPlacement(caster, targetUnit) {
     if (!humanCivId) return;
     const civ = gameState.civs[humanCivId];
     if (!civ) return;
@@ -3607,13 +3672,29 @@
       const x = idx % map.width, y = Math.floor(idx / map.width);
       if (window.GameEngine.ai.isValidTeleportTile(gameState, x, y, targetUnit)) slots.push({ x, y });
     }
+    const isWizard = caster.typeId === "wizard";
+    const abilityLabel = isWizard ? "Teleportation" : "Roots of the World";
+    const performTeleport = isWizard
+      ? window.GameEngine.ai.performPlayerWizardTeleport
+      : window.GameEngine.ai.performPlayerDruidTeleport;
     viewState.placement = {
       slots,
-      label: targetUnit === druid ? "Roots of the World" : `Roots of the World: ${targetUnit.name || window.GameData.getUnit(targetUnit.typeId).label}`,
+      label: targetUnit === caster ? abilityLabel : `${abilityLabel}: ${targetUnit.name || window.GameData.getUnit(targetUnit.typeId).label}`,
+      // previewUnitId/previewRaceId (2026-08-11, user-directed): same
+      // half-transparent sprite preview as the summon flows -- shows the
+      // unit actually being relocated (the caster itself, or the targeted
+      // ally) standing on the hovered tile.
+      previewUnitId: targetUnit.typeId, previewRaceId: civ.raceId,
       onPick: (slot) => {
         viewState.placement = null;
         if (slot) {
-          window.GameEngine.ai.performPlayerDruidTeleport(civ, druid, targetUnit, slot.x, slot.y, gameState);
+          performTeleport(civ, caster, targetUnit, slot.x, slot.y, gameState);
+          // Same immediate-visibility fix as Summon Wisp/Set the Trap
+          // (2026-08-11, user-directed) -- teleporting onto a distant
+          // explored-but-not-currently-visible tile is exactly the "shows
+          // up late" case, arguably more exposed to it than either of those
+          // two since the destination can be anywhere already explored.
+          window.GameEngine.turns.refreshVisibility(gameState);
         }
         redraw();
       },
@@ -3642,16 +3723,65 @@
     viewState.placement = {
       slots,
       label: "Summon Wisp",
-      // kind: "wispSummon" (2026-08-10, user-directed): distinguishes this
-      // placement from the generic building/teleport slot highlight -- see
-      // render.js's drawPlacementOverlay, which draws a rotating sickly-
-      // green eldritch rune on the hovered tile for this kind specifically,
-      // instead of the plain gold rectangle every other placement uses.
-      kind: "wispSummon",
+      // previewUnitId/previewRaceId (2026-08-11, user-directed): render.js's
+      // drawPlacementOverlay draws a real, half-transparent Wisp sprite on
+      // the hovered tile instead of a placeholder rune.
+      previewUnitId: "wisp", previewRaceId: civ.raceId,
       onPick: (slot) => {
         viewState.placement = null;
         if (slot) {
           window.GameEngine.ai.performPlayerBogWitchSummon(civ, bogWitch, slot.x, slot.y, gameState);
+          // The Wisp's own vision (and the newly-claimed tile itself) won't
+          // show up until the next visibility refresh otherwise -- see
+          // render.js's Units pass, gated on `visible.has(idx)` -- which
+          // would normally wait until this civ's next turn (2026-08-11,
+          // user-directed: "should show up immediately, not wait for the
+          // turn to end").
+          window.GameEngine.turns.refreshVisibility(gameState);
+        }
+        redraw();
+      },
+    };
+    redraw();
+  }
+
+  /** Halfellow "Set the Trap" (2026-08-11, user-directed): same
+   *  tile-placement mechanism as Summon Wisp above, but the slot list is a
+   *  small bounding box around the Trouble Maker itself (TRAP_PLACEMENT_RANGE
+   *  in ai.js), not the whole ever-explored set -- a trap is snuck in right
+   *  under its own feet, not summoned from afar, so scanning the full
+   *  explored set the way Wisp does would be pure waste. `trapKind` is
+   *  "frost" or "fire" (see the setTrap:frost/setTrap:fire ring options in
+   *  orders.js), threaded through to performPlayerTrapSet on pick. No
+   *  bespoke overlay kind -- falls through to render.js's plain gold
+   *  pulsing-rectangle default, same as most other placement flows. */
+  function startTrapPlacement(troubleMaker, trapKind) {
+    if (!humanCivId) return;
+    const civ = gameState.civs[humanCivId];
+    if (!civ) return;
+    const RANGE = 2; // mirrors ai.js's TRAP_PLACEMENT_RANGE
+    const slots = [];
+    for (let dy = -RANGE; dy <= RANGE; dy++) {
+      for (let dx = -RANGE; dx <= RANGE; dx++) {
+        const x = troubleMaker.x + dx, y = troubleMaker.y + dy;
+        if (window.GameEngine.ai.isValidTrapPlacementTile(gameState, civ.id, x, y, troubleMaker)) slots.push({ x, y });
+      }
+    }
+    viewState.placement = {
+      slots,
+      label: trapKind === "fire" ? "Set Fire Trap" : "Set Frost Trap",
+      // previewUnitId/previewRaceId (2026-08-11, user-directed): render.js's
+      // drawPlacementOverlay draws a real, half-transparent trap sprite on
+      // the hovered tile instead of the plain gold rectangle alone.
+      previewUnitId: trapKind === "fire" ? "trap_fire" : "trap_frost", previewRaceId: civ.raceId,
+      onPick: (slot) => {
+        viewState.placement = null;
+        if (slot) {
+          window.GameEngine.ai.performPlayerTrapSet(civ, troubleMaker, trapKind, slot.x, slot.y, gameState);
+          // Same immediate-visibility fix as Summon Wisp above -- a freshly
+          // placed trap otherwise wouldn't render until this civ's next
+          // visibility refresh (2026-08-11, user-directed).
+          window.GameEngine.turns.refreshVisibility(gameState);
         }
         redraw();
       },
