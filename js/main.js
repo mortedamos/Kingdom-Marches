@@ -3520,6 +3520,15 @@
           handleCarryUnit(null, kind.slice("boardCarrier:".length), unit);
         } else if (kind === "summonWisp") {
           startWispSummonPlacement(unit);
+        } else if (kind === "summonRaptor" || kind === "summonShadowsteed") {
+          // Elf Druid (2026-08-10, user-directed): a single click, no
+          // placement mode needed -- Raptor/Shadowsteed always land on an
+          // open adjacent tile (see ai.js's spawnUnitAdjacentToUnit), unlike
+          // the Wisp's arbitrary swamp destination just above.
+          const civ = gameState.civs[humanCivId];
+          if (civ) {
+            window.GameEngine.ai.performPlayerDruidSummon(civ, unit, kind === "summonRaptor" ? "raptor" : "shadowsteed", gameState);
+          }
         } else if (kind === "teleportSelf") {
           startDruidTeleportPlacement(unit, unit);
         } else if (kind && kind.startsWith("teleportAlly:")) {

@@ -639,6 +639,28 @@ window.GameEngine = window.GameEngine || {};
         }
       }
 
+      // Elf "Air Beneath, Eyes Above"/"Shadowsteed" (2026-08-10, user-
+      // directed: "mirror this setup for elf druid" -- same instant-summon
+      // + player-facing ring option as Orc's Bog Spirit/Wisp below): the
+      // Druid's summon used to be AI-only (maybeElfDruidPlay); this
+      // promotes it to a real ring action. No tile-placement mode needed --
+      // unlike the Wisp's arbitrary swamp destination, Raptor/Shadowsteed
+      // always land on an open tile adjacent to the Druid (see ai.js's
+      // spawnUnitAdjacentToUnit), so a single click is the whole
+      // interaction. Each option only appears while this Druid doesn't
+      // already have a live one of that type (ai.js's druidHasLiveSummon --
+      // one Raptor, one Shadowsteed, per Druid, same cap as before).
+      if (unit.typeId === "druid" && !unit.usedThisTurn) {
+        if (civ.unlockedMechanics?.has("raptor_summon")
+            && !window.GameEngine.ai.druidHasLiveSummon(civ, unit, "raptor")) {
+          options.push({ kind: "summonRaptor", label: "Summon Raptor" });
+        }
+        if (civ.unlockedMechanics?.has("shadow_steed_summon")
+            && !window.GameEngine.ai.druidHasLiveSummon(civ, unit, "shadowsteed")) {
+          options.push({ kind: "summonShadowsteed", label: "Summon Shadowsteed" });
+        }
+      }
+
       // Orc "Bog Spirit" (2026-08-10, user-directed; summon made instant
       // 2026-08-10, user-reported bug fix -- see ai.js's
       // startBogWitchWispSummon doc comment): promotes the Bog Witch's Wisp

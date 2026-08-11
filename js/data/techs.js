@@ -683,7 +683,7 @@ window.GameData.TECHS = {
   elf_air_beneath_eyes_above: {
     id: "elf_air_beneath_eyes_above", label: "Air Beneath, Eyes Above", category: "mystic", layer: 2, cost: 34,
     prereqs: ["elf_druidism"], raceOnly: "elf",
-    description: "The Druid may summon a Raptor to assist elven allies -- like a city, it spends resources and several turns \"building\" the unit, unable to move or act while doing so (though it may do this while Hidden, if already Hidden beforehand). Cities cannot build Raptor units.",
+    description: "The Druid may instantly summon a Raptor to assist elven allies, appearing on an open adjacent tile. Cities cannot build Raptor units.",
     costBreakdown: { lore: 22, coin: 12 },
     // unlock_unit registers "raptor" with techForUnit (so unitBuildCost can
     // derive its resource split from this tech's costBreakdown) even though
@@ -782,7 +782,7 @@ window.GameData.TECHS = {
   elf_shadowsteed: {
     id: "elf_shadowsteed", label: "Shadowsteed", category: "mystic", layer: 5, cost: 95,
     prereqs: ["elf_air_beneath_eyes_above", "elf_quick_as_a_shadow"], raceOnly: "elf",
-    description: "The Druid may summon a Shadowsteed, a flying horse made of shadow, the same way it summons a Raptor: spends resources and several turns \"building\" it, immobile meanwhile. It cannot carry an Awakened Oak, a Raptor, or a Galley. While carrying another unit, it takes on that unit's range, attack, defense, siege, and First Strike (keeping its own First Strike if higher), then adds its own bonuses on top. Cities cannot build Shadowsteed units directly.",
+    description: "The Druid may instantly summon a Shadowsteed, a flying horse made of shadow, the same way it summons a Raptor: appearing on an open adjacent tile. It cannot carry an Awakened Oak, a Raptor, or a Galley. While carrying another unit, it takes on that unit's range, attack, defense, siege, and First Strike (keeping its own First Strike if higher), then adds its own bonuses on top. Cities cannot build Shadowsteed units directly.",
     costBreakdown: { lore: 55, coin: 25, harvest: 15 },
     effects: [
       { type: "unlock_unit", unit: "shadowsteed" },

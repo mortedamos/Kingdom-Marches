@@ -4202,14 +4202,6 @@ window.GameEngine = window.GameEngine || {};
       }
       if (unit.typeId === "pioneer") continue; // handled in maybeFoundCity
 
-      // Elf "Air Beneath, Eyes Above"/"Shadowsteed": a Druid mid-summon
-      // cannot move or act at all until it finishes (or a spawn retry is
-      // pending) -- see progressDruidSummon/startDruidSummon.
-      if (unit.typeId === "druid" && unit.summonBuild) {
-        progressDruidSummon(civ, unit, gameState, log);
-        continue;
-      }
-
       // Orc Wisp "lurk and watch" (2026-08-10, user-directed: "it is not an
       // offensive unit, but rather meant to lurk and watch... if it sees
       // enemy units come near, the orc swarm triggers"): an exclusive
@@ -6657,12 +6649,12 @@ window.GameEngine = window.GameEngine || {};
 
   /** Non-city equivalent of spawnUnitInCity -- spawns `unitId` on an open
    *  tile adjacent to `casterUnit` (the Druid). Used by Elf's Raptor/
-   *  Shadowsteed summon (see progressDruidSummon). Tries the 8 neighbors in
-   *  random order; returns null (nothing spawned, resources already spent by
-   *  the caller) if every one is blocked or impassable. Tags the new unit
-   *  with `_summonedByDruid` (a direct object reference to its caster,
-   *  same convention as `carriedBy`/`carries`) -- see druidHasLiveSummon,
-   *  which reads this to enforce Elf's 1-Raptor/1-Shadowsteed-per-Druid cap. */
+   *  Shadowsteed summon (see startDruidSummon). Tries the 8 neighbors in
+   *  random order; returns null (nothing spawned, caller must not charge for
+   *  it) if every one is blocked or impassable. Tags the new unit with
+   *  `_summonedByDruid` (a direct object reference to its caster, same
+   *  convention as `carriedBy`/`carries`) -- see druidHasLiveSummon, which
+   *  reads this to enforce Elf's 1-Raptor/1-Shadowsteed-per-Druid cap. */
   function spawnUnitAdjacentToUnit(civ, casterUnit, unitId, gameState) {
     const { map, civs } = gameState;
     const occupied = buildOccupancySet(civs, null);
@@ -6680,24 +6672,31 @@ window.GameEngine = window.GameEngine || {};
 
   /** Elf "one Raptor, one Shadowsteed per Druid" (2026-07-18, user-directed):
    *  true if `druid` already has a LIVE `unitId` it summoned (tagged via
-   *  `_summonedByDruid`, see spawnUnitAdjacentToUnit) OR is currently mid-
-   *  summon of one. Self-cleaning -- if a previously-summoned unit died, it's
-   *  no longer in civ.units, so this naturally returns false again and the
-   *  Druid is free to summon a replacement. This is a per-Druid cap, not a
-   *  civ-wide one: an Elf civ wanting more Shadowsteeds (its top combat
-   *  unit) needs to field more Druids, not just re-summon from the same one. */
+   *  `_summonedByDruid`, see spawnUnitAdjacentToUnit). Self-cleaning -- if a
+   *  previously-summoned unit died, it's no longer in civ.units, so this
+   *  naturally returns false again and the Druid is free to summon a
+   *  replacement. This is a per-Druid cap, not a civ-wide one: an Elf civ
+   *  wanting more Shadowsteeds (its top combat unit) needs to field more
+   *  Druids, not just re-summon from the same one. */
   function druidHasLiveSummon(civ, druid, unitId) {
-    if (druid.summonBuild && druid.summonBuild.id === unitId) return true;
     return civ.units.some((u) => u.typeId === unitId && u._summonedByDruid === druid);
   }
 
-  /** Starts the Druid "building" `unitId` -- pays the same power-based cost
-   *  a city would (GameData.unitBuildCost/unitPower, via the unlocking
-   *  tech's own costBreakdown) from the civ's stockpile, then counts down
-   *  unitBuildTurns exactly like a city's build queue does (see
-   *  progressDruidSummon). Returns true if it started (consumes the Druid's
-   *  turn); false if unaffordable. */
-  /** `confirmed` (2026-08-06, user-directed, default false): an automated
+  /** A Druid summons `unitId` (Raptor or Shadowsteed) on an open adjacent
+   *  tile IMMEDIATELY -- no multi-turn "building" delay (2026-08-10,
+   *  user-directed: "mirror this setup for elf druid" -- same instant-spawn
+   *  fix as Orc's Bog Witch/Wisp, see startBogWitchWispSummon's doc comment
+   *  for the bug this avoids: a multi-turn build only ever progressed
+   *  inside runUnitTurn, which never runs for an ordinary human-controlled
+   *  unit doing a manual action, only for AI civs and units explicitly
+   *  flagged `.automated` -- a player-triggered summon would silently never
+   *  finish). Pays the same power-based cost a city would
+   *  (GameData.unitBuildCost/unitPower, via the unlocking tech's own
+   *  costBreakdown). Returns true if it summoned (consumes the Druid's
+   *  turn); false if unaffordable or (rare -- all 8 neighbors blocked) no
+   *  room to land it, in which case nothing is spent.
+   *
+   *  `confirmed` (2026-08-06, user-directed, default false): an automated
    *  Druid never actually spends the civ's stockpile on its own -- see the
    *  gate just below, which stages the intent (druid.pendingIntent) and
    *  returns without spending instead. main.js's offerNextPendingIntent
@@ -6706,6 +6705,7 @@ window.GameEngine = window.GameEngine || {};
    *  same "propose once, re-invoke to commit" shape the attack gates in
    *  considerAttackOrGarrison use via opts.forcedTarget. */
   function startDruidSummon(civ, druid, unitId, gameState, log, confirmed = false) {
+    if (druidHasLiveSummon(civ, druid, unitId)) return false;
     const race = window.GameData.getRace(civ.raceId);
     if (!canAffordUnitUpkeep(civ, unitId, race)) return false;
     const cost = window.GameData.unitBuildCost(unitId);
@@ -6721,40 +6721,33 @@ window.GameEngine = window.GameEngine || {};
       log.push(`Druid proposing to summon a ${unitId} at (${druid.x},${druid.y}) — awaiting player confirmation`);
       return true; // consumes the turn either way -- same "decided, just paused" contract as the attack gates
     }
+    const spawned = spawnUnitAdjacentToUnit(civ, druid, unitId, gameState);
+    if (!spawned) return false; // no open adjacent tile -- nothing spent, turn not consumed
     civ.stockpile = civ.stockpile || { harvest: 0, coin: 0, lore: 0 };
     for (const [k, v] of Object.entries(cost)) civ.stockpile[k] = Math.max(0, (civ.stockpile[k] || 0) - v);
-    const turns = unitBuildTurns(civ, unitId);
-    druid.summonBuild = { id: unitId, turnsRemaining: turns };
     druid.usedThisTurn = true;
-    druid.currentMission = `Summoning a ${unitId} (${turns} turns remaining)`;
-    log.push(`Summon: ${civ.id}'s Druid begins summoning a ${unitId} at (${druid.x},${druid.y})`);
+    druid.currentMission = `Summoned a ${unitId} at (${spawned.x},${spawned.y})`;
+    log.push(`Summon: ${civ.id}'s Druid summons a ${unitId} at (${spawned.x},${spawned.y})`);
     window.GameEngine.quips.maybeQuip(druid, civ, unitId === "raptor" ? "summon_raptor" : "summon_shadowsteed", gameState);
     return true;
   }
 
-  /** Ticks an in-progress Druid summon (see startDruidSummon) -- the Druid
-   *  cannot move or act while summoning (mirrors a city's build queue,
-   *  "like a city, the druid builds the unit"), though it may do so while
-   *  already Hidden beforehand (nothing here touches an existing Hidden
-   *  condition). On completion, spawns the new unit on an open adjacent
-   *  tile -- if none is open, keeps retrying next turn (same convention as
-   *  spawnUnitInCity's naval-landing-spot fallback). */
-  function progressDruidSummon(civ, druid, gameState, log) {
-    const build = druid.summonBuild;
-    if (build.turnsRemaining > 0) build.turnsRemaining--;
-    druid.usedThisTurn = true;
-    if (build.turnsRemaining > 0) {
-      druid.currentMission = `Summoning a ${build.id} (${build.turnsRemaining} turns remaining)`;
-      return;
-    }
-    const spawned = spawnUnitAdjacentToUnit(civ, druid, build.id, gameState);
-    if (!spawned) {
-      druid.currentMission = `Summoning a ${build.id} (waiting for room to appear)`;
-      return;
-    }
-    druid.summonBuild = null;
-    druid.currentMission = `Summoned a ${build.id} at (${spawned.x},${spawned.y})`;
-    log.push(`Summon: ${civ.id}'s Druid completes a ${build.id} at (${spawned.x},${spawned.y})`);
+  /** Direct player-invoked Druid summon (2026-08-10, user-directed: mirrors
+   *  performPlayerBogWitchSummon) -- the ring-menu "Summon Raptor"/"Summon
+   *  Shadowsteed" actions call straight into this, always confirmed
+   *  (bypasses the automated/pendingIntent gate entirely), since a manual
+   *  ring click already IS the confirmation regardless of whether this
+   *  Druid happens to be flagged automated from some earlier turn.
+   *  Completes synchronously (see startDruidSummon) -- the new unit exists
+   *  in civ.units by the time this returns (or nothing happened, if
+   *  unaffordable/no room/already has a live one). */
+  function performPlayerDruidSummon(civ, druid, unitId, gameState) {
+    currentTurnNumber = gameState.turnNumber || 0;
+    currentGameStateRef = gameState;
+    const log = [];
+    const ok = startDruidSummon(civ, druid, unitId, gameState, log, true);
+    if (log.length) appendAIActionLog(gameState, civ.id, log);
+    return ok;
   }
 
   /** Orc "Bog Spirit" Wisp summon target: any swamp tile the civ has EVER
@@ -11262,6 +11255,8 @@ window.GameEngine = window.GameEngine || {};
     availableBuilds,
     maybeFoundCity,
     startDruidSummon,
+    performPlayerDruidSummon,
+    druidHasLiveSummon,
     isValidWispSummonTile,
     performPlayerBogWitchSummon,
     wispCapReached,
