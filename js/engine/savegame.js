@@ -13,11 +13,14 @@
  *     unlockedMechanics, city.filledOffsets, gameState.visibility[civId] are
  *     all Sets. Encoded as { __type: "Set", values: [...] } and restored by
  *     the reviver.
- *  2. Circular unit refs -- a carrying unit and its passenger point at each
- *     other (unit.carries <-> passenger.carriedBy). Every unit is given a
- *     transient numeric __uid before stringify, carries/carriedBy fields are
- *     replaced with a { __type: "unitRef", uid } marker instead of the real
- *     object (breaking the cycle), and __uid is stripped again immediately
+ *  2. Cross-unit refs -- a carrying unit and its passenger point at each
+ *     other (unit.carries <-> passenger.carriedBy, circular), and a
+ *     Following unit points at whoever it's following (unit.followTarget,
+ *     one-way but same problem: left alone, JSON.stringify would serialize
+ *     a full duplicate of the target instead of preserving identity).
+ *     Every unit is given a transient numeric __uid before stringify, these
+ *     three fields are replaced with a { __type: "unitRef", uid } marker
+ *     instead of the real object, and __uid is stripped again immediately
  *     after (finally block) so normal play is never affected. On load, a
  *     uid -> unit map is built from the (still-present, JSON-round-tripped)
  *     __uid fields, then every unitRef marker is resolved back to the real
@@ -55,7 +58,14 @@ window.GameEngine = window.GameEngine || {};
     delete gameState._civTurnCtx;
     try {
       return JSON.stringify(payload, (key, value) => {
-        if ((key === "carries" || key === "carriedBy") && value && typeof value === "object") {
+        // followTarget (2026-08-12, user-directed Follow order) is a
+        // one-way reference, not a cycle like carries/carriedBy, but still
+        // needs the same uid-marker treatment: left as a plain object
+        // reference, JSON.stringify would serialize a full DUPLICATE copy
+        // of the target unit rather than preserve identity, so after a
+        // reload followTarget would point at a stale clone instead of the
+        // real, live unit in civ.units.
+        if ((key === "carries" || key === "carriedBy" || key === "followTarget") && value && typeof value === "object") {
           return { __type: "unitRef", uid: uidMap.has(value) ? uidMap.get(value) : null };
         }
         if (value instanceof Set) {
@@ -89,7 +99,7 @@ window.GameEngine = window.GameEngine || {};
     }
     for (const civ of Object.values(gameState.civs)) {
       for (const unit of civ.units) {
-        for (const field of ["carries", "carriedBy"]) {
+        for (const field of ["carries", "carriedBy", "followTarget"]) {
           const ref = unit[field];
           if (ref && typeof ref === "object" && ref.__type === "unitRef") {
             unit[field] = ref.uid !== null && uidToUnit.has(ref.uid) ? uidToUnit.get(ref.uid) : null;

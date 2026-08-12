@@ -1404,10 +1404,26 @@ window.GameEngine = window.GameEngine || {};
     const isAdjacent = Math.max(Math.abs(unit.x - structureRecord.x), Math.abs(unit.y - structureRecord.y)) <= 1;
     const isSiege = isAdjacent || !!window.GameData.getUnit(unit.typeId).siegeAtRange;
     const atk = effectiveAttack(unit, attackerCiv, { isSiege, opposingCivId: defenderCiv && defenderCiv.id });
-    const dmg = building.defense && !gateUnlocked
+    const rollHit = () => building.defense && !gateUnlocked
       ? mitigatedDamage(atk, building.defense)
       : Math.round(damageRoll(atk));
+    const dmg = rollHit();
     structureRecord.hp -= dmg;
+    // Double Strike (2026-08-12, user-directed: confirmed it can resolve
+    // against structures, same as it already does against units in
+    // resolveRound) -- a structure never counterattacks at all, so there's
+    // no return-hit sequencing to worry about; just a flat second roll of
+    // the same chance, gated on the first hit not already having destroyed
+    // the structure.
+    let doubleStruck = false, doubleDamage = 0;
+    if (structureRecord.hp > 0) {
+      const doubleStrikePct = effectiveDoubleStrikePct(unit, attackerCiv);
+      if (doubleStrikePct > 0 && Math.random() < doubleStrikePct) {
+        doubleStruck = true;
+        doubleDamage = rollHit();
+        structureRecord.hp -= doubleDamage;
+      }
+    }
     let counterDamage = 0, militiaSpawned = null;
     if (gateUnlocked) {
       // Every special wall defense suppressed -- fall straight through with
@@ -1420,7 +1436,7 @@ window.GameEngine = window.GameEngine || {};
     } else if (building.isWall && defenderCiv && spikesAttackRating(defenderCiv) > 0) {
       counterDamage = spikesCounterattack(structureRecord, defenderCiv, unit, attackerCiv, spikesAttackRating(defenderCiv));
     }
-    return { damage: dmg, destroyed: structureRecord.hp <= 0, counterDamage, militiaSpawned };
+    return { damage: dmg, destroyed: structureRecord.hp <= 0, counterDamage, militiaSpawned, doubleStruck, doubleDamage };
   }
 
   /**

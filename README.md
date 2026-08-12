@@ -151,9 +151,9 @@ js/ui/
   dialog.js                                     In-game modal dialogs
                                                 (replaces confirm/prompt/
                                                 alert)
-  credits.js                                      Renders doc/credits.txt
-                                                   as the scrolling credits
-                                                   crawl
+  credits.js                                      Renders credits.txt (root
+                                                   folder) as the scrolling
+                                                   credits crawl
   clouds.js                                         Cosmetic drifting cloud
                                                      layer at the viewport
                                                      edges
@@ -169,7 +169,8 @@ js/main.js                Bootstrap: title/setup screen, race/civ/spectator
                           together, minimal logic of its own.
 
 assets/                   Real, checked-in art/audio (see "Assets" below)
-doc/                      Design references and credits.txt
+credits.txt               Credits crawl source (root folder; see credits.js)
+doc/                      Design references
 .githooks/pre-commit      Build-stamp hook (see above)
 working/                  Asset-authoring tooling (sprite slicing, chroma-
                           key, SFX manifest regeneration) -- not part of the

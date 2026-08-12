@@ -71,10 +71,20 @@ window.UI = window.UI || {};
           : "";
         return `<li>${label}${link}</li>`;
       }).join("");
+      // Idle-city note (2026-08-12, user-directed): only shown when the list
+      // actually contains an idle-city item (tabKind "city", no
+      // chooseResearch flag) -- see main.js's defaultIdleCitiesToGatherResources,
+      // which is what actually applies this default the moment End Turn is
+      // confirmed here.
+      const hasIdleCity = (dialog.items || []).some((item) => item.tabKind === "city");
+      const idleCityNote = hasIdleCity
+        ? `<p class="game-dialog-hint">Cities left without an action will default to Gather Resources.</p>`
+        : "";
       return `
         <h2>End Turn?</h2>
         <p>There's still work you can do this turn:</p>
         <ul class="game-dialog-list">${items}</ul>
+        ${idleCityNote}
         <div class="game-dialog-actions">
           <button class="menu-dropdown-btn" id="game-dialog-cancel-btn">Keep Playing</button>
           <button class="menu-dropdown-btn game-dialog-primary" id="game-dialog-confirm-btn">End Turn</button>
@@ -161,6 +171,9 @@ window.UI = window.UI || {};
              `<li>${escapeHtml(t.label)} <button class="dialog-action-link" data-goto-tech-id="${escapeHtml(t.id)}">View</button></li>`
            ).join("")}</ul>`
         : "";
+      // "Choose Next Research" is hidden when a tech is already being
+      // researched (2026-08-12, user-directed) -- see main.js's
+      // openTechResearchedDialog for how alreadyResearching gets set.
       return `
         <h2>Research Complete</h2>
         <p class="game-dialog-tech-name">${escapeHtml(dialog.techLabel)}</p>
@@ -168,7 +181,7 @@ window.UI = window.UI || {};
         ${unlocked}
         <div class="game-dialog-actions">
           <button class="menu-dropdown-btn" id="game-dialog-ok-btn">OK</button>
-          <button class="menu-dropdown-btn game-dialog-primary" id="game-dialog-confirm-btn">Choose Next Research</button>
+          ${dialog.alreadyResearching ? "" : `<button class="menu-dropdown-btn game-dialog-primary" id="game-dialog-confirm-btn">Choose Next Research</button>`}
         </div>`;
     }
     if (dialog.kind === "unitBuilt") {

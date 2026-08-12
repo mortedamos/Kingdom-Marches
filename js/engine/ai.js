@@ -11025,6 +11025,16 @@ window.GameEngine = window.GameEngine || {};
         ax: unit.x, ay: unit.y, atkUnit: unit,
         dx: bestStruct.x, dy: bestStruct.y, defUnit: null,
       });
+      // Double Strike (2026-08-12, user-directed): same follow-up narration
+      // as the unit-vs-unit branch above (see combat.js's attackStructure).
+      if (res.doubleStruck) {
+        window.GameEngine.floatingText.spawnFloatingText(unit, "Double Strike!", "strike");
+        window.GameEngine.combat.recordCombatEvent({
+          ax: unit.x, ay: unit.y, atkUnit: unit,
+          dx: bestStruct.x, dy: bestStruct.y, defUnit: null,
+        });
+        window.SfxSystem.playAction(civ.raceId, unit.typeId, "attack", unit.x, unit.y, DOUBLE_STRIKE_SFX_DELAY_MS);
+      }
       markCombatEngaged(civ); // attacker only -- no defending unit is engaged here
       // Hidden: attacking reveals the attacker, regardless of target type.
       // "Ambush!" floating text (2026-07-22, user-directed): checked before
@@ -11058,15 +11068,18 @@ window.GameEngine = window.GameEngine || {};
         log.push(`Raze: ${civ.id}'s ${describeUnit(unit)} destroyed ${bestStruct.s.civ.id}'s ${bestStruct.s.record.id}`);
         unit.currentMission = `Destroyed ${bestStruct.s.civ.id}'s ${bestStruct.s.record.id}`;
       } else {
-        log.push(`Raid: ${civ.id}'s ${describeUnit(unit)} damaged ${bestStruct.s.record.id} (${Math.max(0, bestStruct.s.record.hp)}/${bestStruct.s.record.maxHp})`);
+        log.push(`Raid: ${civ.id}'s ${describeUnit(unit)} damaged ${bestStruct.s.record.id} (${Math.max(0, bestStruct.s.record.hp)}/${bestStruct.s.record.maxHp})` +
+          (res.doubleStruck ? `, DOUBLE STRIKE ${res.doubleDamage} dmg` : ""));
         unit.currentMission = `Raiding ${bestStruct.s.civ.id}'s ${bestStruct.s.record.id} at (${bestStruct.x},${bestStruct.y})`;
       }
       unit.usedThisTurn = true;
       // Veteran leveling: structure damage IS a real number (unlike a city
       // siege's probabilistic knockdown), so this reuses xpForCombatAction's
       // damage-scaled formula plus a flat bonus for actually destroying it.
+      // Double Strike's follow-up hit counts toward it too (see the
+      // unit-vs-unit branch above).
       if (unit.hp > 0) {
-        let structXP = window.GameEngine.combat.xpForCombatAction({ damage: res.damage });
+        let structXP = window.GameEngine.combat.xpForCombatAction({ damage: res.damage + res.doubleDamage });
         if (res.destroyed) structXP += 8;
         grantXPAndAutoLevel(unit, civ, structXP);
       }

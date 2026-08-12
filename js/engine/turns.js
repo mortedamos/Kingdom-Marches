@@ -1255,7 +1255,22 @@ window.GameEngine = window.GameEngine || {};
     // spendMovement/computeMovementBudget (project_turn_action_economy
     // memory): a fresh turn means the persisted leftover-movement budget
     // from last turn is stale and must be lazily recomputed on first use.
-    for (const unit of civ.units) { unit.usedThisTurn = false; unit.resting = false; unit.movesRemaining = null; }
+    for (const unit of civ.units) {
+      unit.usedThisTurn = false; unit.resting = false; unit.movesRemaining = null;
+      // Teleportation exhaustion (2026-08-12, user-directed fix): forced
+      // straight back into Resting for the upcoming turn, for every civ --
+      // ai.js's own per-unit turn loop already does this for AI-controlled
+      // units (see its "Teleportation exhaustion" comment), but a
+      // human-controlled unit had no equivalent hook, so it just sat
+      // un-rested (and therefore un-healing, and therefore permanently
+      // exhausted -- see the heal-phase clear check above, which only ever
+      // runs for a unit that IS resting) unless the player remembered to
+      // manually re-click Rest on it every single turn. usedThisTurn=true
+      // alongside it is what makes orders.js's isSpent skip nagging the
+      // player for a new order on a unit that can't do anything else this
+      // turn anyway.
+      if (unit.conditions?.exhausted) { unit.resting = true; unit.usedThisTurn = true; }
+    }
 
     // Multi-turn goto orders (2026-08-06, user-directed): MUST run here,
     // after the reset immediately above, not in beginCivTurn (tried first,
@@ -1283,6 +1298,28 @@ window.GameEngine = window.GameEngine || {};
         } catch (err) {
           console.error(`Goto-order error for unit ${unit.id} (${civ.id}):`, err);
           unit.gotoTarget = null;
+        }
+      }
+      // Sentry / Follow (2026-08-12, user-directed): same "persisted order,
+      // re-evaluated fresh every turn" shape and hook point as the goto
+      // orders just above -- see orders.js's advanceSentryOrder/
+      // advanceFollowOrder.
+      for (const unit of civ.units) {
+        if (!unit.sentry) continue;
+        try {
+          window.GameEngine.orders.advanceSentryOrder(unit, gameState);
+        } catch (err) {
+          console.error(`Sentry-order error for unit ${unit.id} (${civ.id}):`, err);
+          unit.sentry = false;
+        }
+      }
+      for (const unit of civ.units) {
+        if (!unit.followTarget) continue;
+        try {
+          window.GameEngine.orders.advanceFollowOrder(unit, gameState);
+        } catch (err) {
+          console.error(`Follow-order error for unit ${unit.id} (${civ.id}):`, err);
+          unit.followTarget = null;
         }
       }
     }

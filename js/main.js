@@ -258,9 +258,15 @@
   // and CIV_ABOVE_TWO_SHRINK_RATE already use, so width/height each shrink by
   // sqrt(0.9) (~5.1%), not 10% each (which would compound to ~19% less area).
   const MAP_SIZE_USER_SHRINK = 0.9;
+  // A second, separate -10% AREA cut (2026-08-12, user-directed: "i meant to
+  // reduce map size an additional 10%" -- clarifying the ask above was meant
+  // to stack, not restate, the same request). Same convention as
+  // MAP_SIZE_USER_SHRINK; the two compound to -19% AREA combined (0.9*0.9 =
+  // 0.81), not -20%.
+  const MAP_SIZE_USER_SHRINK_2 = 0.9;
   function mapSizeForCivCount(civCount) {
     const areaShrink = Math.max(0.2, 1 - CIV_ABOVE_TWO_SHRINK_RATE * Math.max(0, civCount - 2));
-    const linearScale = Math.sqrt(civCount / REFERENCE_CIV_COUNT) * Math.sqrt(MAP_SIZE_BOOST) * Math.sqrt(areaShrink) * Math.sqrt(MAP_SIZE_USER_SHRINK);
+    const linearScale = Math.sqrt(civCount / REFERENCE_CIV_COUNT) * Math.sqrt(MAP_SIZE_BOOST) * Math.sqrt(areaShrink) * Math.sqrt(MAP_SIZE_USER_SHRINK) * Math.sqrt(MAP_SIZE_USER_SHRINK_2);
     const width = Math.round(Math.min(MAX_MAP_WIDTH, Math.max(MIN_MAP_WIDTH, REFERENCE_MAP_WIDTH * linearScale)));
     const height = Math.round(Math.min(MAX_MAP_HEIGHT, Math.max(MIN_MAP_HEIGHT, REFERENCE_MAP_HEIGHT * linearScale)));
     return { width, height };
@@ -646,12 +652,12 @@
   let creditsAnimId = null;
 
   /** "View Credits" in the Game Options modal: closes that modal (per the
-   *  user's own framing of the request) and fetches/parses doc/credits.txt
-   *  fresh every time it's opened, so editing the file needs no rebuild --
-   *  see js/ui/credits.js for the tiny format it understands. */
+   *  user's own framing of the request) and fetches/parses credits.txt
+   *  (root folder) fresh every time it's opened, so editing the file needs
+   *  no rebuild -- see js/ui/credits.js for the tiny format it understands. */
   function openCredits() {
     $("launch-options-overlay").style.display = "none";
-    fetch("doc/credits.txt")
+    fetch("credits.txt")
       .then((r) => r.text())
       .then((text) => {
         $("credits-content").innerHTML = window.UI.credits.render(text);
@@ -2008,6 +2014,12 @@
     unit.pendingIntent = null;
     unit.gotoTarget = null;
     if (unit.channeling === "garrison") unit.channeling = null;
+    // Sentry / Follow (2026-08-12, user-directed) -- same "any new order
+    // supersedes a standing one" rule gotoTarget already gets here, so a
+    // unit taken off Sentry/Follow by being given something else to do
+    // doesn't keep re-triggering its old standing order next turn.
+    unit.sentry = false;
+    unit.followTarget = null;
   }
 
   /** Shift-held "repeat for the next 3 turns" (2026-08-07, user-directed):
@@ -2472,6 +2484,14 @@
       techLabel: tech.label,
       techDescription: tech.description || "",
       unlockedTechs,
+      // Already-researching gate (2026-08-12, user-directed): a city's
+      // "Research" boost action can finish `techId` early, mid-turn, ahead
+      // of this notice actually showing (queued for round-end -- see
+      // finishRoundBookkeeping). If the player had ALREADY picked a next
+      // tech by then (civ.currentResearch is set again), offering "Choose
+      // Next Research" here would re-prompt for a decision that's already
+      // made -- dialog.js hides that button whenever this is true.
+      alreadyResearching: !!civ.currentResearch,
       onChooseResearch: () => {
         // Defer onDone until the tech tree is actually CLOSED (2026-08-07,
         // user-directed bug fix), rather than firing it the instant the
@@ -2654,11 +2674,24 @@
    *  there); "Skip" just dismisses without that tab switch. Either way,
    *  `onDone` is what actually continues processing the rest of the turn
    *  (advanceTurn's processBatch). */
-  function offerAttackNotice(notice, onDone) {
+  // Orientation pause (2026-08-12, user-directed): after "Go to Attack" on
+  // the PRE-attack notice specifically (see its offerAttackNotice call
+  // below), the player has just been dropped onto the scene but the fight
+  // hasn't happened yet -- give them a beat to actually look at it before
+  // resolvePendingAIAttack fires. Not applied to "Skip" (they explicitly
+  // didn't ask to look) or to the post-hoc notice (that attack already
+  // happened -- see its own offerAttackNotice call, which passes no delay).
+  const ATTACK_NOTICE_GO_TO_DELAY_MS = 1000;
+
+  function offerAttackNotice(notice, onDone, { goToDelayMs = 0 } = {}) {
     viewState.dialog = {
       kind: "attackNotice",
       unitLabel: notice.label,
-      onGoTo: () => { goToTile(notice.x, notice.y); onDone(); },
+      onGoTo: () => {
+        goToTile(notice.x, notice.y);
+        if (goToDelayMs > 0) { redraw(); setTimeout(onDone, goToDelayMs); }
+        else onDone();
+      },
       onSkip: () => { onDone(); },
     };
     redraw();
@@ -2739,7 +2772,28 @@
    *  civ BOUNDARY specifically so the "<Race> Kingdom Taking Its Turn..."
    *  banner set just before the yield actually gets a chance to paint.
    *  Skips announcing the human civ's own (already-acted) segment. */
+  /** Idle-city default (2026-08-12, user-directed): a city the player never
+   *  gave an action to this turn defaults to Gather Resources rather than
+   *  producing nothing at all -- matches the confirmEndTurn dialog's own
+   *  "these will gather resources" text (see collectUnresolvedTurnWork's
+   *  caller in dialog.js), so it fires here at the one spot BOTH the
+   *  reminder-confirmed-anyway path and the no-reminder-shown path funnel
+   *  through before the round actually resolves. isCityIdle is the exact
+   *  same predicate the reminder itself used to flag these cities, so
+   *  nothing already spoken for (a build, resources, research) is touched. */
+  function defaultIdleCitiesToGatherResources() {
+    if (!humanCivId) return;
+    const civ = gameState.civs[humanCivId];
+    if (!civ) return;
+    for (const city of civ.cities) {
+      if (window.GameEngine.cities.isCityIdle(civ, city, gameState)) {
+        window.GameEngine.cities.applyResourceProduction(city, civ, gameState);
+      }
+    }
+  }
+
   function advanceTurn() {
+    defaultIdleCitiesToGatherResources();
     let announcedCivId = null;
     function processBatch() {
       let stepResult;
@@ -2782,6 +2836,7 @@
           offerAttackNotice(
             { x: targetUnit.x, y: targetUnit.y, label: steppedUnit.name || attackerBaseUnit.label },
             () => { resolvePendingAIAttack(gameState.civs[steppedUnit.civId], steppedUnit); processBatch(); },
+            { goToDelayMs: ATTACK_NOTICE_GO_TO_DELAY_MS },
           );
           return;
         }
@@ -3422,6 +3477,68 @@
     redraw();
   }
 
+  /** Sentry (2026-08-12, user-directed): sits and does nothing until an
+   *  enemy comes within range, then attacks it -- see orders.js's
+   *  advanceSentryOrder for the per-turn check (run from turns.js's
+   *  finishCivTurn) and isSpent for why a sentried unit never nags for a
+   *  new order. Doesn't spend usedThisTurn itself (unlike Rest and Defend)
+   *  -- a unit going on watch hasn't actually DONE anything yet this turn;
+   *  the eventual attack, if any, spends it the normal way. */
+  function handleSentry() {
+    if (!humanCivId || !viewState.selectedUnit) return;
+    const unit = viewState.selectedUnit;
+    if (unit.usedThisTurn || unit.channeling) return;
+    endAutomationAndGoto(unit);
+    unit.sentry = true;
+    unit.currentMission = "On Sentry";
+    redraw();
+  }
+
+  function handleCancelSentry() {
+    if (!humanCivId || !viewState.selectedUnit) return;
+    const unit = viewState.selectedUnit;
+    if (!unit.sentry) return;
+    unit.sentry = false;
+    redraw();
+  }
+
+  /** Follow (2026-08-12, user-directed): opens tile-placement mode (same
+   *  mechanism startTeleportPlacement/startWispSummonPlacement use), but
+   *  the highlighted "slots" are wherever this civ's OTHER units currently
+   *  stand rather than empty terrain -- picking one sets unit.followTarget
+   *  to that unit (a direct object reference, same convention as
+   *  unit.carries/carriedBy; see savegame.js's serialize/deserialize for
+   *  the matching round-trip handling). See orders.js's advanceFollowOrder
+   *  for the per-turn movement this then drives. */
+  function startFollowPlacement(unit) {
+    if (!humanCivId || unit.usedThisTurn || unit.channeling) return;
+    const civ = gameState.civs[humanCivId];
+    if (!civ) return;
+    const slots = civ.units
+      .filter((u) => u !== unit && !u.carriedBy)
+      .map((u) => ({ x: u.x, y: u.y, unit: u }));
+    if (!slots.length) return;
+    endAutomationAndGoto(unit);
+    viewState.placement = {
+      slots,
+      label: "Follow...",
+      onPick: (slot) => {
+        viewState.placement = null;
+        if (slot) unit.followTarget = slot.unit;
+        redraw();
+      },
+    };
+    redraw();
+  }
+
+  function handleCancelFollow() {
+    if (!humanCivId || !viewState.selectedUnit) return;
+    const unit = viewState.selectedUnit;
+    if (!unit.followTarget) return;
+    unit.followTarget = null;
+    redraw();
+  }
+
   /** Automate Actions toggle (2026-08-06, user-directed) -- see sidebar.js's
    *  automateBtn and ai.js's runAutomatedUnitTurn/turns.js's finishCivTurn
    *  hook for the actual per-turn behavior this flag switches on. Turning
@@ -3672,6 +3789,9 @@
       case "buildRoadHere":
         handleBuildRoad();
         break;
+      case "helpBuild":
+        handleHelpBuild();
+        break;
       case "foundCity":
         handleFoundCity();
         break;
@@ -3712,6 +3832,18 @@
         break;
       case "stopOrder":
         handleStopOrder();
+        break;
+      case "sentry":
+        handleSentry();
+        break;
+      case "cancelSentry":
+        handleCancelSentry();
+        break;
+      case "follow":
+        startFollowPlacement(unit);
+        break;
+      case "cancelFollow":
+        handleCancelFollow();
         break;
       case "deactivateAura":
         unit.auraActive = false;
@@ -4326,6 +4458,25 @@
       tile.hasRoad = true;
       unit.usedThisTurn = true;
     }
+    redraw();
+  }
+
+  /** Help Build (2026-08-12, user-directed): a Pioneer standing on its own
+   *  city cuts 1 turn off whatever that city is currently building -- see
+   *  orders.js's contextMenuOptions for the "helpBuild" ring option this
+   *  answers, gated the same way handleBuildRoad is (typeId, not just the
+   *  canBuildRoad data flag, to match that existing convention). Spends the
+   *  Pioneer's action for the turn, same as Build Road Here. */
+  function handleHelpBuild() {
+    if (!humanCivId || !viewState.selectedUnit) return;
+    const unit = viewState.selectedUnit;
+    if (unit.typeId !== "pioneer" || unit.usedThisTurn) return;
+    const civ = gameState.civs[humanCivId];
+    const city = civ && civ.cities.find((c) => c.x === unit.x && c.y === unit.y);
+    if (!city || !city.buildQueue || city.buildQueue.turnsRemaining === undefined) return;
+    endAutomationAndGoto(unit);
+    city.buildQueue.turnsRemaining--;
+    unit.usedThisTurn = true;
     redraw();
   }
 

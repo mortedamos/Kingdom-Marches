@@ -60,6 +60,13 @@ window.GameEngine = window.GameEngine || {};
     if (unit.usedThisTurn) return true;
     if (unit.channeling) return true;
     if (unit.gotoTarget) return true;
+    // Sentry / Follow (2026-08-12, user-directed): same standing-order
+    // exclusion as gotoTarget above -- both keep acting automatically every
+    // turn (see turns.js's finishCivTurn -> advanceSentryOrder/
+    // advanceFollowOrder) until they resolve on their own or the player
+    // cancels them, so neither should keep nagging Next Unit/End Turn.
+    if (unit.sentry) return true;
+    if (unit.followTarget) return true;
     // Automate Actions (2026-08-06, user-directed): an automated unit is
     // "already ordered" by definition -- same exclusion goto orders already
     // get from the Next Unit/End Turn nagging cycle (a pendingIntent still
@@ -358,6 +365,78 @@ window.GameEngine = window.GameEngine || {};
   }
 
   /**
+   * SENTRY (2026-08-12, user-directed)
+   * -----------------------------------
+   * A standing order: do nothing until an enemy unit comes within this
+   * unit's own attack range, then attack the closest one -- no player input
+   * either turn. Called once per turn for every sentried unit (see turns.js's
+   * finishCivTurn, same hook point as advanceGotoOrder above), so the check
+   * re-runs fresh every turn for as long as the order stays active (cleared
+   * only by main.js's Cancel Sentry, or implicitly by any other order
+   * superseding it). Routes the actual attack through the same `attack()`
+   * this module already exposes to the player, so the target still gets
+   * the full canAttackUnitNow validation (line of sight, real range with
+   * every bonus applied) rather than trusting the raw Chebyshev scan below.
+   */
+  function advanceSentryOrder(unit, gameState) {
+    if (!unit.sentry || unit.usedThisTurn) return;
+    const civ = gameState.civs[unit.civId];
+    if (!civ) return;
+    const range = window.GameEngine.combat.effectiveRange(unit, civ);
+    let best = null, bestDist = Infinity;
+    for (const otherCiv of Object.values(gameState.civs)) {
+      if (otherCiv.id === unit.civId || otherCiv.eliminated) continue;
+      for (const enemy of otherCiv.units) {
+        if (enemy.carriedBy || enemy.hp <= 0) continue;
+        const dist = window.GameEngine.influence.chebyshev(unit.x, unit.y, enemy.x, enemy.y);
+        if (dist > range || dist >= bestDist) continue;
+        if (!window.GameEngine.ai.canAttackUnitNow(civ, unit, enemy, gameState)) continue;
+        best = { kind: "unit", unit: enemy, civ: otherCiv };
+        bestDist = dist;
+      }
+    }
+    if (best) {
+      attack(unit, gameState, best, unit.civId);
+    } else {
+      unit.currentMission = "On Sentry";
+    }
+  }
+
+  /**
+   * FOLLOW (2026-08-12, user-directed)
+   * ------------------------------------
+   * A standing order: every turn, walk toward unit.followTarget (another
+   * allied unit, set via main.js's tile-placement flow) far enough to end
+   * this turn adjacent to it, if not already. Re-targets the follower's
+   * CURRENT position fresh every call (unlike gotoTarget's fixed
+   * destination) since the whole point is tracking a unit that keeps
+   * moving too. Cleared automatically once the target is gone (dead,
+   * disbanded) -- there's nothing left to follow.
+   */
+  function advanceFollowOrder(unit, gameState) {
+    const target = unit.followTarget;
+    if (!target || unit.usedThisTurn) return;
+    const civ = gameState.civs[unit.civId];
+    if (!civ || target.hp <= 0 || target.carriedBy || !civ.units.includes(target)) {
+      unit.followTarget = null;
+      return;
+    }
+    const label = target.name || window.GameData.getUnit(target.typeId).label;
+    if (window.GameEngine.influence.chebyshev(unit.x, unit.y, target.x, target.y) <= 1) {
+      unit.currentMission = `Following ${label}`;
+      return;
+    }
+    // spendMovement (not the exported ai.js's own moveUnitToward, which
+    // ISN'T exported -- this is the exact same one-line body it wraps)
+    // paths toward the target's tile and stops as close as this turn's
+    // budget allows; since the target's own tile is occupied it can never
+    // actually be landed on, so this naturally settles adjacent once in
+    // range rather than needing a separate "stop short" check here.
+    window.GameEngine.ai.spendMovement(unit, target.x, target.y, gameState.map, gameState.civs);
+    unit.currentMission = `Following ${label}`;
+  }
+
+  /**
    * WHERE IS THIS UNIT GOING? (2026-08-06, user-directed)
    * ------------------------------------------------------
    * A unit that keeps moving on its own between clicks -- one mid multi-turn
@@ -516,6 +595,24 @@ window.GameEngine = window.GameEngine || {};
         }
         if (baseUnit.canBuildRoad && !tile.hasRoad) {
           options.push({ kind: "buildRoadHere", label: "Build Road Here" });
+        }
+        // Help Build (2026-08-12, user-directed): a Pioneer standing on its
+        // OWN civ's city can throw its turn into whatever that city is
+        // currently building, cutting 1 turn off the countdown -- same
+        // buildQueue.turnsRemaining field progressBuildQueue counts down
+        // every turn (see ai.js), so this is just an extra manual decrement
+        // on top of that automatic one. canBuildRoad rather than typeId ---
+        // ==="pioneer" would be the more general gate, but road-building
+        // itself is hardcoded to "pioneer" too (see main.js's
+        // handleBuildRoad), so this stays consistent with that. Only offered
+        // for the power-based cost model (turnsRemaining !== undefined) --
+        // the legacy coin-accumulation path this deliberately excludes is
+        // already unreachable in practice (see ai.js's progressBuildQueue).
+        if (baseUnit.canBuildRoad && !unit.usedThisTurn) {
+          const homeCity = civ.cities.find((c) => c.x === unit.x && c.y === unit.y);
+          if (homeCity && homeCity.buildQueue && homeCity.buildQueue.turnsRemaining !== undefined) {
+            options.push({ kind: "helpBuild", label: "Help Build" });
+          }
         }
       }
 
@@ -852,6 +949,34 @@ window.GameEngine = window.GameEngine || {};
       // stopOrderBtn for the equivalent sidebar button.
       if (unit.gotoTarget) options.push({ kind: "stopOrder", label: "Stop Order", danger: true });
 
+      // Sentry (2026-08-12, user-directed): a standing order that does
+      // nothing until an enemy comes within range, then attacks it, without
+      // ever asking the player for a fresh order in the meantime (see
+      // isSpent above and advanceSentryOrder below, run every turn from
+      // turns.js's finishCivTurn). Only offered to units that could
+      // actually attack something -- a unit with no attack stat standing
+      // Sentry would never have anything to react to.
+      if (unit.sentry) {
+        options.push({ kind: "cancelSentry", label: "Cancel Sentry", danger: true });
+      } else if (!unit.usedThisTurn && !unit.channeling && baseUnit.attack > 0) {
+        options.push({ kind: "sentry", label: "Sentry" });
+      }
+
+      // Follow (2026-08-12, user-directed): a standing order to move toward
+      // and stay adjacent to a chosen allied unit every turn (see
+      // advanceFollowOrder below). The target can be ANY allied unit
+      // anywhere on the map, not a small fixed set of adjacent candidates
+      // (unlike Cast Fly/Carry above), so this hands off to main.js's
+      // tile-placement mode -- same mechanism Roots of the World/
+      // Teleportation use for an arbitrary destination, just with the
+      // "slots" being wherever this civ's OTHER units currently stand
+      // instead of empty terrain.
+      if (unit.followTarget) {
+        options.push({ kind: "cancelFollow", label: "Cancel Follow", danger: true });
+      } else if (!unit.usedThisTurn && !unit.channeling && civ.units.some((u) => u !== unit && !u.carriedBy)) {
+        options.push({ kind: "follow", label: "Follow..." });
+      }
+
       // Rest and Defend (2026-08-07, user-directed): merged from two
       // separate pills into one -- both effects (heal via unit.resting,
       // x2 defense via the "defending" condition) still apply together;
@@ -1157,6 +1282,8 @@ window.GameEngine = window.GameEngine || {};
     startGotoOrder,
     advanceGotoOrder,
     stopGotoOrder,
+    advanceSentryOrder,
+    advanceFollowOrder,
     performRestAndDefend,
     plannedPath,
     contextMenuOptions,

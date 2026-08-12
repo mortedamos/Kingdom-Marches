@@ -194,6 +194,13 @@ window.MusicSystem = (function () {
     for (let v = 1; v <= MAX_VARIANTS; v++) {
       criticalTasks.push({ key: `neutral_${v}`, path: `assets/music/neutral_${v}.mp3` });
     }
+    // Neutral victory fallback (2026-08-12, user-directed): played when the
+    // winning race has no victory track of its own -- see resolveVictoryTrack.
+    // Background tier, same as the race victory tracks themselves (can't be
+    // needed until a game actually ends).
+    for (let v = 1; v <= MAX_VARIANTS; v++) {
+      backgroundTasks.push({ key: `neutral_victory_${v}`, path: `assets/music/neutral_victory_${v}.mp3` });
+    }
     // Game over (2026-08-06, user-directed) -- single fixed file, no race
     // prefix, same "no race" shape as neutral above.
     criticalTasks.push({ key: "game_over", path: "assets/music/game_over.mp3" });
@@ -320,6 +327,36 @@ window.MusicSystem = (function () {
     return { path, key: chosenKey };
   }
 
+  /** First available neutral_victory_N.mp3 variant, or null if none exist --
+   *  the shared fallback for any race with no victory track of its own (see
+   *  resolveVictoryTrack). No round-robin needed here (unlike pickVariant):
+   *  this only ever plays once per game, right at the end. */
+  function resolveNeutralVictoryTrack() {
+    if (!availability) return null;
+    for (let v = 1; v <= MAX_VARIANTS; v++) {
+      const key = `neutral_victory_${v}`;
+      if (availability.get(key) && !failedTracks.has(key)) return { path: `assets/music/${key}.mp3`, key };
+    }
+    return null;
+  }
+
+  /** Resolves the winning race's victory track (2026-08-12, user-directed):
+   *  if that race has no victory track of its own, falls back to
+   *  neutral_victory rather than resolveTrack's usual "that race's own
+   *  default" chain -- a generic victory fanfare reads better at the moment
+   *  the game actually ends than silently dropping back to ambient music.
+   *  Only falls through to the race's default track if neutral_victory is
+   *  ALSO unavailable, as a last resort before silence. */
+  function resolveVictoryTrack(race) {
+    const variant = pickVariant(race, "victory");
+    if (variant !== null) return { path: trackPath(race, "victory", variant), key: `${race}_victory_${variant}` };
+    console.log(`[music] no victory track for ${race} -- falling back to neutral_victory`);
+    const neutral = resolveNeutralVictoryTrack();
+    if (neutral) return neutral;
+    console.log(`[music] neutral_victory unavailable either -- falling back to ${race} default`);
+    return resolveTrack(race, "default");
+  }
+
   /** Resolves the manually-pinned track (see setManualTrack), or null if it's
    *  gone missing/failed since being picked (falls back to automatic mode). */
   function resolveManualTrack(key) {
@@ -352,11 +389,12 @@ window.MusicSystem = (function () {
     if (gameOverActive) return { path: "assets/music/game_over.mp3", key: "game_over" };
     // Victory (2026-07-22, user-directed): once a civ has won, its theme
     // takes priority over the ordinary race/situation resolution below --
-    // reuses resolveTrack's existing fallback chain (victory -> that race's
-    // own default -> silence), so a race with no dedicated victory track yet
-    // (every race but Elf, currently) just keeps playing its normal theme
-    // instead of going silent at the exact moment the game ends.
-    if (victoryRace) return resolveTrack(victoryRace, "victory");
+    // see resolveVictoryTrack for the fallback chain (that race's victory ->
+    // neutral_victory -> that race's default -> silence), so a race with no
+    // dedicated victory track yet just gets a generic victory fanfare
+    // instead of going silent (or quietly reverting to ambient music) at the
+    // exact moment the game ends.
+    if (victoryRace) return resolveVictoryTrack(victoryRace);
     return currentRace ? resolveTrack(currentRace, activeSituation) : resolveSpectatorTrack();
   }
 

@@ -286,8 +286,8 @@ window.GameData.UNITS = {
     // independent by design, so it needs no change here; verified this
     // still holds live after the cut, not just assumed.
     id: "wizard", label: "Wizard", symbol: "✦", category: "military", raceOnly: "human",
-    attack: 3, defense: 3, movement: 2, visionRadius: 3, range: 2, burnChancePct: 0.10, frozenChancePct: 0.10, 
-    coinCost: 35, attackChars: ["⚡", "❄️", "🔥", "☄", "✨"], doubleStrikePct: 0.1,
+    attack: 3, defense: 3, movement: 2, visionRadius: 3, range: 2, burnChancePct: 0.05, frozenChancePct: 0.05, 
+    coinCost: 35, attackChars: ["⚡", "❄️", "🔥", "☄", "✨"], doubleStrikePct: 0.1, biggerPct: .1,
   },
 
   // --- ELF full roster (see techs.js) ---
