@@ -315,6 +315,21 @@ window.GameEngine = window.GameEngine || {};
     return !TERRAIN[tile.terrain].isWater;
   }
 
+  /**
+   * 8-directional (diagonal-inclusive) flood fill (2026-08-12, bug fix) --
+   * MUST match the connectivity every actual movement/reachability check in
+   * ai.js uses (canReachByLand's own BFS, and the Chebyshev distance used
+   * pervasively throughout), not just cardinal neighbors. A 4-directional
+   * fill here used to assign two land tiles touching only at a corner (a
+   * common "pinch point" in procedurally generated coastlines) to different
+   * landmassId's even though a unit can walk diagonally between them --
+   * every landmassId-based pre-filter in ai.js (Dire Wolf's hunt among many
+   * others -- see the ~60 call sites) would then wrongly discard a
+   * genuinely reachable target/tile before its own, correctly-8-directional
+   * reachability check ever got a chance to confirm it. Confirmed as the
+   * cause of Dire Wolf reporting "No enemy to hunt on this landmass" with
+   * enemies actually present and reachable.
+   */
   function findLandmasses(tiles, width, height) {
     const visited = new Uint8Array(width * height);
     const landmasses = [];
@@ -329,7 +344,10 @@ window.GameEngine = window.GameEngine || {};
           const cur = stack.pop();
           group.push(cur);
           const cx = cur % width, cy = Math.floor(cur / width);
-          const neighbors = [[cx - 1, cy], [cx + 1, cy], [cx, cy - 1], [cx, cy + 1]];
+          const neighbors = [
+            [cx - 1, cy], [cx + 1, cy], [cx, cy - 1], [cx, cy + 1],
+            [cx - 1, cy - 1], [cx + 1, cy - 1], [cx - 1, cy + 1], [cx + 1, cy + 1],
+          ];
           for (const [nx, ny] of neighbors) {
             if (nx < 0 || nx >= width || ny < 0 || ny >= height) continue;
             const nIdx = ny * width + nx;

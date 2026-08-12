@@ -83,6 +83,46 @@ window.UI = window.UI || {};
     return h % 3;
   }
 
+  // Deterministic hash of (x, y, mapSeed) for the civ-influence ambient
+  // overlay's variant pick (see below) -- folds in the map seed so a tile's
+  // chosen variant is reproducible across reloads of the SAME map, unlike
+  // sprites.js's pick(), which re-rolls randomly once per session (see that
+  // function's own doc comment). A murmur3-style finalizer, not
+  // cryptographic -- just needs to scatter well enough that adjacent tiles
+  // don't visibly cluster on the same variant.
+  function tileInfluenceVariantHash(x, y, mapSeed) {
+    let h = ((x * 374761393) ^ (y * 668265263) ^ ((mapSeed >>> 0) * 2246822519)) >>> 0;
+    h = Math.imul(h ^ (h >>> 15), 2246822519) >>> 0;
+    h = Math.imul(h ^ (h >>> 13), 3266489917) >>> 0;
+    return (h ^ (h >>> 16)) >>> 0;
+  }
+
+  // Jump-to-tile flash (2026-08-12, user-directed) -- see goToTile's own
+  // comment in main.js for where this gets armed. Pure fade-out, no pulsing/
+  // looping: a single clear "you are here" beat, not an ongoing distraction.
+  const TILE_FLASH_ANIM_MS = 800;
+  /** Draws the fading highlight for `tileFlash` ({x,y,start}) if it's still
+   *  within its animation window. Returns `tileFlash` while still active, or
+   *  null once it's expired -- the caller nulls out viewState.tileFlash on a
+   *  null return so this is a one-shot effect, not a permanent per-frame
+   *  no-op check. */
+  function drawTileFlash(ctx, tileFlash, offsetX, offsetY, ts, now) {
+    const age = now - tileFlash.start;
+    if (age > TILE_FLASH_ANIM_MS) return null;
+    const alpha = 1 - age / TILE_FLASH_ANIM_MS;
+    const screenX = tileFlash.x * ts + offsetX, screenY = tileFlash.y * ts + offsetY;
+    ctx.save();
+    ctx.globalAlpha = alpha * 0.5;
+    ctx.fillStyle = "#ffe08a";
+    ctx.fillRect(screenX, screenY, ts, ts);
+    ctx.globalAlpha = alpha;
+    ctx.strokeStyle = "#ffe08a";
+    ctx.lineWidth = 3;
+    ctx.strokeRect(screenX + 1.5, screenY + 1.5, ts - 3, ts - 3);
+    ctx.restore();
+    return tileFlash;
+  }
+
   const RESOURCE_ICON_MARGIN_FRAC = 0.08; // space kept between the tile edge and the icon
 
   // Bottom-anchored box position for a tile enhancement icon of size `sz`,
@@ -172,6 +212,16 @@ window.UI = window.UI || {};
     // cities/units, which already get their own later pass for the same
     // reason) so overhang always lands on top of terrain, never under it.
     const deferredIcons = [];
+
+    // City-center tile lookup for the civ-influence ambient overlay below --
+    // a city's own tile has no dedicated `tile.city` pointer (unlike
+    // `tile.structure`, which buildings/walls DO stamp directly, see below),
+    // so this is the one place that needs to scan every civ's `cities` list
+    // itself. Built once per frame rather than re-scanned per tile.
+    const cityTileKeys = new Set();
+    for (const c of Object.values(civs)) {
+      for (const city of c.cities) cityTileKeys.add(`${city.x},${city.y}`);
+    }
 
     // Construction placeholders (2026-08-07, user-directed): every queued
     // building/wall already has its final tile locked in at queue time
@@ -305,6 +355,37 @@ window.UI = window.UI || {};
           }
         }
 
+        // Civ-influence ambient overlay (2026-08-12, user-directed) -- small
+        // non-animated per-race flavor sprites (assets/enhancements/
+        // influence_{raceId}_{1..5}.png) drawn on owned tiles so occupied
+        // land reads as "occupied and worked," independent of the
+        // `showInfluence` tint toggle below (this is always-on ambient
+        // detail, not a debug overlay). Skips tiles with a building/wall
+        // (`tile.structure`), a city center (`cityTileKeys`), or a river
+        // (`tile.hasRiver`) -- user-directed exclusion list; every other
+        // owned tile shows it, INCLUDING resource/ruin tiles and tiles with
+        // a road (this draws on top of a road, same as resource/ruin
+        // already do). Deliberately gated on `tile.status === "owned"` only,
+        // not "contested" -- this is meant to read as settled, not
+        // contested, ground. Picked deterministically (tileInfluenceVariantHash)
+        // rather than through sprites.js's pick(), so the same tile always
+        // shows the same variant across reloads of the same map -- see that
+        // function's own doc comment.
+        if (tile.status === "owned" && tile.ownerCivId && !tile.structure
+            && !cityTileKeys.has(`${x},${y}`) && !(tile.hasRiver && (tile.hasRiver.n || tile.hasRiver.s || tile.hasRiver.e || tile.hasRiver.w))) {
+          const ownerCiv = civs[tile.ownerCivId];
+          if (ownerCiv) {
+            const influenceSprite = window.UI.sprites.pickDeterministic(
+              `enhancement/influence/${ownerCiv.raceId}`,
+              tileInfluenceVariantHash(x, y, gameState.seed)
+            );
+            if (influenceSprite) {
+              const f = window.UI.sprites.currentFrame(influenceSprite.manifest, "idle", tile);
+              deferredIcons.push(() => ctx.drawImage(influenceSprite.image, f.sx, f.sy, f.sw, f.sh, screenX, screenY, ts, ts));
+            }
+          }
+        }
+
         // Construction placeholder -- see constructionSites above.
         const construction = constructionSites.get(`${x},${y}`);
         if (construction) overlays.drawConstructionSite(ctx, screenX, screenY, ts, construction);
@@ -342,6 +423,15 @@ window.UI = window.UI || {};
     // standing there. The path preview is drawn later, on top of everything.
     drawReachableOverlay(ctx, gameState, viewState, offsetX, offsetY, ts);
     drawPlacementOverlay(ctx, viewState, offsetX, offsetY, ts);
+
+    // Jump-to-tile flash (2026-08-12, user-directed): a brief highlight on
+    // whichever tile a coordinate link (sidebar mission text, a dialog's
+    // "Go to", ...) just centered the view on -- same layer as the reachable/
+    // placement overlays just above (over terrain, under cities/units), so
+    // it's still visible under whatever's standing there without hiding it.
+    if (viewState.tileFlash) {
+      if (!drawTileFlash(ctx, viewState.tileFlash, offsetX, offsetY, ts, now)) viewState.tileFlash = null;
+    }
 
     // Cities
     // Fed to villagers.js's tick/draw below -- the cities currently visible
@@ -676,7 +766,7 @@ window.UI = window.UI || {};
     // after the Cities loop this used to sit right beside) so they're
     // never hidden behind a building or wall they're walking past. See
     // villagers.js's own doc comment.
-    window.UI.villagers.tick(villagerCities);
+    window.UI.villagers.tick(villagerCities, map);
     window.UI.villagers.draw(ctx, offsetX, offsetY, ts, villagerCities);
 
     // Where the player's self-directing units are headed (2026-08-06,

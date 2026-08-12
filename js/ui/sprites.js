@@ -203,6 +203,22 @@ window.UI = window.UI || {};
    *  available tier at or below the requested one (or the lowest available
    *  tier if the request is below all of them), so a partial set (e.g. only
    *  tiers 1-4 shipped so far) still degrades sensibly instead of failing. */
+  /**
+   * Returns { image, manifest } for the variant at `index` (wrapped via
+   * modulo), or null if nothing loaded for this key -- bypasses pick()'s
+   * random-per-seed-object selection for callers that need a stable pick
+   * derived entirely from their own inputs (e.g. render.js's civ-influence
+   * ambient tile overlay, indexed by a hash of tile coordinates + the map
+   * seed so the same map always looks the same on reload -- unlike pick(),
+   * which re-rolls randomly each session via variantCaches/Math.random()).
+   */
+  function pickDeterministic(key, index) {
+    const entry = registry[key];
+    if (!entry || entry.variants.length === 0) return null;
+    const i = ((index % entry.variants.length) + entry.variants.length) % entry.variants.length;
+    return entry.variants[i];
+  }
+
   function pickCityTier(raceId, tier) {
     const entry = registry[`city-tiers/${raceId}`];
     if (!entry) return null;
@@ -523,6 +539,16 @@ window.UI = window.UI || {};
     for (const id of window.GameData.RESOURCE_LIST)
       critical.push(() => loadVariants(`enhancement/resource_${id}`, `assets/enhancements/resource_${id}`));
     critical.push(() => loadVariants("enhancement/ruin", "assets/enhancements/ruin"));
+    // Civ-influence ambient tile overlay (2026-08-12, user-directed) -- small
+    // non-animated per-race flavor sprites (4-5 variants each, assets/
+    // enhancements/influence_{raceId}_{1..5}.png) drawn on owned tiles to
+    // read as "occupied and worked" land, picked deterministically by
+    // render.js's own hash rather than through pick()'s per-session random
+    // choice (see pickDeterministic's doc comment). Critical tier, matching
+    // resource/ruin: a civ can own tiles from turn 1, unlike buildings/walls
+    // which can't exist yet.
+    for (const id of racesInPlay)
+      critical.push(() => loadVariants(`enhancement/influence/${id}`, `assets/enhancements/influence_${id}`));
     // Road overlay stubs -- layered/rotated at draw time (see render.js
     // drawRoadOverlay) to build any 8-neighbor connection pattern from just
     // these four, rather than pre-baking one image per combination.
@@ -537,5 +563,5 @@ window.UI = window.UI || {};
     return runTiered(critical, background, onProgress);
   }
 
-  window.UI.sprites = { pick, pickUnit, pickBuilding, pickWallSegment, pickCityTier, currentFrame, preloadAll };
+  window.UI.sprites = { pick, pickDeterministic, pickUnit, pickBuilding, pickWallSegment, pickCityTier, currentFrame, preloadAll };
 })();

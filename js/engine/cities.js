@@ -885,6 +885,110 @@ window.GameEngine = window.GameEngine || {};
   // per-road-tile bonus, not just whichever one happens to define it.
   const ROAD_BONUS_TILE_CAP = CFG.roadBonusTileCap;
 
+  /**
+   * Yield contribution from ONE worked tile at offset (dx,dy) from its city,
+   * factored out of computeWorkedTileYield's loop body (2026-08-12) so a
+   * single tile's actual yield can be computed in isolation -- see
+   * computeTileActualYield below, used by the sidebar's tile-panel "Actual
+   * Yield" row -- without duplicating the bonus-stacking rules in two
+   * places. `roadBonusTilesUsed` is the caller's own running count against
+   * ROAD_BONUS_TILE_CAP; pass 0 for a standalone single-tile lookup that
+   * isn't tracking a city-wide cap (see computeTileActualYield's own doc
+   * comment on why that's a deliberate, harmless simplification there).
+   * Returns null if this tile isn't actually paying `civ` anything right
+   * now (not owned by them, or contested with no Barrow to soften it) --
+   * otherwise { totals: {harvest,coin,lore}, usedRoadBonus }.
+   */
+  function tileYieldContribution(tile, dx, dy, civ, hasBarrow, barrowContestedMult, roadBonusTilesUsed) {
+    if (tile.ownerCivId !== civ.id) return null;
+    // Barrow: contested tiles yield at the override rate instead of 0
+    let tileYieldMult = 1.0;
+    if (tile.status !== "owned") {
+      if (tile.status === "contested" && hasBarrow) {
+        tileYieldMult = barrowContestedMult;
+      } else {
+        return null;
+      }
+    }
+
+    // Distance falloff (2026-07-21, user-directed): a city's baseline
+    // harvest/coin territorial yield (raw terrain, plus race-default
+    // tile/feature/road bonuses) tapers off 0.2/ring past ring 2 --
+    // ring 3 = 80%, ring 4 = 60%, etc. Deliberately does NOT touch lore
+    // (see radiusYieldMult's harvest/coin-only application below), and
+    // deliberately does NOT touch tile.resource bonuses (Iron/Gold/Game/
+    // Fertile/Fish), Ruin bonuses, or any tech-unlocked bonus (utb/ufb)
+    // -- a civ's actual tech/exploration investment should keep paying
+    // full value regardless of how far out the tile sits.
+    const ring = Math.max(Math.abs(dx), Math.abs(dy));
+    const radiusYieldMult = Math.max(0, 1 - 0.2 * Math.max(0, ring - 2));
+    const baseMult = tileYieldMult * radiusYieldMult;
+
+    const totals = { harvest: 0, coin: 0, lore: 0 };
+    const terrainYield = TERRAIN[tile.terrain].yield;
+    const race = window.GameData.getRace(civ.raceId);
+    totals.harvest += (terrainYield.harvest || 0) * baseMult;
+    totals.coin += (terrainYield.coin || 0) * baseMult;
+    totals.lore += (terrainYield.lore || 0) * tileYieldMult;
+    if (tile.resource) {
+      const resBonus = window.GameData.RESOURCES[tile.resource].bonus;
+      for (const k of Object.keys(resBonus)) totals[k] += resBonus[k] * tileYieldMult;
+    }
+    const hasRiver = tile.hasRiver && (tile.hasRiver.n || tile.hasRiver.s || tile.hasRiver.e || tile.hasRiver.w);
+    if (hasRiver) {
+      const riverBonus = window.GameData.RIVER_YIELD_BONUS;
+      for (const [k, v] of Object.entries(riverBonus)) totals[k] += v * (k === "lore" ? tileYieldMult : baseMult);
+    }
+    // Ruins: a special-tile bonus, exempt from the falloff. Amount lives
+    // in terrain.js's RUIN_YIELD_BONUS alongside RIVER_YIELD_BONUS so the
+    // sidebar can display the same number this pays out.
+    if (tile.isRuin) {
+      for (const [k, v] of Object.entries(window.GameData.RUIN_YIELD_BONUS)) totals[k] += v * tileYieldMult;
+    }
+    // Race terrain tile bonuses (e.g. dwarf +1 coin from hills) -- still a free
+    // race default for races that haven't had their bonuses moved to tech yet.
+    const tb = race.tileBonuses || {};
+    const terrainBonus = tb[tile.terrain];
+    if (terrainBonus) {
+      for (const [k, v] of Object.entries(terrainBonus)) totals[k] += v * (k === "lore" ? tileYieldMult : baseMult);
+    }
+    // Race feature bonuses (river, ruin, road) -- same as above, race-default path
+    const fb = race.featureBonuses || {};
+    if (hasRiver && fb.river) {
+      for (const [k, v] of Object.entries(fb.river)) totals[k] += v * (k === "lore" ? tileYieldMult : baseMult);
+    }
+    if (tile.isRuin && fb.ruin) {
+      for (const [k, v] of Object.entries(fb.ruin)) totals[k] += v * tileYieldMult;
+    }
+
+    // Tech-unlocked tile/feature bonuses (e.g. Human's Homestead/Trade Roads) --
+    // a civ-level equivalent of the two blocks above, for races whose bonuses
+    // have moved off the race-default and onto their tech tree instead.
+    // Exempt from the distance falloff (see radiusYieldMult above).
+    const utb = (civ.unlockedTileBonuses || {})[tile.terrain];
+    if (utb) {
+      for (const [k, v] of Object.entries(utb)) totals[k] += v * tileYieldMult;
+    }
+    const ufb = civ.unlockedFeatureBonuses || {};
+    if (hasRiver && ufb.river) {
+      for (const [k, v] of Object.entries(ufb.river)) totals[k] += v * tileYieldMult;
+    }
+    if (tile.isRuin && ufb.ruin) {
+      for (const [k, v] of Object.entries(ufb.ruin)) totals[k] += v * tileYieldMult;
+    }
+
+    // Road bonuses share one per-city cap (ROAD_BONUS_TILE_CAP above):
+    // the race-default half (fb.road) falls off with distance like any
+    // other race-default bonus; the tech-unlocked half (ufb.road) doesn't.
+    let usedRoadBonus = false;
+    if (tile.hasRoad && (fb.road || ufb.road) && roadBonusTilesUsed < ROAD_BONUS_TILE_CAP) {
+      usedRoadBonus = true;
+      if (fb.road) for (const [k, v] of Object.entries(fb.road)) totals[k] += v * (k === "lore" ? tileYieldMult : baseMult);
+      if (ufb.road) for (const [k, v] of Object.entries(ufb.road)) totals[k] += v * tileYieldMult;
+    }
+    return { totals, usedRoadBonus };
+  }
+
   function computeWorkedTileYield(city, civ, map) {
     const totals = { harvest: 0, coin: 0, lore: 0 };
     const radius = city.influenceRadius; // merged radius -- see note above filledOffsets
@@ -897,97 +1001,54 @@ window.GameEngine = window.GameEngine || {};
         if (!isOffsetFilled(city, dx, dy)) continue;
         const tx = city.x + dx, ty = city.y + dy;
         if (tx < 0 || tx >= map.width || ty < 0 || ty >= map.height) continue;
-        const idx = ty * map.width + tx;
-        const tile = map.tiles[idx];
-        if (tile.ownerCivId !== civ.id) continue;
-        // Barrow: contested tiles yield at the override rate instead of 0
-        let tileYieldMult = 1.0;
-        if (tile.status !== "owned") {
-          if (tile.status === "contested" && hasBarrow) {
-            tileYieldMult = barrowContestedMult;
-          } else {
-            continue;
-          }
-        }
-
-        // Distance falloff (2026-07-21, user-directed): a city's baseline
-        // harvest/coin territorial yield (raw terrain, plus race-default
-        // tile/feature/road bonuses) tapers off 0.2/ring past ring 2 --
-        // ring 3 = 80%, ring 4 = 60%, etc. Deliberately does NOT touch lore
-        // (see radiusYieldMult's harvest/coin-only application below), and
-        // deliberately does NOT touch tile.resource bonuses (Iron/Gold/Game/
-        // Fertile/Fish), Ruin bonuses, or any tech-unlocked bonus (utb/ufb)
-        // -- a civ's actual tech/exploration investment should keep paying
-        // full value regardless of how far out the tile sits.
-        const ring = Math.max(Math.abs(dx), Math.abs(dy));
-        const radiusYieldMult = Math.max(0, 1 - 0.2 * Math.max(0, ring - 2));
-        const baseMult = tileYieldMult * radiusYieldMult;
-
-        const terrainYield = TERRAIN[tile.terrain].yield;
-        const race = window.GameData.getRace(civ.raceId);
-        totals.harvest += (terrainYield.harvest || 0) * baseMult;
-        totals.coin += (terrainYield.coin || 0) * baseMult;
-        totals.lore += (terrainYield.lore || 0) * tileYieldMult;
-        if (tile.resource) {
-          const resBonus = window.GameData.RESOURCES[tile.resource].bonus;
-          for (const k of Object.keys(resBonus)) totals[k] += resBonus[k] * tileYieldMult;
-        }
-        const hasRiver = tile.hasRiver && (tile.hasRiver.n || tile.hasRiver.s || tile.hasRiver.e || tile.hasRiver.w);
-        if (hasRiver) {
-          const riverBonus = window.GameData.RIVER_YIELD_BONUS;
-          for (const [k, v] of Object.entries(riverBonus)) totals[k] += v * (k === "lore" ? tileYieldMult : baseMult);
-        }
-        // Ruins: a special-tile bonus, exempt from the falloff. Amount lives
-        // in terrain.js's RUIN_YIELD_BONUS alongside RIVER_YIELD_BONUS so the
-        // sidebar can display the same number this pays out.
-        if (tile.isRuin) {
-          for (const [k, v] of Object.entries(window.GameData.RUIN_YIELD_BONUS)) totals[k] += v * tileYieldMult;
-        }
-        // Race terrain tile bonuses (e.g. dwarf +1 coin from hills) -- still a free
-        // race default for races that haven't had their bonuses moved to tech yet.
-        const tb = race.tileBonuses || {};
-        const terrainBonus = tb[tile.terrain];
-        if (terrainBonus) {
-          for (const [k, v] of Object.entries(terrainBonus)) totals[k] += v * (k === "lore" ? tileYieldMult : baseMult);
-        }
-        // Race feature bonuses (river, ruin, road) -- same as above, race-default path
-        const fb = race.featureBonuses || {};
-        if (hasRiver && fb.river) {
-          for (const [k, v] of Object.entries(fb.river)) totals[k] += v * (k === "lore" ? tileYieldMult : baseMult);
-        }
-        if (tile.isRuin && fb.ruin) {
-          for (const [k, v] of Object.entries(fb.ruin)) totals[k] += v * tileYieldMult;
-        }
-
-        // Tech-unlocked tile/feature bonuses (e.g. Human's Homestead/Trade Roads) --
-        // a civ-level equivalent of the two blocks above, for races whose bonuses
-        // have moved off the race-default and onto their tech tree instead.
-        // Exempt from the distance falloff (see radiusYieldMult above).
-        const utb = (civ.unlockedTileBonuses || {})[tile.terrain];
-        if (utb) {
-          for (const [k, v] of Object.entries(utb)) totals[k] += v * tileYieldMult;
-        }
-        const ufb = civ.unlockedFeatureBonuses || {};
-        if (hasRiver && ufb.river) {
-          for (const [k, v] of Object.entries(ufb.river)) totals[k] += v * tileYieldMult;
-        }
-        if (tile.isRuin && ufb.ruin) {
-          for (const [k, v] of Object.entries(ufb.ruin)) totals[k] += v * tileYieldMult;
-        }
-
-        // Road bonuses share one per-city cap (ROAD_BONUS_TILE_CAP above):
-        // the race-default half (fb.road) falls off with distance like any
-        // other race-default bonus; the tech-unlocked half (ufb.road) doesn't.
-        if (tile.hasRoad && (fb.road || ufb.road) && roadBonusTilesUsed < ROAD_BONUS_TILE_CAP) {
-          roadBonusTilesUsed++;
-          if (fb.road) for (const [k, v] of Object.entries(fb.road)) totals[k] += v * (k === "lore" ? tileYieldMult : baseMult);
-          if (ufb.road) for (const [k, v] of Object.entries(ufb.road)) totals[k] += v * tileYieldMult;
-        }
+        const tile = map.tiles[ty * map.width + tx];
+        const result = tileYieldContribution(tile, dx, dy, civ, hasBarrow, barrowContestedMult, roadBonusTilesUsed);
+        if (!result) continue;
+        totals.harvest += result.totals.harvest;
+        totals.coin += result.totals.coin;
+        totals.lore += result.totals.lore;
+        if (result.usedRoadBonus) roadBonusTilesUsed++;
       }
     }
 
     // Note: structure-derived yields (Grove Shrine forest-lore, flat yields,
     // road/influence bonuses) are handled in computeStructureEffects, not here.
+    return totals;
+  }
+
+  /**
+   * Actual yield ONE tile is currently paying to `civ`, summed across every
+   * one of its cities that has this exact tile filled-in/worked (2026-08-12,
+   * user-directed: the tile-click info panel showing base terrain yield
+   * alongside the real, bonus-applied number) -- same math
+   * computeWorkedTileYield uses, isolated to a single tile via
+   * tileYieldContribution. Returns null if no city of this civ currently
+   * works the tile (owned but not yet filled-in, contested with no Barrow,
+   * or not owned by this civ at all) -- there's nothing "actual" to show
+   * beyond the base yield already on screen. The road-bonus-cap check is
+   * always passed 0 (bonus treated as active) rather than a real running
+   * count -- a standalone tile lookup has no defined iteration order to
+   * derive that from, so a city that's already saturated its cap elsewhere
+   * could in the rare case show a slightly optimistic number here; not
+   * worth the complexity of threading real city-wide state through a
+   * single-tile query for a display-only figure.
+   */
+  function computeTileActualYield(tile, x, y, civ) {
+    let totals = null;
+    for (const city of civ.cities) {
+      const dx = x - city.x, dy = y - city.y;
+      if (Math.max(Math.abs(dx), Math.abs(dy)) > city.influenceRadius) continue;
+      if (!isOffsetFilled(city, dx, dy)) continue;
+      const hasBarrow = cityHasStructure(city, "barrow");
+      const barrowContestedMult = hasBarrow
+        ? window.GameData.getBuilding("barrow").contestedYieldPenaltyOverride : 0;
+      const result = tileYieldContribution(tile, dx, dy, civ, hasBarrow, barrowContestedMult, 0);
+      if (!result) continue;
+      totals = totals || { harvest: 0, coin: 0, lore: 0 };
+      totals.harvest += result.totals.harvest;
+      totals.coin += result.totals.coin;
+      totals.lore += result.totals.lore;
+    }
     return totals;
   }
 
@@ -1092,6 +1153,7 @@ window.GameEngine = window.GameEngine || {};
     applyResearchBoost,
     isCityIdle,
     computeWorkedTileYield,
+    computeTileActualYield,
     isOffsetFilled,
     isTileFilledForCiv,
     advanceCityFill,

@@ -1107,7 +1107,13 @@ window.GameEngine = window.GameEngine || {};
 
     return { fullDamage, fullNegated, fullMissed, counterDamage, counterNegated, counterDenied, counterMissed,
       forwardSkipped, returnSkipped, counterOutOfRange,
-      doubleStruck, doubleDamage, doubleNegated, doubleMissed };
+      doubleStruck, doubleDamage, doubleNegated, doubleMissed,
+      // First Strike's ORDER effect actually deciding who went first this
+      // round (see the doc comment above) -- exposed so a caller can narrate
+      // it the same way doubleStruck narrates Double Strike's follow-up hit.
+      // Both false when First Strike was tied (including the common
+      // both-zero case) or the round wasn't adjacent at all.
+      forwardFirst, returnFirst };
   }
 
   /**

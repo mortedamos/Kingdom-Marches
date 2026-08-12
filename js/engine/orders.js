@@ -524,7 +524,7 @@ window.GameEngine = window.GameEngine || {};
       // "farming" vs. Dwarf's "prospecting" naming split -- see that
       // file's own doc comment for why they're deliberately distinct
       // unit.channeling values.
-      const CHANNEL_LABELS = { prospecting: "Prospecting", delving: "Delving", fishing: "Fishing", hunting: "Hunting", farming: "Farming" };
+      const CHANNEL_LABELS = { prospecting: "Prospecting", delving: "Delving", fishing: "Fishing", hunting: "Hunting", farming: "Farming", mining: "Mining" };
       if (unit.channeling && CHANNEL_LABELS[unit.channeling]) {
         options.push({ kind: "claimChannel", label: "Claim Gathered Resources" });
         options.push({ kind: "cancelChannel", label: `Cancel ${CHANNEL_LABELS[unit.channeling]}`, danger: true });
@@ -544,13 +544,28 @@ window.GameEngine = window.GameEngine || {};
           options.push({ kind: "startChannel:hunting", label: "Hunt Game" });
         } else if (baseUnit.canProspect && onFertile && civ.unlockedMechanics && civ.unlockedMechanics.has("farm_soil")) {
           options.push({ kind: "startChannel:farming", label: "Farm Soil" });
+        } else if (baseUnit.canProspect && onVein) {
+          // Generic Vein prospecting (2026-08-12, user-directed: "Pioneer
+          // should be able to prospect all tile resource types except
+          // ruins"): fills the gap Prospector's Claim above deliberately
+          // leaves for every non-Dwarf civ (and any Dwarf civ that hasn't
+          // researched it yet) -- same canProspect flag as Hunt Game/Farm
+          // Soil, same flat-payout shape (turns.js's "mining" channel
+          // block), just no tech gate yet. Untech-gated on purpose for now;
+          // a proper tech is expected to gate this later, same as hunt_game/
+          // farm_soil do for game/fertile.
+          options.push({ kind: "startChannel:mining", label: "Mine Vein" });
         }
       }
 
-      // Cast Fly on an ally (2026-08-06, user-directed bug fix): one pill
-      // per eligible ADJACENT ally, offered from the WIZARD'S OWN tile --
-      // not from right-clicking the ally directly. That would seem like the
-      // more natural gesture, but it's unreachable under this game's own
+      // Cast Fly on an ally (2026-08-06, user-directed bug fix; range
+      // extended 2026-08-12): one pill per eligible ally within the
+      // Wizard's REACH (adjacency plus however far it can still walk this
+      // turn -- same "move there and still cast, same turn" formula
+      // maybeGrantFlight's AI play already used internally, now offered to
+      // the player too), offered from the WIZARD'S OWN tile -- not from
+      // right-clicking the ally directly. That would seem like the more
+      // natural gesture, but it's unreachable under this game's own
       // interaction rule ("right-click always selects whichever of your own
       // units is standing on the clicked tile" -- see mapMenuOptions' own
       // doc comment): right-clicking an ally who is also a commandable unit
@@ -565,20 +580,18 @@ window.GameEngine = window.GameEngine || {};
       // player-facing option; see that audit's findings for why the others
       // weren't done at the same time. See ai.js's castFlightOnAlly for the
       // actual cast, which re-validates every one of these conditions
-      // itself rather than trusting this list stayed accurate since it was
-      // drawn.
+      // itself (and walks the Wizard into adjacency first if the target
+      // isn't already there) rather than trusting this list stayed accurate
+      // since it was drawn.
       if (unit.typeId === "wizard" && !unit.usedThisTurn && civ.unlockedMechanics?.has("flight_grant")) {
-        for (let dy = -1; dy <= 1; dy++) {
-          for (let dx = -1; dx <= 1; dx++) {
-            if (dx === 0 && dy === 0) continue;
-            const ax = unit.x + dx, ay = unit.y + dy;
-            const ally = civ.units.find((u) => u.x === ax && u.y === ay && u !== unit && !u.carriedBy);
-            if (!ally) continue;
-            if (window.GameData.getUnit(ally.typeId).category !== "military") continue;
-            if (window.GameEngine.combat.isFlying(ally)) continue;
-            const allyLabel = ally.name || window.GameData.getUnit(ally.typeId).label;
-            options.push({ kind: `castFlight:${ax},${ay}`, label: `Cast Fly on ${allyLabel}` });
-          }
+        const reach = 1 + (unit.movesRemaining ?? window.GameEngine.ai.computeMovementBudget(unit, gameState.map, civs));
+        for (const ally of civ.units) {
+          if (ally === unit || ally.carriedBy) continue;
+          if (window.GameEngine.influence.chebyshev(unit.x, unit.y, ally.x, ally.y) > reach) continue;
+          if (window.GameData.getUnit(ally.typeId).category !== "military") continue;
+          if (window.GameEngine.combat.isFlying(ally)) continue;
+          const allyLabel = ally.name || window.GameData.getUnit(ally.typeId).label;
+          options.push({ kind: `castFlight:${ally.x},${ally.y}`, label: `Cast Fly on ${allyLabel}` });
         }
       }
 

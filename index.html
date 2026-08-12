@@ -17,6 +17,47 @@
        button. -->
   <div id="title-screen" class="title-screen">
 
+    <!-- Top menu bar (2026-08-12, user-directed): the same strip shown
+         in-game (index.html's #game-screen .menu-bar), trimmed to what
+         actually applies before a game exists -- no Map Seed (none picked
+         yet), no Now Playing/Track (nothing playing until a race is
+         chosen), and no Report/Speed menus (both are running-game-only).
+         Wired by main.js's setupTitleMenuBar/setupTitleAudioControls,
+         called from showSetupScreen alongside the rest of the title
+         screen's setup, so this works before "Begin" is ever clicked. -->
+    <div class="menu-bar">
+      <div class="menu-item">
+        <button class="menu-btn" id="title-menu-file-btn">File</button>
+        <div class="menu-dropdown" id="title-menu-file-dropdown" style="display:none;">
+          <button id="title-load-game-btn" class="menu-dropdown-btn">Load Game</button>
+        </div>
+      </div>
+      <div class="menu-item">
+        <button class="menu-btn" id="title-menu-interface-btn">Interface</button>
+        <div class="menu-dropdown" id="title-menu-interface-dropdown" style="display:none;">
+          <button id="title-menu-keyboard-shortcuts-btn" class="menu-dropdown-btn">Keyboard Shortcuts</button>
+        </div>
+      </div>
+      <div class="menu-item">
+        <button class="menu-btn" id="title-menu-audio-btn">Audio</button>
+        <div class="menu-dropdown audio-panel" id="title-menu-audio-dropdown" style="display:none;">
+          <label class="audio-panel-row">
+            <span>Mute</span>
+            <input type="checkbox" id="title-menu-audio-mute-checkbox">
+          </label>
+          <label class="audio-panel-row">
+            <span>Music</span>
+            <input type="range" id="title-menu-audio-volume-slider" min="0" max="100" value="100">
+          </label>
+          <label class="audio-panel-row">
+            <span>Sound Effects</span>
+            <input type="range" id="title-menu-sfx-volume-slider" min="0" max="100" value="100">
+          </label>
+        </div>
+      </div>
+    </div>
+    <input type="file" id="title-load-game-file-input" accept=".kmsg,.kms,application/json" style="display:none;">
+
     <!-- Main area: faded background image + logo -->
     <div class="title-main">
       <div class="title-bg-overlay"></div>
@@ -115,6 +156,10 @@
                in #keyboard-shortcuts-overlay below, unchanged id/handler
                (setupFullscreenControl), just relocated. -->
           <button id="keyboard-shortcuts-btn" class="menu-dropdown-btn">Keyboard Shortcuts</button>
+          <label class="audio-panel-row">
+            <span>End Turn Reminders</span>
+            <input type="checkbox" id="end-turn-reminders-toggle" checked>
+          </label>
           <div id="fog-of-war-panel" class="fow-panel" style="display:none;">
             <div class="fow-panel-label">Fog of War</div>
             <label class="audio-panel-row"><span>Off</span><input type="radio" name="fow-mode" id="fow-mode-off" value="off" checked></label>
@@ -226,37 +271,44 @@
     <div id="game-dialog-overlay" class="techtree-overlay" style="display:none;">
       <div id="game-dialog-modal" class="techtree-modal game-dialog-modal"></div>
     </div>
-    <!-- Keyboard Shortcuts window (2026-08-07, user-directed) -- opened from
-         the Interface menu's "Keyboard Shortcuts" button (see
-         js/main.js's setupKeyboardShortcutsOverlay). Also where the
-         standalone "Enter Full Screen" menu button now lives -- same id
-         (fullscreen-toggle-btn) and inner markup it always had, so
-         setupFullscreenControl needs no changes, just a new home. -->
-    <div id="keyboard-shortcuts-overlay" class="techtree-overlay" style="display:none;">
-      <div id="keyboard-shortcuts-modal" class="techtree-modal shortcuts-modal">
-        <button class="techtree-close-btn" id="keyboard-shortcuts-close-btn">Close</button>
-        <h2>Keyboard Shortcuts</h2>
-        <button id="fullscreen-toggle-btn" class="menu-dropdown-btn menu-dropdown-btn-shortcut">
-          <span>Enter Full Screen</span><span class="menu-shortcut">F11</span>
-        </button>
-        <div class="shortcuts-section">
-          <div class="shortcuts-section-title">General</div>
-          <div class="shortcuts-row"><span class="shortcuts-key">W A S D</span><span>Scroll around the map</span></div>
-          <div class="shortcuts-row"><span class="shortcuts-key">Shift (hold)</span><span>Repeat "Rest and Defend", "Gather More Resources", or "Research" for the next 3 turns when chosen</span></div>
-          <div class="shortcuts-row"><span class="shortcuts-key">M</span><span>Mute or unmute all sound</span></div>
-        </div>
-        <div class="shortcuts-section">
-          <div class="shortcuts-section-title">Unit Selected</div>
-          <div class="shortcuts-row"><span class="shortcuts-key">Space</span><span>Rest and Defend</span></div>
-          <div class="shortcuts-row"><span class="shortcuts-key">Arrow Keys</span><span>Move one tile</span></div>
-        </div>
-        <div class="shortcuts-section">
-          <div class="shortcuts-section-title">City Selected</div>
-          <div class="shortcuts-row"><span class="shortcuts-key">Space</span><span>Gather More Resources</span></div>
-        </div>
+    <div id="turn-progress-banner" class="turn-progress-banner" style="display:none;"></div>
+  </div>
+
+  <!-- Keyboard Shortcuts window (2026-08-07, user-directed) -- opened from
+       the Interface menu's "Keyboard Shortcuts" button (see
+       js/main.js's setupKeyboardShortcutsOverlay). Also where the
+       standalone "Enter Full Screen" menu button now lives -- same id
+       (fullscreen-toggle-btn) and inner markup it always had, so
+       setupFullscreenControl needs no changes, just a new home.
+       Deliberately OUTSIDE #game-screen (2026-08-12, moved) -- the title
+       menu bar's own Interface > Keyboard Shortcuts button needs to open
+       this same overlay before a game has started, while #game-screen is
+       still display:none, and a display:none ancestor hides this overlay
+       no matter what its own display is set to. .techtree-overlay is
+       position:fixed, so relocating it here changes nothing about how or
+       where it renders once shown. -->
+  <div id="keyboard-shortcuts-overlay" class="techtree-overlay" style="display:none;">
+    <div id="keyboard-shortcuts-modal" class="techtree-modal shortcuts-modal">
+      <button class="techtree-close-btn" id="keyboard-shortcuts-close-btn">Close</button>
+      <h2>Keyboard Shortcuts</h2>
+      <button id="fullscreen-toggle-btn" class="menu-dropdown-btn menu-dropdown-btn-shortcut">
+        <span>Enter Full Screen</span><span class="menu-shortcut">F11</span>
+      </button>
+      <div class="shortcuts-section">
+        <div class="shortcuts-section-title">General</div>
+        <div class="shortcuts-row"><span class="shortcuts-key">W A S D / Arrow Keys</span><span>Scroll around the map</span></div>
+        <div class="shortcuts-row"><span class="shortcuts-key">Shift (hold)</span><span>Repeat "Rest and Defend", "Gather More Resources", or "Research" for the next 3 turns when chosen</span></div>
+        <div class="shortcuts-row"><span class="shortcuts-key">M</span><span>Mute or unmute all sound</span></div>
+      </div>
+      <div class="shortcuts-section">
+        <div class="shortcuts-section-title">Unit Selected</div>
+        <div class="shortcuts-row"><span class="shortcuts-key">Space</span><span>Rest and Defend</span></div>
+      </div>
+      <div class="shortcuts-section">
+        <div class="shortcuts-section-title">City Selected</div>
+        <div class="shortcuts-row"><span class="shortcuts-key">Space</span><span>Gather More Resources</span></div>
       </div>
     </div>
-    <div id="turn-progress-banner" class="turn-progress-banner" style="display:none;"></div>
   </div>
 
   <!-- Balance/tuning constants -- must load FIRST; every other file reads

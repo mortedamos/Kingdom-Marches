@@ -61,8 +61,22 @@ window.UI = window.UI || {};
       return { civId, label: race.label, color: race.color, values };
     });
 
+    // Victory threshold (2026-08-12, user-directed): the Influence report is
+    // the one place a player can see raw "tiles owned" numbers, so this is
+    // where "how close is anyone to winning" belongs -- computed fresh from
+    // the CURRENT map's actual claimable tile count (countTerritory), not a
+    // fixed number, since totalClaimable varies with map size/civ count.
+    // Same formula checkVictory itself uses (turns.js), just surfaced here
+    // instead of left implicit.
+    let victoryThresholdTiles = null, totalClaimable = null;
+    if (reportType !== "power" && window.GameEngine.influence) {
+      const territory = window.GameEngine.influence.countTerritory(gameState);
+      totalClaimable = territory.totalClaimable;
+      victoryThresholdTiles = Math.ceil(totalClaimable * window.GameEngine.turns.VICTORY_SHARE_THRESHOLD);
+    }
+
     const n = turns.length;
-    const maxVal = Math.max(1, ...series.flatMap((s) => s.values));
+    const maxVal = Math.max(1, victoryThresholdTiles || 0, ...series.flatMap((s) => s.values));
     const xFor = (i) => PAD_L + (n > 1 ? (i / (n - 1)) * (W - PAD_L - PAD_R) : 0);
     const yFor = (v) => PAD_T + (1 - v / maxVal) * (H - PAD_T - PAD_B);
 
@@ -106,8 +120,24 @@ window.UI = window.UI || {};
         <span>${escapeHtml(s.label)}</span>
       </div>`).join("");
 
+    // Dashed threshold line + right-edge label, same visual language as the
+    // gridlines but on the accent color so it reads as a target, not just
+    // another gridline.
+    let victoryLine = "";
+    let victorySubtitle = "";
+    if (victoryThresholdTiles != null) {
+      const y = yFor(victoryThresholdTiles);
+      victoryLine = `
+        <line x1="${PAD_L}" y1="${y.toFixed(1)}" x2="${W - PAD_R}" y2="${y.toFixed(1)}" stroke="var(--accent)" stroke-width="1.5" stroke-dasharray="5,4" />
+        <text x="${(W - PAD_R + 6).toFixed(1)}" y="${y.toFixed(1)}" dominant-baseline="middle" font-size="10" fill="var(--accent)">Victory</text>`;
+      const pct = Math.round(window.GameEngine.turns.VICTORY_SHARE_THRESHOLD * 100);
+      victorySubtitle = `<p class="reports-subtitle">Territorial victory needs ${pct}% of this map's claimable land —
+        ${victoryThresholdTiles.toLocaleString()} of ${totalClaimable.toLocaleString()} tiles.</p>`;
+    }
+
     return `
       <h2>${escapeHtml(cfg.label)}</h2>
+      ${victorySubtitle}
       <div class="reports-legend">${legend}</div>
       <div class="reports-chart-wrap">
         <svg id="reports-svg" viewBox="0 0 ${W} ${H}" width="100%" height="${H}"
@@ -115,6 +145,7 @@ window.UI = window.UI || {};
           ${grid}
           ${xAxis}
           <text x="${PAD_L}" y="12" font-size="10" fill="var(--text-dim)">${escapeHtml(cfg.axisLabel)}</text>
+          ${victoryLine}
           ${paths}
           ${endMarkers}
           <line id="reports-crosshair" x1="0" y1="${PAD_T}" x2="0" y2="${H - PAD_B}"

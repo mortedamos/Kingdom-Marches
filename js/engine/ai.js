@@ -5174,7 +5174,21 @@ window.GameEngine = window.GameEngine || {};
     if (target.civId !== caster.civId || target.carriedBy) return false;
     if (window.GameData.getUnit(target.typeId).category !== "military") return false;
     if (window.GameEngine.combat.isFlying(target)) return false;
-    if (window.GameEngine.influence.chebyshev(caster.x, caster.y, target.x, target.y) > 1) return false;
+
+    // In range but not yet adjacent (2026-08-12, user-directed: "cast fly on
+    // units in range, not just adjacent") -- walk the Wizard toward the
+    // target first, same "move there and still cast, same turn" pattern
+    // maybeGrantFlight's own opportunistic AI play already used. This entry
+    // point is shared by both that AI play (which pre-filters candidates to
+    // its own computed reach) and main.js's player ring click (whose menu
+    // pill was offered by orders.js's own matching reach check) -- so both
+    // callers rely on THIS function to actually close the distance, not just
+    // validate it.
+    const { map, civs } = gameState;
+    if (window.GameEngine.influence.chebyshev(caster.x, caster.y, target.x, target.y) > 1) {
+      moveTowardWithStandoff(civ, caster, target.x, target.y, map, civs, 1);
+      if (window.GameEngine.influence.chebyshev(caster.x, caster.y, target.x, target.y) > 1) return false;
+    }
 
     currentTurnNumber = gameState.turnNumber || 0;
     currentGameStateRef = gameState;
@@ -7031,13 +7045,26 @@ window.GameEngine = window.GameEngine || {};
     if (wispCapReached(civ)) return false;
     const { map } = gameState;
     const explored = gameState.explored[civ.id] || new Set();
+    // Spread multiple wisps apart (2026-08-12, user-directed: "if multiple
+    // wisps can be summoned, the AI should try to position them in different
+    // places... to maximize the amount of the map they can watch, not right
+    // next to each other") -- every already-summoned wisp is folded into the
+    // SAME "greatest minimum distance" scoring the home-city frontier pick
+    // already used, so a second/third wisp is pushed toward whichever
+    // candidate is farthest from BOTH home and every existing watch post,
+    // instead of independently re-picking "farthest from home" and landing
+    // right beside a wisp that's already there.
+    const existingWisps = civ.units.filter((u) => u.typeId === "wisp");
     let pick = null, bestMinDist = -1;
     for (const idx of explored) {
       const x = idx % map.width, y = Math.floor(idx / map.width);
       if (!isValidWispSummonTile(gameState, civ.id, x, y)) continue;
-      const minDist = civ.cities.length
+      let minDist = civ.cities.length
         ? civ.cities.reduce((min, c) => Math.min(min, window.GameEngine.influence.chebyshev(x, y, c.x, c.y)), Infinity)
         : 0;
+      for (const w of existingWisps) {
+        minDist = Math.min(minDist, window.GameEngine.influence.chebyshev(x, y, w.x, w.y));
+      }
       if (minDist > bestMinDist) { bestMinDist = minDist; pick = { x, y }; }
     }
     if (!pick) return false;
@@ -10583,6 +10610,19 @@ window.GameEngine = window.GameEngine || {};
           dx: bestTarget.x, dy: bestTarget.y, defUnit: bestTarget,
         });
         window.SfxSystem.playAction(civ.raceId, unit.typeId, "attack", unit.x, unit.y, DOUBLE_STRIKE_SFX_DELAY_MS);
+      }
+      // First Strike (2026-08-12, user-directed): narrated the same way as
+      // Double Strike above -- only when the ORDER effect actually decided
+      // who swung first this round (forwardFirst/returnFirst, see combat.js's
+      // resolveRound), or the attacker's own First Strike denied the
+      // defender's counter outright (counterDenied) -- not just because the
+      // unit HAS some First Strike %, which would fire on every single
+      // attack regardless of whether it changed anything.
+      if (result.forwardFirst || result.counterDenied) {
+        window.GameEngine.floatingText.spawnFloatingText(unit, "First Strike!", "strike");
+      }
+      if (result.returnFirst) {
+        window.GameEngine.floatingText.spawnFloatingText(bestTarget, "First Strike!", "strike");
       }
       markCombatEngaged(civ);
       markCombatEngaged(defenderCiv);

@@ -1,5 +1,5 @@
 /**
- * AMBIENT VILLAGER FIGURES (2026-08-07, user-directed)
+ * AMBIENT VILLAGER FIGURES (2026-08-07, user-directed; extended 2026-08-12)
  * -------------------------------------------------------
  * Tiny figures that occasionally spawn at a city's own tile or one of its
  * structures' tiles, wander along a gently-curved, variable-paced path to a
@@ -8,6 +8,12 @@
  * sprite art, matching this session's other small procedural-canvas
  * cosmetics (the death effect, the construction placeholder, the idle-city
  * badge).
+ *
+ * A separate, lower-frequency spawn (2026-08-12, user-directed: "in addition
+ * to structures, a kingdom's villagers should sometimes also generate on
+ * tiles under influence, then wander to another tile under influence, then
+ * vanish") walks the same way between two ordinary tiles the kingdom
+ * currently owns, not just city/structure tiles -- see territoryPointsFor.
  *
  * Head and arms are tinted with a race-appropriate skin tone (picked once
  * per figure at spawn, from a small per-race palette); the torso/"clothes"
@@ -29,6 +35,13 @@ window.UI = window.UI || {};
   const PAUSE_SECONDS = [1, 3];
   const FADE_SECONDS = 0.6;
   const SPAWN_CHANCE_PER_STRUCTURE = 0.05; // rolled once per structure, per tick's spawn-check window
+  // Territory villagers (2026-08-12, user-directed: "in addition to
+  // structures, a kingdom's villagers should sometimes also generate on
+  // tiles under influence, then wander to another tile under influence,
+  // then vanish") -- one flat per-city roll per spawn-check window, separate
+  // from the per-structure rolls above, using territoryPointsFor's owned-
+  // tile pool instead of waypointsFor's city+structures pool.
+  const TERRITORY_SPAWN_CHANCE = 0.15;
   const SPAWN_CHECK_INTERVAL_SECONDS = 6; // how often each city's structures roll their spawn chance
   const MAX_PER_CITY = 6; // safety cap so a huge city can't flood the screen
   const BASE_SPEED_RANGE = [0.16, 0.3]; // tiles/second baseline pace, before the per-figure variable-speed wobble
@@ -63,6 +76,31 @@ window.UI = window.UI || {};
     return pts;
   }
 
+  /** Every tile currently under `civ`'s influence within reach of `city`'s
+   *  own fill-in progress (2026-08-12, user-directed) -- built from
+   *  city.filledOffsets (cities.js's gradual per-tile claim tracker, the
+   *  same set influence.js's own territory math reads) rather than scanning
+   *  the whole map, then filtered to tiles that are STILL actually owned by
+   *  this civ right now: filledOffsets is a ratchet that never un-fills once
+   *  a tile is claimed (see cities.js's own doc comment), so a tile can
+   *  stay in the set after this civ has since lost it to a rival's
+   *  contest -- villagers should only wander onto ground the kingdom
+   *  genuinely still holds. Fewer than 2 qualifying points means there's
+   *  nowhere to walk yet, same "don't spawn here" contract waypointsFor's
+   *  callers already expect. */
+  function territoryPointsFor(city, civ, map) {
+    const pts = [];
+    for (const key of city.filledOffsets) {
+      const [dx, dy] = key.split(",").map(Number);
+      const tx = city.x + dx, ty = city.y + dy;
+      if (tx < 0 || tx >= map.width || ty < 0 || ty >= map.height) continue;
+      const tile = map.tiles[ty * map.width + tx];
+      if (tile.status !== "owned" || tile.ownerCivId !== civ.id) continue;
+      pts.push({ x: tx, y: ty });
+    }
+    return pts;
+  }
+
   function countFor(city) {
     let n = 0;
     for (const f of figures) if (f.city === city) n++;
@@ -74,8 +112,7 @@ window.UI = window.UI || {};
     return palette[Math.floor(Math.random() * palette.length)];
   }
 
-  function spawnFor(city, civ) {
-    const pts = waypointsFor(city);
+  function spawnFor(city, civ, pts) {
     if (pts.length < 2) return;
     const a = pts[Math.floor(Math.random() * pts.length)];
     let b = a;
@@ -131,8 +168,13 @@ window.UI = window.UI || {};
    *  chance every SPAWN_CHECK_INTERVAL_SECONDS, rather than one shared
    *  per-city timer -- so a city with many structures looks busier than a
    *  small one, purely from having more rolls, not a higher per-roll
-   *  chance. */
-  function tick(visibleCities) {
+   *  chance. A separate flat per-city roll (TERRITORY_SPAWN_CHANCE) on the
+   *  same timer spawns a figure that walks between two ordinary owned tiles
+   *  instead of city/structure tiles -- see territoryPointsFor. `map` is
+   *  only needed for that roll (to confirm a filled-in tile is still
+   *  actually owned right now); passed through from render.js's own
+   *  gameState.map. */
+  function tick(visibleCities, map) {
     const now = performance.now();
     const dt = lastFrameMs === null ? 0 : Math.min(0.1, (now - lastFrameMs) / 1000);
     lastFrameMs = now;
@@ -147,7 +189,10 @@ window.UI = window.UI || {};
         if (countFor(city) < MAX_PER_CITY) {
           for (const s of city.structures) {
             if (countFor(city) >= MAX_PER_CITY) break;
-            if (Math.random() < SPAWN_CHANCE_PER_STRUCTURE) spawnFor(city, civ);
+            if (Math.random() < SPAWN_CHANCE_PER_STRUCTURE) spawnFor(city, civ, waypointsFor(city));
+          }
+          if (countFor(city) < MAX_PER_CITY && Math.random() < TERRITORY_SPAWN_CHANCE) {
+            spawnFor(city, civ, territoryPointsFor(city, civ, map));
           }
         }
       }

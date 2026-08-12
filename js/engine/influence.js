@@ -18,6 +18,19 @@ window.GameEngine = window.GameEngine || {};
   const CONTESTED_GRACE_TURNS = CFG.contestedGraceTurns;
   const LOW_VALUE_TERRAIN_WEIGHT = CFG.lowValueTerrainWeight; // water (ocean+coast) and tundra
 
+  // Structure own-tile claim (2026-08-12, user-directed): "building a wall or
+  // building automatically puts that tile under the kingdom's influence."
+  // Deliberately a flat value large enough to swamp any realistic rival
+  // influence on that same tile (baseCityInfluence tops out at population *
+  // industriousnessInfluenceMult, comfortably under this even very late-game),
+  // rather than a proportional bonus -- a structure standing on a tile is
+  // meant to be an unconditional claim, not "usually" enough. Matters most for
+  // walls, which prefer ring-2 (Chebyshev distance 2 from the city) and can
+  // sit OUTSIDE a low-tier city's own influenceRadius entirely -- see
+  // cities.js's findStructureSlot -- so without this a freshly-built wall
+  // tile could otherwise stay neutral/contested indefinitely.
+  const STRUCTURE_OWN_TILE_INFLUENCE = 10000;
+
   /** Chebyshev (square) distance -- the metric used everywhere in this design */
   function chebyshev(x1, y1, x2, y2) {
     return Math.max(Math.abs(x1 - x2), Math.abs(y1 - y2));
@@ -90,6 +103,18 @@ window.GameEngine = window.GameEngine || {};
 
             addInfluence(tileIdx, civ.id, strength);
           }
+        }
+      }
+    }
+
+    // --- Structures (buildings/walls) always claim their own tile -- see
+    // STRUCTURE_OWN_TILE_INFLUENCE above for why this needs to be a flat,
+    // dominant value rather than folded into the radius/fill-in math above.
+    for (const civ of Object.values(civs)) {
+      if (civ.eliminated) continue;
+      for (const city of civ.cities) {
+        for (const s of city.structures) {
+          addInfluence(s.y * map.width + s.x, civ.id, STRUCTURE_OWN_TILE_INFLUENCE);
         }
       }
     }

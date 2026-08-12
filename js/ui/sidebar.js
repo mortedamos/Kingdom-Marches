@@ -351,6 +351,23 @@ window.UI = window.UI || {};
     // and every bonus string is derived (see terrain.js's RESOURCES,
     // RIVER_YIELD_BONUS and RUIN_YIELD_BONUS) so the panel can't claim a
     // number the yield code doesn't actually pay.
+    // Actual Yield (2026-08-12, user-directed): the base row above is raw
+    // terrain, unaffected by anything the player has actually built or
+    // researched -- this shows what the tile really pays right now, with
+    // kingdom (race/tech) and city (Barrow, distance falloff, road-bonus
+    // cap, ...) bonuses applied, same math cities.js's own worked-tile
+    // income totals use (see computeTileActualYield). Only shown once a
+    // city is actually working the tile (owned AND filled-in) -- an owned-
+    // but-unfilled or unowned tile has no "actual" figure to add beyond the
+    // base row already on screen.
+    const actualYield = ownerCiv ? window.GameEngine.cities.computeTileActualYield(tile, tile.x, tile.y, ownerCiv) : null;
+    const fmtYield = (v) => Number.isInteger(v) ? v : Math.round(v * 10) / 10;
+    const actualYieldHtml = actualYield ? `
+        <h3>Actual Yield</h3>
+        <div class="stat-row"><span>Harvest</span><span>${fmtYield(actualYield.harvest)}</span></div>
+        <div class="stat-row"><span>Coin</span><span>${fmtYield(actualYield.coin)}</span></div>
+        <div class="stat-row"><span>Lore</span><span>${fmtYield(actualYield.lore)}</span></div>` : '';
+
     const featureRows = [];
     if (resource) featureRows.push([resource.label, formatBonus(resource.bonus)]);
     if (tile.isRuin) featureRows.push([window.GameData.RUIN_LABEL, formatBonus(window.GameData.RUIN_YIELD_BONUS)]);
@@ -389,6 +406,7 @@ window.UI = window.UI || {};
         <div class="stat-row"><span>Harvest</span><span>${y.harvest}</span></div>
         <div class="stat-row"><span>Coin</span><span>${y.coin}</span></div>
         <div class="stat-row"><span>Lore</span><span>${y.lore}</span></div>
+        ${actualYieldHtml}
         ${featuresHtml}
         <div class="stat-row"><span>Position</span><span>(${tile.x}, ${tile.y})</span></div>
         ${contentsHtml}
@@ -485,7 +503,7 @@ window.UI = window.UI || {};
     // the ring can't tell you (its start/claim/cancel verbs live there now).
     let channelActions = "";
     if (isHumanUnit) {
-      const CHANNEL_LABELS = { prospecting: "Prospecting", delving: "Delving", fishing: "Fishing", hunting: "Hunting", farming: "Farming" };
+      const CHANNEL_LABELS = { prospecting: "Prospecting", delving: "Delving", fishing: "Fishing", hunting: "Hunting", farming: "Farming", mining: "Mining" };
       const label = CHANNEL_LABELS[unit.channeling];
       const turnsIn = unit._ritualTurns || 0;
       if (label && turnsIn > 0) {
@@ -591,7 +609,6 @@ window.UI = window.UI || {};
     if (levelBonuses.siegePct) bonusParts.push(`+${Math.round(levelBonuses.siegePct * 100)}% siege`);
     if (levelBonuses.firstStrikePct) bonusParts.push(`+${Math.round(levelBonuses.firstStrikePct * 100)}% first strike`);
     if (levelBonuses.doubleStrikePct) bonusParts.push(`+${Math.round(levelBonuses.doubleStrikePct * 100)}% double strike`);
-    if (bonusParts.length) properties.push(`Veteran bonuses: ${bonusParts.join(', ')}`);
 
     // Veteran leveling: level 0-MAX_UNIT_LEVEL, progress toward the next
     // level shown as raw XP / the next cumulative threshold (see combat.js's
@@ -681,6 +698,7 @@ window.UI = window.UI || {};
         <div class="stat-row"><span>Vision</span><span>${effVision}</span></div>
         <div class="stat-row"><span>Upkeep</span><span>${upkeep}</span></div>
         ${properties.length ? `<div class="stat-row"><span>Properties</span><span>${escapeHtml(properties.join(', '))}</span></div>` : ''}
+        ${bonusParts.length ? `<div class="stat-row"><span>Veteran Bonuses</span><span>${escapeHtml(bonusParts.join(', '))}</span></div>` : ''}
         <div class="stat-row"><span>Position</span><span>(${unit.x}, ${unit.y})</span></div>
         ${carriedByTag}${carriesTag}
         ${turnStatus}

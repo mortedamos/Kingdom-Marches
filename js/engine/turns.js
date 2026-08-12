@@ -838,6 +838,33 @@ window.GameEngine = window.GameEngine || {};
       }
     }
 
+    // Pioneer/Scout/Druid "Mine Vein" (2026-08-12, user-directed: "Pioneer
+    // should be able to prospect all tile resource types except ruins"):
+    // same flat-payout, no-territorial-claim shape as Hunt Game/Farm Soil
+    // just above, extended to Gold/Iron Veins for ANY canProspect unit of
+    // ANY race -- deliberately separate from Dwarf's "prospecting" channel
+    // (Prospector's Claim, above) so this never entangles with that
+    // mechanic's territorial fill/Deep Mines tiering. No tech gate yet
+    // (unlike hunt_game/farm_soil) -- a proper tech is expected to gate this
+    // later; for now any canProspect unit can start it unconditionally.
+    for (const unit of civ.units) {
+      if (!window.GameData.getUnit(unit.typeId).canProspect || unit.channeling !== "mining") continue;
+      const tile = map.tiles[unit.y * map.width + unit.x];
+      if (!tile || (tile.resource !== "gold" && tile.resource !== "iron")) {
+        unit.channeling = null;
+        delete unit._channelStash;
+        continue;
+      }
+      accumulateChannelStash(unit, { coin: 3 });
+      if (Math.random() < resourceExhaustionChanceFor(civ)) {
+        scheduleResourceRespawn(gameState, tile.resource);
+        tile.resource = null;
+        window.GameEngine.floatingText.spawnFloatingText(unit, "Vein Exhausted!", "warning");
+        unit.channeling = null;
+        bankChannelStash(unit, civ);
+      }
+    }
+
     // Orc "Pillage and Loot": any Orc unit standing within an enemy city's
     // radius (raiding range) generates +1 harvest/+1 coin/+1 lore for EACH
     // tile where it actually suppressed enemy influence this turn (see

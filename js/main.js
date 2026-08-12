@@ -252,9 +252,15 @@
   // alone would give it. Floored well above zero so a hypothetical civ
   // count far past the UI's actual 2-6 range can't invert the map size.
   const CIV_ABOVE_TWO_SHRINK_RATE = 0.05;
+  // Flat -10% AREA (2026-08-12, user-directed: "shrink the size of generated
+  // world map by 10%") on top of everything above -- same "AREA percentage,
+  // applied as sqrt() to the linear dimension scale" convention MAP_SIZE_BOOST
+  // and CIV_ABOVE_TWO_SHRINK_RATE already use, so width/height each shrink by
+  // sqrt(0.9) (~5.1%), not 10% each (which would compound to ~19% less area).
+  const MAP_SIZE_USER_SHRINK = 0.9;
   function mapSizeForCivCount(civCount) {
     const areaShrink = Math.max(0.2, 1 - CIV_ABOVE_TWO_SHRINK_RATE * Math.max(0, civCount - 2));
-    const linearScale = Math.sqrt(civCount / REFERENCE_CIV_COUNT) * Math.sqrt(MAP_SIZE_BOOST) * Math.sqrt(areaShrink);
+    const linearScale = Math.sqrt(civCount / REFERENCE_CIV_COUNT) * Math.sqrt(MAP_SIZE_BOOST) * Math.sqrt(areaShrink) * Math.sqrt(MAP_SIZE_USER_SHRINK);
     const width = Math.round(Math.min(MAX_MAP_WIDTH, Math.max(MIN_MAP_WIDTH, REFERENCE_MAP_WIDTH * linearScale)));
     const height = Math.round(Math.min(MAX_MAP_HEIGHT, Math.max(MIN_MAP_HEIGHT, REFERENCE_MAP_HEIGHT * linearScale)));
     return { width, height };
@@ -455,27 +461,132 @@
     setupButtonClickSfx();
     setupGlobalShortcuts();
     setupKeyboardShortcutsOverlay();
+    setupTitleMenuBar();
+    setupTitleAudioControls();
+    setupTitleLoadGameControl();
+  }
+
+  /** Title menu bar's File > Load Game (2026-08-12, user-directed): loads a
+   *  save straight from the title screen, before "Begin" has ever been
+   *  clicked -- unlike the in-game File menu's Load Game (handleLoadGameFile/
+   *  finishApplyLoadedPayload), which REPLACES an already-running session's
+   *  gameState/viewState in place because window.UI.input.attach already
+   *  closed over those exact object references. Here neither object exists
+   *  yet, so there's nothing to preserve identity for -- startGameFromSave
+   *  just assigns them fresh, same as startGame's own `gameState =
+   *  createNewGame(...)`, and reuses startGame's asset-loading/finishStartGame
+   *  tail via beginGameScreenTransition. A separate file input/handler from
+   *  the in-game one on purpose, so the two load paths can never cross wires. */
+  function setupTitleLoadGameControl() {
+    const btn = $("title-load-game-btn");
+    const fileInput = $("title-load-game-file-input");
+    if (!btn || !fileInput) return;
+    btn.addEventListener("click", () => fileInput.click());
+    fileInput.addEventListener("change", (e) => {
+      const file = e.target.files[0];
+      e.target.value = "";
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = () => {
+        try {
+          const payload = window.GameEngine.savegame.deserialize(reader.result);
+          startGameFromSave(payload);
+        } catch (err) {
+          alert(`Failed to load save file: ${err.message}`);
+        }
+      };
+      reader.readAsText(file);
+    });
+  }
+
+  /** Every mute control across the app -- the title screen's standalone
+   *  "Mute Sound" button, the title menu bar's Audio checkbox (2026-08-12),
+   *  the in-game Audio menu's checkbox, and the "M" global shortcut -- all
+   *  drive and reflect this one shared pair of functions rather than each
+   *  keeping its own copy of the mute state, so none of them can ever drift
+   *  out of sync with the others no matter which one the player actually
+   *  uses (a control that isn't in the DOM yet, e.g. the in-game checkbox
+   *  before a game starts, is just skipped). */
+  function syncAllMuteControls() {
+    const muted = window.MusicSystem.isMuted();
+    const titleBtn = $("title-mute-btn");
+    if (titleBtn) titleBtn.textContent = muted ? "Unmute Sound" : "Mute Sound";
+    const titleCheckbox = $("title-menu-audio-mute-checkbox");
+    if (titleCheckbox) titleCheckbox.checked = muted;
+    const gameCheckbox = $("audio-mute-checkbox");
+    if (gameCheckbox) gameCheckbox.checked = muted;
+  }
+  function setGlobalMuted(muted) {
+    window.MusicSystem.setMuted(muted);
+    window.SfxSystem.setMuted(muted);
+    syncAllMuteControls();
   }
 
   /** Title screen's own master-mute button (2026-08-07, user-directed) --
    *  same "mute covers BOTH systems" master switch as the in-game Audio
-   *  menu's checkbox (see setupAudioControls), just reachable before a game
-   *  even starts. Label reflects MusicSystem's persisted mute state on
-   *  load, same as that checkbox does, so the two controls always agree. */
+   *  menu's checkbox, just reachable before a game even starts. */
   function setupTitleMuteControl() {
     const btn = $("title-mute-btn");
     if (!btn) return;
-    const sync = () => {
-      const muted = window.MusicSystem.isMuted();
-      btn.textContent = muted ? "Unmute Sound" : "Mute Sound";
-    };
-    sync();
-    btn.addEventListener("click", () => {
-      const muted = !window.MusicSystem.isMuted();
-      window.MusicSystem.setMuted(muted);
-      window.SfxSystem.setMuted(muted);
-      sync();
+    syncAllMuteControls();
+    btn.addEventListener("click", () => setGlobalMuted(!window.MusicSystem.isMuted()));
+  }
+
+  /** Title menu bar's Audio dropdown (2026-08-12, user-directed: the in-game
+   *  top menu bar, reachable from the title screen too) -- same Mute/Music/
+   *  SFX controls as the in-game Audio menu (setupAudioControls), just
+   *  without "Now Playing" or "Track" (nothing is playing/selectable until a
+   *  race is actually in a running game), and wired here so it works before
+   *  "Begin" is ever clicked. Mute specifically routes through
+   *  setGlobalMuted/syncAllMuteControls above so it never disagrees with the
+   *  standalone "Mute Sound" button. */
+  function setupTitleAudioControls() {
+    const checkbox = $("title-menu-audio-mute-checkbox");
+    if (!checkbox) return;
+    syncAllMuteControls();
+    checkbox.addEventListener("change", () => setGlobalMuted(checkbox.checked));
+
+    const volumeSlider = $("title-menu-audio-volume-slider");
+    volumeSlider.value = Math.round(window.MusicSystem.getMusicVolume() * 100);
+    volumeSlider.addEventListener("input", () => {
+      window.MusicSystem.setMusicVolume(parseInt(volumeSlider.value, 10) / 100);
     });
+
+    const sfxSlider = $("title-menu-sfx-volume-slider");
+    sfxSlider.value = Math.round(window.SfxSystem.getSfxVolume() * 100);
+    sfxSlider.addEventListener("input", () => {
+      window.SfxSystem.setSfxVolume(parseInt(sfxSlider.value, 10) / 100);
+    });
+  }
+
+  /** Open/close wiring for the title screen's own menu bar (2026-08-12) --
+   *  same click-to-toggle/click-outside-closes shape as the in-game
+   *  setupMenuBar, kept as a fully separate instance (own menu list, own
+   *  document click listener) rather than a shared/generalized one. Safe to
+   *  keep separate since the two menu bars never need to coexist visibly --
+   *  this one's container is hidden the moment a game actually starts (see
+   *  startGame/startGameFromSave's `$("title-screen").style.display =
+   *  "none"`). */
+  function setupTitleMenuBar() {
+    const menus = [
+      { btn: $("title-menu-file-btn"), dropdown: $("title-menu-file-dropdown") },
+      { btn: $("title-menu-interface-btn"), dropdown: $("title-menu-interface-dropdown") },
+      { btn: $("title-menu-audio-btn"), dropdown: $("title-menu-audio-dropdown") },
+    ];
+    if (!menus[0].btn) return;
+    function closeAll() {
+      for (const m of menus) { m.dropdown.style.display = "none"; m.btn.classList.remove("active"); }
+    }
+    for (const m of menus) {
+      m.btn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const willOpen = m.dropdown.style.display === "none";
+        closeAll();
+        if (willOpen) { m.dropdown.style.display = "flex"; m.btn.classList.add("active"); }
+      });
+    }
+    menus[0].btn.closest(".menu-bar").addEventListener("click", (e) => e.stopPropagation());
+    document.addEventListener("click", closeAll);
   }
 
   /** Open/close wiring for the launch options modal. Closing is deliberately
@@ -510,13 +621,19 @@
    *  setupLaunchOptionsOverlay. Opened from the Interface menu's
    *  "Keyboard Shortcuts" button, which replaced the standalone "Enter
    *  Full Screen" entry there; that button now lives INSIDE this window
-   *  (see index.html), unchanged apart from its new parent. */
+   *  (see index.html), unchanged apart from its new parent. Also opened from
+   *  the title menu bar's own Interface > Keyboard Shortcuts button
+   *  (2026-08-12) -- same overlay, just a second trigger reachable before a
+   *  game starts. */
   function setupKeyboardShortcutsOverlay() {
     const overlay = $("keyboard-shortcuts-overlay");
     if (!overlay) return;
     const close = () => { overlay.style.display = "none"; };
+    const open = () => { overlay.style.display = "flex"; };
     const btn = $("keyboard-shortcuts-btn");
-    if (btn) btn.addEventListener("click", () => { overlay.style.display = "flex"; });
+    if (btn) btn.addEventListener("click", open);
+    const titleBtn = $("title-menu-keyboard-shortcuts-btn");
+    if (titleBtn) titleBtn.addEventListener("click", open);
     $("keyboard-shortcuts-close-btn").addEventListener("click", close);
     overlay.addEventListener("mousedown", (e) => { if (e.target === overlay) close(); });
     document.addEventListener("keydown", (e) => {
@@ -689,6 +806,11 @@
     updateMapSeedLabel();
     viewState = {
       scrollX: 0, scrollY: 0, zoomLevel: 1.0, showInfluence: true, showGrid: true,
+      // Interface menu's "End Turn Reminders" checkbox (2026-08-12,
+      // user-directed) -- gates handleEndTurnClick's confirmEndTurn dialog
+      // entirely when off, same non-persisted per-session convention as
+      // showGrid/showInfluence above (not part of the save file).
+      endTurnRemindersEnabled: true,
       selectedUnit: null, selectedCity: null, selectedTile: null, humanCivId,
       // Tabbed tile inspector -- the selected* fields above are derived from
       // this now (see input.js's SELECTION MODEL).
@@ -698,6 +820,10 @@
       tileScoreCivId: null, // Interface menu's Tile City Score overlay -- available in both spectator and human modes
       dialog: null, // in-game confirm/prompt/alert replacement -- see js/ui/dialog.js
       turnBanner: null, // "<Race> Kingdom Taking Its Turn..." -- see advanceTurn()
+      // { x, y, start } while a jump-to-tile link's brief highlight is
+      // animating (2026-08-12, user-directed) -- see goToTile/render.js's
+      // drawTileFlash.
+      tileFlash: null,
       // Radial map menu (2026-08-06) -- { x, y, subject, page } while open.
       // Declared here rather than only set lazily so the field is discoverable
       // alongside the rest of the view model; the load path below must
@@ -711,20 +837,34 @@
       onTechTreeClosed: null,
     };
 
+    beginGameScreenTransition(racesInPlay);
+  }
+
+  /**
+   * Shared tail of "leave the title screen and actually get into a game" --
+   * used by both a fresh New Game (startGame, above) and a save loaded
+   * straight from the title screen (startGameFromSave, below). Both callers
+   * have already fully populated gameState/viewState/humanCivId/
+   * spectatorMode by the time this runs; all this does is hide the title
+   * screen, preload every asset the given races need, and hand off to
+   * finishStartGame once that settles.
+   *
+   * Sprites/music/sfx are all real network loads (hundreds of small requests
+   * under connection-limit contention can take up to ~15-20s -- see
+   * render3d.js's own notes on this), and the game screen used to appear
+   * immediately regardless, with most art/audio still streaming in -- looked
+   * broken rather than loading. Gate showing it on all three actually
+   * finishing. Each of these is designed to always resolve, never reject (a
+   * missing asset is skipped, not an error -- see preloadAll's/
+   * SfxSystem.init's own doc comments), so this isn't expected to hang, but
+   * a failsafe timeout still backs it up below in case some future asset
+   * type doesn't hold to that.
+   */
+  function beginGameScreenTransition(racesInPlay) {
     stopTitleMusic();
     $("title-screen").style.display = "none";
     showLoadingScreen();
 
-    // Sprites/music/sfx are all real network loads (hundreds of small
-    // requests under connection-limit contention can take up to ~15-20s --
-    // see render3d.js's own notes on this), and the game screen used to
-    // appear immediately regardless, with most art/audio still streaming
-    // in -- looked broken rather than loading. Gate showing it on all
-    // three actually finishing. Each of these is designed to always
-    // resolve, never reject (a missing asset is skipped, not an error --
-    // see preloadAll's/SfxSystem.init's own doc comments), so this isn't
-    // expected to hang, but a failsafe timeout still backs it up below in
-    // case some future asset type doesn't hold to that.
     const musicPromise = window.MusicSystem.init(racesInPlay, (done, total) => setLoadingProgress("music", done, total)).then(() => {
       window.MusicSystem.setRace(humanCivId ? gameState.civs[humanCivId].raceId : null);
       populateAudioTrackOptions();
@@ -736,6 +876,40 @@
       Promise.all([musicPromise, sfxPromise, spritesPromise]),
       new Promise((resolve) => setTimeout(resolve, LOADING_FAILSAFE_MS)),
     ]).then(finishStartGame);
+  }
+
+  /** Title screen's File > Load Game (2026-08-12, user-directed) -- see
+   *  setupTitleLoadGameControl's own doc comment for why this is a separate
+   *  path from the in-game Load Game's finishApplyLoadedPayload rather than
+   *  a shared one: gameState/viewState don't exist yet, so there's nothing
+   *  to mutate in place, only to assign fresh -- same shape as startGame's
+   *  own `gameState = createNewGame(...)` just above, just fed a save's data
+   *  instead of a freshly generated map. */
+  function startGameFromSave(payload) {
+    gameState = payload.gameState;
+    humanCivId = payload.humanCivId;
+    spectatorMode = payload.spectatorMode;
+    aiDifficulty = payload.aiDifficulty;
+    applyGameSpeed(payload.gameSpeedPercent || 100);
+    for (const civ of Object.values(gameState.civs)) civ.isHuman = civ.id === humanCivId;
+    updateMapSeedLabel();
+    viewState = {
+      scrollX: 0, scrollY: 0, zoomLevel: 1.0, showInfluence: true, showGrid: true,
+      // Interface menu's "End Turn Reminders" checkbox (2026-08-12,
+      // user-directed) -- gates handleEndTurnClick's confirmEndTurn dialog
+      // entirely when off, same non-persisted per-session convention as
+      // showGrid/showInfluence above (not part of the save file).
+      endTurnRemindersEnabled: true,
+      selectedUnit: null, selectedCity: null, selectedTile: null, humanCivId,
+      selection: null,
+      is3D: false,
+      fogMode: "off", fogCivIds: new Set(Object.keys(gameState.civs)),
+      tileScoreCivId: null,
+      dialog: null, turnBanner: null, ringMenu: null,
+      onTechTreeClosed: null,
+    };
+    const racesInPlay = [...new Set(Object.values(gameState.civs).map((c) => c.raceId))];
+    beginGameScreenTransition(racesInPlay);
   }
 
   /** Runs once loading actually finishes (or the failsafe timeout fires) --
@@ -787,6 +961,15 @@
     $("grid-toggle-btn").addEventListener("click", () => {
       viewState.showGrid = !viewState.showGrid;
       redraw();
+    });
+    // "End Turn Reminders" (2026-08-12, user-directed): checked/on by
+    // default, matching viewState.endTurnRemindersEnabled's own default --
+    // synced here in case a page reload or a loaded save left the checkbox's
+    // own DOM state stale from a previous session's toggle.
+    const endTurnRemindersToggle = $("end-turn-reminders-toggle");
+    endTurnRemindersToggle.checked = viewState.endTurnRemindersEnabled;
+    endTurnRemindersToggle.addEventListener("change", () => {
+      viewState.endTurnRemindersEnabled = endTurnRemindersToggle.checked;
     });
     $("report-influence-btn").addEventListener("click", () => {
       viewState.reportView = "influence";
@@ -1227,7 +1410,12 @@
     // own setup functions and don't stopPropagation on their own clicks -- without
     // this, every click inside an open dropdown bubbles to the document listener
     // below and closes the menu it was just clicked in.
-    document.querySelector(".menu-bar").addEventListener("click", (e) => e.stopPropagation());
+    // Scoped via .closest() rather than document.querySelector(".menu-bar")
+    // (2026-08-12) -- the title screen now has its own separate .menu-bar
+    // (see setupTitleMenuBar), and querySelector would only ever find
+    // whichever one comes first in the DOM, silently breaking this one's
+    // click-outside handling once the title screen's markup preceded it.
+    menus[0].btn.closest(".menu-bar").addEventListener("click", (e) => e.stopPropagation());
     document.addEventListener("click", closeAll);
   }
 
@@ -1409,12 +1597,9 @@
     // switch. Music's mute persists (it owns the stored audio settings);
     // sfx's is in-memory and re-derived from the checkbox on load.
     const muteCheckbox = $("audio-mute-checkbox");
-    muteCheckbox.checked = window.MusicSystem.isMuted();
+    syncAllMuteControls();
     window.SfxSystem.setMuted(muteCheckbox.checked);
-    muteCheckbox.addEventListener("change", () => {
-      window.MusicSystem.setMuted(muteCheckbox.checked);
-      window.SfxSystem.setMuted(muteCheckbox.checked);
-    });
+    muteCheckbox.addEventListener("change", () => setGlobalMuted(muteCheckbox.checked));
 
     const volumeSlider = $("audio-volume-slider");
     volumeSlider.value = Math.round(window.MusicSystem.getMusicVolume() * 100);
@@ -1607,6 +1792,11 @@
     for (const k of Object.keys(viewState)) delete viewState[k];
     Object.assign(viewState, {
       scrollX: 0, scrollY: 0, zoomLevel: 1.0, showInfluence: true, showGrid: true,
+      // Interface menu's "End Turn Reminders" checkbox (2026-08-12,
+      // user-directed) -- gates handleEndTurnClick's confirmEndTurn dialog
+      // entirely when off, same non-persisted per-session convention as
+      // showGrid/showInfluence above (not part of the save file).
+      endTurnRemindersEnabled: true,
       selectedUnit: null, selectedCity: null, selectedTile: null, humanCivId,
       // Tabbed tile inspector -- the selected* fields above are derived from
       // this now (see input.js's SELECTION MODEL).
@@ -1659,7 +1849,7 @@
     // probably didn't mean to skip. Deliberately a confirm, not a block --
     // deliberately holding units in reserve or coasting a turn without
     // research is a legitimate choice, it just shouldn't happen by accident.
-    const unresolved = collectUnresolvedTurnWork();
+    const unresolved = viewState.endTurnRemindersEnabled ? collectUnresolvedTurnWork() : [];
     if (unresolved.length) {
       viewState.dialog = {
         kind: "confirmEndTurn", items: unresolved,
@@ -1873,14 +2063,19 @@
    *  gameState/viewState/humanCivId itself rather than assuming a game is
    *  running.
    *
-   *  General: WASD pans the map (continuous, applied every animation-loop
-   *  frame while held -- see startAnimationLoop's panKeys read); Shift
-   *  arms the "next 3 turns" auto-repeat on Rest and Defend/Gather More
-   *  Resources/Research (see maybeScheduleAutoRepeat) and prefixes their
-   *  ring-menu labels (see renderRingMenu); M toggles the same master mute
-   *  both the title screen's and the in-game Audio menu's mute controls
-   *  use. Unit context: Space = Rest and Defend, arrow keys move one tile.
-   *  City context: Space = Gather More Resources. */
+   *  General: WASD and the arrow keys both pan the map, mapped onto the same
+   *  panKeys entries (2026-08-12, user-directed -- arrows used to move the
+   *  selected unit one tile; that's still reachable via a normal map click,
+   *  just no longer a dedicated shortcut), continuous, applied every
+   *  animation-loop frame while held -- see startAnimationLoop's panKeys
+   *  read; Shift arms the "next 3 turns" auto-repeat on Rest and Defend/
+   *  Gather More Resources/Research (see maybeScheduleAutoRepeat) and
+   *  prefixes their ring-menu labels (see renderRingMenu); M toggles the
+   *  same master mute both the title screen's and the in-game Audio menu's
+   *  mute controls use. Unit context: Space = Rest and Defend (or End Turn
+   *  when nothing is selected and there's nothing left to do this turn --
+   *  see the Space handler's own comment). City context: Space = Gather
+   *  More Resources. */
   function setupGlobalShortcuts() {
     function handleGlobalKeydown(e) {
       if (e.key === "Shift") {
@@ -1904,13 +2099,7 @@
       // scope). Not gated on anyOverlayOpen(): muting sound is harmless to
       // fire through a dialog, unlike the movement/action shortcuts below.
       if (e.key === "m" || e.key === "M") {
-        const muted = !window.MusicSystem.isMuted();
-        window.MusicSystem.setMuted(muted);
-        window.SfxSystem.setMuted(muted);
-        const titleBtn = $("title-mute-btn");
-        if (titleBtn) titleBtn.textContent = muted ? "Unmute Sound" : "Mute Sound";
-        const checkbox = $("audio-mute-checkbox");
-        if (checkbox) checkbox.checked = muted;
+        setGlobalMuted(!window.MusicSystem.isMuted());
         return;
       }
 
@@ -1935,8 +2124,18 @@
       if (!gameState || !viewState || !humanCivId || anyOverlayOpen()) return;
 
       const key = e.key.toLowerCase();
-      if (key === "w" || key === "a" || key === "s" || key === "d") {
-        panKeys.add(key);
+      // Arrow keys pan the map exactly like WASD (2026-08-12, user-directed)
+      // -- mapped onto the SAME panKeys entries (ArrowUp -> "w", etc.) rather
+      // than a parallel set, so startAnimationLoop's per-frame pan read
+      // (below) needs no changes and the two input methods can never drift.
+      // Previously moved the selected unit one tile; that's still reachable
+      // via a map click/drag same as any other move order, just no longer a
+      // dedicated shortcut.
+      const ARROW_TO_PAN_KEY = { arrowup: "w", arrowdown: "s", arrowleft: "a", arrowright: "d" };
+      const panKey = ARROW_TO_PAN_KEY[key] || (key === "w" || key === "a" || key === "s" || key === "d" ? key : null);
+      if (panKey) {
+        if (ARROW_TO_PAN_KEY[key]) e.preventDefault(); // stop the page itself from scrolling
+        panKeys.add(panKey);
         return;
       }
 
@@ -1951,33 +2150,19 @@
           // Nothing selected (2026-08-10, user-directed): jump to the next
           // idle city, or the next unit needing orders if there's no idle
           // city -- same priority goToNextIdleCityOrNextUnit already gives
-          // the Next Idle City/Next Unit sidebar buttons.
+          // the Next Idle City/Next Unit sidebar buttons. If THAT comes back
+          // false (2026-08-12, user-directed: "if no cities are idle, and
+          // all units have orders, then space should ... end turn") there is
+          // nothing left to jump to this turn, so Space falls through to the
+          // same End Turn path Enter already uses -- still routed through
+          // handleEndTurnClick, so the confirmEndTurn reminder (when enabled)
+          // still gets its say rather than skipping straight to advanceTurn.
           if (goToNextIdleCityOrNextUnit()) redraw();
+          else handleEndTurnClick();
         }
         return;
       }
 
-      const ARROW_DELTA = {
-        ArrowUp: { dx: 0, dy: -1 }, ArrowDown: { dx: 0, dy: 1 },
-        ArrowLeft: { dx: -1, dy: 0 }, ArrowRight: { dx: 1, dy: 0 },
-      };
-      if (ARROW_DELTA[e.key]) {
-        e.preventDefault();
-        if (e.repeat) return;
-        const unit = viewState.selectedUnit;
-        if (!unit || unit.civId !== humanCivId || unit.usedThisTurn) return;
-        const { dx, dy } = ARROW_DELTA[e.key];
-        const tx = unit.x + dx, ty = unit.y + dy;
-        const { width, height } = gameState.map;
-        if (tx < 0 || ty < 0 || tx >= width || ty >= height) return;
-        endAutomationAndGoto(unit);
-        window.GameEngine.orders.startGotoOrder(unit, gameState, tx, ty, false);
-        if (viewState.selection) {
-          viewState.selection.x = unit.x;
-          viewState.selection.y = unit.y;
-        }
-        redraw();
-      }
     }
     document.addEventListener("keydown", handleGlobalKeydown);
 
@@ -1988,7 +2173,9 @@
         return;
       }
       const key = e.key.toLowerCase();
-      if (key === "w" || key === "a" || key === "s" || key === "d") panKeys.delete(key);
+      const ARROW_TO_PAN_KEY = { arrowup: "w", arrowdown: "s", arrowleft: "a", arrowright: "d" };
+      const panKey = ARROW_TO_PAN_KEY[key] || (key === "w" || key === "a" || key === "s" || key === "d" ? key : null);
+      if (panKey) panKeys.delete(panKey);
     });
 
     // Held keys must not survive a tab switch/alt-tab -- there's no keyup
@@ -4113,6 +4300,11 @@
       if (idx >= 0) window.UI.input.setActiveTab(gameState, viewState, idx);
     }
     centerViewOn(x, y);
+    // Brief flash (2026-08-12, user-directed) -- render.js's drawTileFlash
+    // fades this out on its own over TILE_FLASH_ANIM_MS; the animation loop
+    // already calls render() every frame regardless (see startAnimationLoop),
+    // so no extra redraw scheduling is needed to animate it.
+    viewState.tileFlash = { x, y, start: performance.now() };
     redraw();
   }
 

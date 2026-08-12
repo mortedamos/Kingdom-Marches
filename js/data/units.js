@@ -218,7 +218,7 @@ window.GameData.UNITS = {
   },
   galley: {
     id: "galley", label: "Galley", symbol: "⛵", category: "military",
-    attack: 1, defense: 2, movement: 4, visionRadius: 4, range: 1,
+    attack: 1, defense: 2, movement: 5, visionRadius: 4, range: 1,
     isNaval: true, canCarryUnit: true, biggerPct: .5,
     minBuildTurns: 3, // see pioneer's own minBuildTurns comment above
     // A ship, not a person -- see unit-names.js's UNIT_TYPE_PROPER_NAMES doc.
@@ -263,13 +263,13 @@ window.GameData.UNITS = {
   },
   catapult: {
     id: "catapult", label: "Catapult", symbol: "⚙", category: "military", raceOnly: "human", range: 2,
-    attack: 7, defense: 3, movement: 2, visionRadius: 2, siegePct: 1.50, siegeAtRange: true, attackChars: ["🪨", "☄"],
+    attack: 7, defense: 3, movement: 2, visionRadius: 2, siegePct: 1.75, siegeAtRange: true, attackChars: ["🪨", "☄"],
     coinCost: 28, biggerPct: .5,
     nameSpecial: true, // a machine, not a person -- see unit-names.js
   },
   trebuchet: {
-    id: "trebuchet", label: "Trebuchet", symbol: "⚙", category: "military", raceOnly: "human", range: 2,
-    attack: 8, defense: 4, movement: 2, visionRadius: 2, siegePct: 2.00, siegeAtRange: true, // replaces Catapult
+    id: "trebuchet", label: "Trebuchet", symbol: "⚙", category: "military", raceOnly: "human", range: 3,
+    attack: 8, defense: 4, movement: 2, visionRadius: 2, siegePct: 2.25, siegeAtRange: true, // replaces Catapult
     coinCost: 40, attackChars: ["🪨", "☄"], biggerPct: .6,
     nameSpecial: true, // a machine, not a person -- see unit-names.js
   },
@@ -286,7 +286,7 @@ window.GameData.UNITS = {
     // independent by design, so it needs no change here; verified this
     // still holds live after the cut, not just assumed.
     id: "wizard", label: "Wizard", symbol: "✦", category: "military", raceOnly: "human",
-    attack: 3, defense: 3, movement: 2, visionRadius: 3, range: 2,
+    attack: 3, defense: 3, movement: 2, visionRadius: 3, range: 2, burnChancePct: 0.10, frozenChancePct: 0.10, 
     coinCost: 35, attackChars: ["⚡", "❄️", "🔥", "☄", "✨"], doubleStrikePct: 0.1,
   },
 
@@ -551,14 +551,14 @@ window.GameData.UNITS = {
   // (see ai.js's wispCapReached), not built freely.
   wisp: {
     id: "wisp", label: "Wisp", symbol: "◌", category: "military", raceOnly: "orc",
-    attack: 1, defense: 0, movement: 1, visionRadius: 6, flying: true,
+    attack: 1, defense: 0, movement: 1, visionRadius: 6, flying: false,
     restrictedToTerrain: "swamp", burnChancePct: 0.20,
-    coinCost: 15, attackChars: ["🔥"], biggerPct: -0.2,
+    coinCost: 15, attackChars: ["🔥"], biggerPct: -0.3,
     cityBuildable: false, noUpkeep: true, nameSpecial: true, // a spirit, not a person
   },
   battering_ram: {
     id: "battering_ram", label: "Battering Ram", symbol: "⚙", category: "military", raceOnly: "orc",
-    attack: 6, defense: 3, movement: 2, visionRadius: 2, siegePct: 1.75,
+    attack: 6, defense: 5, movement: 2, visionRadius: 2, siegePct: 1.75,
     coinCost: 30, biggerPct: .5, attackChars: ["💥"],
     nameSpecial: true, // a machine, not a person -- see unit-names.js
   },
@@ -567,14 +567,7 @@ window.GameData.UNITS = {
     attack: 9, defense: 6, movement: 3, visionRadius: 3, siegePct: 0.50, attackChars: ["🪓", "💥", "🪨"],
     coinCost: 32,  biggerPct: .5, rare: true,
   },
-  // Pinnacle unit (2026-07-12): meant to be the single most powerful unit
-  // in the game and genuinely feared, not a mid-tier pick that happens to
-  // scale well -- attack/defense raised (11/8 -> 14/10) on top of the
-  // `rare` flag below, which makes each additional copy a civ owns
-  // compound the NEXT one's cost/build time (see ai.js's buildUnitOption).
-  // The two changes are deliberately paired: a Dragon should hit harder
-  // AND be genuinely rare, not just expensive for its old power level.
-  // See project_dragon_rebalance memory.
+
   dragon: {
     id: "dragon", label: "Dragon", symbol: "D", category: "military", raceOnly: "orc",
     attack: 11, defense: 8, movement: 4, visionRadius: 5, flying: true, range: 2, siegePct: 1.00,
