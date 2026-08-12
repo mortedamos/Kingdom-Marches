@@ -51,7 +51,7 @@ window.GameData.TERRAIN = {
     moveCostNaval: window.GameData.IMPASSABLE,
   },
   mountains: {
-    id: "mountains", label: "Mountains", color: "#6b6b70",
+    id: "mountains", label: "Mountains", color: "#8c8368",
     isWater: false,
     yield: { harvest: 0, coin: 2, lore: 0 },
     moveCostLand: window.GameData.IMPASSABLE,
