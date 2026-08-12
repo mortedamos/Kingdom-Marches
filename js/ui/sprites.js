@@ -549,6 +549,12 @@ window.UI = window.UI || {};
     // which can't exist yet.
     for (const id of racesInPlay)
       critical.push(() => loadVariants(`enhancement/influence/${id}`, `assets/enhancements/influence_${id}`));
+    // Coast/ocean counterpart (2026-08-13, user-directed) -- one non-
+    // animated variant per race, assets/enhancements/influence_water_{id}.png
+    // -- see render.js's own draw-time branch on TERRAIN[tile.terrain].isWater
+    // for why land and water need separate pools rather than one shared one.
+    for (const id of racesInPlay)
+      critical.push(() => loadVariants(`enhancement/influence-water/${id}`, `assets/enhancements/influence_water_${id}`));
     // Road overlay stubs -- layered/rotated at draw time (see render.js
     // drawRoadOverlay) to build any 8-neighbor connection pattern from just
     // these four, rather than pre-baking one image per combination.

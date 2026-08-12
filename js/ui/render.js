@@ -371,13 +371,27 @@ window.UI = window.UI || {};
         // rather than through sprites.js's pick(), so the same tile always
         // shows the same variant across reloads of the same map -- see that
         // function's own doc comment.
+        //
+        // Coast/ocean tiles (2026-08-13, user-directed) route to a SEPARATE
+        // sprite pool (`enhancement/influence-water/${raceId}`, one non-
+        // animated variant per race -- assets/enhancements/
+        // influence_water_{raceId}.png) instead of the land pool above --
+        // land-themed art (a cottage, a pig pen, a mining camp, ...) has no
+        // business sitting on open water, and ocean/coast tiles are a
+        // legal fill/claim target (see cities.js's own doc comment on
+        // isOffsetFilled), so they DO need their own answer here rather
+        // than just being skipped. Falls through to drawing nothing if a
+        // race's water variant hasn't been generated yet (pickDeterministic
+        // returns null the same way pick() does for a missing asset).
         if (tile.status === "owned" && tile.ownerCivId && !tile.structure
             && !cityTileKeys.has(`${x},${y}`) && !(tile.hasRiver && (tile.hasRiver.n || tile.hasRiver.s || tile.hasRiver.e || tile.hasRiver.w))) {
           const ownerCiv = civs[tile.ownerCivId];
           if (ownerCiv) {
+            const influenceKey = window.GameData.TERRAIN[tile.terrain].isWater
+              ? `enhancement/influence-water/${ownerCiv.raceId}`
+              : `enhancement/influence/${ownerCiv.raceId}`;
             const influenceSprite = window.UI.sprites.pickDeterministic(
-              `enhancement/influence/${ownerCiv.raceId}`,
-              tileInfluenceVariantHash(x, y, gameState.seed)
+              influenceKey, tileInfluenceVariantHash(x, y, gameState.seed)
             );
             if (influenceSprite) {
               const f = window.UI.sprites.currentFrame(influenceSprite.manifest, "idle", tile);

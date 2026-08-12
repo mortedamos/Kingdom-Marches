@@ -68,12 +68,12 @@ window.GameConfig = {
     /** Local date this build was cut, YYYY-MM-DD. */
     date: "2026-08-12",
     /** Local time this build was cut, 24-hour HH:MM. */
-    time: "10:47",
+    time: "12:02",
     /** Monotonic build counter. Continues the numbering the old GitHub-
      *  derived stamp used (it showed the repo's total commit count), so
      *  builds from before and after this change still sort against each
      *  other. Increment it; don't recompute it. */
-    number: 91,
+    number: 92,
   },
 
   // =========================================================================
