@@ -97,6 +97,27 @@ window.UI = window.UI || {};
     return (h ^ (h >>> 16)) >>> 0;
   }
 
+  // A terrain sprite variant is "tall" (e.g. the dramatic overhanging
+  // mountain_peak art added alongside the original flat mountain tiles) if
+  // its aspect ratio departs meaningfully from square -- the flat/legacy
+  // terrain sprites are exactly ts:ts square, while the tall variants are
+  // cropped-to-content portraits. 10% tolerance keeps this robust to minor
+  // crop-bbox noise without misclassifying a genuinely square sprite.
+  function isTallTerrainSprite(img) {
+    return Math.abs(img.naturalHeight / img.naturalWidth - 1) > 0.1;
+  }
+
+  // Draws a "tall" terrain sprite bottom-anchored to its tile, scaled to the
+  // tile's width with height following the image's own aspect ratio -- same
+  // bottom-anchored/aspect-driven approach as the city-tier portrait art
+  // (see the Cities pass below), so a sufficiently tall peak overhangs
+  // upward into the tile north of it instead of being squashed into ts:ts.
+  function drawTallTerrainSprite(ctx, img, screenX, screenY, ts) {
+    const drawHeight = ts * (img.naturalHeight / img.naturalWidth);
+    const drawY = screenY + ts - drawHeight;
+    ctx.drawImage(img, 0, 0, img.naturalWidth, img.naturalHeight, screenX, drawY, ts, drawHeight);
+  }
+
   // Jump-to-tile flash (2026-08-12, user-directed) -- see goToTile's own
   // comment in main.js for where this gets armed. Pure fade-out, no pulsing/
   // looping: a single clear "you are here" beat, not an ongoing distraction.
@@ -290,8 +311,17 @@ window.UI = window.UI || {};
         ctx.fillRect(screenX, screenY, ts, ts);
         const terrainSprite = window.UI.sprites.pick(`terrain/${tile.terrain}`, tile);
         if (terrainSprite) {
-          const f = window.UI.sprites.currentFrame(terrainSprite.manifest, "idle", tile);
-          ctx.drawImage(terrainSprite.image, f.sx, f.sy, f.sw, f.sh, screenX, screenY, ts, ts);
+          if (isTallTerrainSprite(terrainSprite.image)) {
+            // Deferred (not drawn immediately here) for the same clipping
+            // reason as resource/ruin icons below -- an overhang into the
+            // tile above must not be able to get painted over by that
+            // tile's own deferred icons, which flush after the whole grid.
+            const img = terrainSprite.image;
+            deferredIcons.push(() => drawTallTerrainSprite(ctx, img, screenX, screenY, ts));
+          } else {
+            const f = window.UI.sprites.currentFrame(terrainSprite.manifest, "idle", tile);
+            ctx.drawImage(terrainSprite.image, f.sx, f.sy, f.sw, f.sh, screenX, screenY, ts, ts);
+          }
         }
 
         // River — composited stub overlay, drawn UNDER roads (see
@@ -1402,8 +1432,22 @@ window.UI = window.UI || {};
     ctx.fillRect(screenX, screenY, ts, ts);
     const terrainSprite = window.UI.sprites.pick(`terrain/${snapshot.terrain}`, snapshot);
     if (terrainSprite) {
-      const f = window.UI.sprites.currentFrame(terrainSprite.manifest, "idle", snapshot);
-      ctx.drawImage(terrainSprite.image, f.sx, f.sy, f.sw, f.sh, screenX, screenY, ts, ts);
+      if (isTallTerrainSprite(terrainSprite.image)) {
+        // Deferred + dimmed inline, same reasoning as the resource/ruin
+        // icons just below: deferring avoids the clipping problem, but
+        // skips the post-return dimming scrim, so the "stale memory" dim
+        // is applied by hand inside the closure instead.
+        const img = terrainSprite.image;
+        deferredIcons.push(() => {
+          const prevAlpha = ctx.globalAlpha;
+          ctx.globalAlpha = prevAlpha * 0.6;
+          drawTallTerrainSprite(ctx, img, screenX, screenY, ts);
+          ctx.globalAlpha = prevAlpha;
+        });
+      } else {
+        const f = window.UI.sprites.currentFrame(terrainSprite.manifest, "idle", snapshot);
+        ctx.drawImage(terrainSprite.image, f.sx, f.sy, f.sw, f.sh, screenX, screenY, ts, ts);
+      }
     }
 
     // River drawn UNDER road, same reasoning as the live render loop.
