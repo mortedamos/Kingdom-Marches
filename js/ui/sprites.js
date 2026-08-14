@@ -477,6 +477,12 @@ window.UI = window.UI || {};
     const background = [];
     for (const id of Object.keys(window.GameData.TERRAIN))
       critical.push(() => loadVariants(`terrain/${id}`, `assets/terrain/${id}`));
+    // Dramatic tall/overhanging mountain peak art -- a separate pool from
+    // terrain/mountains' flat tiles, only ever selected by render.js's own
+    // eligibility+rarity roll for interior tiles of a large range (see
+    // worldgen.js's markTallMountainEligibility), never by sprites.js's
+    // generic per-tile random pick().
+    critical.push(() => loadVariants("terrain/mountains_tall", "assets/terrain/mountains_tall"));
     const inPlayUnitIds = window.GameData.UNIT_LIST.filter(
       (id) => !window.GameData.UNITS[id].raceOnly || racesInPlay.includes(window.GameData.UNITS[id].raceOnly)
     );

@@ -2457,6 +2457,26 @@ window.GameEngine = window.GameEngine || {};
           city.buildQueue = { ...choice, progress: 0 };
         }
         log.push(`Build: ${city.name} started ${choice.kind} "${choice.id}"`);
+      } else {
+        // Spread Culture as a genuine last resort (2026-08-13, user-directed:
+        // "taken by a kingdom when there are no other good options") --
+        // chooseBuildAction found nothing worth building/producing/
+        // researching for this city at all, so put its idle turn toward a
+        // cheap influence boost instead of doing nothing. Unlike a real
+        // build choice this isn't scored/queued -- it's an instant paid
+        // action (see cities.js's applyCultureSpread), so it's applied
+        // directly rather than going through the buildQueue branch above.
+        //
+        // targetTurn = turnNumber + 1: this runs from beginCivTurn, which
+        // fires AFTER this round's computeInfluenceMap already resolved
+        // (see turns.js's beginRound/beginCivTurn ordering) -- stamping the
+        // CURRENT turnNumber here would silently never take effect, since
+        // by the time the next computeInfluenceMap runs, turnNumber has
+        // already advanced past it. See cities.js's applyCultureSpread doc
+        // comment for the human-vs-AI timing difference in full.
+        if (window.GameEngine.cities.applyCultureSpread(city, civ, gameState, (gameState.turnNumber || 0) + 1)) {
+          log.push(`Build: ${city.name} spread culture (last resort)`);
+        }
       }
     }
   }

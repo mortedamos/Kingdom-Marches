@@ -14,6 +14,11 @@ window.GameEngine = window.GameEngine || {};
   // Tuning lives in js/data/config.js -- see its INFLUENCE section for what
   // each of these does and what changing it costs.
   const CFG = window.GameConfig.influence;
+  // "Spread Culture" city action (cities.js's applyCultureSpread) -- its
+  // multiplier lives in the CITY config section since every other Spread
+  // Culture tuning knob (cost) does too; read directly rather than
+  // duplicating it here.
+  const CULTURE_SPREAD_INFLUENCE_MULT = window.GameConfig.city.cultureSpreadInfluenceMult;
   const OWNERSHIP_THRESHOLD = CFG.ownershipThreshold;
   const CONTESTED_GRACE_TURNS = CFG.contestedGraceTurns;
   const LOW_VALUE_TERRAIN_WEIGHT = CFG.lowValueTerrainWeight; // water (ocean+coast) and tundra
@@ -72,8 +77,14 @@ window.GameEngine = window.GameEngine || {};
         const radius = city.influenceRadius;
         // Structure influence multiplier (Grand Forum, Cursed Obelisk, etc.), 1.0 if none
         // civicInfluenceBonus accumulates from completed civic techs (e.g. +5%, +10%)
+        // cultureSpreadTurn: "Spread Culture" city action (cities.js's
+        // applyCultureSpread) -- a paid, ONE-TURN boost, unlike the two
+        // multipliers above which are permanent. Naturally stops applying
+        // once turnNumber moves past the stamped turn, no explicit clear step.
+        const cultureBoost = city.cultureSpreadTurn === (gameState.turnNumber || 0)
+          ? CULTURE_SPREAD_INFLUENCE_MULT : 1.0;
         const baseStrength = city.baseCityInfluence * (city.buildingInfluenceMult || 1.0)
-          * (1 + (civ.civicInfluenceBonus || 0));
+          * (1 + (civ.civicInfluenceBonus || 0)) * cultureBoost;
         // Strictly bounded by the radius: no influence ever projects beyond
         // the radius square (the old "soft falloff edge" at radius+1 was
         // removed along with the fill-in mechanic -- see cities.js

@@ -186,36 +186,37 @@ window.UI = window.UI || {};
       const layerHasFocus = focusTechId && COLUMNS.some((col) => cols[col].some((t) => t.id === focusTechId));
       if (layerHasFocus) entry.expanded = true;
 
-      // Hover-driven relation badge (2026-08-10, user-directed: hovering
+      // Hover-driven relation indicator (2026-08-10, user-directed: hovering
       // used to force a collapsed layer open to reveal a related tech, plus
       // dim every unrelated node -- both caused too much "flicker" as the
       // cursor moved around, so neither happens anymore. A layer's
       // expand/collapse state now comes ONLY from `entry` (manual toggle or
       // the focus-link case above) -- hovering never changes it. A still-
       // collapsed layer holding a related tech (direct or indirect, either
-      // direction) just earns a small "N related" badge on its header
-      // instead, so the relation is still discoverable without any layout
-      // shift. See computeRelations for what counts as a relation.
+      // direction) just recolors its own "Level N" label (2026-08-13,
+      // user-directed -- replaces an earlier "N related" badge, which read
+      // as more clutter than signal) so the relation is still discoverable
+      // without any layout shift. See computeRelations for what counts as
+      // a relation.
       const expanded = entry.expanded;
-      let relatedCount = 0;
+      let hasRelated = false;
       if (relations && !expanded) {
         for (const col of COLUMNS) {
           for (const t of cols[col]) {
             if (relations.directAncestors.has(t.id) || relations.directDescendants.has(t.id)
                 || relations.indirectAncestors.has(t.id) || relations.indirectDescendants.has(t.id)) {
-              relatedCount++;
+              hasRelated = true;
+              break;
             }
           }
+          if (hasRelated) break;
         }
       }
-      const badge = relatedCount > 0
-        ? `<span class="techtree-layer-related-badge">${relatedCount} related</span>` : "";
 
       rows += `<div class="techtree-layer">
         <div class="techtree-layer-label techtree-layer-toggle" data-toggle-layer="${layer}">
           <span class="techtree-arrow${expanded ? " techtree-arrow-expanded" : ""}">▸</span>
-          <span>Level ${layer}</span>
-          ${badge}
+          <span class="${hasRelated ? "techtree-layer-level-related" : ""}">Level ${layer}</span>
         </div>
         ${expanded ? COLUMNS.map((col) => `<div class="techtree-column">${
           cols[col].map((tech) => renderNode(

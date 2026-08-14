@@ -68,12 +68,12 @@ window.GameConfig = {
     /** Local date this build was cut, YYYY-MM-DD. */
     date: "2026-08-13",
     /** Local time this build was cut, 24-hour HH:MM. */
-    time: "19:22",
+    time: "20:09",
     /** Monotonic build counter. Continues the numbering the old GitHub-
      *  derived stamp used (it showed the repo's total commit count), so
      *  builds from before and after this change still sort against each
      *  other. Increment it; don't recompute it. */
-    number: 97,
+    number: 98,
   },
 
   // =========================================================================
@@ -206,6 +206,20 @@ window.GameConfig = {
      *  fraction of its own yield a city adds when the player spends THIS
      *  turn's production on resources instead of a unit or building. */
     resourceProductionBonus: 0.5,
+
+    /** "Spread Culture" (2026-08-13, user-directed; see cities.js's
+     *  applyCultureSpread): a paid, one-turn boost to a city's influence
+     *  spread, independent of what the city is building -- unlike Resource
+     *  Production/Research, this doesn't consume the city's turn, it spends
+     *  stockpile instead. cultureSpreadInfluenceMult is the multiplier
+     *  applied to the city's influence strength for the turn it fires (see
+     *  influence.js's computeInfluenceMap); cultureSpreadCostBase/PerPop
+     *  set the { coin, lore } cost as a flat amount plus a per-population
+     *  scale, so the price keeps pace with a growing city the same way
+     *  researchBoostAmount's payoff already does. */
+    cultureSpreadInfluenceMult: 1.5,
+    cultureSpreadCostBase: { coin: 5, lore: 3 },
+    cultureSpreadCostPerPop: { coin: 2, lore: 1 },
 
     /** FILL-IN: a tile inside a city's radius contributes nothing to
      *  influence OR yield until it has individually "filled in". This delay

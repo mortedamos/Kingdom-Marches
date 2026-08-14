@@ -251,6 +251,7 @@ window.GameEngine = window.GameEngine || {};
           resource: null, hasRoad: false, hasRiver: { n: false, s: false, e: false, w: false },
           isRuin: false, landmassId: -1,
           ownerCivId: null, status: "neutral", contestedTurns: 0,
+          tallMountainEligible: false,
         };
       }
     }
@@ -263,6 +264,18 @@ window.GameEngine = window.GameEngine || {};
     // keeps this as a pure extension of Pass 2's own classification, before
     // any other step starts reasoning about the terrain map's shape.
     breakMountainRings(tiles, width, height, elevArr);
+
+    // --- Step 4b: mark interior tiles of large mountain ranges eligible for
+    // the occasional tall/overhanging peak sprite (2026-08-13, user-directed:
+    // "extra tall mountains should be uncommon, and only in the middle of
+    // large mountain ranges"). Purely geographic -- render.js still rolls
+    // the actual rarity per eligible tile at render time; this pass only
+    // decides which tiles are ALLOWED to roll at all, so a small mountain
+    // patch or the edge of a large range never gets the dramatic overhang
+    // treatment, only tiles buried well inside a genuinely large contiguous
+    // range. Run after breakMountainRings so it sees the final mountain
+    // layout, not one that's about to lose edge tiles to the ring fix.
+    markTallMountainEligibility(tiles, width, height);
 
     // --- Step 5: connectivity + Step 5a: minimum landmass size enforcement ---
     // 11 (2026-07-20, user-directed, raised from 3): a landmass has to be
@@ -436,6 +449,72 @@ window.GameEngine = window.GameEngine || {};
       }
     }
     return fixedCount;
+  }
+
+  // Thresholds for markTallMountainEligibility below. RANGE size is the
+  // count of tiles in the mountain's own 8-connected component (so a
+  // range has to actually be sizeable, not just a couple of adjacent
+  // peaks); NEIGHBORS is how many of a tile's 8 neighbors must themselves
+  // be Mountains for that tile to count as "buried in the middle" rather
+  // than sitting on the range's outer edge.
+  const TALL_MOUNTAIN_MIN_RANGE_SIZE = 12;
+  const TALL_MOUNTAIN_MIN_NEIGHBORS = 6;
+
+  /** Flood-fills Mountain tiles into 8-connected ranges (same adjacency
+   *  convention as breakMountainRings/findLandmasses) and flags each tile
+   *  tallMountainEligible when its range is large AND it sits deep enough
+   *  inside that range -- see the Step 4b call site for the full rationale.
+   *  Purely structural; the actual tall-vs-flat sprite roll for an eligible
+   *  tile happens later, at render time (see render.js). */
+  function markTallMountainEligibility(tiles, width, height) {
+    const n = width * height;
+    const componentId = new Int32Array(n).fill(-1);
+    const componentSizes = [];
+    const stack = [];
+    for (let start = 0; start < n; start++) {
+      if (tiles[start].terrain !== "mountains" || componentId[start] !== -1) continue;
+      const compIdx = componentSizes.length;
+      let size = 0;
+      stack.push(start);
+      componentId[start] = compIdx;
+      while (stack.length) {
+        const idx = stack.pop();
+        size++;
+        const x = idx % width, y = Math.floor(idx / width);
+        for (let dy = -1; dy <= 1; dy++) {
+          for (let dx = -1; dx <= 1; dx++) {
+            if (dx === 0 && dy === 0) continue;
+            const nx = x + dx, ny = y + dy;
+            if (nx < 0 || nx >= width || ny < 0 || ny >= height) continue;
+            const nIdx = ny * width + nx;
+            if (tiles[nIdx].terrain === "mountains" && componentId[nIdx] === -1) {
+              componentId[nIdx] = compIdx;
+              stack.push(nIdx);
+            }
+          }
+        }
+      }
+      componentSizes.push(size);
+    }
+
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const idx = y * width + x;
+        const tile = tiles[idx];
+        if (tile.terrain !== "mountains") continue;
+        if (componentSizes[componentId[idx]] < TALL_MOUNTAIN_MIN_RANGE_SIZE) continue;
+        let mountainNeighbors = 0;
+        for (let dy = -1; dy <= 1; dy++) {
+          for (let dx = -1; dx <= 1; dx++) {
+            if (dx === 0 && dy === 0) continue;
+            const nx = x + dx, ny = y + dy;
+            if (nx < 0 || nx >= width || ny < 0 || ny >= height) continue;
+            if (tiles[ny * width + nx].terrain === "mountains") mountainNeighbors++;
+          }
+        }
+        tile.tallMountainEligible = mountainNeighbors >= TALL_MOUNTAIN_MIN_NEIGHBORS;
+      }
+    }
   }
 
   function placeResources(tiles, width, height, rng, landmasses) {

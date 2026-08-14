@@ -140,6 +140,7 @@ window.GameEngine = window.GameEngine || {};
         const rawCityScore = window.GameEngine.ai.computeTileCityScore(civ, gameState, idx % map.width, Math.floor(idx / map.width));
         memory[idx] = {
           terrain: tile.terrain,
+          tallMountainEligible: !!tile.tallMountainEligible,
           hasRoad: !!tile.hasRoad,
           hasRiver: {
             n: !!tile.hasRiver?.n, s: !!tile.hasRiver?.s,

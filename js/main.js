@@ -3716,6 +3716,9 @@
       case "city:research":
         handleCityResearch(city);
         break;
+      case "city:spreadCulture":
+        handleSpreadCulture(city);
+        break;
       case "city:buildUnit":
       case "city:buildStructure":
         // Opens the real build list as a ring sub-page (see
@@ -4315,6 +4318,20 @@
     if (result.completed) civ.lastCompletedTech = result.techId;
     maybeScheduleAutoRepeat(city, "research");
     if (!goToNextIdleCityOrNextUnit()) redraw();
+  }
+
+  /** Unlike handleResourceProduction/handleCityResearch above, Spread
+   *  Culture doesn't consume the city's turn (see cities.js's
+   *  applyCultureSpread -- it's paid from stockpile, not production), so
+   *  isCityIdle still considers this city idle right after it fires. Stays
+   *  on the same city (just redraw()) rather than jumping to the next idle
+   *  city/unit, since the player likely still wants to also queue a build
+   *  here. */
+  function handleSpreadCulture(city) {
+    const civ = humanCivId && gameState.civs[humanCivId];
+    if (!civ || !city || city.civId !== humanCivId) return;
+    if (!window.GameEngine.cities.applyCultureSpread(city, civ, gameState)) return;
+    redraw();
   }
 
   /** Spends one pending level-up on `stat` for the currently selected unit

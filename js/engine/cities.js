@@ -45,6 +45,10 @@ window.GameEngine = window.GameEngine || {};
   // resources instead of a unit/building -- see applyResourceProduction.
   const RESOURCE_PRODUCTION_BONUS = CFG.resourceProductionBonus;
   const BASE_INFLUENCE_RADIUS = CFG.baseInfluenceRadius; // pop 1 city starts with radius 1
+  // "Spread Culture" (see applyCultureSpread below).
+  const CULTURE_SPREAD_INFLUENCE_MULT = CFG.cultureSpreadInfluenceMult;
+  const CULTURE_SPREAD_COST_BASE = CFG.cultureSpreadCostBase;
+  const CULTURE_SPREAD_COST_PER_POP = CFG.cultureSpreadCostPerPop;
 
   // city.influenceRadius is now the SINGLE radius governing both territory
   // influence (influence.js's computeInfluenceMap) and worked-tile yield
@@ -738,6 +742,63 @@ window.GameEngine = window.GameEngine || {};
   }
 
   /**
+   * SPREAD CULTURE (city ring action, 2026-08-13, user-directed)
+   * --------------------------------------------------------------
+   * A paid, one-turn boost to a city's influence spread -- unlike Resource
+   * Production/Research above, this does NOT consume the city's turn (no
+   * buildQueue/isProducingResources/isBoostingResearch gate): it's paid for
+   * out of the civ's stockpile instead, so a city can spread culture AND
+   * still build/gather/research the same turn. Purely a turn-stamped
+   * transient field (cultureSpreadTurn), same idiom as
+   * resourceProductionTurn/researchBoostTurn -- influence.js's
+   * computeInfluenceMap reads it directly and applies
+   * CULTURE_SPREAD_INFLUENCE_MULT to this city's influence strength for
+   * whichever round's resolution matches the stamped turn number, then it
+   * naturally stops applying once turnNumber moves past it.
+   *
+   * `targetTurn` defaults to the current round (right for the human player,
+   * who acts before their own End Turn triggers this round's
+   * computeInfluenceMap -- see turns.js's beginRound). The AI acts from
+   * inside beginCivTurn, which runs AFTER this round's computeInfluenceMap
+   * already fired, so ai.js passes turnNumber + 1 explicitly to land the
+   * boost on the round its decision can actually still affect.
+   */
+  function spreadCultureCost(city) {
+    const pop = Math.max(1, Math.floor((city && city.population) || 1));
+    const out = {};
+    for (const k of Object.keys(CULTURE_SPREAD_COST_BASE)) {
+      out[k] = CULTURE_SPREAD_COST_BASE[k] + CULTURE_SPREAD_COST_PER_POP[k] * pop;
+    }
+    return out;
+  }
+
+  function isSpreadingCulture(city, gameState) {
+    return !!city && city.cultureSpreadTurn === (gameState.turnNumber || 0);
+  }
+
+  /** Spends stockpile boosting `city`'s influence spread this turn. Returns
+   *  the cost paid, or null if it wasn't allowed (already done this turn, or
+   *  the civ can't afford it). */
+  function applyCultureSpread(city, civ, gameState, targetTurn) {
+    if (!city || !civ) return null;
+    const turn = targetTurn != null ? targetTurn : (gameState.turnNumber || 0);
+    if (city.cultureSpreadTurn === turn) return null;
+
+    const cost = spreadCultureCost(city);
+    civ.stockpile = civ.stockpile || { harvest: 0, coin: 0, lore: 0 };
+    if (!Object.entries(cost).every(([k, v]) => (civ.stockpile[k] || 0) >= v)) return null;
+    for (const [k, v] of Object.entries(cost)) {
+      civ.stockpile[k] = Math.max(0, (civ.stockpile[k] || 0) - v);
+    }
+
+    city.cultureSpreadTurn = turn;
+    city.cultureSpreadCost = cost;
+
+    window.GameEngine.floatingText.spawnFloatingText(city, "Culture Spreading", "resource");
+    return cost;
+  }
+
+  /**
    * Aggregates the effects of a city's alive structures: flat yields, influence
    * multiplier (product), radius bonus (sum), plus the road/forest-scaled yields.
    */
@@ -1151,6 +1212,9 @@ window.GameEngine = window.GameEngine || {};
     isBoostingResearch,
     researchBoostAmount,
     applyResearchBoost,
+    spreadCultureCost,
+    isSpreadingCulture,
+    applyCultureSpread,
     isCityIdle,
     computeWorkedTileYield,
     computeTileActualYield,

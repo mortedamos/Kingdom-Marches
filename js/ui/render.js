@@ -103,8 +103,45 @@ window.UI = window.UI || {};
   // terrain sprites are exactly ts:ts square, while the tall variants are
   // cropped-to-content portraits. 10% tolerance keeps this robust to minor
   // crop-bbox noise without misclassifying a genuinely square sprite.
-  function isTallTerrainSprite(img) {
-    return Math.abs(img.naturalHeight / img.naturalWidth - 1) > 0.1;
+  //
+  // Checked against the manifest's per-FRAME dimensions, not the raw
+  // image's naturalWidth/naturalHeight -- animated terrain (plains, hills,
+  // forest, swamp, coast, ocean; see sprite-manifests.js) ships as a wide
+  // horizontal strip of 2-4 square frames, so the raw sheet itself is far
+  // from square and was wrongly flagged "tall" here once, sending the
+  // whole strip through the bottom-anchored overhang path: squeezed into
+  // half a tile's height, leaving the top blank and the bottom showing
+  // two frames side by side. Single-frame art (mountains, both flat and
+  // tall peak) has frameWidth/frameHeight equal to the image's own
+  // dimensions (see sprites.js's resolveManifest), so this is unchanged
+  // for them.
+  function isTallTerrainSprite(manifest) {
+    return Math.abs(manifest.frameHeight / manifest.frameWidth - 1) > 0.1;
+  }
+
+  // Of mountain tiles ELIGIBLE for the dramatic tall/overhanging peak art
+  // (interior of a large range -- see worldgen.js's
+  // markTallMountainEligibility), only this fraction actually roll it, so
+  // a big range reads as "one or two standout peaks," not "every interior
+  // tile is a spire." Deterministic (map-seed-based, like
+  // tileInfluenceVariantHash above) rather than sprites.js's session-random
+  // pick(), so which tiles are the tall ones stays put across reloads of
+  // the same map instead of re-rolling into different (or zero) tall tiles
+  // each session. A distinct XOR salt from the civ-influence overlay's own
+  // use of the same hash function keeps the two rolls independent.
+  const TALL_MOUNTAIN_CHANCE = 0.2;
+  const TALL_MOUNTAIN_HASH_SALT = 0x2545f491;
+
+  // Sprite pool key for a tile's own terrain -- every terrain type just
+  // uses its own pool unchanged, except Mountains, which is split across
+  // two pools (see sprites.js's preloadAll): terrain/mountains (flat,
+  // tile-filling) and terrain/mountains_tall (the overhang art), gated by
+  // eligibility + the rarity roll above rather than a single pool sprites.js
+  // would pick from uniformly at random.
+  function terrainSpriteKey(tile, x, y, mapSeed) {
+    if (tile.terrain !== "mountains" || !tile.tallMountainEligible) return `terrain/${tile.terrain}`;
+    const roll = tileInfluenceVariantHash(x, y, (mapSeed ^ TALL_MOUNTAIN_HASH_SALT) >>> 0) % 100;
+    return roll < TALL_MOUNTAIN_CHANCE * 100 ? "terrain/mountains_tall" : "terrain/mountains";
   }
 
   // Draws a "tall" terrain sprite bottom-anchored to its tile, scaled to the
@@ -283,7 +320,7 @@ window.UI = window.UI || {};
                   x, y
                 )
               : null;
-            drawRememberedTile(ctx, screenX, screenY, ts, memory[idx], roadConn, x, y, showGrid, deferredIcons);
+            drawRememberedTile(ctx, screenX, screenY, ts, memory[idx], roadConn, x, y, showGrid, deferredIcons, gameState.seed);
             if (tileScoreMemory) overlays.drawTileScoreOverlay(ctx, screenX, screenY, ts, tileScoreMemory[idx]?.cityScore);
           } else {
             ctx.fillStyle = "#1a1a1a";
@@ -309,9 +346,9 @@ window.UI = window.UI || {};
         // still have the defect.
         ctx.fillStyle = window.GameData.TERRAIN[tile.terrain].color;
         ctx.fillRect(screenX, screenY, ts, ts);
-        const terrainSprite = window.UI.sprites.pick(`terrain/${tile.terrain}`, tile);
+        const terrainSprite = window.UI.sprites.pick(terrainSpriteKey(tile, x, y, gameState.seed), tile);
         if (terrainSprite) {
-          if (isTallTerrainSprite(terrainSprite.image)) {
+          if (isTallTerrainSprite(terrainSprite.manifest)) {
             // Deferred (not drawn immediately here) for the same clipping
             // reason as resource/ruin icons below -- an overhang into the
             // tile above must not be able to get painted over by that
@@ -1417,7 +1454,7 @@ window.UI = window.UI || {};
    * visible). Finished with a dark scrim so it reads as visibly "remembered,
    * possibly stale" rather than currently seen.
    */
-  function drawRememberedTile(ctx, screenX, screenY, ts, snapshot, roadConn, x, y, showGrid, deferredIcons) {
+  function drawRememberedTile(ctx, screenX, screenY, ts, snapshot, roadConn, x, y, showGrid, deferredIcons, mapSeed) {
     if (!snapshot) {
       // Explored should always have a matching memory entry, but fall back
       // to plain fog rather than throw if the two ever disagree.
@@ -1430,9 +1467,9 @@ window.UI = window.UI || {};
     // live render() terrain block above.
     ctx.fillStyle = window.GameData.TERRAIN[snapshot.terrain].color;
     ctx.fillRect(screenX, screenY, ts, ts);
-    const terrainSprite = window.UI.sprites.pick(`terrain/${snapshot.terrain}`, snapshot);
+    const terrainSprite = window.UI.sprites.pick(terrainSpriteKey(snapshot, x, y, mapSeed), snapshot);
     if (terrainSprite) {
-      if (isTallTerrainSprite(terrainSprite.image)) {
+      if (isTallTerrainSprite(terrainSprite.manifest)) {
         // Deferred + dimmed inline, same reasoning as the resource/ruin
         // icons just below: deferring avoids the clipping problem, but
         // skips the post-return dimming scrim, so the "stale memory" dim

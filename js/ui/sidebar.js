@@ -185,6 +185,8 @@ window.UI = window.UI || {};
         <div class="stat-row"><span>Population</span><span>${pop} / ${maxPop}</span></div>
         <div class="stat-row"><span>Growth</span><span>${atCap ? 'Max size' : `${city.harvestSurplus.toFixed(1)} / ${growthThreshold.toFixed(0)} (${growthPct}%)`}</span></div>
         <div class="stat-row"><span>Influence Radius</span><span>${city.influenceRadius}</span></div>
+        ${window.GameEngine.cities.isSpreadingCulture(city, gameState)
+          ? `<div class="stat-row"><span>Spread Culture</span><span>Active (+50% this turn)</span></div>` : ''}
         <div class="stat-row"><span>Vision Radius</span><span>${city.influenceRadius + 3}</span></div>
         <div class="stat-row"><span>Filled Tiles</span><span>${filledTileCount} / ${radiusTileCount}</span></div>
         <h3>Yield this turn</h3>

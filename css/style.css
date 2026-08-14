@@ -838,6 +838,28 @@ html, body {
   cursor: pointer;
 }
 .techtree-close-btn:hover { border-color: var(--accent); }
+/* Tech tree header pin (2026-08-13, user-directed): the close button and
+   window title should stay visible while scrolling a long tree, instead of
+   scrolling away with the rest of .techtree-modal's content (its own
+   scroll container -- see that rule's overflow-y: auto). Scoped to the
+   techtree overlay specifically (#techtree-close-btn / #techtree-content),
+   not the shared .techtree-modal/.techtree-close-btn classes every other
+   overlay (Reports, Shortcuts, Launch Options) also reuses -- those don't
+   share this problem and shouldn't share the fix. Both stick independently
+   to the top of the same scroll container; the background on the title
+   keeps scrolled rows from showing through underneath it as they pass by. */
+#techtree-close-btn {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+}
+#techtree-content h2 {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--bg-panel);
+  padding-bottom: 6px;
+}
 .techtree-layer {
   display: grid;
   grid-template-columns: 76px repeat(4, 1fr);
@@ -1110,19 +1132,12 @@ html, body {
 .techtree-node.techtree-node-relation-indirect { opacity: 0.6; }
 
 /* Collapsed layer holding a related (direct OR indirect) tech to the
-   hovered node (2026-08-10, user-directed): discoverable without being
-   forced open -- hovering never expands/collapses a layer anymore (see
-   techtree.js's render(), same "too much flicker" fix as the dimming
-   removal above). */
-.techtree-layer-related-badge {
-  font-size: 9px;
-  margin-left: 2px;
-  padding: 1px 6px;
-  border-radius: 8px;
-  background: rgba(138, 127, 214, 0.18);
+   hovered node (2026-08-10, user-directed; recolored instead of badged as
+   of 2026-08-13 -- see techtree.js's render()): discoverable without being
+   forced open -- hovering never expands/collapses a layer anymore (same
+   "too much flicker" fix as the dimming removal above). */
+.techtree-layer-level-related {
   color: #8a7fd6;
-  text-transform: none;
-  letter-spacing: normal;
 }
 
 .reports-modal { width: min(800px, 94vw); }

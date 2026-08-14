@@ -1111,6 +1111,23 @@ window.GameEngine = window.GameEngine || {};
       }
     }
 
+    // "Spread Culture" (2026-08-13, user-directed): a paid, one-turn boost
+    // to this city's influence spread -- see cities.js's applyCultureSpread.
+    // Deliberately OUTSIDE the buildQueue/isProducingResources gate above:
+    // unlike Resource Production/Research, this doesn't consume the city's
+    // turn (it's paid from stockpile, not production), so it stays offered
+    // even while the city is mid-build.
+    if (!cities.isSpreadingCulture(city, gameState)) {
+      const cultureCost = cities.spreadCultureCost(city);
+      const canAffordCulture = Object.entries(cultureCost)
+        .every(([k, v]) => ((civ.stockpile && civ.stockpile[k]) || 0) >= v);
+      if (canAffordCulture) {
+        const costLabel = Object.entries(cultureCost)
+          .map(([k, v]) => `${Math.ceil(v)}${k[0].toUpperCase()}`).join(" ");
+        options.push({ kind: "city:spreadCulture", label: `Spread Culture (-${costLabel})` });
+      }
+    }
+
     // "Next city needing production" -- same criteria main.js's
     // collectUnresolvedTurnWork nags about at End Turn. The target rides in
     // the kind string, the convention startChannel:<kind> already set.
