@@ -608,7 +608,22 @@ window.GameEngine = window.GameEngine || {};
         const stayedPut = unit.x === oldX && unit.y === oldY;
         const continuingRitual = onAnchor && stayedPut;
         unit._ritualTurns = onAnchor ? (stayedPut ? (unit._ritualTurns || 0) + 1 : 1) : 0;
-        if (isDelvingUnit && !continuingRitual) {
+        // Scoped to units actually engaged with Delve/Claim specifically,
+        // not just "isDelvingUnit/isClaimUnit is true" (2026-08-16, user-
+        // reported: tile-resource gathering -- Fishing/Hunt Game/Farm Soil/
+        // Mine Vein -- wasn't accumulating toward Claim Gathered Resources).
+        // isDelvingUnit/isClaimUnit are CIV-LEVEL capability flags -- and
+        // since Ruin Delving became free Level 0 infrastructure every civ
+        // starts with, isDelvingUnit is true for essentially every civ,
+        // every game. Before this guard, THAT made this cleanup run for
+        // EVERY unit of a qualifying civ that wasn't this-instant delving/
+        // claiming -- including one mid-Fishing/Hunting/Farming/Mining,
+        // which also stashes its payout in this same unit._channelStash --
+        // unconditionally deleting it, every single round, before it could
+        // ever compound past one round's worth.
+        const wasDelving = unit.channeling === "delving" || unit._delveFilledOffsets !== undefined;
+        const wasClaiming = unit.channeling === "prospecting" || unit._claimFilledOffsets !== undefined;
+        if (isDelvingUnit && !continuingRitual && wasDelving) {
           clearDelveOwnership(unit, civ, map, oldX, oldY);
           delete unit._delveFilledOffsets;
           unit._delveFillProgress = 0;
@@ -619,7 +634,7 @@ window.GameEngine = window.GameEngine || {};
           // delivered above if exhaustion was the actual cause.
           delete unit._channelStash;
         }
-        if (isClaimUnit && !continuingRitual) {
+        if (isClaimUnit && !continuingRitual && wasClaiming) {
           clearClaimOwnership(unit, civ, map, oldX, oldY);
           delete unit._claimFilledOffsets;
           unit._claimFillProgress = 0;

@@ -7474,6 +7474,19 @@ window.GameEngine = window.GameEngine || {};
       stockpile: { harvest: 0, coin: 0, lore: 0 }, resources: { harvest: 0, coin: 0, lore: 0 },
     };
     gameState.civs[MONSTER_CIV_ID] = civ;
+    // Register in turn order too (2026-08-16, user-reported: an encountered
+    // monster just sat there, never moving or attacking). gameState.turnOrder
+    // is snapshotted ONCE at game creation (see main.js's createNewGame),
+    // before this civ exists -- without this, runTurn/advanceOneUnitStep's
+    // `for (const civId of gameState.turnOrder)` loop never visits
+    // "MONSTERS" for the rest of the game, so runMonsterUnitTurn (movement/
+    // seeking/attacking) never runs for any monster. They could still be
+    // killed (any real civ's unit can proactively attack one), just never
+    // act themselves -- which is exactly why this stayed latent until
+    // monsters became common enough to notice sitting still.
+    if (gameState.turnOrder && !gameState.turnOrder.includes(MONSTER_CIV_ID)) {
+      gameState.turnOrder.push(MONSTER_CIV_ID);
+    }
     return civ;
   }
 
