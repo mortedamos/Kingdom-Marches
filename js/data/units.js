@@ -181,7 +181,7 @@
  */
 
 
-// 🧨 🔨 ⛏ ⚒ 🗡  ⚔ 💣 🏹 🛡 🧹
+// 🧨 🔨 ⛏ ⚒ 🗡  ⚔ 💣 🏹 🛡 🧹 𓆩
 
 window.GameData = window.GameData || {};
 
@@ -268,7 +268,7 @@ window.GameData.UNITS = {
     // build-priority mechanism that ensures Wizards actually get built
     // (ai.js's UTILITY_UNIT_MECHANICS taper, `relevantMechanics.length * 7
     // * 0.6^owned`) is entirely stat-independent by design.
-    id: "wizard", label: "Wizard", symbol: "✦", category: "military", raceOnly: "human",
+    id: "wizard", label: "Wizard", symbol: "🧙‍♂️", category: "military", raceOnly: "human",
     attack: 3, defense: 3, movement: 2, visionRadius: 3, range: 2, burnChancePct: 0.05, frozenChancePct: 0.05, 
     coinCost: 35, attackChars: ["⚡", "❄️", "🔥", "☄", "✨"], doubleStrikePct: 0.1, biggerPct: .1,
   },
@@ -455,7 +455,7 @@ window.GameData.UNITS = {
     // ordinary attacker" false in practice and causing the Resilient
     // Spirit/Unyielding death-save to fire on hits that were never supposed
     // to be anywhere near lethal against a full-health Titan).
-    attack: 10, defense: 32, movement: 2, visionRadius: 2, siegePct: 3.50,
+    attack: 10, defense: 17, movement: 2, visionRadius: 2, siegePct: 3.50,
     coinCost: 60, biggerPct: 1.2, attackChars: ["🪨", "💥"],
     veryRare: true, neverExplores: true, siegeTarget: true,
     nameSpecial: true, // a construct, not a person -- see unit-names.js
@@ -579,48 +579,47 @@ window.GameData.UNITS = {
   // venomous snake or a web don't read as fire/ice -- see ai.js's
   // applyPoisoned/applyWebbed and overlays.js's "poisoned"/"webbed" visuals.
   boar_sounder: {
-    id: "boar_sounder", label: "Boar Sounder", symbol: "ᛒ", category: "military",
-    attack: 4, defense: 3, movement: 3, visionRadius: 2, restrictedToTerrain: "plains",
-    coinCost: 12, attackChars: ["🐗"],
+    id: "boar_sounder", label: "Boar Sounder", symbol: "🐗", category: "military",
+    attack: 4, defense: 3, movement: 2, visionRadius: 3, restrictedToTerrain: "plains",
+    coinCost: 12, attackChars: ["𓄏"],
     cityBuildable: false, noUpkeep: true, nameSpecial: true, neverExplores: true,
   },
   dire_spider: {
     id: "dire_spider", label: "Dire Spider", symbol: "🕷", category: "military",
-    attack: 3, defense: 4, movement: 2, visionRadius: 2, restrictedToTerrain: "forest",
-    webChancePct: 0.35,
-    coinCost: 12, attackChars: ["🕸️"],
+    attack: 3, defense: 3, movement: 2, visionRadius: 3, restrictedToTerrain: "forest",
+    webChancePct: 0.7,
+    coinCost: 12, attackChars: ["🕸️", "𓆩"],
     cityBuildable: false, noUpkeep: true, nameSpecial: true, neverExplores: true,
   },
   highland_griffin: {
     id: "highland_griffin", label: "Highland Griffin", symbol: "🦅", category: "military",
-    attack: 4, defense: 2, movement: 5, visionRadius: 4, flying: true,
+    attack: 4, defense: 2, movement: 3, visionRadius: 4, flying: true,
     coinCost: 16, attackChars: ["🦅"],
     cityBuildable: false, noUpkeep: true, nameSpecial: true, neverExplores: true,
   },
   basilisk: {
     id: "basilisk", label: "Basilisk", symbol: "🦎", category: "military",
-    attack: 5, defense: 3, movement: 2, visionRadius: 2, restrictedToTerrain: "desert",
-    firstStrikePct: 0.15,
-    coinCost: 14, attackChars: ["🦎"],
+    attack: 4, defense: 3, movement: 2, visionRadius: 2, restrictedToTerrain: "desert", 
+    coinCost: 14, attackChars: ["𓆩"],
     cityBuildable: false, noUpkeep: true, nameSpecial: true, neverExplores: true,
   },
   marsh_adder: {
     id: "marsh_adder", label: "Marsh Adder", symbol: "🐍", category: "military",
-    attack: 3, defense: 3, movement: 2, visionRadius: 3, restrictedToTerrain: "swamp",
+    attack: 3, defense: 2, movement: 2, visionRadius: 3, restrictedToTerrain: "swamp",
     // Poisoned: functionally identical to Burning (1 damage/turn, ai.js's
     // tickPoisonedDamage mirrors tickBurningDamage exactly) but its own
     // condition key/visual, since a venomous snake inflicting fire damage
     // reads wrong -- see ai.js's applyPoisoned and overlays.js's "poisoned"
     // visual.
     poisonChancePct: 0.30,
-    coinCost: 12, attackChars: ["🐍"],
+    coinCost: 12, attackChars: ["𓆩"],
     cityBuildable: false, noUpkeep: true, nameSpecial: true, neverExplores: true,
   },
   frost_lynx: {
     id: "frost_lynx", label: "Frost Lynx", symbol: "🐆", category: "military",
-    attack: 4, defense: 3, movement: 4, visionRadius: 3, restrictedToTerrain: "tundra",
+    attack: 4, defense: 3, movement: 3, visionRadius: 4, restrictedToTerrain: "tundra",
     frozenChancePct: 0.30,
-    coinCost: 14, attackChars: ["🐆"],
+    coinCost: 14, attackChars: ["𓆩"],
     cityBuildable: false, noUpkeep: true, nameSpecial: true, neverExplores: true,
   },
 };
