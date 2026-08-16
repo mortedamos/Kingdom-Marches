@@ -99,19 +99,24 @@ window.UI = window.UI || {};
   // entry (2026-08-17, user-directed). `key` matches STAT_DESCRIPTIONS
   // below; `unitField`/`derive` say how renderUnitProfileHtml pulls this
   // stat's VALUE off a real unit -- most read a plain units.js field
-  // directly, maxHp is derived (see units.js's own unitMaxHP).
+  // directly, maxHp is derived (see units.js's own unitMaxHP). `icon`
+  // (2026-08-17, user-directed) -- same "small icon before the name"
+  // treatment the unit list (symbol) and Conditions list (CONDITION_ICONS)
+  // already get, shown in the stat list, that stat's own profile header,
+  // AND next to its cross-link label on a unit's profile.
   const STAT_INFO = [
-    { key: "attack", label: "Attack" },
-    { key: "defense", label: "Defense" },
-    { key: "maxHp", label: "Max HP" },
-    { key: "movement", label: "Movement" },
-    { key: "visionRadius", label: "Vision" },
-    { key: "range", label: "Range" },
-    { key: "siegePct", label: "Siege Bonus" },
-    { key: "firstStrikePct", label: "First Strike" },
-    { key: "doubleStrikePct", label: "Double Strike" },
+    { key: "attack", label: "Attack", icon: "⚔️" },
+    { key: "defense", label: "Defense", icon: "🛡️" },
+    { key: "maxHp", label: "Max HP", icon: "❤️" },
+    { key: "movement", label: "Movement", icon: "👣" },
+    { key: "visionRadius", label: "Vision", icon: "👁️" },
+    { key: "range", label: "Range", icon: "🎯" },
+    { key: "siegePct", label: "Siege Bonus", icon: "🏰" },
+    { key: "firstStrikePct", label: "First Strike", icon: "⚡" },
+    { key: "doubleStrikePct", label: "Double Strike", icon: "🔁" },
   ];
   const STAT_LABEL_BY_KEY = Object.fromEntries(STAT_INFO.map((s) => [s.key, s.label]));
+  const STAT_ICON_BY_KEY = Object.fromEntries(STAT_INFO.map((s) => [s.key, s.icon]));
 
   // Hand-written explanations of what each stat actually DOES mechanically,
   // including the real combat formula where one applies (2026-08-17, user-
@@ -430,7 +435,7 @@ window.UI = window.UI || {};
     if (unit.firstStrikePct) statRows.push(["firstStrikePct", pctLabel(unit.firstStrikePct)]);
     if (unit.doubleStrikePct) statRows.push(["doubleStrikePct", pctLabel(unit.doubleStrikePct)]);
     const statsHtml = statRows.map(([key, v]) => `<div class="stat-row">`
-      + `<button class="kb-stat-link" data-stat-link="${escapeHtml(key)}">${escapeHtml(STAT_LABEL_BY_KEY[key])}</button>`
+      + `<button class="kb-stat-link" data-stat-link="${escapeHtml(key)}">${STAT_ICON_BY_KEY[key]} ${escapeHtml(STAT_LABEL_BY_KEY[key])}</button>`
       + `<span>${escapeHtml(String(v))}</span></div>`).join("");
 
     const flagChips = [];
@@ -568,6 +573,7 @@ window.UI = window.UI || {};
     return `<div class="kb-list-group">${sorted.map((s) => {
       const selected = s.key === selectedKey ? " kb-list-btn-selected" : "";
       return `<button class="kb-list-btn${selected}" data-stat-id="${escapeHtml(s.key)}">
+        <span class="kb-list-btn-symbol">${s.icon}</span>
         <span>${escapeHtml(s.label)}</span>
       </button>`;
     }).join("")}</div>`;
@@ -591,6 +597,7 @@ window.UI = window.UI || {};
     return `
       ${backHtml}
       <div class="kb-profile-header">
+        <div class="kb-condition-profile-icon">${STAT_ICON_BY_KEY[statKey]}</div>
         <div>
           <h2>${escapeHtml(label)}</h2>
         </div>
