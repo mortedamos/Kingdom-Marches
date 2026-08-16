@@ -7677,7 +7677,13 @@ window.GameEngine = window.GameEngine || {};
     const { civs, map, explored } = gameState;
 
     const activeKingdoms = Object.values(civs).filter((c) => c.id !== MONSTER_CIV_ID && !c.eliminated).length;
-    const cap = cfg.perKingdomCap * activeKingdoms;
+    // gameState.monsterCapPerKingdom (2026-08-16, user-directed): the Game
+    // Options "Max Monsters" slider overrides config.js's default per game
+    // -- ?? not || so an explicit 0 (disable monsters entirely) isn't
+    // mistaken for "unset." Falls back to the config default for any
+    // gameState that predates this field (old saves, headless __sim tests).
+    const capPerKingdom = gameState.monsterCapPerKingdom ?? cfg.perKingdomCap;
+    const cap = capPerKingdom * activeKingdoms;
     if (civ.units.length >= cap) return;
 
     // Single pass: tallies totalLand/exploredLand for the spawn-chance
@@ -7764,7 +7770,13 @@ window.GameEngine = window.GameEngine || {};
     if (!candidates.length) return;
 
     const activeKingdoms = Object.keys(civs).filter((cId) => cId !== MONSTER_CIV_ID).length;
-    const targetCount = Math.min(cfg.initialPerKingdom * activeKingdoms, candidates.length);
+    // Clamped to the player's own chosen cap (see maybeSpawnMonster's
+    // matching gameState.monsterCapPerKingdom read just above) -- a "Max
+    // Monsters: 0" game must start with zero, not the usual initial 1 per
+    // kingdom regardless of the standing cap.
+    const capPerKingdom = gameState.monsterCapPerKingdom ?? cfg.perKingdomCap;
+    const initialPerKingdom = Math.min(cfg.initialPerKingdom, capPerKingdom);
+    const targetCount = Math.min(initialPerKingdom * activeKingdoms, candidates.length);
 
     for (let n = 0; n < targetCount; n++) {
       const pick = Math.floor(Math.random() * candidates.length);
@@ -7790,6 +7802,17 @@ window.GameEngine = window.GameEngine || {};
    *  (shouldn't happen for any land tile). */
   function triggerRuinMonsterEncounter(civ, unit, gameState, log) {
     const { map, civs } = gameState;
+    // Respects the same population cap maybeSpawnMonster enforces
+    // (2026-08-16, user-directed "Max Monsters" slider, 0 = off entirely) --
+    // without this, a Ruin ambush could still spawn a monster even with the
+    // cap set to 0, which would make "0: Off" a lie.
+    const cfg = window.GameConfig.worldEncounters.monsters;
+    const monsterCiv = ensureMonsterCiv(gameState);
+    const activeKingdoms = Object.values(civs).filter((c) => c.id !== MONSTER_CIV_ID && !c.eliminated).length;
+    const capPerKingdom = gameState.monsterCapPerKingdom ?? cfg.perKingdomCap;
+    const cap = capPerKingdom * activeKingdoms;
+    if (monsterCiv.units.length >= cap) return;
+
     const tile = map.tiles[unit.y * map.width + unit.x];
     const monsterTypeId = window.GameData.MONSTER_TERRAIN[tile.terrain];
     if (!monsterTypeId) return;
@@ -7805,7 +7828,6 @@ window.GameEngine = window.GameEngine || {};
     if (!openTiles.length) return;
 
     const spot = openTiles[Math.floor(Math.random() * openTiles.length)];
-    const monsterCiv = ensureMonsterCiv(gameState);
     const monster = { typeId: monsterTypeId, civId: MONSTER_CIV_ID, x: spot.x, y: spot.y, isCivilian: false };
     window.GameEngine.combat.initUnitHP(monster, monsterCiv);
     monsterCiv.units.push(monster);

@@ -106,7 +106,7 @@ window.GameData.RESOURCES = {
   // unopened chest from silently generating yield just by sitting owned
   // inside a city's radius. validTerrain covers every non-water terrain,
   // deliberately -- "any non-water terrain" was the explicit design call.
-  chest:   { id: "chest",   label: "Treasure Chest", validTerrain: ["plains", "forest", "hills", "mountains", "desert", "swamp", "tundra"], bonus: {}, iconScale: 0.55 },
+  chest:   { id: "chest",   label: "Treasure Chest", validTerrain: ["plains", "forest", "hills", "desert", "swamp", "tundra"], bonus: {}, iconScale: 0.55 },
 };
 window.GameData.RESOURCE_LIST = Object.keys(window.GameData.RESOURCES);
 

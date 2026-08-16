@@ -375,6 +375,14 @@
         </label>
         <p class="launch-hint">How many turns units, buildings, and research take to complete -- lower is slower, higher is faster. 100% (the middle) is the default pace.</p>
         <label class="launch-row">
+          <span>Max Monsters</span>
+          <span class="launch-row-slider">
+            <input type="range" id="monster-cap-slider" min="0" max="3" step="1" value="2">
+            <span id="monster-cap-label">2 per kingdom</span>
+          </span>
+        </label>
+        <p class="launch-hint">Caps how many Wandering Monsters can exist at once, scaled by the number of kingdoms in play. 0 turns them off entirely.</p>
+        <label class="launch-row">
           <span>Map Seed</span>
           <input type="text" id="seed-input" placeholder="random">
         </label>
@@ -451,6 +459,14 @@
     // option here only takes effect once the game actually starts.
     $("game-speed-slider").addEventListener("input", (e) => {
       $("game-speed-pct").textContent = `${e.target.value}%`;
+    });
+
+    // Max Monsters slider (2026-08-16, user-directed): same "label moves
+    // live, value only actually applies at Start Game" pattern as Game
+    // Speed just above -- see startGame's monsterCapPerKingdom read.
+    $("monster-cap-slider").addEventListener("input", (e) => {
+      const n = parseInt(e.target.value, 10);
+      $("monster-cap-label").textContent = n === 0 ? "Off" : `${n} per kingdom`;
     });
 
     $("start-game-btn").addEventListener("click", startGame);
@@ -789,6 +805,7 @@
     }
     const opponentCount = parseInt($("opponent-count").value, 10);
     applyGameSpeed(parseInt($("game-speed-slider").value, 10));
+    const monsterCapPerKingdom = parseInt($("monster-cap-slider").value, 10);
     const seedInput = $("seed-input").value.trim();
     const seed = seedInput ? (parseInt(seedInput, 10) || hashStringToSeed(seedInput)) : Math.floor(Math.random() * 1e9);
     if (spectatorMode) console.log(`[spectator] map seed: ${seed}`);
@@ -805,7 +822,7 @@
       humanCivId = humanRace.toUpperCase();
     }
 
-    gameState = createNewGame(racesInPlay, seed);
+    gameState = createNewGame(racesInPlay, seed, monsterCapPerKingdom);
     // createNewGame leaves visibility empty -- without this, nothing is
     // visible (full fog) until the first End Turn runs beginRound.
     window.GameEngine.turns.refreshVisibility(gameState);
@@ -1018,7 +1035,7 @@
     return Math.abs(h);
   }
 
-  function createNewGame(raceIds, seed) {
+  function createNewGame(raceIds, seed, monsterCapPerKingdom) {
     const { width: mapWidth, height: mapHeight } = mapSizeForCivCount(raceIds.length);
     const map = window.GameEngine.worldgen.generateMap(mapWidth, mapHeight, seed);
     const MIN_STARTING_ISLAND_SIZE = 8;
@@ -1177,6 +1194,13 @@
     const gameState = {
       map, civs, turnNumber: 0, visibility: {}, explored: {}, tileMemory: {},
       turnOrder, turnStepIndex: 0, seed, aiActionLog: [],
+      // Game Options "Max Monsters" slider (2026-08-16, user-directed):
+      // per-game override of config.js's worldEncounters.monsters.
+      // perKingdomCap -- see ai.js's maybeSpawnMonster/seedInitialMonsters,
+      // which both read this instead of the config default. Falls back to
+      // the config default (via ?? at each read site) if omitted, so a
+      // headless __sim.newGame call with no third argument still works.
+      monsterCapPerKingdom: monsterCapPerKingdom ?? window.GameConfig.worldEncounters.monsters.perKingdomCap,
     };
     // World-gen-time Wandering Monster seeding (2026-08-16, user-directed:
     // "some monsters should exist at game start") -- see ai.js's
@@ -4588,8 +4612,8 @@
   // createNewGame/runTurn code paths so AI-vs-AI games run identically to a
   // real spectator game, just without the UI/render loop.
   window.__sim = {
-    newGame(raceIds, seed) {
-      gameState = createNewGame(raceIds, seed);
+    newGame(raceIds, seed, monsterCapPerKingdom) {
+      gameState = createNewGame(raceIds, seed, monsterCapPerKingdom);
       window.GameEngine.turns.refreshVisibility(gameState);
       return gameState;
     },
