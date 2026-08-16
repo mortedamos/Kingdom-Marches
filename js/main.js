@@ -719,6 +719,14 @@
     overlay.classList.toggle("knowledge-overlay-ingame", inGame);
 
     const content = $("knowledge-content");
+    // Preserve the left-hand list's scroll position across re-renders
+    // (2026-08-18, user-reported: clicking a unit near the bottom of a long
+    // list reset the scroll to the top every time, since every content.
+    // innerHTML assignment below destroys and recreates the whole pane,
+    // .kb-list-pane included). Captured once here since all three views
+    // (units/conditions/stats) share the same .kb-list-pane structure.
+    const prevListPane = content.querySelector(".kb-list-pane");
+    const prevListScrollTop = prevListPane ? prevListPane.scrollTop : 0;
     if (knowledgeView === "conditions" || knowledgeView === "stats") {
       // "Units" is the only page a cross-link can currently arrive from,
       // so the back label is hardcoded here rather than threaded through
@@ -763,6 +771,8 @@
         link.onclick = () => jumpToStat(link.dataset.statLink);
       }
     }
+    const newListPane = content.querySelector(".kb-list-pane");
+    if (newListPane) newListPane.scrollTop = prevListScrollTop;
     overlay.style.display = "flex";
   }
 
