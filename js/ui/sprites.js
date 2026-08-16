@@ -6,9 +6,8 @@
  * js/data/sprite-manifests.js. Missing PNGs are skipped silently; callers
  * get null from pick() and fall back to color/symbol.
  *
- * The game is served over HTTP (2026-08-03, user-directed -- the file://
- * detection and its fallbacks were removed throughout; run a local server,
- * e.g. working/tools/launch-server.ps1).
+ * The game is served over HTTP -- run a local server, e.g.
+ * working/tools/launch-server.ps1.
  *
  * Auto-detected per-asset JSON manifest: alongside any PNG, drop a same-
  * named .json file (e.g. assets/terrain/plains.png + plains.json, or
@@ -60,15 +59,14 @@ window.UI = window.UI || {};
 
   // preloadAll() below fires off hundreds-to-thousands of these (every
   // variant slot of every terrain/unit/building/resource/road/river), all
-  // essentially at once. Unlike music.js/sfx.js's probeFile (see their own
-  // "browsers cap simultaneous connections per origin" comment, discovered
-  // 2026-07-22), this never got the same fix, so it used to flood past that
-  // cap and monopolize/starve the shared connection pool -- including
-  // music/sfx's OWN throttled probes, which run concurrently with this
-  // during the loading screen (see main.js's startGame). A stuck request
-  // also had no timeout, so it could hang past the loading screen's 30s
-  // failsafe entirely, leaving the game to open with art still missing.
-  // IMAGE_LOAD_CONCURRENCY mirrors music/sfx's PROBE_CONCURRENCY.
+  // essentially at once. Throttled the same way music.js/sfx.js's probeFile
+  // is (see their own "browsers cap simultaneous connections per origin"
+  // comment) to avoid flooding past the per-origin connection cap and
+  // starving music/sfx's own throttled probes, which run concurrently with
+  // this during the loading screen (see main.js's startGame). Each load also
+  // has its own timeout so a stuck request can't hang past the loading
+  // screen's failsafe. IMAGE_LOAD_CONCURRENCY mirrors music/sfx's
+  // PROBE_CONCURRENCY.
   const IMAGE_LOAD_CONCURRENCY = 4;
   const IMAGE_LOAD_TIMEOUT_MS = 8000;
   let activeImageLoads = 0;
@@ -101,13 +99,11 @@ window.UI = window.UI || {};
     const manifests = window.GameData.SPRITE_MANIFESTS || {};
     if (manifests[key]) return manifests[key];
     // No manifest registered, and no per-asset JSON sidecar loaded either
-    // (see loadVariants/loadManifestJson) -- this used to always treat the
-    // WHOLE image as a single frame, which is correct for a genuinely
-    // static sprite but silently mangles a multi-frame sheet: the entire
-    // strip gets squished into one tile-sized draw, reading as a squished/
-    // repeating mess instead of an idle animation. This is exactly what a
-    // freshly-added unit sprite sheet looks like the moment its PNG lands in
-    // assets/units/ before a matching entry is added here.
+    // (see loadVariants/loadManifestJson) -- treating the whole image as a
+    // single frame would be correct for a genuinely static sprite but
+    // silently mangle a multi-frame sheet: the entire strip would get
+    // squished into one tile-sized draw instead of playing as an idle
+    // animation.
     //
     // Every sprite sheet shipped so far is N square frames laid out
     // left-to-right (see doc/art_style_guide.md) -- so when the image is
@@ -545,20 +541,20 @@ window.UI = window.UI || {};
     for (const id of window.GameData.RESOURCE_LIST)
       critical.push(() => loadVariants(`enhancement/resource_${id}`, `assets/enhancements/resource_${id}`));
     critical.push(() => loadVariants("enhancement/ruin", "assets/enhancements/ruin"));
-    // Civ-influence ambient tile overlay (2026-08-12, user-directed) -- small
-    // non-animated per-race flavor sprites (4-5 variants each, assets/
-    // enhancements/influence_{raceId}_{1..5}.png) drawn on owned tiles to
-    // read as "occupied and worked" land, picked deterministically by
-    // render.js's own hash rather than through pick()'s per-session random
-    // choice (see pickDeterministic's doc comment). Critical tier, matching
+    // Civ-influence ambient tile overlay -- small non-animated per-race
+    // flavor sprites (4-5 variants each, assets/enhancements/influence_
+    // {raceId}_{1..5}.png) drawn on owned tiles to read as "occupied and
+    // worked" land, picked deterministically by render.js's own hash rather
+    // than through pick()'s per-session random choice (see
+    // pickDeterministic's doc comment). Critical tier, matching
     // resource/ruin: a civ can own tiles from turn 1, unlike buildings/walls
     // which can't exist yet.
     for (const id of racesInPlay)
       critical.push(() => loadVariants(`enhancement/influence/${id}`, `assets/enhancements/influence_${id}`));
-    // Coast/ocean counterpart (2026-08-13, user-directed) -- one non-
-    // animated variant per race, assets/enhancements/influence_water_{id}.png
-    // -- see render.js's own draw-time branch on TERRAIN[tile.terrain].isWater
-    // for why land and water need separate pools rather than one shared one.
+    // Coast/ocean counterpart -- one non-animated variant per race,
+    // assets/enhancements/influence_water_{id}.png -- see render.js's own
+    // draw-time branch on TERRAIN[tile.terrain].isWater for why land and
+    // water need separate pools rather than one shared one.
     for (const id of racesInPlay)
       critical.push(() => loadVariants(`enhancement/influence-water/${id}`, `assets/enhancements/influence_water_${id}`));
     // Road overlay stubs -- layered/rotated at draw time (see render.js
@@ -575,23 +571,19 @@ window.UI = window.UI || {};
     return runTiered(critical, background, onProgress);
   }
 
-  /** On-demand load for exactly one unit's art (2026-08-17, user-reported:
-   *  the Knowledge Base's unit portraits stayed on their symbol fallback
-   *  for anything preloadAll() hadn't already covered for the CURRENT
-   *  game's races -- a universal unit (Pioneer/Scout/Galley) previews with
-   *  a hardcoded default race that may not even be in play, and any
-   *  out-of-play race's own units were never loaded at all, including from
-   *  the title screen where nothing has been preloaded yet). Same key/path
-   *  convention preloadAll() itself uses for each unit shape -- race-locked
-   *  and Wandering Monster units (raceId is meaningless for either: a
-   *  monster's art was only ever registered unqualified) load the shared
-   *  `unit/<id>` art; a true universal unit loads race-qualified
-   *  `unit/<id>/<raceId>` art for whichever raceId the caller wants
-   *  previewed. loadVariants is idempotent (no-ops if already registered),
-   *  so calling this repeatedly for the same pair is cheap. Resolves either
-   *  way -- a genuinely missing file just leaves the fallback glyph in
-   *  place, same as everywhere else in this module; the caller decides
-   *  what "still missing" looks like. */
+  /** On-demand load for exactly one unit's art -- covers cases preloadAll()
+   *  doesn't reach for the current game's races (e.g. a Knowledge Base
+   *  preview of an out-of-play race's unit, or from the title screen before
+   *  anything has been preloaded). Same key/path convention preloadAll()
+   *  itself uses for each unit shape -- race-locked and Wandering Monster
+   *  units (raceId is meaningless for either: a monster's art is only ever
+   *  registered unqualified) load the shared `unit/<id>` art; a true
+   *  universal unit loads race-qualified `unit/<id>/<raceId>` art for
+   *  whichever raceId the caller wants previewed. loadVariants is idempotent
+   *  (no-ops if already registered), so calling this repeatedly for the same
+   *  pair is cheap. Resolves either way -- a genuinely missing file just
+   *  leaves the fallback glyph in place, same as everywhere else in this
+   *  module; the caller decides what "still missing" looks like. */
   async function ensureUnitLoaded(unitId, raceId) {
     const unit = window.GameData.UNITS[unitId];
     if (!unit) return;

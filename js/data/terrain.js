@@ -118,7 +118,6 @@ window.GameData.RIVER_YIELD_BONUS = { harvest: 1, coin: 1 };
 // resource, and are consumed by Dungeon Delve rather than by resource
 // exhaustion. Their yield bonus lives here anyway, in the same shape as the
 // entries above, so cities.js's computeWorkedTileYield and sidebar.js's tile
-// panel read one number instead of each hardcoding their own copy of "+2
-// lore" (they had drifted apart in presentation -- see sidebar.js).
+// panel can read one shared number instead of each hardcoding its own copy.
 window.GameData.RUIN_YIELD_BONUS = { lore: 2 };
 window.GameData.RUIN_LABEL = "Ancient Ruin";

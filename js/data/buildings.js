@@ -111,10 +111,8 @@ window.GameData.BUILDINGS = {
   // ---------- ORC — war economy: cheap units, plunder, ancestor-lore ----------
   war_camp: {
     id: "war_camp", label: "War Camp", symbol: "⚑", raceOnly: "orc",
-    // Raised 10%->20% discount (2026-07-14) -- also now speeds up build TIME
-    // by the same fraction, not just resource cost (see ai.js buildUnitOption).
-    // Part of a combined Orc-buff pass tested against Halfellow/Human -- see
-    // project_pairwise_balance_human_orc_halfellow memory.
+    // Also speeds up build TIME by the same fraction, not just resource
+    // cost (see ai.js buildUnitOption).
     coinCost: 20, maxHp: 24, unitCostMult: 0.80,
   },
   butchery: {
@@ -183,29 +181,15 @@ window.GameData.BUILDINGS = {
   // applying it raw, the way every other (defenseless) structure still does.
   wall_section: {
     id: "wall_section", label: "Wall", symbol: "▬", isWall: true,
-    // minBuildTurns 7 -> 3 (2026-08-07, user-directed: "walls should take
-    // less time to build -- around the same amount of time as a level 0
-    // tech granted unit"). Pioneer/Scout/Galley (each unlocked by its own
-    // Level 0 tech -- see ai.js's unitBuildTurns) all land at exactly 3
-    // turns under default pacing, floored by their own minBuildTurns: 3
-    // (units.js). wall_section's own raw formula
-    // (round((coinCost/industriousness) * BUILD_SLOWNESS *
+    // Floored at 3 turns to match a level-0 unit's own minBuildTurns
+    // (units.js) -- Pioneer/Scout/Galley all land at exactly 3 turns under
+    // default pacing (see ai.js's unitBuildTurns). wall_section's own raw
+    // formula (round((coinCost/industriousness) * BUILD_SLOWNESS *
     // buildingPaceFactor), see ai.js's buildingBuildTurns) never exceeds 3
-    // for ANY race's industriousness (0.2-0.9, races.js), so this floor is
-    // what actually governs everywhere -- every race now builds a wall in
-    // exactly 3 turns, matching a level-0 unit turn-for-turn rather than
-    // just "around" it.
-    //
-    // coinCost trimmed 15 -> 11, minBuildTurns 10 -> 7 (2026-08-06, user-
-    // directed: "walls should be a little cheaper and take less time to
-    // build" -- both around a 25-30% cut). That earlier pass's own
-    // reasoning (10 turns matching a non-siege attacker's teardown time on
-    // an existing wall) is superseded again here, same as it superseded
-    // the ORIGINAL reasoning below it -- walls keep getting faster to put
-    // up each time this has been revisited. cityDefensePerWall (see
-    // combat.js's cityDefenseValue) still applies from that same change,
-    // so a built wall is worth more defensively than it used to be even as
-    // it keeps getting cheaper/faster to put up.
+    // for any race's industriousness (0.2-0.9, races.js), so this floor is
+    // what actually governs everywhere -- every race builds a wall in
+    // exactly 3 turns. cityDefensePerWall (see combat.js's
+    // cityDefenseValue) is a separate, additional defense bonus per wall.
     coinCost: 11, maxHp: 40, defense: 8,
     minBuildTurns: 3,
   },
@@ -227,11 +211,11 @@ window.GameData.buildingsForRace = function (raceId) {
 };
 
 /**
- * MULTI-RESOURCE BUILDING COST (2026-08-03, user-directed)
- * ----------------------------------------------------------
- * Every building above still carries only `coinCost` -- that field is now
- * the building's overall RESOURCE VALUE (used to derive the split below),
- * not literally "how much Coin it costs" anymore, for any building whose
+ * MULTI-RESOURCE BUILDING COST
+ * -----------------------------
+ * Every building above carries only `coinCost` -- that field is the
+ * building's overall RESOURCE VALUE (used to derive the split below), not
+ * literally "how much Coin it costs", for any building whose
  * unlocking tech has a costBreakdown. Kept as a single field rather than
  * hand-authoring a {harvest,coin,lore} object on every entry above so each
  * building's existing, already-balanced relative cost (which one is pricier
@@ -247,12 +231,10 @@ window.GameData.buildingsForRace = function (raceId) {
 
 /** Which tech first grants a given building id (via unlock_building),
  *  scanned once across every tech's effects. wall_section resolves to
- *  pioneer_infrastructure (2026-08-06, user-directed: walls now pay up
- *  front like every unit/tech/building, reversing the 2026-08-05 exclusion
- *  that kept them on the legacy flat-coinCost model -- see
- *  pioneer_infrastructure's own doc comment in techs.js) -- it's still
- *  universal/never research-GATED (unlockedBuildings never checks it, see
- *  this file's own header comment on walls), only its COST model changed. */
+ *  pioneer_infrastructure -- see pioneer_infrastructure's own doc comment
+ *  in techs.js -- but stays universal/never research-GATED
+ *  (unlockedBuildings never checks it, see this file's own header comment
+ *  on walls); only its cost model comes from that tech. */
 window.GameData._TECH_FOR_BUILDING = (() => {
   const map = {};
   for (const tech of Object.values(window.GameData.TECHS)) {
@@ -272,10 +254,8 @@ window.GameData.techForBuilding = function (buildingId) {
  *  tech, or that tech has no costBreakdown -- ai.js's buildingOption falls
  *  back to the legacy flat-coinCost model whenever this returns null, the
  *  same convention window.GameData.unitBuildCost already established for
- *  units (as of 2026-08-06 nothing actually falls back any more -- see
- *  buildingOption's own doc comment -- kept only as a defensive path for a
- *  hypothetical future building authored without a costBreakdown-bearing
- *  unlock). */
+ *  units (kept only as a defensive path for a hypothetical future building
+ *  authored without a costBreakdown-bearing unlock). */
 window.GameData.buildingBuildCost = function (buildingId) {
   const techId = window.GameData.techForBuilding(buildingId);
   if (!techId) return null;

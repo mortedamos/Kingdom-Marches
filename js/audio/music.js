@@ -19,10 +19,9 @@
  */
 
 window.MusicSystem = (function () {
-  // "victory" (2026-07-22, user-directed): <race>_victory_#.mp3, scanned and
-  // resolved exactly like every other per-race situation below -- no special
-  // casing needed there, only in resolveCurrent's priority order (see
-  // notifyVictory/victoryRace).
+  // "victory": <race>_victory_#.mp3, scanned and resolved exactly like every
+  // other per-race situation below -- no special casing needed there, only
+  // in resolveCurrent's priority order (see notifyVictory/victoryRace).
   const SITUATIONS = ["default", "combat", "discovery", "neutral", "victory"];
   const MAX_VARIANTS = 3;
   const LOOP_PAUSE_MS = 1500; // fixed ~1-2s pause between same-situation loops
@@ -40,10 +39,9 @@ window.MusicSystem = (function () {
   let fadeIntervalId = null;
 
   let masterVolume = 1.0;
-  // Default lowered from 1.0 to 0.75 (2026-08-06, user-directed): music was
-  // drowning out sfx. Only the DEFAULT for a first-ever session -- a
-  // persisted user setting (loadPersistedVolumes below) still overrides it,
-  // same as any other volume preference already saved.
+  // Only the DEFAULT for a first-ever session -- a persisted user setting
+  // (loadPersistedVolumes below) still overrides it, same as any other
+  // volume preference already saved.
   let musicVolume = 0.75;
   let muted = false;
   let trackChangeListeners = []; // notified with getCurrentTrackLabel()'s result whenever currentKey changes
@@ -51,17 +49,16 @@ window.MusicSystem = (function () {
   // (looping it directly, ignoring the automatic race/situation resolution)
   // until cleared back to null ("Auto"). See setManualTrack/resolveCurrent.
   let manualTrackKey = null;
-  // Set once a civ wins (2026-07-22, user-directed) -- see notifyVictory.
-  // Reset back to null by setRace (2026-08-06, user-directed fix -- see its
-  // own comment) whenever a fresh game actually starts, so returning to the
-  // title screen and starting a new game doesn't keep the PREVIOUS game's
-  // victory theme playing forever. Still overridable by a manual track pin,
-  // same precedence as everything else -- see resolveCurrent.
+  // Set once a civ wins -- see notifyVictory. Reset back to null by setRace
+  // whenever a fresh game actually starts, so returning to the title screen
+  // and starting a new game doesn't keep the PREVIOUS game's victory theme
+  // playing forever. Still overridable by a manual track pin, same
+  // precedence as everything else -- see resolveCurrent.
   let victoryRace = null;
-  // Set once the human player loses (2026-08-06, user-directed) -- see
-  // notifyGameOver. Same one-way-until-a-fresh-game shape and reset point
-  // (setRace) as victoryRace above; takes priority over it in resolveCurrent
-  // since a loss is this session's own outcome, not just informational.
+  // Set once the human player loses -- see notifyGameOver. Same
+  // one-way-until-a-fresh-game shape and reset point (setRace) as
+  // victoryRace above; takes priority over it in resolveCurrent since a loss
+  // is this session's own outcome, not just informational.
   let gameOverActive = false;
 
   function loadPersistedVolumes() {
@@ -123,9 +120,8 @@ window.MusicSystem = (function () {
   // Browsers cap simultaneous connections per origin (Chrome: 6) -- probing
   // every race/situation/variant combo (90+ files) via one big Promise.all
   // fires them all at once, so most just sit queued behind that cap until
-  // probeFile's own 3s safety timeout falsely resolves them "missing" (found
-  // 2026-07-22: real, on-disk files were reporting missing purely from this
-  // contention, not from actually failing to load -- see PROBE_CONCURRENCY).
+  // probeFile's own 3s safety timeout falsely resolves them "missing", even
+  // though the files genuinely exist on disk (see PROBE_CONCURRENCY).
   const PROBE_CONCURRENCY = 4;
 
   /** Runs `worker` over every item in `items`, at most `limit` in flight at
@@ -157,25 +153,18 @@ window.MusicSystem = (function () {
   let scanGeneration = 0;
 
   /** Scans which files actually exist. Called once at startup. Never throws.
-   *  racesInPlay (array of race ids -- normal games pass [humanRace,
-   *  ...opponents], spectator games pass the checked spectator races) scopes
-   *  the scan to just those races -- most of a match's 6-race library can
-   *  never be heard this game (see sprites.js's preloadAll, which got the
-   *  same racesInPlay scoping for the same reason).
+   *  racesInPlay scopes the scan to just those races -- most of a match's
+   *  6-race library can never be heard this game (see sprites.js's
+   *  preloadAll, which uses the same scoping).
    *
-   *  Further split into a CRITICAL tier ("default" situation for every
-   *  racesInPlay race, plus the race-less "neutral" tracks) that the
-   *  returned promise waits on, and a BACKGROUND tier (combat/discovery/
-   *  victory -- situations that can't possibly be needed until whatever
-   *  triggers them actually happens in-game) that keeps scanning afterward
-   *  without making the loading screen wait on it. "default" is what's
-   *  ACTUALLY playing the instant a game starts (see main.js's startGame --
-   *  no notifySituation call happens before then, so resolveCurrent always
-   *  lands on "default"), and "neutral" is what spectator mode's pool needs
-   *  even before any race-specific situation is relevant (see
-   *  resolveSpectatorTrack). onProgress(done, total) is called only for the
-   *  critical tier, matching sprites.js/sfx.js's own critical/background
-   *  split. */
+   *  Split into a CRITICAL tier ("default" situation for every racesInPlay
+   *  race, plus the race-less "neutral" tracks) that the returned promise
+   *  waits on, and a BACKGROUND tier (combat/discovery/victory) that keeps
+   *  scanning afterward without blocking the loading screen. "default" is
+   *  what's actually playing the instant a game starts, and "neutral" is
+   *  what spectator mode needs before any race-specific situation applies
+   *  (see resolveSpectatorTrack). onProgress(done, total) fires only for the
+   *  critical tier, matching sprites.js/sfx.js's own split. */
   async function scanAvailability(racesInPlay, onProgress) {
     const myGeneration = ++scanGeneration;
     availability = new Map();
@@ -194,15 +183,15 @@ window.MusicSystem = (function () {
     for (let v = 1; v <= MAX_VARIANTS; v++) {
       criticalTasks.push({ key: `neutral_${v}`, path: `assets/music/neutral_${v}.mp3` });
     }
-    // Neutral victory fallback (2026-08-12, user-directed): played when the
-    // winning race has no victory track of its own -- see resolveVictoryTrack.
-    // Background tier, same as the race victory tracks themselves (can't be
-    // needed until a game actually ends).
+    // Neutral victory fallback -- played when the winning race has no
+    // victory track of its own -- see resolveVictoryTrack. Background tier,
+    // same as the race victory tracks themselves (can't be needed until a
+    // game actually ends).
     for (let v = 1; v <= MAX_VARIANTS; v++) {
       backgroundTasks.push({ key: `neutral_victory_${v}`, path: `assets/music/neutral_victory_${v}.mp3` });
     }
-    // Game over (2026-08-06, user-directed) -- single fixed file, no race
-    // prefix, same "no race" shape as neutral above.
+    // Game over -- single fixed file, no race prefix, same "no race" shape
+    // as neutral above.
     criticalTasks.push({ key: "game_over", path: "assets/music/game_over.mp3" });
     async function runTask({ key, path }) {
       const exists = await probeFile(path);
@@ -219,25 +208,16 @@ window.MusicSystem = (function () {
     mapWithConcurrencyLimit(backgroundTasks, PROBE_CONCURRENCY, runTask); // fire-and-forget
   }
 
-  /** Existence check via a plain GET + immediate body cancel (2026-07-22,
-   *  rewritten from an Audio-element "wait for loadedmetadata" probe, which
-   *  turned out unreliable against this project's dev static server: real,
-   *  on-disk files were intermittently reported missing because the server
-   *  doesn't support HEAD, and separately because loadedmetadata's timing
-   *  depends on codec/media-pipeline quirks this doesn't need to care about
-   *  at all -- an HTTP status code is a far more direct answer to "does this
-   *  file exist"). Cancelling the body right after the status arrives avoids
-   *  downloading the full mp3 just to probe it. `cache: "no-store"` guards
-   *  against a real failure mode: a browser that cached a 404 for this path
-   *  from BEFORE the file existed (e.g. probed once with an empty
-   *  assets/music/ folder, then a track was dropped in later) would
-   *  otherwise keep reporting it missing on a normal reload until a hard
-   *  refresh -- this makes every scan a true, current disk check.
-   *
-   *  The game is served over HTTP (2026-08-03, user-directed), so fetch()
-   *  always works here; the old Audio-element fallback that existed purely
-   *  for a file:// origin was removed. A thrown fetch() now means a genuine
-   *  network failure, which reads the same as "not available". */
+  /** Existence check via a plain GET + immediate body cancel -- an HTTP
+   *  status code is a more direct answer to "does this file exist" than
+   *  waiting on Audio-element metadata events. Cancelling the body right
+   *  after the status arrives avoids downloading the full mp3 just to probe
+   *  it. `cache: "no-store"` guards against a browser that cached a 404 for
+   *  this path from before the file existed, which would otherwise keep
+   *  reporting it missing until a hard refresh -- this makes every scan a
+   *  true, current disk check. The game is served over HTTP, so fetch()
+   *  always works here; a thrown fetch() means a genuine network failure,
+   *  which reads the same as "not available". */
   async function probeFile(path) {
     try {
       const res = await fetch(path, { method: "GET", cache: "no-store" });
@@ -260,17 +240,13 @@ window.MusicSystem = (function () {
     return variants;
   }
 
-  /** Sequential round-robin (2026-08-05, user-directed): cycles through
-   *  EVERY available variant in order (1, 2, 3, back to 1...) before any
-   *  one repeats. Replaces the old random-no-immediate-repeat picker, which
-   *  only guaranteed the SAME variant never played twice in a row -- e.g.
-   *  1,3,1,3,1,3... was a perfectly valid random sequence under the old
-   *  rule that never once touched variant 2, which is exactly the
-   *  user-reported symptom ("only one track plays, the others never get
-   *  played"). `lastVariantPlayed` is keyed per race+situation and persists
-   *  across situation changes (module-level, not reset), so returning to
-   *  "default" after a combat/discovery interruption resumes the rotation
-   *  where it left off rather than restarting at variant 1. */
+  /** Sequential round-robin: cycles through EVERY available variant in
+   *  order (1, 2, 3, back to 1...) before any one repeats, so a variant can
+   *  never be starved the way a random no-immediate-repeat pick could.
+   *  `lastVariantPlayed` is keyed per race+situation and persists across
+   *  situation changes (module-level, not reset), so returning to "default"
+   *  after a combat/discovery interruption resumes the rotation where it
+   *  left off rather than restarting at variant 1. */
   function pickVariant(race, situation) {
     const pairKey = `${race}_${situation}`;
     const variants = availableVariants(race, situation);
@@ -340,13 +316,13 @@ window.MusicSystem = (function () {
     return null;
   }
 
-  /** Resolves the winning race's victory track (2026-08-12, user-directed):
-   *  if that race has no victory track of its own, falls back to
-   *  neutral_victory rather than resolveTrack's usual "that race's own
-   *  default" chain -- a generic victory fanfare reads better at the moment
-   *  the game actually ends than silently dropping back to ambient music.
-   *  Only falls through to the race's default track if neutral_victory is
-   *  ALSO unavailable, as a last resort before silence. */
+  /** Resolves the winning race's victory track: if that race has no victory
+   *  track of its own, falls back to neutral_victory rather than
+   *  resolveTrack's usual "that race's own default" chain -- a generic
+   *  victory fanfare reads better at the moment the game ends than silently
+   *  dropping back to ambient music. Only falls through to the race's
+   *  default track if neutral_victory is ALSO unavailable, as a last resort
+   *  before silence. */
   function resolveVictoryTrack(race) {
     const variant = pickVariant(race, "victory");
     if (variant !== null) return { path: trackPath(race, "victory", variant), key: `${race}_victory_${variant}` };
@@ -380,19 +356,16 @@ window.MusicSystem = (function () {
       console.log(`[music] manually-selected track ${manualTrackKey}.mp3 unavailable -- reverting to Auto`);
       manualTrackKey = null;
     }
-    // Game over (2026-08-06, user-directed): the human player's own loss
-    // outranks even a victory theme (shouldn't ever coincide in practice --
-    // the human losing and some OTHER civ winning both resolve the same
-    // round -- but if it ever does, this is the human's own outcome and
-    // wins the tiebreak). Single fixed file, no race, so it bypasses
-    // resolveTrack's race-keyed fallback chain entirely.
+    // Game over: the human player's own loss outranks even a victory theme
+    // (shouldn't ever coincide in practice, but if it does, this is the
+    // human's own outcome and wins the tiebreak). Single fixed file, no
+    // race, so it bypasses resolveTrack's race-keyed fallback chain entirely.
     if (gameOverActive) return { path: "assets/music/game_over.mp3", key: "game_over" };
-    // Victory (2026-07-22, user-directed): once a civ has won, its theme
-    // takes priority over the ordinary race/situation resolution below --
-    // see resolveVictoryTrack for the fallback chain (that race's victory ->
-    // neutral_victory -> that race's default -> silence), so a race with no
-    // dedicated victory track yet just gets a generic victory fanfare
-    // instead of going silent (or quietly reverting to ambient music) at the
+    // Victory: once a civ has won, its theme takes priority over the
+    // ordinary race/situation resolution below -- see resolveVictoryTrack
+    // for the fallback chain (that race's victory -> neutral_victory ->
+    // that race's default -> silence), so a race with no dedicated victory
+    // track yet just gets a generic fanfare instead of going silent at the
     // exact moment the game ends.
     if (victoryRace) return resolveVictoryTrack(victoryRace);
     return currentRace ? resolveTrack(currentRace, activeSituation) : resolveSpectatorTrack();
@@ -463,9 +436,9 @@ window.MusicSystem = (function () {
 
   /** Public: set which race's music to follow (null = spectator/no human race).
    *  Called once at the start of every game (fresh or loaded) -- also the
-   *  reset point for victoryRace/gameOverActive (2026-08-06, user-directed
-   *  fix), so a new game started after a previous one ended doesn't keep
-   *  playing that OLD game's victory/game-over music. */
+   *  reset point for victoryRace/gameOverActive, so a new game started after
+   *  a previous one ended doesn't keep playing that OLD game's
+   *  victory/game-over music. */
   function setRace(raceId) {
     currentRace = raceId;
     victoryRace = null;

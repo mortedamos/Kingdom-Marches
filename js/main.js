@@ -10,18 +10,16 @@
 (function () {
   let gameState = null;
   let viewState = null;
-  // Knowledge Base (KMKB) state (2026-08-16, user-directed): deliberately
-  // module-level rather than part of viewState -- the Knowledge menu has to
-  // work from the title screen too, before viewState (or gameState) exists
-  // at all. "units" | "conditions" | "stats" | null; knowledgeSelectedUnitId/
-  // knowledgeSelectedConditionKey/knowledgeSelectedStatKey each only matter
-  // for their own page. See setupKnowledgeBase/renderKnowledgeOverlay.
+  // Knowledge Base state is module-level rather than part of viewState --
+  // the Knowledge menu has to work from the title screen too, before
+  // viewState (or gameState) exists. "units" | "conditions" | "stats" | null;
+  // knowledgeSelectedUnitId/knowledgeSelectedConditionKey/knowledgeSelectedStatKey
+  // each only matter for their own page. See setupKnowledgeBase/renderKnowledgeOverlay.
   let knowledgeView = null;
   let knowledgeSelectedUnitId = null;
   let knowledgeSelectedConditionKey = null;
   let knowledgeSelectedStatKey = null;
-  // Set when a unit profile's condition OR stat cross-link is clicked
-  // (2026-08-16, user-directed; generalized to stats 2026-08-17) --
+  // Set when a unit profile's condition or stat cross-link is clicked --
   // remembers which unit to return to so the Conditions/Stats page's "Back"
   // button can jump straight back to it. null whenever that page was opened
   // directly from the menu instead.
@@ -31,28 +29,21 @@
   let spectatorSpeed = 1; // 1x/2x/4x/8x/16x -- see the speed-btn row in index.html
   let spectatorPaused = false;
   let autoplayTimer = null;
-  // AI difficulty (2026-08-06, user-directed): the start screen no longer
-  // exposes a control for this -- game-speed-slider replaced it -- so this
-  // just stays at its default. Left in place rather than ripped out: it's
-  // still a real, working lever (ai.js's applyDifficultyNoise), just not
-  // currently reachable from the UI.
+  // The start screen has no control for AI difficulty (game-speed-slider
+  // replaced it), so this just stays at its default. Left in place since
+  // it's still a real, working lever (ai.js's applyDifficultyNoise), just
+  // not currently reachable from the UI.
   let aiDifficulty = "normal";
   let loadingStatusTimer = null; // see showLoadingScreen/hideLoadingScreen
 
-  // Game Speed (2026-08-06, user-directed): replaces the old Difficulty
-  // dropdown on the start screen with a slider that controls how many
-  // turns units/buildings/research take (GameConfig.pacing.slowness) --
-  // see js/data/config.js's own doc comment for the unit/building/research
-  // pace-factor system this scales uniformly. 100% is the slider's middle
-  // and reproduces the game's default pace exactly; higher = faster
-  // (fewer turns), lower = slower (more turns) -- an inverse relationship,
-  // since "speed" and "how many turns something takes" move opposite ways.
-  // BASE_PACING_SLOWNESS is captured ONCE here, before applyGameSpeed ever
-  // runs, so every subsequent call (a fresh Start Game at a different
-  // speed, or loading a save) recomputes from this fixed baseline rather
-  // than the live (possibly already-adjusted) config value -- otherwise
-  // repeated speed changes would compound/drift instead of each being an
-  // absolute setting.
+  // Game Speed slider controls how many turns units/buildings/research take
+  // (GameConfig.pacing.slowness) -- see config.js's own doc comment for the
+  // pace-factor system this scales uniformly. 100% reproduces the default
+  // pace exactly; higher = faster (fewer turns), lower = slower, an inverse
+  // relationship. BASE_PACING_SLOWNESS is captured ONCE here, before
+  // applyGameSpeed ever runs, so every later call recomputes from this fixed
+  // baseline rather than the live (possibly already-adjusted) config value --
+  // otherwise repeated speed changes would compound/drift.
   const BASE_PACING_SLOWNESS = window.GameConfig.pacing.slowness;
   let gameSpeedPercent = 100;
   function applyGameSpeed(percent) {
@@ -72,12 +63,10 @@
   let lastRenderedDialog = null;
   let lastRenderedRingKey = null;
 
-  // Keyboard shortcuts (2026-08-07, user-directed) -- see
-  // setupGlobalShortcuts. shiftHeld drives both the ring menu's "Next 3
+  // See setupGlobalShortcuts. shiftHeld drives both the ring menu's "Next 3
   // turns: " label prefix and whether a shortcut/pill click schedules an
   // auto-repeat (see maybeScheduleAutoRepeat); panKeys is which of WASD are
-  // currently held, read every animation-loop frame for continuous map
-  // panning rather than one step per keydown.
+  // currently held, read every animation-loop frame for continuous panning.
   let shiftHeld = false;
   const panKeys = new Set();
 
@@ -132,11 +121,7 @@
       console.error(`[title music] load failed for ${src}: ${MEDIA_ERROR_MEANING[code] || "unknown error"} (code ${code})`);
       console.error(`[title music] open ${new URL(src, location.href).href} directly to see what the server returns`);
       // Drop the element so the next click builds a FRESH one (with the
-      // cache-buster above) rather than retrying a permanently-errored
-      // element. The old behaviour disabled the button outright, so a single
-      // transient hiccup killed title music for the whole session with no
-      // way back -- which is what "(no audio file)" was reporting even when
-      // the file was perfectly fine.
+      // cache-buster above) rather than retrying a permanently-errored one.
       titleAudio = null;
       setMusicBtnState("error");
     });
@@ -154,14 +139,12 @@
   }
 
   function playTitleMusic() {
-    // Respect the global mute (2026-08-16, user-reported): titleAudio is a
-    // standalone element outside MusicSystem, so without this check it
-    // would start playing regardless of the Audio dropdown/in-game menu's
-    // mute checkbox -- most visibly when clicking "Begin", which calls this
-    // unconditionally to seed the browser's autoplay permission. setGlobalMuted
-    // keeps titleAudioMuted/titleAudio.volume in sync with the real mute
-    // state, so this one check covers every call site (Begin, the modal's
-    // own "Play Title Music" button, and re-opening the modal later).
+    // titleAudio is a standalone element outside MusicSystem, so without this
+    // check it would start playing regardless of the Audio dropdown/in-game
+    // menu's mute checkbox -- most visibly when clicking "Begin", which calls
+    // this unconditionally to seed the browser's autoplay permission.
+    // setGlobalMuted keeps titleAudioMuted/titleAudio.volume in sync with the
+    // real mute state, so this one check covers every call site.
     if (titleAudioMuted) {
       console.log("[title music] muted -- not starting playback");
       return;
@@ -239,58 +222,36 @@
   // Pacing experiment (2026-07-12): ~20% fewer tiles than the previous
   // 65x40 (2600) -- forces civs closer together for faster contact/
   // conflict. Same aspect ratio, scaled by sqrt(0.8). See
-  // project_pacing_experiment memory. 58x36 (2088 tiles) is the REFERENCE
-  // size this constant now scales from -- it's what this session's
-  // balance/pacing testing was actually calibrated against, almost all of
-  // it with 3 civs (Orc/Human/Halfellow), so a 3-civ game reproduces this
-  // exact size unchanged.
+  // 58x36 (2088 tiles) is the REFERENCE size mapSizeForCivCount scales from.
+  // Balance/pacing testing was calibrated against this size with 3 civs
+  // (Orc/Human/Halfellow), so a 3-civ game reproduces it unchanged.
   const REFERENCE_MAP_WIDTH = 58, REFERENCE_MAP_HEIGHT = 36, REFERENCE_CIV_COUNT = 3;
-  // Dynamic map sizing (2026-07-12): a map sized for 3-4 civs left a LOT of
-  // unclaimed land in 2-civ head-to-head testing -- confirmed directly (see
-  // project_stuck_unit_bugs memory) as a real contributor to games timing
-  // out at the 900-turn cap without either side reaching the 30% territory
-  // victory threshold, purely because there was more empty map to cover
-  // than a 2-civ game could realistically claim. Scaling map AREA linearly
-  // with civ count (so width/height each scale by sqrt(civCount/3)) keeps
-  // roughly the same amount of land PER CIV regardless of how many are in
-  // the game -- fewer civs get a smaller, tighter map that forces contact
-  // sooner; more civs get more room, same as the original 3-civ tuning
-  // intended. Clamped to a sane floor/ceiling so a pathological civ count
+  // Dynamic map sizing: scales map AREA linearly with civ count (width/
+  // height each scale by sqrt(civCount/3)) so each civ gets roughly the
+  // same amount of land regardless of how many are in the game -- fewer
+  // civs get a smaller, tighter map that forces contact sooner; more civs
+  // get more room. Clamped to a floor/ceiling so a pathological civ count
   // can't produce a degenerate (or absurdly expensive to generate) map.
   const MIN_MAP_WIDTH = 44, MIN_MAP_HEIGHT = 27;
   const MAX_MAP_WIDTH = 90, MAX_MAP_HEIGHT = 56;
-  // Orc-vs-Halfellow retest (2026-07-12) showed the civ-count scaling above
-  // over-corrected: a 2-civ map (47x29) forced contact so early that Orc's
-  // aggression started overwhelming Halfellow before it could establish any
-  // defense (Orc win rate 60%->70%, Halfellow wiped out entirely in 30% of
-  // games, vs. never before). A flat +20% AREA boost on top of the civ-count
-  // scale (not instead of it) gives every civ count a bit more breathing
-  // room to build up before first contact, same rationale as the original
-  // "-20% tiles" pacing-experiment cut this partially reverses -- a linear
-  // dimension scale of sqrt(1.2), not a flat 1.2x width/height (which would
-  // compound to +44% area instead of +20%). See project_halfellow_tactics
-  // and project_dynamic_map_sizing memory.
+  // Flat +20% AREA boost on top of the civ-count scaling above (not instead
+  // of it) -- gives every civ count more breathing room to build up before
+  // first contact. A linear dimension scale of sqrt(1.2), not a flat 1.2x
+  // width/height (which would compound to +44% area instead of +20%).
   const MAP_SIZE_BOOST = 1.20;
-  // Per-civ-above-2 shrink (2026-07-12): an extra -5% AREA for every civ
-  // beyond 2 (2 civs: unchanged; 3: -5%; 4: -10%; 5: -15%; 6: -20%),
-  // applied on top of everything above. More civs already get a bigger map
-  // from the civ-count scaling above (more civs need more land) -- this
-  // trims that back down a bit per civ so a crowded 5-6 civ game doesn't
-  // sprawl as much extra unclaimed space as the raw sqrt(civCount/3) scale
-  // alone would give it. Floored well above zero so a hypothetical civ
-  // count far past the UI's actual 2-6 range can't invert the map size.
+  // Per-civ-above-2 shrink: an extra -5% AREA for every civ beyond 2 (2
+  // civs: unchanged; 3: -5%; 4: -10%; 5: -15%; 6: -20%), applied on top of
+  // everything above -- trims back some of the extra land the civ-count
+  // scaling above grants so a crowded 5-6 civ game doesn't sprawl as much
+  // extra unclaimed space. Floored well above zero so a civ count far past
+  // the UI's actual 2-6 range can't invert the map size.
   const CIV_ABOVE_TWO_SHRINK_RATE = 0.05;
-  // Flat -10% AREA (2026-08-12, user-directed: "shrink the size of generated
-  // world map by 10%") on top of everything above -- same "AREA percentage,
-  // applied as sqrt() to the linear dimension scale" convention MAP_SIZE_BOOST
-  // and CIV_ABOVE_TWO_SHRINK_RATE already use, so width/height each shrink by
-  // sqrt(0.9) (~5.1%), not 10% each (which would compound to ~19% less area).
+  // Two separate -10% AREA cuts on top of everything above, applied as
+  // sqrt() to the linear dimension scale (same convention as MAP_SIZE_BOOST
+  // and CIV_ABOVE_TWO_SHRINK_RATE) -- width/height each shrink by sqrt(0.9)
+  // per constant (~5.1%), not 10% each. The two compound to -19% AREA
+  // combined (0.9*0.9 = 0.81), not -20%.
   const MAP_SIZE_USER_SHRINK = 0.9;
-  // A second, separate -10% AREA cut (2026-08-12, user-directed: "i meant to
-  // reduce map size an additional 10%" -- clarifying the ask above was meant
-  // to stack, not restate, the same request). Same convention as
-  // MAP_SIZE_USER_SHRINK; the two compound to -19% AREA combined (0.9*0.9 =
-  // 0.81), not -20%.
   const MAP_SIZE_USER_SHRINK_2 = 0.9;
   function mapSizeForCivCount(civCount) {
     const areaShrink = Math.max(0.2, 1 - CIV_ABOVE_TWO_SHRINK_RATE * Math.max(0, civCount - 2));
@@ -303,8 +264,8 @@
   function $(id) { return document.getElementById(id); }
 
   /**
-   * Automated-testing switch (2026-08-03, user-directed): opening the game
-   * with ?mute (or ?mute=1) starts it fully silent -- no music, no sfx.
+   * Opening the game with ?mute (or ?mute=1) starts it fully silent -- no
+   * music, no sfx.
    *
    * Driving a real game from a test harness otherwise blasts audio out of
    * whatever machine the browser is running on, which is exactly what you
@@ -323,11 +284,10 @@
    */
   function applyMuteUrlSwitch() {
     // Seed titleAudioMuted from whatever mute state music.js already
-    // persisted/loaded (2026-08-16, user-reported) -- a returning player who
-    // muted last session otherwise has MusicSystem.isMuted() correctly true
-    // from the start, but this standalone flag stays at its `false` default
-    // until the player re-toggles mute THIS session, so clicking "Begin"
-    // would start title music right through their still-in-effect mute.
+    // persisted/loaded -- otherwise this standalone flag stays at its
+    // `false` default until the player re-toggles mute THIS session, so
+    // clicking "Begin" would start title music right through a still-in-
+    // effect mute from a previous session.
     titleAudioMuted = window.MusicSystem.isMuted();
     const params = new URLSearchParams(window.location.search);
     if (!params.has("mute") || params.get("mute") === "0") return;
@@ -339,26 +299,17 @@
   }
 
   /**
-   * LAUNCH OPTIONS (2026-08-03, user-directed)
-   * -----------------------------------------
-   * Every pre-game choice lives in one modal now, opened by the splash
-   * screen's "Game Options" button, and the modal owns the Start Game button
-   * too. Previously these controls sat in a permanent toolbar strip pinned
-   * across the top of the splash screen, which fixed the number of options
-   * at "however many fit on one row" -- the reason this moved is to leave
-   * room for single-player options that don't exist yet.
-   *
-   * The control IDs are deliberately UNCHANGED from the old toolbar markup
-   * (spectator-toggle, human-race-select, opponent-count, game-speed-slider,
-   * seed-input, .spectator-race-checkbox), so startGame() reads them exactly
-   * as before and knows nothing about where they're rendered. game-speed-
-   * slider (2026-08-06, user-directed) replaced the old difficulty-select
-   * dropdown -- see startGame()'s own comment for what it actually does.
+   * LAUNCH OPTIONS
+   * --------------
+   * Every pre-game choice lives in one modal, opened by the splash screen's
+   * "Game Options" button, which also owns the Start Game button. Control
+   * IDs (spectator-toggle, human-race-select, opponent-count, game-speed-
+   * slider, seed-input, .spectator-race-checkbox) are read directly by
+   * startGame(), which knows nothing about where they're rendered.
    *
    * Sections are shown/hidden by mode rather than mixed together: picking
    * All-AI Spectator swaps the Single Player block for the race checklist,
-   * since "Race"/"Opponents" are meaningless in a spectator game and the old
-   * flat strip left them sitting there greyed-in-spirit-only.
+   * since "Race"/"Opponents" are meaningless in a spectator game.
    */
   function renderLaunchOptions() {
     return `
@@ -437,19 +388,13 @@
   }
 
   /** "Which copy of the game is this" -- date/time/build number, read
-   *  straight from js/data/config.js's `build` section (2026-08-06, user-
-   *  directed). Lives in the lower-right corner of the base title screen
-   *  (2026-08-07, user-directed -- moved out from under the Start Game
-   *  button inside the Game Options modal, so it's visible before the
-   *  player even opens that modal).
+   *  straight from js/data/config.js's `build` section. Lives in the
+   *  lower-right corner of the base title screen, visible before the player
+   *  opens the Game Options modal.
    *
-   *  Synchronous, and that's the point. This used to be an empty placeholder
-   *  filled in asynchronously from the GitHub API's commit history -- which
-   *  was accurate but only when the network, the repo's visibility and an
-   *  unauthenticated 60-req/hour rate limit all cooperated, and rendered
-   *  blank whenever they didn't. A config value always renders, offline
-   *  included, at the cost of having to be bumped by hand (see config.js's
-   *  own note on that trade). */
+   *  Synchronous, and that's the point: a config value always renders,
+   *  offline included, at the cost of having to be bumped by hand (see
+   *  config.js's own note on that trade). */
   function renderBuildStamp() {
     const build = window.GameConfig.build || {};
     const when = [build.date, build.time].filter(Boolean).join(" ");
@@ -457,12 +402,10 @@
       ? `${when}${when ? " · " : ""}build ${build.number}`
       : when;
     // Nothing rendered at all if the section is missing or blank, rather than
-    // a stray "build undefined" -- same "show nothing over showing something
-    // wrong" stance the old network version took when its fetch failed.
+    // a stray "build undefined".
     if (!stamp) return "";
     // Not escaped, and doesn't need to be: every piece is a scalar typed by
-    // hand into js/data/config.js by whoever cut the build. Same reasoning
-    // the previous version applied to its own interpolated commit data.
+    // hand into js/data/config.js by whoever cut the build.
     return stamp;
   }
 
@@ -487,18 +430,17 @@
       $("spectator-race-section").style.display = isSpectator ? "block" : "none";
     });
 
-    // Game Speed slider (2026-08-06, user-directed): the percentage label
-    // moves live as the slider is dragged -- actually applying the speed
-    // (mutating GameConfig.pacing.slowness) waits for Start Game itself
-    // (see startGame's applyGameSpeed call), same as every other launch
-    // option here only takes effect once the game actually starts.
+    // Game Speed slider: the percentage label moves live as the slider is
+    // dragged -- actually applying the speed (mutating GameConfig.pacing.
+    // slowness) waits for Start Game itself (see startGame's applyGameSpeed
+    // call), same as every other launch option here.
     $("game-speed-slider").addEventListener("input", (e) => {
       $("game-speed-pct").textContent = `${e.target.value}%`;
     });
 
-    // Max Monsters slider (2026-08-16, user-directed): same "label moves
-    // live, value only actually applies at Start Game" pattern as Game
-    // Speed just above -- see startGame's monsterCapPerKingdom read.
+    // Max Monsters slider: same "label moves live, value only actually
+    // applies at Start Game" pattern as Game Speed just above -- see
+    // startGame's monsterCapPerKingdom read.
     $("monster-cap-slider").addEventListener("input", (e) => {
       const n = parseInt(e.target.value, 10);
       $("monster-cap-label").textContent = n === 0 ? "Off" : `${n} per kingdom`;
@@ -523,17 +465,17 @@
     setupTitleLoadGameControl();
   }
 
-  /** Title menu bar's File > Load Game (2026-08-12, user-directed): loads a
-   *  save straight from the title screen, before "Begin" has ever been
-   *  clicked -- unlike the in-game File menu's Load Game (handleLoadGameFile/
-   *  finishApplyLoadedPayload), which REPLACES an already-running session's
-   *  gameState/viewState in place because window.UI.input.attach already
-   *  closed over those exact object references. Here neither object exists
-   *  yet, so there's nothing to preserve identity for -- startGameFromSave
-   *  just assigns them fresh, same as startGame's own `gameState =
-   *  createNewGame(...)`, and reuses startGame's asset-loading/finishStartGame
-   *  tail via beginGameScreenTransition. A separate file input/handler from
-   *  the in-game one on purpose, so the two load paths can never cross wires. */
+  /** Title menu bar's File > Load Game: loads a save straight from the title
+   *  screen, before "Begin" has ever been clicked -- unlike the in-game File
+   *  menu's Load Game (handleLoadGameFile/finishApplyLoadedPayload), which
+   *  REPLACES an already-running session's gameState/viewState in place
+   *  because window.UI.input.attach already closed over those exact object
+   *  references. Here neither object exists yet, so there's nothing to
+   *  preserve identity for -- startGameFromSave just assigns them fresh, same
+   *  as startGame's own `gameState = createNewGame(...)`, and reuses
+   *  startGame's asset-loading/finishStartGame tail via
+   *  beginGameScreenTransition. A separate file input/handler from the
+   *  in-game one on purpose, so the two load paths can never cross wires. */
   function setupTitleLoadGameControl() {
     const btn = $("title-load-game-btn");
     const fileInput = $("title-load-game-file-input");
@@ -573,11 +515,9 @@
   function setGlobalMuted(muted) {
     window.MusicSystem.setMuted(muted);
     window.SfxSystem.setMuted(muted);
-    // Title screen music (2026-08-16, user-reported) -- titleAudio is a
-    // standalone <audio> element outside MusicSystem entirely (see
-    // initTitleAudio), so without this it never learned about a mute toggled
-    // through the Audio dropdown/in-game menu; only applyMuteUrlSwitch's
-    // ?mute param ever set titleAudioMuted before now. Kept in lockstep here
+    // titleAudio is a standalone <audio> element outside MusicSystem entirely
+    // (see initTitleAudio), so without this it never learns about a mute
+    // toggled through the Audio dropdown/in-game menu. Kept in lockstep here
     // so an already-playing title track goes silent immediately too, not
     // just future play() calls -- see playTitleMusic's own mute check for
     // the "don't even start" half of this.
@@ -586,12 +526,11 @@
     syncAllMuteControls();
   }
 
-  /** Title menu bar's Audio dropdown (2026-08-12, user-directed: the in-game
-   *  top menu bar, reachable from the title screen too) -- same Mute/Music/
-   *  SFX controls as the in-game Audio menu (setupAudioControls), just
-   *  without "Now Playing" or "Track" (nothing is playing/selectable until a
-   *  race is actually in a running game), and wired here so it works before
-   *  "Begin" is ever clicked. Mute specifically routes through
+  /** Title menu bar's Audio dropdown -- same Mute/Music/SFX controls as the
+   *  in-game Audio menu (setupAudioControls), just without "Now Playing" or
+   *  "Track" (nothing is playing/selectable until a race is actually in a
+   *  running game), wired here so it works before "Begin" is ever clicked.
+   *  Mute specifically routes through
    *  setGlobalMuted/syncAllMuteControls above so it never disagrees with the
    *  standalone "Mute Sound" button. */
   function setupTitleAudioControls() {
@@ -613,8 +552,8 @@
     });
   }
 
-  /** Open/close wiring for the title screen's own menu bar (2026-08-12) --
-   *  same click-to-toggle/click-outside-closes shape as the in-game
+  /** Open/close wiring for the title screen's own menu bar -- same
+   *  click-to-toggle/click-outside-closes shape as the in-game
    *  setupMenuBar, kept as a fully separate instance (own menu list, own
    *  document click listener) rather than a shared/generalized one. Safe to
    *  keep separate since the two menu bars never need to coexist visibly --
@@ -651,9 +590,7 @@
     const overlay = $("launch-options-overlay");
     const open = () => {
       overlay.style.display = "flex";
-      // Start title music the moment "Begin" is clicked (2026-08-05, user-
-      // directed) -- it used to only ever start from the modal's own "Play
-      // Title Music" button, an easy-to-miss manual step. A click IS a real
+      // Start title music the moment "Begin" is clicked -- a click IS a real
       // user gesture, so this satisfies the browser's autoplay-permission
       // requirement the same way a direct button press would; playTitleMusic
       // (not toggleTitleMusic) since re-opening this modal on a later click
@@ -674,12 +611,10 @@
   /** Open/close wiring for the Keyboard Shortcuts window (2026-08-07,
    *  user-directed) -- same button/backdrop/Escape convention as
    *  setupLaunchOptionsOverlay. Opened from the Interface menu's
-   *  "Keyboard Shortcuts" button, which replaced the standalone "Enter
-   *  Full Screen" entry there; that button now lives INSIDE this window
-   *  (see index.html), unchanged apart from its new parent. Also opened from
-   *  the title menu bar's own Interface > Keyboard Shortcuts button
-   *  (2026-08-12) -- same overlay, just a second trigger reachable before a
-   *  game starts. */
+   *  "Keyboard Shortcuts" button; the "Enter Full Screen" button lives
+   *  INSIDE this window (see index.html). Also opened from the title menu
+   *  bar's own Interface > Keyboard Shortcuts button -- same overlay, just a
+   *  second trigger reachable before a game starts. */
   function setupKeyboardShortcutsOverlay() {
     const overlay = $("keyboard-shortcuts-overlay");
     if (!overlay) return;
@@ -699,12 +634,12 @@
   /** Renders whatever the Knowledge Base overlay is currently showing
    *  (knowledgeView/knowledgeSelectedUnitId) into #knowledge-content, and
    *  shows/hides the overlay itself. Standalone rather than folded into the
-   *  main redraw() loop (2026-08-16, user-directed KMKB feature) -- it has
-   *  to work identically before a game exists (no gameState/viewState to
-   *  hang a re-render key off of) and mid-game, and its content never goes
-   *  stale on its own (pure reference data, not live game state), so there's
-   *  nothing for a per-frame redraw to refresh -- every call site that
-   *  changes knowledgeView/knowledgeSelectedUnitId calls this directly. */
+   *  main redraw() loop -- it has to work identically before a game exists
+   *  (no gameState/viewState to hang a re-render key off of) and mid-game,
+   *  and its content never goes stale on its own (pure reference data, not
+   *  live game state), so there's nothing for a per-frame redraw to refresh
+   *  -- every call site that changes knowledgeView/knowledgeSelectedUnitId
+   *  calls this directly. */
   function renderKnowledgeOverlay() {
     const overlay = $("knowledge-overlay");
     if (!knowledgeView) {
@@ -719,12 +654,11 @@
     overlay.classList.toggle("knowledge-overlay-ingame", inGame);
 
     const content = $("knowledge-content");
-    // Preserve the left-hand list's scroll position across re-renders
-    // (2026-08-18, user-reported: clicking a unit near the bottom of a long
-    // list reset the scroll to the top every time, since every content.
-    // innerHTML assignment below destroys and recreates the whole pane,
-    // .kb-list-pane included). Captured once here since all three views
-    // (units/conditions/stats) share the same .kb-list-pane structure.
+    // Preserve the left-hand list's scroll position across re-renders --
+    // every content.innerHTML assignment below destroys and recreates the
+    // whole pane, .kb-list-pane included. Captured once here since all
+    // three views (units/conditions/stats) share the same .kb-list-pane
+    // structure.
     const prevListPane = content.querySelector(".kb-list-pane");
     const prevListScrollTop = prevListPane ? prevListPane.scrollTop : 0;
     if (knowledgeView === "conditions" || knowledgeView === "stats") {
@@ -899,14 +833,12 @@
     });
   }
 
-  /** Dismissal wiring for the map context menu (2026-08-06, user-directed):
-   *  registered ONCE at bootstrap (safe pre-game -- both listeners no-op
-   *  until viewState.ringMenu is actually set), same convention
-   *  setupLaunchOptionsOverlay uses for its own open/close wiring, rather
-   *  than re-registering a fresh document listener every redraw(). A click
-   *  anywhere outside the menu itself, or Escape, closes it without acting
-   *  -- picking an option is the only thing that DOES act (see
-   *  handleContextMenuAction). */
+  /** Dismissal wiring for the map context menu: registered ONCE at bootstrap
+   *  (safe pre-game -- both listeners no-op until viewState.ringMenu is
+   *  actually set), rather than re-registering a fresh document listener
+   *  every redraw(). A click anywhere outside the menu itself, or Escape,
+   *  closes it without acting -- picking an option is the only thing that
+   *  DOES act (see handleContextMenuAction). */
   function setupContextMenuDismissal() {
     document.addEventListener("mousedown", (e) => {
       if (!viewState || !viewState.ringMenu) return;
@@ -917,27 +849,27 @@
     });
     document.addEventListener("keydown", (e) => {
       if (e.key !== "Escape" || !viewState || !viewState.ringMenu) return;
-      // Two-level (2026-08-06): a ring showing a sub-page (the build list,
-      // the level-up picker) backs out to the ring itself first, so Escape
-      // never throws away more context than the player expected.
+      // Two-level: a ring showing a sub-page (the build list, the level-up
+      // picker) backs out to the ring itself first, so Escape never throws
+      // away more context than the player expected.
       if (viewState.ringMenu.page) viewState.ringMenu.page = null;
       else viewState.ringMenu = null;
       redraw();
     });
   }
 
-  /** Global "click" sfx (2026-08-06, user-directed): ANY button anywhere in
-   *  the app plays system_button_click.mp3 -- registered ONCE, on `document`,
-   *  using event bubbling, rather than wiring it into every individual
-   *  button's own onclick. This is deliberately the only way to satisfy
-   *  "any time a button is clicked": most buttons here are rebuilt from
-   *  scratch on every innerHTML redraw (sidebar, dialogs, tech tree, the map
-   *  context menu, ...), so a per-button listener would have to be
-   *  re-registered on every single rebuild and would be trivial to miss one
-   *  of. e.target.closest("button") catches a click landing on a button's
-   *  own child element (an icon/span inside it) too, not just the exact
-   *  node. A disabled button never fires a click event at all, so those are
-   *  already excluded for free. */
+  /** Global "click" sfx: ANY button anywhere in the app plays
+   *  system_button_click.mp3 -- registered ONCE, on `document`, using event
+   *  bubbling, rather than wiring it into every individual button's own
+   *  onclick. This is deliberately the only way to satisfy "any time a
+   *  button is clicked": most buttons here are rebuilt from scratch on every
+   *  innerHTML redraw (sidebar, dialogs, tech tree, the map context menu,
+   *  ...), so a per-button listener would have to be re-registered on every
+   *  single rebuild and would be trivial to miss one of.
+   *  e.target.closest("button") catches a click landing on a button's own
+   *  child element (an icon/span inside it) too, not just the exact node. A
+   *  disabled button never fires a click event at all, so those are already
+   *  excluded for free. */
   function setupButtonClickSfx() {
     document.addEventListener("click", (e) => {
       if (e.target.closest("button")) window.SfxSystem.playButtonClick();
@@ -1006,34 +938,31 @@
     updateMapSeedLabel();
     viewState = {
       scrollX: 0, scrollY: 0, zoomLevel: 1.0, showInfluence: true, showGrid: true,
-      // Interface menu's "End Turn Reminders" checkbox (2026-08-12,
-      // user-directed) -- gates handleEndTurnClick's confirmEndTurn dialog
-      // entirely when off, same non-persisted per-session convention as
-      // showGrid/showInfluence above (not part of the save file).
+      // Interface menu's "End Turn Reminders" checkbox -- gates
+      // handleEndTurnClick's confirmEndTurn dialog entirely when off, a
+      // non-persisted per-session setting (not part of the save file).
       endTurnRemindersEnabled: true,
       selectedUnit: null, selectedCity: null, selectedTile: null, humanCivId,
       // Tabbed tile inspector -- the selected* fields above are derived from
       // this now (see input.js's SELECTION MODEL).
       selection: null,
-      is3D: false, // 3D view was reverted to disabled -- see render3d.js; the Interface menu's "Toggle 3D View" button was removed
+      is3D: false, // 2D-only for now -- see render3d.js; the Interface menu's "Toggle 3D View" button was removed
       fogMode: "off", fogCivIds: new Set(Object.keys(gameState.civs)), // spectator-only; see setupFogControls
       tileScoreCivId: null, // Interface menu's Tile City Score overlay -- available in both spectator and human modes
       dialog: null, // in-game confirm/prompt/alert replacement -- see js/ui/dialog.js
       turnBanner: null, // "<Race> Kingdom Taking Its Turn..." -- see advanceTurn()
       // { x, y, start } while a jump-to-tile link's brief highlight is
-      // animating (2026-08-12, user-directed) -- see goToTile/render.js's
-      // drawTileFlash.
+      // animating -- see goToTile/render.js's drawTileFlash.
       tileFlash: null,
-      // Radial map menu (2026-08-06) -- { x, y, subject, page } while open.
-      // Declared here rather than only set lazily so the field is discoverable
-      // alongside the rest of the view model; the load path below must
-      // declare it too, or a loaded game keeps whatever the previous one had.
+      // Radial map menu -- { x, y, subject, page } while open. Declared here
+      // rather than only set lazily so the field is discoverable alongside
+      // the rest of the view model; the load path below must declare it
+      // too, or a loaded game keeps whatever the previous one had.
       ringMenu: null,
-      // Deferred callback (2026-08-07) for the unit-built-notice/
-      // pendingIntent chain a tech-completion dialog's "Choose Research"
-      // stashes here instead of firing immediately -- see
-      // openTechResearchedDialog's onChooseResearch and the tech tree
-      // close button that reads/clears this.
+      // Deferred callback for the unit-built-notice/pendingIntent chain a
+      // tech-completion dialog's "Choose Research" stashes here instead of
+      // firing immediately -- see openTechResearchedDialog's onChooseResearch
+      // and the tech tree close button that reads/clears this.
       onTechTreeClosed: null,
     };
 
@@ -1051,11 +980,10 @@
    *
    * Sprites/music/sfx are all real network loads (hundreds of small requests
    * under connection-limit contention can take up to ~15-20s -- see
-   * render3d.js's own notes on this), and the game screen used to appear
-   * immediately regardless, with most art/audio still streaming in -- looked
-   * broken rather than loading. Gate showing it on all three actually
-   * finishing. Each of these is designed to always resolve, never reject (a
-   * missing asset is skipped, not an error -- see preloadAll's/
+   * render3d.js's own notes on this). The game screen is gated on all three
+   * finishing so the player never sees it with most art/audio still
+   * streaming in. Each of these is designed to always resolve, never reject
+   * (a missing asset is skipped, not an error -- see preloadAll's/
    * SfxSystem.init's own doc comments), so this isn't expected to hang, but
    * a failsafe timeout still backs it up below in case some future asset
    * type doesn't hold to that.
@@ -1078,13 +1006,13 @@
     ]).then(finishStartGame);
   }
 
-  /** Title screen's File > Load Game (2026-08-12, user-directed) -- see
-   *  setupTitleLoadGameControl's own doc comment for why this is a separate
-   *  path from the in-game Load Game's finishApplyLoadedPayload rather than
-   *  a shared one: gameState/viewState don't exist yet, so there's nothing
-   *  to mutate in place, only to assign fresh -- same shape as startGame's
-   *  own `gameState = createNewGame(...)` just above, just fed a save's data
-   *  instead of a freshly generated map. */
+  /** Title screen's File > Load Game -- see setupTitleLoadGameControl's own
+   *  doc comment for why this is a separate path from the in-game Load
+   *  Game's finishApplyLoadedPayload rather than a shared one: gameState/
+   *  viewState don't exist yet, so there's nothing to mutate in place, only
+   *  to assign fresh -- same shape as startGame's own `gameState =
+   *  createNewGame(...)` just above, just fed a save's data instead of a
+   *  freshly generated map. */
   function startGameFromSave(payload) {
     gameState = payload.gameState;
     humanCivId = payload.humanCivId;
@@ -1095,10 +1023,9 @@
     updateMapSeedLabel();
     viewState = {
       scrollX: 0, scrollY: 0, zoomLevel: 1.0, showInfluence: true, showGrid: true,
-      // Interface menu's "End Turn Reminders" checkbox (2026-08-12,
-      // user-directed) -- gates handleEndTurnClick's confirmEndTurn dialog
-      // entirely when off, same non-persisted per-session convention as
-      // showGrid/showInfluence above (not part of the save file).
+      // Interface menu's "End Turn Reminders" checkbox -- gates
+      // handleEndTurnClick's confirmEndTurn dialog entirely when off, a
+      // non-persisted per-session setting (not part of the save file).
       endTurnRemindersEnabled: true,
       selectedUnit: null, selectedCity: null, selectedTile: null, humanCivId,
       selection: null,
@@ -1120,18 +1047,18 @@
     hideLoadingScreen();
     $("game-screen").style.display = "flex";
     // Match the two canvases' visibility to viewState.is3D (always false --
-    // the 3D toggle was removed, see main.js's viewState init -- but the 3D
-    // canvas elements/renderer are still left in place, so keep them hidden
-    // explicitly rather than relying on their CSS defaults).
+    // the 3D toggle was removed, but the 3D canvas elements/renderer are
+    // still left in place, so keep them hidden explicitly rather than
+    // relying on their CSS defaults).
     $("map-canvas").style.display = viewState.is3D ? "none" : "block";
     $("map-canvas-3d").style.display = viewState.is3D ? "block" : "none";
     $("map-canvas-3d-hud").style.display = viewState.is3D ? "block" : "none";
 
-    // Off-screen units shouldn't play sounds (2026-07-24, user-directed) --
-    // e.g. a spectator-mode skirmish happening elsewhere on the map. Uses
-    // the exact same on-screen test the renderer itself uses to cull
-    // off-screen tiles (see render.js's isTileOnScreen); this is the only
-    // place gameState/viewState/canvas are all in scope to wire it up.
+    // Off-screen units shouldn't play sounds -- e.g. a spectator-mode
+    // skirmish happening elsewhere on the map. Uses the exact same
+    // on-screen test the renderer itself uses to cull off-screen tiles (see
+    // render.js's isTileOnScreen); this is the only place gameState/
+    // viewState/canvas are all in scope to wire it up.
     // In 3D mode the 2D canvas is display:none, which makes its own
     // getBoundingClientRect() (and so isTileOnScreen's bounds check)
     // collapse to zero -- every tile would wrongly read as "off-screen" and
@@ -1143,9 +1070,9 @@
 
     setupCanvas();
     centerViewOnStart();
-    // Cloud layer (2026-08-06, user-directed) -- built once per game start,
-    // after setupCanvas has sized the canvas so the initial scatter covers
-    // the real viewport. Purely cosmetic; see js/ui/clouds.js.
+    // Cloud layer -- built once per game start, after setupCanvas has sized
+    // the canvas so the initial scatter covers the real viewport. Purely
+    // cosmetic; see js/ui/clouds.js.
     window.UI.clouds.init($("map-canvas").width, $("map-canvas").height);
     window.UI.input.attach($("map-canvas"), gameState, viewState, redraw);
     // 3D click-to-select needs to trigger the exact same post-selection
@@ -1162,10 +1089,10 @@
       viewState.showGrid = !viewState.showGrid;
       redraw();
     });
-    // "End Turn Reminders" (2026-08-12, user-directed): checked/on by
-    // default, matching viewState.endTurnRemindersEnabled's own default --
-    // synced here in case a page reload or a loaded save left the checkbox's
-    // own DOM state stale from a previous session's toggle.
+    // "End Turn Reminders": checked/on by default, matching
+    // viewState.endTurnRemindersEnabled's own default -- synced here in case
+    // a page reload or a loaded save left the checkbox's own DOM state stale
+    // from a previous session's toggle.
     const endTurnRemindersToggle = $("end-turn-reminders-toggle");
     endTurnRemindersToggle.checked = viewState.endTurnRemindersEnabled;
     endTurnRemindersToggle.addEventListener("change", () => {
@@ -1233,16 +1160,13 @@
     const landmasses = (eligibleLandmasses.length > 0 ? eligibleLandmasses : map.landmasses)
       .slice().sort((a, b) => b.length - a.length);
     // Round-robin assignment already avoids sharing a landmass between
-    // civs until forced to by civ count exceeding landmass count, which
-    // is the best this can do without rejecting/regenerating the whole
-    // map -- there's no way to avoid sharing when raceIds.length exceeds
-    // landmasses.length. Known limitation, not fixed further here: once
-    // two civs DO share a small landmass, the 3-tile city-spacing rule
-    // (cities.js MIN_CITY_SPACING) can leave the second civ to settle
-    // there very little room, sometimes none. Confirmed via testing on
-    // a 6-civs-on-4-landmasses map. Worth a smarter fairness pass later
-    // (e.g. preferring bigger landmasses for the share-forced civs) but
-    // out of scope for this prototype pass.
+    // civs until forced to by civ count exceeding landmass count -- there's
+    // no way to avoid sharing when raceIds.length exceeds landmasses.length.
+    // Known limitation: once two civs DO share a small landmass, the 3-tile
+    // city-spacing rule (cities.js MIN_CITY_SPACING) can leave the second
+    // civ very little room to settle there, sometimes none. Worth a smarter
+    // fairness pass later (e.g. preferring bigger landmasses for the
+    // share-forced civs) but out of scope for now.
 
     const civs = {};
     let landmassIdx = 0;
@@ -1250,35 +1174,33 @@
       const civId = raceId.toUpperCase();
       const civ = {
         id: civId, raceId, cities: [], units: [], eliminated: false,
-        // isHuman (2026-08-04, user-reported): the only human/AI marker
-        // readable from deep inside ai.js's combat-resolution call sites
-        // (grantXPAndAutoLevel/applyComputedXP), which never receive
-        // viewState.humanCivId the way the UI/orders.js layer does -- see
-        // applyComputedXP's use of it to skip auto-picking a human unit's
-        // veteran bonus. humanCivId (this closure's own copy) is already
-        // set by startGame() before createNewGame runs; null in spectator
-        // mode, which correctly makes isHuman false for every civ.
+        // isHuman is the only human/AI marker readable from deep inside
+        // ai.js's combat-resolution call sites (grantXPAndAutoLevel/
+        // applyComputedXP), which never receive viewState.humanCivId the
+        // way the UI/orders.js layer does -- see applyComputedXP's use of it
+        // to skip auto-picking a human unit's veteran bonus. humanCivId
+        // (this closure's own copy) is already set by startGame() before
+        // createNewGame runs; null in spectator mode, which correctly makes
+        // isHuman false for every civ.
         isHuman: civId === humanCivId,
         completedTechs: new Set(), currentResearch: null,
         doctrine: null, // grand-strategy layer -- see engine/strategy.js
-        // Each race's 4 buildings are now gated by that race's tech tree (see techs.js
-        // building-column nodes) rather than unlocked at civ creation.
-        // unlockedUnits/unlockedBuildings start EMPTY now (2026-08-04) --
-        // Pioneer/Galley/Scout/Wall all come from the Level 0 techs' own
-        // effects just below instead of a hardcoded starting set.
+        // Each race's 4 buildings are gated by that race's tech tree (see
+        // techs.js building-column nodes) rather than unlocked at civ
+        // creation. unlockedUnits/unlockedBuildings start EMPTY -- Pioneer/
+        // Galley/Scout/Wall all come from the Level 0 techs' own effects
+        // just below instead of a hardcoded starting set.
         unlockedUnits: new Set(),
         unlockedBuildings: new Set(),
         civicInfluenceBonus: 0, radiusBonus: 0, usedCityNames: [],
       };
-      // LEVEL 0 (2026-08-06, user-directed): every layer-0 tech for this
-      // race is auto-completed for free at creation -- pioneer_infrastructure/
-      // distant_horizons/distant_shores/hunt_game/farm_soil today, but
-      // computed dynamically (by layer, not a hardcoded id list) so any
-      // future Level 0 tech is automatically free too, matching the design
-      // rule "Level 0 = always granted, never researched." Notably,
-      // race.startingTech (each race's own signature Layer-1 combat unit --
-      // Raider, Spearguard, etc.) is deliberately NOT auto-completed here;
-      // it's a normal tech that has to actually be researched, same as
+      // LEVEL 0: every layer-0 tech for this race is auto-completed for free
+      // at creation -- computed dynamically (by layer, not a hardcoded id
+      // list) so any future Level 0 tech is automatically free too, matching
+      // the design rule "Level 0 = always granted, never researched."
+      // Notably, race.startingTech (each race's own signature Layer-1 combat
+      // unit -- Raider, Spearguard, etc.) is deliberately NOT auto-completed
+      // here; it's a normal tech that has to actually be researched, same as
       // everything else at its layer. Scout is the civ's only quasi-combat
       // capability until that finishes.
       const levelZeroTechs = window.GameData.techsForRace(raceId)
@@ -1287,57 +1209,48 @@
         civ.completedTechs.add(techId);
         window.GameEngine.tech.applyTechEffects(civ, window.GameData.getTech(techId));
       }
-      // Registered in `civs` now rather than at the end of this loop
-      // (2026-08-03) so buildOccupancySet/findClosestOpenPlacementTile
-      // below can see THIS civ's own starting units as they're placed one
-      // at a time -- harmless for pickStartSpot's own spacing check just
-      // below, since an empty units/cities civ can never self-conflict.
+      // Registered in `civs` before the starting units below so
+      // buildOccupancySet/findClosestOpenPlacementTile can see THIS civ's
+      // own starting units as they're placed one at a time -- harmless for
+      // pickStartSpot's own spacing check just below, since an empty
+      // units/cities civ can never self-conflict.
       civs[civId] = civ;
 
       const spot = pickStartSpot(landmasses, landmassIdx, map, civs, raceId);
       landmassIdx++;
-      // startingUnit (2026-08-03, user-reported bug fix): this free
-      // starting Pioneer was missing the flag that exempts it from ongoing
-      // upkeep -- GameData.unitUpkeep's own doc comment already documented
-      // "civ-creation's free starting Pioneer/2-Scouts are stamped with this
-      // flag" as the intended design, but this line never actually set it,
-      // so the Pioneer was silently costing upkeep like any other unit while
-      // its starting Scouts/Galley (below) correctly didn't. Same one-time
-      // perk on this specific instance as those -- a Pioneer BUILT later
-      // (via the normal build-queue path) still costs upkeep normally.
+      // startingUnit exempts this free starting Pioneer from ongoing upkeep
+      // -- same one-time perk on this specific instance as the starting
+      // Scouts/Galley below. A Pioneer BUILT later (via the normal
+      // build-queue path) still costs upkeep normally.
       const settler = { typeId: "pioneer", civId, x: spot.x, y: spot.y, isCivilian: true, startingUnit: true };
       window.GameEngine.combat.initUnitHP(settler, civ);
       civ.units.push(settler);
 
-      // Pacing experiment (2026-07-12): every race starts with 2 Scouts
-      // (not just Human, which already got one via unlockedUnits above) --
-      // fog clears faster and settle sites turn up sooner, instead of the
-      // opening stretch being spent waiting on a single slow explorer, or
-      // none at all for races that haven't researched beast_sense yet. Not
-      // gated on the "scout" unlock -- these are handed out directly, same
-      // as the Pioneer above, independent of whether the civ could build
-      // MORE scouts yet. See project_pacing_experiment memory.
+      // Every race starts with 2 Scouts (not just Human, which already got
+      // one via unlockedUnits above) -- fog clears faster and settle sites
+      // turn up sooner. Not gated on the "scout" unlock -- these are handed
+      // out directly, same as the Pioneer above, independent of whether the
+      // civ could build MORE scouts yet.
       //
-      // Small-landmass swap (2026-07-18, user-directed): a civ starting on a
-      // small island gets far less mileage out of a second land Scout (there's
-      // only so much of a tiny island left to explore) than it would out of
-      // being able to get off the island at all -- so its SECOND starting
-      // unit is a free Galley instead, not a second Scout. The first Scout
-      // is unconditional for every civ (fog-clearing still matters even on a
-      // small island).
+      // A civ starting on a small island gets far less mileage out of a
+      // second land Scout (there's only so much of a tiny island left to
+      // explore) than it would out of being able to get off the island at
+      // all -- so its SECOND starting unit is a free Galley instead, not a
+      // second Scout. The first Scout is unconditional for every civ
+      // (fog-clearing still matters even on a small island).
       const startingScoutCount = spot.landmassSize < SMALL_LANDMASS_GALLEY_THRESHOLD ? 1 : 2;
       for (let i = 0; i < startingScoutCount; i++) {
-        // startingUnit (2026-07-14, user-directed): these free starting units
-        // cost no upkeep, ever -- a one-time perk on these specific instances,
-        // not a blanket Scout/Galley-type exemption. Anything built later (via
-        // the normal chooseBuildAction/canAffordUnitUpkeep path) never gets
-        // this flag and costs upkeep like any other unit. See GameData.unitUpkeep.
+        // These free starting units cost no upkeep, ever -- a one-time perk
+        // on these specific instances, not a blanket Scout/Galley-type
+        // exemption. Anything built later (via the normal chooseBuildAction/
+        // canAffordUnitUpkeep path) never gets this flag and costs upkeep
+        // like any other unit. See GameData.unitUpkeep.
         //
-        // Placed adjacent to the pioneer, not stacked on top of it
-        // (2026-08-03, user-reported) -- recomputed fresh each iteration so
-        // the SECOND scout also avoids the first one's just-claimed tile.
-        // Falls back to the pioneer's own tile only if every neighbor is
-        // somehow blocked (vanishingly unlikely at turn 0 on open land).
+        // Placed adjacent to the pioneer, not stacked on top of it --
+        // recomputed fresh each iteration so the SECOND scout also avoids
+        // the first one's just-claimed tile. Falls back to the pioneer's
+        // own tile only if every neighbor is somehow blocked (vanishingly
+        // unlikely at turn 0 on open land).
         const occupied = window.GameEngine.ai.buildOccupancySet(civs, null);
         const scoutSpot = window.GameEngine.ai.findClosestOpenPlacementTile(spot.x, spot.y, map, civs, occupied, civId)
           || { x: spot.x, y: spot.y };

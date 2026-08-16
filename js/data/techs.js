@@ -510,13 +510,12 @@ window.GameData.TECHS = {
     costBreakdown: { lore: 60, coin: 30 },
     effects: [{ type: "unlock_mechanic", mechanic: "invulnerability_chance", value: 0.33 }],
   },
-  // Moved L5 -> L2 (2026-08-17, user-directed). Prereq (battle_mage, L4)
-  // stays put -- left as-is per the same "move the layer only" policy as
-  // Palace Charter above; Invisibility is cheaper now (L2 pricing) but
-  // still gated behind Battle Mage until/unless that prereq is revisited.
+  // Moved L5 -> L2 (2026-08-17, user-directed). Prereq battle_mage removed
+  // (2026-08-18, user-directed) -- no longer gated behind it now that
+  // Invisibility sits well below Battle Mage's own L4.
   invisibility: {
     id: "invisibility", label: "Invisibility", category: "mystic", layer: 2, cost: 60,
-    prereqs: ["battle_mage"], raceOnly: "human",
+    prereqs: [], raceOnly: "human",
     description: "The Wizard may spend an action to turn Hidden for 3 turns.",
     costBreakdown: { lore: 40, coin: 20 },
     effects: [{ type: "unlock_mechanic", mechanic: "invisibility" }],

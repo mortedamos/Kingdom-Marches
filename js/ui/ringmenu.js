@@ -1,11 +1,9 @@
 /**
- * RADIAL MAP MENU (2026-08-06, user-directed)
- * -------------------------------------------
- * Replaces the linear right-click list this file's predecessor
- * (js/ui/contextmenu.js) rendered at the cursor. Actions now appear as pills
- * arranged around the SUBJECT on the map -- the unit or city they belong to
- * -- so the map itself carries the verbs and the sidebar can go back to being
- * pure information (see js/ui/sidebar.js).
+ * RADIAL MAP MENU
+ * ---------------
+ * Actions appear as pills arranged around the SUBJECT on the map -- the unit
+ * or city they belong to -- so the map itself carries the verbs and the
+ * sidebar (js/ui/sidebar.js) stays pure information.
  *
  * Same "pure render, main.js dispatches" split every other UI module here
  * follows (dialog.js, techtree.js, sidebar.js): this file knows about circles
@@ -48,14 +46,11 @@ window.UI = window.UI || {};
   const PILL_H = 30;        // must match .map-ring-item's rendered height
   const PITCH = 38;         // vertical centre-to-centre gap; PILL_H + 8px of air
   const PILL_W_MIN = 96;    // narrower than this and labels are unreadable -- used for the "does this side fit" test
-  // Raised from 160 (2026-08-06, user-directed): a handful of real labels --
-  // "Next City Needing Orders", "Gather More Resources (+3H +2C +5L)", "Build
-  // Road to This Tile" -- ran past 160px and got ellipsis-clipped by the CSS
-  // .map-ring-item's overflow:hidden. Safe to raise a lot: `place()` below
-  // still clamps the actual per-pill width to whatever room is left on that
-  // side (`Math.min(PILL_W_MAX, room - R - PAD)`), so this only removes a
-  // needless cap well short of the map edge -- it can never push a pill off
-  // the visible area.
+  // Some real labels ("Gather More Resources (+3H +2C +5L)", "Build Road to
+  // This Tile") need more room than this looks generous for. Safe to raise:
+  // `place()` below still clamps the actual per-pill width to whatever room
+  // is left on that side (`Math.min(PILL_W_MAX, room - R - PAD)`), so this
+  // only caps width -- it can never push a pill off the visible area.
   const PILL_W_MAX = 320;
   const BOW = 26;           // how far the middle pill bulges past the innermost ones
   const PAD = 12;           // keep-out margin against the map area's edges
@@ -101,14 +96,14 @@ window.UI = window.UI || {};
     // whichever single side can take it, and if neither can, on the roomier
     // one with the labels allowed to ellipsize.
     //
-    // FORCED SPLIT (2026-08-06, user-directed): ctx.split, when present,
-    // overrides all of that -- a merged unit+city ring (see orders.js's
-    // mergeUnitCityOptions) wants unit actions on the LEFT and city actions
-    // on the RIGHT unconditionally, not a suggestion the room-fit logic
-    // above is free to renegotiate. `options` was built as [...unitOptions,
-    // ...cityOptions] to match, which is why the placement order below
-    // differs between the two branches (auto mode reads right-then-left off
-    // the front of the array; forced mode reads left-then-right).
+    // ctx.split, when present, overrides all of that -- a merged unit+city
+    // ring (see orders.js's mergeUnitCityOptions) wants unit actions on the
+    // LEFT and city actions on the RIGHT unconditionally, not a suggestion
+    // the room-fit logic above is free to renegotiate. `options` is built as
+    // [...unitOptions, ...cityOptions] to match, which is why the placement
+    // order below differs between the two branches (auto mode reads
+    // right-then-left off the front of the array; forced mode reads
+    // left-then-right).
     let rightCount, leftCount;
     if (ctx.split) {
       leftCount = ctx.split.leftCount;
@@ -189,21 +184,20 @@ window.UI = window.UI || {};
     return { mode: "ring", items };
   }
 
-  // City-action pills read slightly lighter than unit-action ones
-  // (2026-08-07, user-directed) -- most visible on a merged ring (see
-  // orders.js's mergeUnitCityOptions), where both kinds sit side by side and
-  // otherwise look identical apart from which column they're in. "city:" is
-  // the same kind-string prefix main.js's dispatcher already switches on
-  // (city:buildUnit, city:cancelBuild, city:nextProduction:X,Y, ...), so
-  // there's no second classification to keep in sync with orders.js.
+  // City-action pills read slightly lighter than unit-action ones -- most
+  // visible on a merged ring (see orders.js's mergeUnitCityOptions), where
+  // both kinds sit side by side and otherwise look identical apart from
+  // which column they're in. "city:" is the same kind-string prefix main.js's
+  // dispatcher already switches on (city:buildUnit, city:cancelBuild,
+  // city:nextProduction:X,Y, ...), so there's no second classification to
+  // keep in sync with orders.js.
   function itemHtml(o, sideClass) {
     const cityClass = o.kind.startsWith("city:") ? " map-ring-item-city" : "";
-    // Shortcut badge (2026-08-07, user-directed) -- o.shortcut is set by
-    // main.js's renderRingMenu for the handful of pills that have a fixed
-    // key binding; plain trailing text inside the same nowrap/ellipsis
-    // button rather than a flex layout, so a long label just pushes it
-    // toward (and, worst case, past) the clipped edge instead of needing
-    // its own box model.
+    // o.shortcut is set by main.js's renderRingMenu for the handful of pills
+    // that have a fixed key binding; plain trailing text inside the same
+    // nowrap/ellipsis button rather than a flex layout, so a long label just
+    // pushes it toward (and, worst case, past) the clipped edge instead of
+    // needing its own box model.
     const shortcut = o.shortcut ? `<span class="map-ring-item-shortcut">${escapeHtml(o.shortcut)}</span>` : "";
     return `<button class="map-ring-item${sideClass}${cityClass}${o.danger ? " map-ring-item-danger" : ""}"`
       + ` data-ring-kind="${escapeHtml(o.kind)}">${escapeHtml(o.label)}${shortcut}</button>`;

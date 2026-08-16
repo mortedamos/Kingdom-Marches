@@ -16,8 +16,7 @@
  * design docs -- see realms_of_influence_race_redesign_v2.md for full
  * rationale behind every number here.
  *
- * FIELD REFERENCE (2026-07-22, user-directed audit of every consumer in
- * the engine) -- every field below is read via `race.xxx ?? <default>` at
+ * FIELD REFERENCE -- every field below is read via `race.xxx ?? <default>` at
  * each call site, so a race that omits a field silently gets that default,
  * never a crash or undefined behavior:
  *
@@ -82,7 +81,7 @@
  *   - raiseDeadChance / raiseDeadPowerRatio (Undead): ai.js's
  *     maybeApplyZombie -- chance a defeated enemy unit is transferred to
  *     the Undead civ's control IN PLACE (same unit object, not a new one)
- *     under a persistent "zombie" condition (2026-07-22 rework): stats
+ *     under a persistent "zombie" condition: stats
  *     scaled to raiseDeadPowerRatio x the original (boosted further by the
  *     Necropolis building), 0% First Strike, level/XP reset and frozen at
  *     level 1 forever after. See combat.js's effectiveAttack/effectiveDefense/
@@ -132,12 +131,12 @@ window.GameData.RACES = {
     // a permanent map-wide reveal at L4) -- see techs.js's elf_* civic/
     // military techs, mirroring how Dwarf's Mountain identity works.
 
-    aggressiveness: 0.3, // flat, race-wide -- no longer scales with local terrain
+    aggressiveness: 0.3,
 
     // Personality traits
     militarism:      0.8, // strong standing armies
-    expansionism:    0.4, 
-    curiosity:       0.4, 
+    expansionism:    0.4,
+    curiosity:       0.4,
     industriousness: 0.6, // deeply invested in city development and grove infrastructure
 
     startingTech: "elf_watching_hunting",
@@ -153,10 +152,10 @@ window.GameData.RACES = {
     color: "#9a7b56",
     citySymbol: "◆",
 
-    // Hills movement + mountain tunneling (was a free default) is now unlocked
-    // via the dwarf_stonecunning L1 civic tech -- see techs.js.
+    // Hills movement + mountain tunneling are unlocked via the
+    // dwarf_stonecunning L1 civic tech -- see techs.js.
 
-    aggressiveness: 0.4, // flat, race-wide -- no longer scales with local terrain
+    aggressiveness: 0.4,
 
     // Personality traits
     militarism:      0.7, // strong standing armies; every hold must be defended
@@ -228,10 +227,8 @@ window.GameData.RACES = {
     color: "#c9a857",
     citySymbol: "♥",
 
-    // Influence-per-population is no longer a flat per-race field here --
-    // it's derived from industriousness alone (see cities.js
-    // industriousnessInfluenceMult). Halfellow's industriousness of 1.0
-    // (the max any race has) already reproduces the old 1.30 ceiling.
+    // Influence-per-population is derived from industriousness alone --
+    // see cities.js's industriousnessInfluenceMult.
 
     // Healing: bonus in own territory and cities
     ownCityHealingMultiplier: 6, // 6x(3d6)% instead of universal 4x(3d6)%

@@ -801,24 +801,48 @@ html, body {
      column's node body from getting cramped. */
   width: min(1240px, 94vw);
   max-height: 88vh;
-  overflow-y: auto;
   padding: 20px 24px;
+  /* Flex column, NOT the scroll container itself (2026-08-18, user-
+     reported bug fix -- see .techtree-modal-scroll below for why). */
+  display: flex;
+  flex-direction: column;
 }
 .techtree-modal h2 {
   margin: 0 0 4px 0;
   color: var(--accent);
 }
-/* Red-X close button (2026-08-17, user-directed), shared by every
-   .techtree-overlay-based modal (Tech Tree, Reports, Keyboard Shortcuts,
-   Knowledge Base, Launch Options) plus Credits (its own .credits-close-btn
-   position override below still applies -- Credits has no modal box to
-   anchor to, just a full-bleed overlay). Pinned to the modal's own top-right
-   corner via the .techtree-modal > .techtree-close-btn rule below, which
-   ALSO replaces the old sticky-while-scrolling fix the Tech Tree close
-   button used to need on its own: absolute positioning against the modal's
-   padding box is unaffected by that same element's internal scroll offset,
-   so every modal gets "stays visible while scrolling" for free now, not
-   just Tech Tree. */
+/* Scrollable body (2026-08-18, user-reported: the close X, and on some
+   screens the title, scrolled away with the rest of the content). The
+   close button used to be an absolutely-positioned child of .techtree-modal
+   while THAT SAME element also had overflow-y: auto -- a common CSS trap:
+   an absolutely-positioned descendant of a scrolling positioned ancestor
+   scrolls right along with the content, because its offset is resolved
+   against the padding box's position in the (scrolled) layout, not against
+   the ancestor's on-screen viewport rect. Verified live: scrolling the old
+   .techtree-modal moved the close button hundreds of pixels off-screen.
+   Fix: .techtree-modal no longer scrolls at all -- it's a flex column, the
+   close button is a normal (non-absolute, in-flow) flex item so it's
+   simply never inside anything that scrolls, and every modal's actual
+   content div gets THIS class instead to become the one thing that
+   scrolls, sized via flex: 1 + min-height: 0 (same shape .knowledge-modal/
+   #knowledge-content already used, see that rule's own comment). */
+.techtree-modal-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+/* Legacy modals whose content still hangs directly off #id (not yet wrapped
+   in a .techtree-modal-scroll div) -- same treatment, just targeted by id
+   instead of requiring an HTML wrapper. */
+#techtree-content, #reports-content, #launch-options-content {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+/* game-dialog-modal never had a floating close-X (see js/main.js's dialog
+   rendering -- its own OK/Cancel/etc. buttons live inside the scrollable
+   content), so it never had this bug and keeps scrolling the old way. */
+.game-dialog-modal { overflow-y: auto; }
 .techtree-close-btn {
   background: transparent;
   border: none;
@@ -832,13 +856,19 @@ html, body {
   display: flex;
   align-items: center;
   justify-content: center;
+  flex: 0 0 auto; /* stays exactly 30x30 as a flex item, never stretched/shrunk */
+  align-self: flex-end; /* right edge of the flex column, same visual spot as before */
 }
 .techtree-close-btn:hover { background: rgba(217, 83, 79, 0.18); color: #ff6b64; }
+/* No longer position: absolute (see .techtree-modal-scroll's comment above)
+   -- both now sit as normal in-flow flex items, pinned to their modal's
+   top-right corner via flex-direction: column + align-self: flex-end
+   instead of absolute positioning against a scrolling ancestor. Negative
+   margin pulls the button up/right to sit flush in the corner rather than
+   taking up its own visually-obvious row above the title. */
 .techtree-modal > .techtree-close-btn,
 .knowledge-modal > .techtree-close-btn {
-  position: absolute;
-  top: 10px;
-  right: 10px;
+  margin: -10px -14px -6px 0;
   z-index: 5;
 }
 #techtree-content h2 {

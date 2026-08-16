@@ -1,13 +1,11 @@
 /**
- * DRIFTING CLOUD LAYER (2026-08-06, user-directed)
- * -------------------------------------------------
+ * DRIFTING CLOUD LAYER
+ * ---------------------
  * Sparse white clouds floating high above the map: semi-transparent (you can
  * always see the board through them), slowly drifting left -> right at an
  * angle that wanders over time, and confined to a band around the OUTER edge
  * of the view so the middle of the play area stays completely clear (see
- * ensureMask / GameConfig.view.clouds.bandFraction). An earlier version
- * instead punched a transparent hole that followed the mouse cursor;
- * replaced 2026-08-06, user-directed.
+ * ensureMask / GameConfig.view.clouds.bandFraction).
  *
  * PURELY COSMETIC -- this module never reads or writes game state, never
  * triggers a redraw, and can never intercept a click. Three independent
@@ -78,11 +76,11 @@ window.UI = window.UI || {};
    * (q = 2^(1/p)), so they end up fully clouded, which is what closes the
    * frame.
    *
-   * This replaced min(dx, dy) (2026-08-06, user-reported): that version was
-   * continuous in value but kinked in its DERIVATIVE along the diagonal out
-   * of each corner, which the eye reads as a hard line even though no
-   * pixel-to-pixel jump exists. The p-norm is smooth everywhere, so there is
-   * no seam to see. See GameConfig.view.clouds.bandShape for the exponent.
+   * A simpler min(dx, dy) distance metric would be continuous in value but
+   * kinked in its DERIVATIVE along the diagonal out of each corner, which
+   * the eye reads as a hard line even though no pixel-to-pixel jump exists.
+   * The p-norm is smooth everywhere, so there is no seam to see. See
+   * GameConfig.view.clouds.bandShape for the exponent.
    *
    * Built per-pixel, which is fine because it only happens on a resize, not
    * per frame.
@@ -134,19 +132,14 @@ window.UI = window.UI || {};
    * -- the final on-screen opacity is applied once via globalAlpha at draw
    * time, so one knob controls it.
    *
-   * SHAPE (reworked 2026-08-06, user-reported "uniform barbell shapes"):
-   * the original version offset each puff by a multiple of THAT PUFF'S OWN
-   * radius, which meant the biggest puffs were always flung furthest from
-   * the centre and the smallest stayed nearest it -- reliably producing two
-   * fat lobes with a thin waist between them. Every cloud also used the
-   * same hardcoded aspect constants, so they all came out the same
-   * proportions. Four changes fix both problems:
+   * SHAPE: four things keep this from reading as a barbell (two fat lobes
+   * with a thin waist), which is what a naive puff placement tends to
+   * produce:
    *
    *   1. Spread is a PER-CLOUD span (spreadX/spreadY), independent of any
    *      individual puff's radius.
-   *   2. Puff size now FALLS OFF toward the edges -- a fat core with
-   *      smaller puffs trailing off it, the way real cumulus reads (the
-   *      exact inverse of the old barbell behaviour).
+   *   2. Puff size FALLS OFF toward the edges -- a fat core with smaller
+   *      puffs trailing off it, the way real cumulus reads.
    *   3. Placement is biased toward the centre (|t| = rand^1.7) rather
    *      than spread evenly, so there's a dense middle instead of an even
    *      smear that reads as two ends.
@@ -171,10 +164,10 @@ window.UI = window.UI || {};
     const puffs = [];
     for (let i = 0; i < puffCount; i++) {
       // EVENLY distributed along the span (plus sub-slot jitter) rather
-      // than randomly placed (2026-08-06). Random placement left gaps that
-      // read as separate floating balls, and isolated outliers that read as
-      // specks; even spacing guarantees neighbouring puffs always overlap
-      // into one continuous mass.
+      // than randomly placed -- random placement leaves gaps that read as
+      // separate floating balls, and isolated outliers that read as specks;
+      // even spacing guarantees neighbouring puffs always overlap into one
+      // continuous mass.
       const slot = (i + 0.5) / puffCount;          // 0..1 across the cloud
       const jitter = randRange(-0.4, 0.4) / puffCount;
       const t = Math.max(-1, Math.min(1, (slot + jitter) * 2 - 1)); // -1..1
@@ -185,9 +178,8 @@ window.UI = window.UI || {};
       const r = baseR * falloff * randRange(0.82, 1.12);
       // FLAT BASE: every puff's BOTTOM sits on roughly the same line, so
       // bigger puffs bulge upward and the silhouette gets a lumpy crown
-      // over a level underside -- the shape that actually reads as a cloud.
-      // Purely random vertical scatter (the previous approach) just looked
-      // like a handful of balls thrown in the air.
+      // over a level underside -- the shape that actually reads as a cloud
+      // rather than a handful of balls thrown in the air.
       const py = -r + randRange(-baseJitter, baseJitter);
       puffs.push({ px, py, r });
     }
@@ -226,12 +218,11 @@ window.UI = window.UI || {};
 
     for (const p of puffs) {
       const x = ox + p.px, y = oy + p.py;
-      // Mostly-solid core with the falloff concentrated at the RIM
-      // (2026-08-06). The original gradient faded steadily from the centre,
-      // which made every puff read as its own distinct disc and left
-      // visible density lumps wherever two overlapped. Holding near-full
-      // alpha out to ~70% of the radius means the union of overlapping
-      // puffs reads as ONE soft-edged mass instead.
+      // Mostly-solid core with the falloff concentrated at the RIM: a
+      // gradient that fades steadily from the centre makes every puff read
+      // as its own distinct disc and leaves visible density lumps wherever
+      // two overlap. Holding near-full alpha out to ~70% of the radius
+      // means the union of overlapping puffs reads as ONE soft-edged mass.
       const peak = randRange(0.5, 0.6);
       const g = ctx.createRadialGradient(x, y, 0, x, y, p.r);
       g.addColorStop(0, `rgba(255,255,255,${peak.toFixed(3)})`);
@@ -244,11 +235,11 @@ window.UI = window.UI || {};
       ctx.fill();
     }
 
-    // Sky-lit top / shadowed underside (2026-08-07, user-directed): a
-    // vertical tint from white at the sprite's top to a light grey at its
-    // bottom. `source-atop` confines it to pixels the puffs above already
-    // painted, so it shades the cloud's own silhouette rather than washing
-    // a rectangle over the transparent canvas around it.
+    // Sky-lit top / shadowed underside: a vertical tint from white at the
+    // sprite's top to a light grey at its bottom. `source-atop` confines it
+    // to pixels the puffs above already painted, so it shades the cloud's
+    // own silhouette rather than washing a rectangle over the transparent
+    // canvas around it.
     ctx.globalCompositeOperation = "source-atop";
     const shade = ctx.createLinearGradient(0, 0, 0, height);
     shade.addColorStop(0, "rgba(255,255,255,1)");
@@ -257,10 +248,8 @@ window.UI = window.UI || {};
     ctx.fillRect(0, 0, width, height);
     ctx.globalCompositeOperation = "source-over";
 
-    // Faint edge tint (2026-08-07, user-directed: "very very small amounts
-    // of a very pale orange or light blue [or pale pink] sometimes around
-    // the edges, to help define cloud shape") -- most clouds get none; the
-    // rest get exactly one of the three tints, never more than one. Each
+    // Faint edge tint, to help define cloud shape -- most clouds get none;
+    // the rest get exactly one of the three tints, never more than one. Each
     // puff's own rim gradient fades to 0 alpha exactly at its radius
     // (matching the puff's own edge), so this can't spill a colored halo
     // past where the cloud already is.
@@ -300,10 +289,9 @@ window.UI = window.UI || {};
     const h = Math.max(1, height || 800);
     for (let i = 0; i < cfg.count; i++) {
       clouds.push({
-        // A unique sprite per cloud (2026-08-06, user-reported uniformity):
-        // this used to draw from a pool of 4 shared shapes, so with 7 clouds
-        // on screen the same silhouette was visibly repeated. Generation is
-        // a one-time cost at game start, so uniqueness is essentially free.
+        // A unique sprite per cloud, generated fresh rather than drawn from
+        // a small shared pool -- generation is a one-time cost at game
+        // start, so per-cloud uniqueness is essentially free.
         sprite: makeCloudSprite(),
         // Spread across a span wider than the viewport so clouds are
         // already staggered off both edges at turn 0 rather than all

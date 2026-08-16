@@ -108,15 +108,13 @@ window.GameEngine = window.GameEngine || {};
       }
     }
 
-    // --- Reduce total water (Ocean+Coast) by ~25% (2026-07-13, user
-    // request: "still too many ocean tiles") -- same empirical-percentile
-    // technique as the rest of this file: measure what this map's actual
-    // water count would be under the OLD fixed cutoffs (0.415/0.455),
-    // then find the elevation values that leave only 75% as much water,
-    // preserving the existing ocean:coast SPLIT (not asked to change that
-    // ratio, just total water) -- generalizes the earlier flat "-0.015"
-    // water cut (see the Pass 2 comment below) into a per-map percentile
-    // target, same reasoning as why mountainThresh/hillThresh/etc. aren't
+    // --- Reduce total water (Ocean+Coast) below the fixed cutoffs
+    // (0.415/0.455) -- empirical-percentile technique, same as the rest of
+    // this file: measure what this map's actual water count would be under
+    // those fixed cutoffs, then find the elevation values that leave only a
+    // WATER_REDUCTION-sized fraction of that, preserving the existing
+    // ocean:coast SPLIT. Per-map percentile target rather than a fixed
+    // constant, same reasoning as why mountainThresh/hillThresh/etc. aren't
     // fixed constants either.
     const OLD_OCEAN_CUT = 0.415, OLD_LAND_CUT = 0.455;
     const WATER_REDUCTION = 0.3;
@@ -131,28 +129,24 @@ window.GameEngine = window.GameEngine || {};
     const LAND_CUT = allElevsAsc[newWaterCount] ?? OLD_LAND_CUT;
     const OCEAN_CUT = allElevsAsc[newOceanCount] ?? OLD_OCEAN_CUT;
 
-    // --- TUNDRA stays a pure latitude/temperature rule (2026-07-12, user
-    // request: equalize every land type EXCEPT Tundra, "keep [it] at the
-    // poles"). Checked FIRST for land tiles, ahead of elevation -- a cold,
-    // high-elevation tile is now Tundra, not Mountains/Hills, unlike
-    // before (elevation used to take priority over climate everywhere).
-    // This decouples Tundra's land-share into a clean, independent
-    // quantity driven purely by the latitude noise, which is what makes
-    // the six-way equalization below solvable at all: Tundra's share
-    // isn't a target, it's just whatever the polar band naturally is, and
-    // the other six types split whatever land is left.
+    // --- TUNDRA stays a pure latitude/temperature rule, kept at the poles
+    // rather than equalized like the other land types below. Checked FIRST
+    // for land tiles, ahead of elevation -- a cold, high-elevation tile is
+    // Tundra, not Mountains/Hills. This decouples Tundra's land-share into a
+    // clean, independent quantity driven purely by the latitude noise, which
+    // is what makes the six-way equalization below solvable at all: Tundra's
+    // share isn't a target, it's just whatever the polar band naturally is,
+    // and the other six types split whatever land is left.
     const TUNDRA_TEMP_CUT = 0.38;
 
     // --- Roughly-equal land distribution across the six non-Tundra types
     // (Mountains, Hills, Plains, Forest, Desert, Swamp) -- each targets
     // ~1/6 of the non-Tundra land pool, via the same empirical-percentile
-    // technique this file already used for the old fixed 5%/18%/10%
-    // targets (a noise distribution's actual shape rarely lines up with a
-    // hand-picked cutoff, so thresholds are derived from THIS map's own
-    // tile population instead of a constant). Structural priority is
-    // unchanged from before: elevation still picks Mountains/Hills first,
-    // THEN climate (temperature band + moisture) splits the rest into
-    // Plains/Forest/Desert/Swamp -- only the target percentages moved.
+    // technique this file uses elsewhere (a noise distribution's actual
+    // shape rarely lines up with a hand-picked cutoff, so thresholds are
+    // derived from THIS map's own tile population instead of a constant).
+    // Elevation still picks Mountains/Hills first, THEN climate (temperature
+    // band + moisture) splits the rest into Plains/Forest/Desert/Swamp.
     const equalizablePool = [];
     let totalLandCount = 0;
     for (let i = 0; i < elevArr.length; i++) {
@@ -164,16 +158,12 @@ window.GameEngine = window.GameEngine || {};
     const NUM_EQUAL_TYPES = 6; // Mountains, Hills, Plains, Forest, Desert, Swamp
     const basePerType = equalizablePool.length / NUM_EQUAL_TYPES; // even 1/6-each baseline
 
-    // Mountains deliberately undershoots that baseline (2026-07-13, user
-    // request: "reduce mountain share of the land by about 4 or 5%") --
-    // impassable terrain covering a full 1/6 of non-Tundra land turned out
-    // to feel like too much once the six-way equalization above landed.
-    // MOUNTAIN_SHARE_REDUCTION is a percentage-POINT cut against TOTAL
-    // land (matching how the ~14.4% figure was originally reported, not
-    // the non-Tundra pool), converted to a tile count and redistributed
-    // evenly across the other five types so Hills/Plains/Forest/Desert/
-    // Swamp stay roughly even with EACH OTHER, just each a little bigger
-    // than before to absorb what Mountains gave up.
+    // Mountains deliberately undershoots that baseline -- impassable terrain
+    // covering a full 1/6 of non-Tundra land feels like too much.
+    // MOUNTAIN_SHARE_REDUCTION is a percentage-POINT cut against TOTAL land,
+    // converted to a tile count and redistributed evenly across the other
+    // five types so Hills/Plains/Forest/Desert/Swamp stay roughly even with
+    // EACH OTHER, just each a little bigger to absorb what Mountains gave up.
     const MOUNTAIN_SHARE_REDUCTION = 0.06;
     const mountainReductionCount = MOUNTAIN_SHARE_REDUCTION * totalLandCount;
     const mountainTarget = Math.max(0, basePerType - mountainReductionCount);
@@ -231,11 +221,8 @@ window.GameEngine = window.GameEngine || {};
         const temperature = tempArr[idx];
 
         // Ocean/coast cutoffs are OCEAN_CUT/LAND_CUT, computed once above
-        // per-map to target ~25% less total water than the OLD fixed
-        // 0.415/0.455 (themselves already a -10% cut from the original
-        // 0.43/0.47 -- verified empirically across 60 seeds/156k tiles at
-        // the time: 44.99% -> 40.81% water). Compounding both cuts lands
-        // total water noticeably lower than either alone.
+        // per-map to target less total water than the fixed 0.415/0.455
+        // baseline (see WATER_REDUCTION above).
         let terrainId;
         if (elevation < OCEAN_CUT) terrainId = "ocean";
         else if (elevation < LAND_CUT) terrainId = "coast";
@@ -256,7 +243,7 @@ window.GameEngine = window.GameEngine || {};
       }
     }
 
-    // --- Step 4a: no tile fully walled in by Mountains (2026-08-06) ---
+    // --- Step 4a: no tile fully walled in by Mountains ---
     // Before landmass sizing below: whether a demoted ring tile survives
     // enforceMinimumLandmassSize is irrelevant to it (Mountains and Hills are
     // both land for flood-fill purposes -- this never changes which tiles
@@ -266,23 +253,21 @@ window.GameEngine = window.GameEngine || {};
     breakMountainRings(tiles, width, height, elevArr);
 
     // --- Step 4b: mark interior tiles of large mountain ranges eligible for
-    // the occasional tall/overhanging peak sprite (2026-08-13, user-directed:
-    // "extra tall mountains should be uncommon, and only in the middle of
-    // large mountain ranges"). Purely geographic -- render.js still rolls
-    // the actual rarity per eligible tile at render time; this pass only
-    // decides which tiles are ALLOWED to roll at all, so a small mountain
-    // patch or the edge of a large range never gets the dramatic overhang
-    // treatment, only tiles buried well inside a genuinely large contiguous
-    // range. Run after breakMountainRings so it sees the final mountain
-    // layout, not one that's about to lose edge tiles to the ring fix.
+    // the occasional tall/overhanging peak sprite. Purely geographic --
+    // render.js still rolls the actual rarity per eligible tile at render
+    // time; this pass only decides which tiles are ALLOWED to roll at all,
+    // so a small mountain patch or the edge of a large range never gets the
+    // dramatic overhang treatment, only tiles buried well inside a genuinely
+    // large contiguous range. Run after breakMountainRings so it sees the
+    // final mountain layout, not one that's about to lose edge tiles to the
+    // ring fix.
     markTallMountainEligibility(tiles, width, height);
 
     // --- Step 5: connectivity + Step 5a: minimum landmass size enforcement ---
-    // 11 (2026-07-20, user-directed, raised from 3): a landmass has to be
-    // able to hold at least one city plus a spare open tile around it (see
-    // ai.js's landmassHasSpareOpenTile) for an invader to ever have
-    // somewhere to land -- too small and the wall-saturation fix there
-    // couldn't leave a gap even if it wanted to.
+    // A landmass has to be able to hold at least one city plus a spare open
+    // tile around it (see ai.js's landmassHasSpareOpenTile) for an invader to
+    // ever have somewhere to land -- too small and the wall-saturation fix
+    // there couldn't leave a gap even if it wanted to.
     let landmasses = findLandmasses(tiles, width, height);
     landmasses = enforceMinimumLandmassSize(tiles, landmasses, 13);
 
@@ -329,19 +314,17 @@ window.GameEngine = window.GameEngine || {};
   }
 
   /**
-   * 8-directional (diagonal-inclusive) flood fill (2026-08-12, bug fix) --
-   * MUST match the connectivity every actual movement/reachability check in
-   * ai.js uses (canReachByLand's own BFS, and the Chebyshev distance used
-   * pervasively throughout), not just cardinal neighbors. A 4-directional
-   * fill here used to assign two land tiles touching only at a corner (a
-   * common "pinch point" in procedurally generated coastlines) to different
-   * landmassId's even though a unit can walk diagonally between them --
-   * every landmassId-based pre-filter in ai.js (Dire Wolf's hunt among many
-   * others -- see the ~60 call sites) would then wrongly discard a
-   * genuinely reachable target/tile before its own, correctly-8-directional
-   * reachability check ever got a chance to confirm it. Confirmed as the
-   * cause of Dire Wolf reporting "No enemy to hunt on this landmass" with
-   * enemies actually present and reachable.
+   * 8-directional (diagonal-inclusive) flood fill -- MUST match the
+   * connectivity every actual movement/reachability check in ai.js uses
+   * (canReachByLand's own BFS, and the Chebyshev distance used pervasively
+   * throughout), not just cardinal neighbors. A 4-directional fill would
+   * assign two land tiles touching only at a corner (a common "pinch point"
+   * in procedurally generated coastlines) to different landmassId's even
+   * though a unit can walk diagonally between them -- every landmassId-based
+   * pre-filter in ai.js (Dire Wolf's hunt among many others) would then
+   * wrongly discard a genuinely reachable target/tile before its own,
+   * correctly-8-directional reachability check ever got a chance to confirm
+   * it.
    */
   function findLandmasses(tiles, width, height) {
     const visited = new Uint8Array(width * height);
@@ -380,9 +363,7 @@ window.GameEngine = window.GameEngine || {};
     // a *surviving* landmass into smaller pieces -- flood-fill groups are
     // already maximal connected components, and deleting one group entirely
     // doesn't touch the tiles of any other group. So a single pass is
-    // provably sufficient; no re-check needed (verified via the standalone
-    // simulation in the design review, and the invariant holds here by
-    // construction of flood-fill itself).
+    // provably sufficient; no re-check needed.
     const survivors = [];
     for (const group of landmasses) {
       if (group.length < minSize) {
@@ -396,24 +377,22 @@ window.GameEngine = window.GameEngine || {};
 
   /**
    * Ensures no non-Mountain, non-water tile is entirely walled in by
-   * Mountains (2026-08-06, user-directed). Movement in this game is
-   * 8-directional (see ai.js's canReachByLand/buildMoveRules -- diagonal
-   * steps are legal moves, not just a rendering nicety), and Mountains are
-   * flatly IMPASSABLE for a land unit (terrain.js) short of a specific
-   * mid-tree tech (mountain tunneling) or flight -- so a tile whose every
-   * EXISTING neighbor (all 8 in the interior; fewer at a map edge, where
-   * "off map" blocks a step just as completely as Mountains would) is
-   * Mountains is a genuine, permanent trap. Left alone, that could hand one
-   * race a founding site no other civ's army could ever physically reach --
-   * an unearned, unfair advantage no amount of skill changes. Demotes the
-   * LOWEST-elevation (most Hills-like, so the fix reads as natural terrain
-   * rather than an obviously patched tile) surrounding Mountain to Hills for
-   * each ringed tile found -- the minimum edit that opens a way through.
+   * Mountains. Movement in this game is 8-directional (see ai.js's
+   * canReachByLand/buildMoveRules -- diagonal steps are legal moves, not
+   * just a rendering nicety), and Mountains are flatly IMPASSABLE for a land
+   * unit (terrain.js) short of a specific mid-tree tech (mountain tunneling)
+   * or flight -- so a tile whose every EXISTING neighbor (all 8 in the
+   * interior; fewer at a map edge, where "off map" blocks a step just as
+   * completely as Mountains would) is Mountains is a genuine, permanent
+   * trap that could hand one race a founding site no other civ's army could
+   * ever physically reach. Demotes the LOWEST-elevation (most Hills-like, so
+   * the fix reads as natural terrain rather than an obviously patched tile)
+   * surrounding Mountain to Hills for each ringed tile found -- the minimum
+   * edit that opens a way through.
    *
-   * Deliberately scoped to PURE Mountain rings, matching what was asked --
-   * not "any impassable terrain" (which would also pull in Ocean/Coast, and
-   * turn this into a much larger general reachability audit rather than the
-   * specific Mountains-only unfairness this targets).
+   * Deliberately scoped to PURE Mountain rings, not "any impassable
+   * terrain" (which would also pull in Ocean/Coast, and turn this into a
+   * much larger general reachability audit).
    *
    * A single top-to-bottom pass is sufficient: demoting a Mountain to Hills
    * can only ever OPEN a path, never close one, so fixing tile A can't ring

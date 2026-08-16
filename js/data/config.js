@@ -1,7 +1,7 @@
 /**
  * GAME CONFIGURATION
  * ==================
- * The game's balance dials, in one place (2026-08-03, user-directed).
+ * The game's balance dials, in one place.
  *
  * Every value here is a knob a designer would plausibly want to turn to
  * change how the game FEELS -- how fast territory spreads, what an army
@@ -55,12 +55,9 @@ window.GameConfig = {
   // first script loaded (see LOAD ORDER above), so the launch screen can read
   // it synchronously with no ordering question.
   //
-  // Hand-maintained ON PURPOSE (2026-08-06, user-directed). This replaced a
-  // live GitHub API call that derived the same three values from the repo's
-  // latest commit -- accurate, but it made the launch screen depend on the
-  // network, on the repo being public, and on an unauthenticated rate limit
-  // of 60 requests/hour per IP; when any of those failed the stamp simply
-  // rendered blank. A value typed here always renders, offline included.
+  // Hand-maintained on purpose -- avoids depending on the network, the repo
+  // being public, or an API rate limit; a value typed here always renders,
+  // offline included.
   //
   // BUMP THESE WHEN YOU SHIP. Nothing enforces it -- a stale stamp is a wrong
   // stamp, and the only cost of forgetting is being told the wrong thing.
@@ -68,58 +65,30 @@ window.GameConfig = {
     /** Local date this build was cut, YYYY-MM-DD. */
     date: "2026-08-16",
     /** Local time this build was cut, 24-hour HH:MM. */
-    time: "14:50",
-    /** Monotonic build counter. Continues the numbering the old GitHub-
-     *  derived stamp used (it showed the repo's total commit count), so
-     *  builds from before and after this change still sort against each
-     *  other. Increment it; don't recompute it. */
-    number: 110,
+    time: "15:14",
+    /** Monotonic build counter -- increment it, don't recompute it. */
+    number: 111,
   },
 
   // =========================================================================
   // PACING  (js/engine/ai.js, js/engine/tech.js)
   // =========================================================================
   pacing: {
-    /** Universal turns-to-complete rate (2026-08-04, user-directed): one
-     *  shared knob for every timed queue in the game -- ai.js's
-     *  unitBuildTurns/buildingBuildTurns AND tech.js's researchTurns all
-     *  read this now, instead of each subsystem keeping its own separate
-     *  rate (units/buildings used to run at 0.24, research at 0.12 -- a 2x
-     *  mismatch with no real justification). Formula shape is the same
-     *  everywhere: turns = round((cost or power) / rate * slowness), min 1.
-     *  Set to the FASTER of the two old values, so unit/building pacing
-     *  roughly doubles in speed to match research rather than the other way
-     *  around. */
+    /** Universal turns-to-complete rate: one shared knob for every timed
+     *  queue in the game -- ai.js's unitBuildTurns/buildingBuildTurns and
+     *  tech.js's researchTurns all read this. Formula shape is the same
+     *  everywhere: turns = round((cost or power) / rate * slowness), min 1. */
     slowness: 0.1,
-    /** Per-category RATIOS on top of slowness above (2026-08-06, user-
-     *  directed), not a second independent rate -- units were finishing in
-     *  1-2 turns almost everywhere (unit power is a small number, and
-     *  unitBuildTurns' rate gets a militarism boost on top of
-     *  industriousness) while buildings/walls stretched to 15-28 turns for
-     *  a low-industriousness race (building coinCost is a bigger number,
-     *  and buildingBuildTurns' rate is industriousness alone). Multiplying
-     *  each category's turns by its own factor here fixes that gap while
-     *  keeping slowness as the ONE knob that scales every queue at once --
-     *  turn slowness up or down and units/buildings/research all still
-     *  move together, just at their established relative pace to each
-     *  other. Tuned so a mid-tier combat unit lands around 3-4 turns and a
-     *  mid-tier building around half its old length (worst case, a cheap-
-     *  industriousness race's priciest building, roughly 28 turns -> ~14)
-     *  -- see ai.js's unitBuildTurns/buildingBuildTurns.
-     *
-     *  researchPaceFactor (2026-08-06, user-directed) joined the two above
-     *  for the same reason -- research had grown into its own pacing
-     *  problem, especially at high tiers for a low-industriousness race
-     *  (Layer 5 was running 160 turns at industriousness 0.2).
-     *
-     *  Re-tuned again (2026-08-06, user-directed) alongside tech.js's new
-     *  RESEARCH_TURNS_EXPONENT -- the two together are calibrated so that,
-     *  at industriousness 0.5 (the fallback default), Layer 5 lands at
-     *  exactly 20 turns and Layer 1 at 3, with Layers 0/2/3/4 falling
+    /** Per-category RATIOS on top of slowness above, not a second
+     *  independent rate -- keeps slowness as the ONE knob that scales every
+     *  queue at once while letting units/buildings/research each move at
+     *  their own established relative pace. Tuned so a mid-tier combat unit
+     *  lands around 3-4 turns, and (paired with tech.js's
+     *  RESEARCH_TURNS_EXPONENT) research at industriousness 0.5 lands
+     *  Layer 1 at 3 turns and Layer 5 at 20, with Layers 0/2/3/4 falling
      *  smoothly in between (2/3/5/8/12/20) -- see researchTurns' own doc
-     *  comment for why the exponent had to change too, not just this
-     *  factor, to hit both. Faster/slower industriousness races and the
-     *  Game Speed slider still scale proportionally from there. */
+     *  comment. Faster/slower industriousness races and the Game Speed
+     *  slider scale proportionally from there. */
     unitPaceFactor: 2.2,
     buildingPaceFactor: 0.5,
     researchPaceFactor: 2.1,
@@ -169,24 +138,20 @@ window.GameConfig = {
      *  radius bonuses still stack on top of this, uncapped. */
     maxPopulation: 6,
 
-    /** Harvest consumed per population point per turn. Zeroed (2026-08-07,
-     *  user-directed: "population should not use harvest") -- population no
-     *  longer costs any upkeep at all. cities.js's tickCity still computes
-     *  `upkeep = UPKEEP_RATE * city.population` and subtracts it from
-     *  totalHarvest every turn; at 0 that's a no-op multiplication rather
-     *  than removed code, so a future balance pass can reintroduce a cost
-     *  here without touching the formula itself. */
+    /** Harvest consumed per population point per turn. Zeroed -- population
+     *  costs no upkeep. cities.js's tickCity still computes `upkeep =
+     *  UPKEEP_RATE * city.population` and subtracts it from totalHarvest
+     *  every turn; at 0 that's a no-op multiplication rather than removed
+     *  code, so a future balance pass can reintroduce a cost here without
+     *  touching the formula itself. */
     upkeepRatePerPop: 0,
 
-    /** Coin and Lore produced per population point per turn. Lore raised
-     *  from 0.1 to 3 (2026-08-06, user-directed): every base terrain tile
-     *  yields 0 lore (see terrain.js -- harvest/coin appear on nearly every
-     *  tile, lore only from rare Ruins), so unlike harvest/coin, lore was
-     *  never scaling with a growing city working more tiles -- it stayed
-     *  essentially flat regardless of size, a shortage that got WORSE as a
-     *  city grew even though every tech needs some lore. Tying it directly
-     *  to population fixes that scaling gap at its source, not just the
-     *  early-game flat-bonus workaround (flatLore below). */
+    /** Coin and Lore produced per population point per turn. Lore is tied
+     *  to population because base terrain tiles yield 0 lore (see
+     *  terrain.js -- harvest/coin appear on nearly every tile, lore only
+     *  from rare Ruins), so unlike harvest/coin it wouldn't otherwise scale
+     *  with a growing city working more tiles -- this is what keeps lore
+     *  income growing with city size instead of staying flat. */
     intrinsicCoinRate: 0.1,
     intrinsicLoreRate: 3,
 
@@ -207,10 +172,10 @@ window.GameConfig = {
      *  turn's production on resources instead of a unit or building. */
     resourceProductionBonus: 0.5,
 
-    /** "Spread Culture" (2026-08-13, user-directed; see cities.js's
-     *  applyCultureSpread): a paid, one-turn boost to a city's influence
-     *  spread, independent of what the city is building -- unlike Resource
-     *  Production/Research, this doesn't consume the city's turn, it spends
+    /** "Spread Culture" (see cities.js's applyCultureSpread): a paid,
+     *  one-turn boost to a city's influence spread, independent of what the
+     *  city is building -- unlike Resource Production/Research, this
+     *  doesn't consume the city's turn, it spends
      *  stockpile instead. cultureSpreadInfluenceMult is the multiplier
      *  applied to the city's influence strength for the turn it fires (see
      *  influence.js's computeInfluenceMap); cultureSpreadCostBase/PerPop
@@ -244,8 +209,7 @@ window.GameConfig = {
     influenceMultPerIndustriousness: 0.6,
 
     /** Minimum Chebyshev distance between any two cities, anywhere, and the
-     *  relaxed floor used only when a civ is stranded with no legal site.
-     *  Lowered 8 -> 6 (2026-08-07, user-directed). */
+     *  relaxed floor used only when a civ is stranded with no legal site. */
     minCitySpacing: 6,
     emergencyCitySpacing: 3,
 
@@ -259,12 +223,9 @@ window.GameConfig = {
   // What units cost to buy and — more importantly — to keep.
   // =========================================================================
   units: {
-    /** Ongoing upkeep as a fraction of a unit's raw power, per turn.
-     *  Raised 0.10 -> 0.35 after a 900-turn game showed a 19-unit army
-     *  costing only ~6% of income -- a rounding error rather than real
-     *  economic pressure, which is why every race ended games sitting on
-     *  100+ turns of unspent resources. This is the single biggest dial on
-     *  "how large an army can this game sustain". */
+    /** Ongoing upkeep as a fraction of a unit's raw power, per turn. This is
+     *  the single biggest dial on "how large an army can this game
+     *  sustain". */
     upkeepBaseRate: 0.35,
 
     /** Which resources upkeep is drawn from. Fixed and universal -- NOT the
@@ -275,19 +236,14 @@ window.GameConfig = {
     upkeepSplitMagical: { harvest: 0.50, coin: 0.25, lore: 0.25 },
     magicalUnitIds: ["wizard", "bog_witch", "dragon", "paladin"],
 
-    /** Compounding premium per tech-tree layer -- exponent is the RAW layer
-     *  now, not layer-1 (2026-08-04, user-directed): Layer 1 used to be a
-     *  free/no-premium baseline (exponent 0); now every layer above 0
-     *  carries a real premium, just a smaller one the lower the layer.
-     *  Level 0 (layer: 0, techs.js's pioneer_infrastructure/
-     *  distant_horizons/distant_shores) sits at exponent 0 -- genuinely NO
-     *  premium, the one true free-baseline layer now. Deliberately raises
-     *  cost/upkeep across every OTHER tier.
+    /** Compounding premium per tech-tree layer -- exponent is the raw
+     *  layer, so Level 0 (layer: 0, techs.js's pioneer_infrastructure/
+     *  distant_horizons/distant_shores) sits at exponent 0, genuinely no
+     *  premium, while every layer above it carries a real one.
      *
-     *  buildLayerPremiumRate is the ONE-TIME purchase: (1.18)^5 ~= 2.3x for a
-     *  layer-5 unit (was ~2x at layer-1 exponent). Deliberately thinner than
-     *  the tech tree's own cost growth, since unit power already trends up
-     *  with layer on its own.
+     *  buildLayerPremiumRate is the ONE-TIME purchase: (1.18)^5 ~= 2.3x for
+     *  a layer-5 unit. Deliberately thinner than the tech tree's own cost
+     *  growth, since unit power already trends up with layer on its own.
      *
      *  upkeepLayerPremiumRate is much steeper: (1.40)^5 ~= 5.4x. A one-time
      *  price only limits how FAST a civ can amass an elite army; ongoing
@@ -320,26 +276,17 @@ window.GameConfig = {
   // RESEARCH  (js/data/techs.js)
   // =========================================================================
   research: {
-    /** PURE TIER-BASED COST (2026-08-04, user-directed): replaces the old
-     *  scheme of ~150 individually hand-authored `cost` fields in techs.js
-     *  (each then multiplied by a layer premium) with a single formula --
-     *  GameData.effectiveTechCost(tech) = baseCost * tierGrowth^layer. Every
-     *  tech at the same layer now costs exactly the same; the old per-tech
-     *  `cost` fields are no longer read by effectiveTechCost at all (left in
-     *  techs.js as inert data rather than mechanically stripped from ~150
-     *  entries for zero functional gain).
+    /** PURE TIER-BASED COST: every tech's cost is
+     *  GameData.effectiveTechCost(tech) = baseCost * tierGrowth^layer --
+     *  every tech at the same layer costs exactly the same; the per-tech
+     *  `cost` field still authored on each techs.js entry is inert data,
+     *  not read by effectiveTechCost.
      *
-     *  Exponent is the RAW layer, not layer-1 (2026-08-04, user-directed) --
-     *  every layer-based premium in the game (this, unitLayerPremium,
-     *  unitUpkeepLayerPremium) dropped its old "-1" so Layer 1 is no longer
-     *  a free/no-premium baseline. Level 0 (layer: 0, as of 2026-08-06 a
-     *  real integer, not the old layer: 0.5 fudge -- see
-     *  GameData.effectiveTechCost/unitTechLayer's own `?? 1` fallback,
-     *  fixed to treat 0 correctly instead of needing to dodge it) sits at
-     *  exponent 0, i.e. genuinely free of this premium -- moot in practice
-     *  since every Level 0 tech is auto-completed and never actually pays
-     *  it, but still the number the tree DISPLAYS. tierGrowth: 2.0 gives
-     *  Level0=10, L1=20, L2=40, L3=80, L4=160, L5=320. */
+     *  Exponent is the raw layer. Level 0 sits at exponent 0, genuinely
+     *  free of this premium -- moot in practice since every Level 0 tech is
+     *  auto-completed and never actually pays it, but still the number the
+     *  tree DISPLAYS. tierGrowth: 2.0 gives Level0=10, L1=20, L2=40, L3=80,
+     *  L4=160, L5=320. */
     baseCost: 10,
     tierGrowth: 2.0,
   },
@@ -373,19 +320,18 @@ window.GameConfig = {
     cityDefensePerLevel: 2.5,
     cityDefensePerStructure: 1.5,
 
-    /** +defense per alive Wall structure (2026-08-06, user-directed), ON TOP
-     *  of the generic cityDefensePerStructure every structure already gives
-     *  -- a wall is still a structure, so it was already contributing that
-     *  1.5, this is the wall-specific premium for actually being a wall. See
+    /** +defense per alive Wall structure, ON TOP of the generic
+     *  cityDefensePerStructure every structure already gives -- a wall is
+     *  still a structure, so it already contributes that 1.5; this is the
+     *  wall-specific premium for actually being a wall. See
      *  combat.js's cityDefenseValue for where the two add together, and
      *  sidebar.js's renderCityPanel for the "Defense" row that surfaces the
      *  total (base + level + structures + walls) to the player. */
     cityDefensePerWall: 1,
 
-    /** City HP (2026-08-04, user-directed): a city now has a real, damage-
-     *  accumulating HP pool instead of attackCity's old single win/lose roll
-     *  -- maxHp = this * population level, same mitigatedDamage formula
-     *  every other attack in the game already uses (see combat.js's
+    /** City HP: a city has a real, damage-accumulating HP pool -- maxHp =
+     *  this * population level, same mitigatedDamage formula
+     *  every other attack in the game uses (see combat.js's
      *  attackStructure for the near-identical pattern this mirrors). When HP
      *  hits 0, population drops by 1 and HP refills to the new (smaller)
      *  max -- no overkill carryover into the next pool, same as a unit or
@@ -403,10 +349,8 @@ window.GameConfig = {
 
     /** Cumulative XP to REACH each level (index 0 == level 1). Front-loaded
      *  (5/8/10/13/15 per level) so surviving a few fights pays off visibly
-     *  early, while level 5 stays a genuine long-game achievement. Roughly
-     *  halved from 10/15/20/25/30 (2026-08-10, user-directed: units should
-     *  level up twice as fast) and rounded to whole numbers -- sidebar.js's
-     *  "X / Y XP" readout shows this threshold raw, unrounded. */
+     *  early, while level 5 stays a genuine long-game achievement.
+     *  sidebar.js's "X / Y XP" readout shows this threshold raw, unrounded. */
     xpThresholds: [5, 13, 23, 36, 51],
 
     /** XP awarded per combat action: a flat participation grant, a per-point
@@ -423,15 +367,11 @@ window.GameConfig = {
      *  percentage-point bonuses, kept deliberately smaller per level:
      *  siegePct only applies against structures, firstStrikePct compounds
      *  every round of a fight, and doubleStrikePct is worth roughly a whole
-     *  extra attack's chance to land, so 7%/level (2026-08-07, user-
-     *  directed -- raised from 3%) was chosen to feel comparable to the
-     *  other two percentage paths rather than to Attack/Defense's flat
-     *  weight. visionRadius/movement (2026-08-07, user-directed) are the
-     *  same flat-add convention as Attack/Defense, just on this game's
+     *  extra attack's chance to land. visionRadius/movement are the
+     *  same flat-add convention as Attack/Defense, on this game's
      *  already-small vision/movement scales -- see turns.js's visibility
      *  radius sum and ai.js's computeMovementBudget for where each reads
-     *  unit.levelBonuses. firstStrikePct raised 0.01->0.04 (2026-08-10,
-     *  user-directed) to feel comparable to siegePct/doubleStrikePct. */
+     *  unit.levelBonuses. */
     bonusValues: {
       attack: 1,
       defense: 1,
@@ -511,22 +451,16 @@ window.GameConfig = {
       civId: "MONSTERS",
       /** Each turn, if under the population cap, spawn chance = this *
        *  (1 - exploredFraction), where exploredFraction is the share of
-       *  LAND tiles explored by any civ. Linear falloff (user-confirmed
-       *  over the steeper squared alternative). Raised 0.06 -> 0.15
-       *  (2026-08-16, user-reported): at 0.06 a fresh game had roughly a
-       *  75-90% chance of showing literally zero monsters through its
-       *  first five turns -- see the headless probability sweep this was
-       *  measured with -- which read as "these don't work" rather than
-       *  "rare early." */
+       *  LAND tiles explored by any civ. Linear falloff. Tuned so a fresh
+       *  game doesn't have a high chance of showing zero monsters through
+       *  its first few turns. */
       baseSpawnChance: 0.15,
       /** Population cap = this * number of civs still alive (not
        *  eliminated). Shrinks as civs are eliminated. */
       perKingdomCap: 2,
-      /** Monsters placed at world-gen time, before turn 1 (2026-08-16,
-       *  user-directed: "some monsters should exist at game start" --
-       *  previously the roster started empty and only the per-round roll
-       *  above ever added to it). Count = this * number of civs in play,
-       *  same multiply-by-headcount shape as perKingdomCap -- see
+      /** Monsters placed at world-gen time, before turn 1. Count = this *
+       *  number of civs in play, same multiply-by-headcount shape as
+       *  perKingdomCap -- see
        *  ai.js's seedInitialMonsters, which also keeps every initial
        *  placement well clear of every civ's starting units so a fresh
        *  Pioneer never has one bearing down on it before the player's had
@@ -552,14 +486,13 @@ window.GameConfig = {
     moveAnimMs: 350,
 
     /**
-     * Drifting cloud layer (2026-08-06, user-directed) -- purely cosmetic
-     * atmosphere drawn on its own overlay canvas ABOVE the map, never
-     * interacting with gameplay in any way (see js/ui/clouds.js).
+     * Drifting cloud layer -- purely cosmetic atmosphere drawn on its own
+     * overlay canvas ABOVE the map, never interacting with gameplay in any
+     * way (see js/ui/clouds.js).
      */
     clouds: {
       /** How many clouds exist at once. Deliberately sparse -- this is
-       *  atmosphere, not weather. Raised from 7 (2026-08-07, user-directed:
-       *  "more clouds"). */
+       *  atmosphere, not weather. */
       count: 12,
       /** Peak alpha of a cloud's densest point. Low enough that terrain,
        *  units and borders stay readable straight through them. */
@@ -578,10 +511,9 @@ window.GameConfig = {
        *  screen, 1 would glue them to the terrain. */
       parallax: 0.3,
       /** Clouds are confined to a band around the OUTER edge of the map
-       *  view (2026-08-06, user-directed -- this replaced an earlier
-       *  transparent hole that followed the mouse). bandFraction is how
-       *  deep that band reaches as a fraction of the viewport's width and
-       *  height, so 0.15 leaves the middle ~70% x ~70% completely clear.
+       *  view. bandFraction is how deep that band reaches as a fraction of
+       *  the viewport's width and height, so 0.15 leaves the middle
+       *  ~70% x ~70% completely clear.
        *
        *  bandFeather is what portion of that band is the fade-out, measured
        *  inward: 0.6 means clouds hold full strength across the outermost
@@ -589,15 +521,13 @@ window.GameConfig = {
        *  so there's no hard line where the clouds stop. */
       bandFraction: 0.15,
       bandFeather: 0.6,
-      /** Shape of the clear middle, as the exponent of a p-norm
-       *  (2026-08-06, user-reported sharp corner seams).
-       *
-       *  The first version measured distance as min(distToVerticalEdge,
-       *  distToHorizontalEdge), which is continuous in VALUE but has a
-       *  kink in its DERIVATIVE along the 45-degree diagonal out of each
-       *  corner -- and the eye reads a gradient discontinuity as a hard
-       *  line (a Mach band) even when no pixel-to-pixel jump exists. A
-       *  p-norm has no such kink anywhere, so the corners blend smoothly.
+      /** Shape of the clear middle, as the exponent of a p-norm. Measuring
+       *  distance as min(distToVerticalEdge, distToHorizontalEdge) is
+       *  continuous in VALUE but has a kink in its DERIVATIVE along the
+       *  45-degree diagonal out of each corner -- and the eye reads a
+       *  gradient discontinuity as a hard line (a Mach band) even when no
+       *  pixel-to-pixel jump exists. A p-norm has no such kink anywhere, so
+       *  the corners blend smoothly.
        *
        *    2 = a true ellipse (oval clear area, corners heavily clouded)
        *    4 = a rounded rectangle -- keeps more of the middle usable
@@ -605,9 +535,9 @@ window.GameConfig = {
        *        tight enough to start reading as an edge, so don't. */
       bandShape: 4,
       /** Sprite generation: puffs per cloud and the px radius range of each
-       *  puff. More/larger puffs = bigger, lumpier clouds. Raised from
-       *  [6,9] (2026-08-06): too few puffs left visible gaps across the
-       *  cloud's horizontal span instead of merging into one soft mass. */
+       *  puff. More/larger puffs = bigger, lumpier clouds -- too few leaves
+       *  visible gaps across the cloud's horizontal span instead of
+       *  merging into one soft mass. */
       puffsPerCloud: [10, 15],
       puffRadius: [38, 78],
     },

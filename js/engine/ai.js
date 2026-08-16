@@ -18,14 +18,11 @@
 window.GameEngine = window.GameEngine || {};
 
 (function () {
-  /** Human-friendly unit label for AI Action log messages (2026-07-22,
-   *  user-directed: "should contain the names of the units, and show
-   *  conditions") -- "Name (typeId)" plus a bracketed list of any active
-   *  unit.conditions keys, e.g. "Sylvara the Keen-Eyed (ranger) [hidden,
-   *  frozen]". Falls back to just the typeId if the unit has no name yet
-   *  (e.g. this same turn, before unit-names.js's naming pass has run) so
-   *  a log line never reads "undefined". Used everywhere a log message or
-   *  currentMission previously interpolated a bare `unit.typeId`. */
+  /** Human-friendly unit label for AI Action log messages: "Name (typeId)"
+   *  plus a bracketed list of any active unit.conditions keys, e.g.
+   *  "Sylvara the Keen-Eyed (ranger) [hidden, frozen]". Falls back to just
+   *  the typeId if the unit has no name yet (e.g. before unit-names.js's
+   *  naming pass has run this turn) so a log line never reads "undefined". */
   function describeUnit(unit) {
     if (!unit) return "unit";
     const base = unit.name ? `${unit.name} (${unit.typeId})` : unit.typeId;
@@ -68,11 +65,9 @@ window.GameEngine = window.GameEngine || {};
       let militaryTechCount = 0;
       for (const techId of civ.completedTechs) {
         const tech = window.GameData.TECHS[techId];
-        // "mystic" counts too (2026-08-10, user-directed tech-tree column
-        // split): Making Trouble/The Riddle Game moved out of "military" but
-        // are still combat-relevant Trouble Maker techs -- this bonus is
-        // about the civ's fighting kit maturing, not literally which UI
-        // column a tech renders in.
+        // "mystic" counts too: some combat-relevant Trouble Maker techs live
+        // in that category -- this bonus is about the civ's fighting kit
+        // maturing, not literally which UI column a tech renders in.
         if (tech && (tech.category === "military" || tech.category === "mystic")) militaryTechCount++;
       }
       bonus += militaryTechCount * HALFELLOW_MILITARISM_PER_MILITARY_TECH;
@@ -139,19 +134,15 @@ window.GameEngine = window.GameEngine || {};
   }
 
   /**
-   * Founded-minus-razed city count over the last CITY_DELTA_WINDOW turns
-   * (2026-07-23, user-directed -- see the 2026-07-23 balance-audit memory).
+   * Founded-minus-razed city count over the last CITY_DELTA_WINDOW turns.
    * `civ.cityEvents` is appended to by cities.js's foundCity/destroyCity,
    * the two canonical places a city is ever gained or lost, so this sees
    * every source (siege, scout-razing, AI settling, Druid's Roots of the
    * World, ...) uniformly. Negative means this civ is losing cities faster
    * than it's founding them -- used to taper the "always expand" bonuses in
    * strategy.js's macroGoalScores and this file's chooseBuildAction/
-   * chooseStrategy, which previously kept re-committing to settle/expand
-   * even while a civ's new cities were being razed as fast as they went up
-   * (confirmed live for both Halfellow-vs-Orc and Human-vs-Elf/Dwarf).
-   * Opportunistically trims events older than 2x the window so
-   * `civ.cityEvents` doesn't grow unbounded over a long game.
+   * chooseStrategy. Opportunistically trims events older than 2x the window
+   * so `civ.cityEvents` doesn't grow unbounded over a long game.
    */
   const CITY_DELTA_WINDOW = 30;
   function recentCityDelta(civ, gameState) {
@@ -283,9 +274,7 @@ window.GameEngine = window.GameEngine || {};
    * embark check in maybeFoundCity) but each galley can only ferry one
    * passenger at a time. `galleyCap` is how big the fleet is allowed to grow
    * in response to that backlog (see BACKLOG_PER_GALLEY/GALLEY_FLEET_CEILING
-   * above) -- previously a flat MAX_GALLEYS ceiling regardless of backlog
-   * size, which meant an island civ producing units faster than 3 galleys
-   * could ferry them just piled up on the shore forever.
+   * above).
    */
   function computeGalleyNeed(civ, gameState) {
     const { map } = gameState;
@@ -322,13 +311,13 @@ window.GameEngine = window.GameEngine || {};
     return 0.9 - aggressivenessFor(civ) * 0.4;
   }
 
-  // Settle-need roll (2026-07-30, user-directed): a peaceful, low-militarism/
-  // low-aggressiveness civ addresses an ordinary pioneer/galley need almost
-  // every turn; a warlike civ sometimes skips it in favor of the army. Never
-  // a permanent block -- re-rolled every turn a need persists (see
-  // chooseBuildAction's own urgency/ordinary split below), same shape as the
-  // existing FULLY_FILLED_SETTLER_CHANCE pattern. Floored well above 0 so
-  // even the most warlike civ still expands eventually.
+  // Settle-need roll: a peaceful, low-militarism/low-aggressiveness civ
+  // addresses an ordinary pioneer/galley need almost every turn; a warlike
+  // civ sometimes skips it in favor of the army. Never a permanent block --
+  // re-rolled every turn a need persists (see chooseBuildAction's own
+  // urgency/ordinary split below), same shape as the FULLY_FILLED_SETTLER_CHANCE
+  // pattern. Floored well above 0 so even the most warlike civ still expands
+  // eventually.
   const SETTLE_ROLL_BASE = 0.85;
   const SETTLE_ROLL_MILITARISM_PENALTY = 0.5;
   const SETTLE_ROLL_FLOOR = 0.15;
@@ -341,17 +330,12 @@ window.GameEngine = window.GameEngine || {};
   /**
    * A throwaway stand-in for `unit` that a simulated fight may freely mutate.
    *
-   * The spread alone is NOT enough (2026-08-03, user-reported bug): `{...unit}`
-   * is shallow, so the copy shares the SAME `unit.conditions` object as the
-   * real unit. combat.js's death-save rolls (Halfellow "Resilient Spirit",
-   * Dwarf "Unyielding") call setCondition(unit, "forcedRest") when they fire,
-   * and estimateWinProbability runs 20-30 fights to the death per decision --
-   * so merely CONSIDERING an attack was stamping forcedRest onto real units
-   * on the board, over and over. That is what made "Shaken by a near-death
-   * blow (forced to rest)" show up constantly on units that had taken a
-   * single glancing hit, most visibly on the Dwarf Runeforged Titan (huge HP,
-   * a Dwarf civ, so a real lethal blow is rare but the AI evaluates fights
-   * near it every turn).
+   * The spread alone is NOT enough: `{...unit}` is shallow, so the copy would
+   * share the SAME `unit.conditions` object as the real unit. combat.js's
+   * death-save rolls (Halfellow "Resilient Spirit", Dwarf "Unyielding") call
+   * setCondition(unit, "forcedRest") when they fire, and estimateWinProbability
+   * runs many fights to the death per decision -- so a shallow copy would let
+   * merely CONSIDERING an attack stamp forcedRest onto the real unit.
    *
    * `levelBonuses` is copied for the same reason even though nothing writes
    * to it today -- a simulated unit must not be able to reach anything real.
@@ -409,15 +393,13 @@ window.GameEngine = window.GameEngine || {};
   // falls back to its militarism alone.
   const INDUSTRIOUSNESS_GARRISON_WEIGHT = 0.75;
 
-  // Garrison-rate boost (2026-07-30, user-directed): every race garrisons
-  // too rarely -- Dwarf and Halfellow especially, despite already leaning on
-  // industriousness above, since a lightly-defended-but-not-empty city never
-  // pulled a unit back home (see reinforceHomeCity's own undefended-only
-  // scoping) and the roll below only ever fires for a unit already standing
-  // on its own city tile. A flat multiplier on top of garrisonDesire, capped
-  // at 1.0, so a unit that's already home and has nothing more pressing to
-  // do (this roll is checked well after combat/vanguard/rush-to-defend
-  // priorities above) garrisons far more reliably than before.
+  // Garrison-rate boost: a lightly-defended-but-not-empty city never pulls a
+  // unit back home (see reinforceHomeCity's own undefended-only scoping) and
+  // the roll below only ever fires for a unit already standing on its own
+  // city tile, so Dwarf and Halfellow especially need a push here despite
+  // already leaning on industriousness above. A flat multiplier on top of
+  // garrisonDesire, capped at 1.0, checked well after combat/vanguard/
+  // rush-to-defend priorities above.
   const GARRISON_DESIRE_BOOST = 1.3;
   const GARRISON_DESIRE_BOOST_DWARF_HALFELLOW = 1.6;
 
@@ -529,14 +511,11 @@ window.GameEngine = window.GameEngine || {};
     // immediate reason to settle -- weight it in directly rather than
     // waiting for expansionism/macroGoal to eventually favor it.
     //
-    // Net-city-loss taper (2026-07-23, user-directed): the bonus above is
-    // exactly the mechanism that kept both Halfellow-vs-Orc and Human-vs-
-    // Elf/Dwarf re-committing to "settle" turn after turn while their new
-    // cities were being razed as fast as they went up -- a civ that's net
-    // LOSING cities lately (see recentCityDelta) doesn't need MORE reasons
-    // to found another one it probably can't hold, it needs to stop and
-    // consolidate. Tapers linearly to 0 by -4 cities/window; a civ that's
-    // merely flat or growing (delta >= 0) is completely unaffected.
+    // Net-city-loss taper: a civ that's net LOSING cities lately (see
+    // recentCityDelta) doesn't need MORE reasons to found another one it
+    // probably can't hold, it needs to stop and consolidate. Tapers linearly
+    // to 0 by -4 cities/window; a civ that's merely flat or growing
+    // (delta >= 0) is completely unaffected.
     const cityDelta = recentCityDelta(civ, gameState);
     const cityLossTaper = cityDelta < 0 ? Math.max(0, 1 + cityDelta * 0.25) : 1;
     if (cityGateShortfall > 0) scores.settle += cityGateShortfall * 10 * cityLossTaper;
@@ -561,13 +540,12 @@ window.GameEngine = window.GameEngine || {};
    * Everything in an AI civ-turn that happens ONCE, before any individual
    * unit acts: movement-modifier stamping, invasion assessment, condition
    * expiry, strategy/doctrine choice, and the civ-level (not per-unit)
-   * decisions -- disband, research, found-city, build-queue. Split out of
-   * the former monolithic runAITurn (still available below, now just this
-   * + a full stepAIUnit loop + finishAITurn) so turns.js's granular
-   * per-unit spectator stepping (stepCivTurnUnit/advanceOneUnitStep) can run
-   * this ONCE per civ-turn, then call stepAIUnit repeatedly, one unit per
-   * call, instead of a full runAITurn call resolving every unit at once.
-   * Returns a turnState object that stepAIUnit/finishAITurn need.
+   * decisions -- disband, research, found-city, build-queue. Separated from
+   * the per-unit loop (runAITurn below is just this + a full stepAIUnit loop
+   * + finishAITurn) so turns.js's granular per-unit spectator stepping
+   * (stepCivTurnUnit/advanceOneUnitStep) can run this ONCE per civ-turn, then
+   * call stepAIUnit repeatedly, one unit per call. Returns a turnState object
+   * that stepAIUnit/finishAITurn need.
    */
   function beginAITurn(civ, gameState, difficulty = "normal") {
     const log = [];
@@ -590,40 +568,36 @@ window.GameEngine = window.GameEngine || {};
     // units move in and out of sight.
     civ._invasionTarget = assessInvasionTarget(civ, gameState);
 
-    // Orc "always looking for a fight" (2026-07-19, user-directed): a
-    // single shared contact signal for the WHOLE warband, recomputed fresh
-    // every Orc turn from currently-visible enemies -- see
-    // computeOrcSwarmSignal/maybeOrcSwarm. Snaps onto a new (closer)
-    // contact point the instant one becomes visible, same "recomputed
-    // fresh every turn" convention as _invasionTarget above.
+    // Orc "always looking for a fight": a single shared contact signal for
+    // the WHOLE warband, recomputed fresh every Orc turn from currently-
+    // visible enemies -- see computeOrcSwarmSignal/maybeOrcSwarm. Snaps onto
+    // a new (closer) contact point the instant one becomes visible, same
+    // "recomputed fresh every turn" convention as _invasionTarget above.
     if (civ.raceId === "orc") civ._orcSwarmSignal = computeOrcSwarmSignal(civ, gameState);
 
-    // Settle-need roll (2026-07-30, user-directed): computed once per civ-
-    // turn (not per-city) so every city in this civ sees the same verdict
-    // this turn -- see rollsForSettleNeed and chooseBuildAction's pioneer/
-    // galley section.
+    // Settle-need roll: computed once per civ-turn (not per-city) so every
+    // city in this civ sees the same verdict this turn -- see
+    // rollsForSettleNeed and chooseBuildAction's pioneer/galley section.
     civ._pioneerNeedRoll = rollsForSettleNeed(civ);
     civ._galleyNeedRoll = rollsForSettleNeed(civ);
 
-    // Elf "hunting party" (2026-07-30, user-directed): the whole party's
-    // shared kill target, recomputed fresh every Elf turn but sticking with
-    // the same target across turns as long as it's still alive -- see
-    // computeElfPartyTarget's doc comment.
+    // Elf "hunting party": the whole party's shared kill target, recomputed
+    // fresh every Elf turn but sticking with the same target across turns as
+    // long as it's still alive -- see computeElfPartyTarget's doc comment.
     if (civ.raceId === "elf") civ._elfPartyTarget = computeElfPartyTarget(civ, gameState, civ._elfPartyTarget);
 
     // Fog-of-war memory: remember every enemy city this civ has ever laid
     // eyes on, so an idle unit with nothing CURRENTLY visible to react to
     // (see huntKnownEnemyTerritory) can still march toward known enemy
-    // territory instead of falling all the way through to comfort-terrain
-    // patrol -- a real contributor to 900-turn stalemates, since
+    // territory instead of falling through to comfort-terrain patrol, since
     // huntNearestEnemy/huntEnemyInfrastructure only ever react to what's
     // visible this instant. Deliberately NOT reset every turn like
     // _invasionTarget above -- a sighting should persist across turns.
-    // Pruned in two ways so it never points at something that's gone: a
-    // fully-eliminated civ's entries are dropped outright, and an
-    // individual city that's since been destroyed (still-alive civ, see
-    // cities.js destroyCity) is dropped by name-existence check. Keyed by
-    // "civId:cityName" so multiple enemies' cities coexist in one object.
+    // Pruned so it never points at something that's gone: a fully-eliminated
+    // civ's entries are dropped outright, and an individual destroyed city
+    // (still-alive civ, see cities.js destroyCity) is dropped by name-
+    // existence check. Keyed by "civId:cityName" so multiple enemies' cities
+    // coexist in one object.
     civ.lastKnownEnemyCities = civ.lastKnownEnemyCities || {};
     {
       const visible = gameState.visibility[civ.id] || new Set();
@@ -650,9 +624,8 @@ window.GameEngine = window.GameEngine || {};
       }
     }
 
-    // Every turn-based condition (Orc curse, Violent Momentum, ...) expires here via
-    // one centralized call -- see combat.js's tickConditions/setCondition for
-    // why this replaced the old per-condition hand-written expiry checks.
+    // Every turn-based condition (Orc curse, Violent Momentum, ...) expires
+    // here via one centralized call -- see combat.js's tickConditions/setCondition.
     const turnNumber = gameState.turnNumber || 0;
     currentTurnNumber = turnNumber;
     currentGameStateRef = gameState;
@@ -680,13 +653,9 @@ window.GameEngine = window.GameEngine || {};
 
     const doctrine = window.GameEngine.strategy.computeDoctrine(civ, gameState);
     const { focus, reason } = chooseStrategy(civ, gameState, weights, doctrine);
-    // Log-spam fix (2026-07-23, user-directed): this used to fire every
-    // single turn unconditionally, even when focus/reason were byte-for-byte
-    // identical to last turn -- a civ genuinely stuck settling for 100+
-    // turns in a row produced 100+ identical log lines, drowning out the
-    // moments the strategy actually changed and making "how often is this
-    // civ stuck" impossible to read at a glance (see the 2026-07-23
-    // balance-audit memory). Only log on an actual change.
+    // Only log on an actual change -- avoids drowning genuine strategy
+    // shifts in repeated identical lines when a civ is stuck on one focus
+    // for many turns in a row.
     const strategyLogText = `[${race.label}] Strategy: ${focus} — ${reason}`;
     if (strategyLogText !== civ._lastStrategyLogText) {
       log.push(strategyLogText);
@@ -975,12 +944,10 @@ window.GameEngine = window.GameEngine || {};
   function maybeChooseResearch(civ, weights, log) {
     if (civ.currentResearch) return;
     const best = scoreNextResearch(civ, weights);
-    // chooseResearch can now fail on affordability alone (2026-08-04): the
-    // full Lore cost is paid up front, so a civ whose stockpile hasn't
-    // caught up yet just tries again next turn -- self-healing, same as a
-    // human player would see "can't afford" and wait. Only log on an
-    // actual success; this used to log "started" unconditionally, which
-    // would have claimed a research that never actually began.
+    // chooseResearch can fail on affordability alone: the full Lore cost is
+    // paid up front, so a civ whose stockpile hasn't caught up yet just
+    // tries again next turn -- self-healing, same as a human player would
+    // see "can't afford" and wait. Only log on an actual success.
     if (best && window.GameEngine.tech.chooseResearch(civ, best)) {
       log.push(`Research: started ${best}`);
     }
@@ -1003,8 +970,7 @@ window.GameEngine = window.GameEngine || {};
    *  "disconnected." Returns the nearest disconnected city to (fromX,fromY),
    *  or null if the civ has fewer than 2 cities or every city is already
    *  connected -- used by maybeFoundCity so an idle Pioneer with nothing
-   *  left to settle builds a connecting road instead of wandering.
-   *  2026-07-20, user-directed. */
+   *  left to settle builds a connecting road instead of wandering. */
   function findNearestDisconnectedCity(civ, gameState, fromX, fromY) {
     if (civ.cities.length < 2) return null;
     const { map } = gameState;
@@ -1037,13 +1003,13 @@ window.GameEngine = window.GameEngine || {};
     }, null).c;
   }
 
-  /** `unitFilter` (2026-08-06, user-directed, optional): scopes this whole
-   *  pass to a SUBSET of the civ's pioneers -- added for Automate Actions,
-   *  which needs to drive exactly ONE automated pioneer through this same
-   *  logic (movement, idle-stall recovery, embark decisions, founding)
-   *  without also dragging every OTHER pioneer the human player still
-   *  controls directly through it. Every full-AI civ call site omits it
-   *  (defaults to null = no filter, unchanged "every pioneer" behavior). */
+  /** `unitFilter` (optional): scopes this whole pass to a SUBSET of the
+   *  civ's pioneers -- used by Automate Actions to drive exactly ONE
+   *  automated pioneer through this same logic (movement, idle-stall
+   *  recovery, embark decisions, founding) without also dragging every
+   *  OTHER pioneer the human player still controls directly through it.
+   *  Every full-AI civ call site omits it (defaults to null = no filter,
+   *  "every pioneer" behavior). */
   function maybeFoundCity(civ, gameState, weights, difficulty, log, unitFilter = null) {
     // Only act on pioneers not currently carried by another unit (e.g. aboard a galley)
     const pioneers = civ.units.filter((u) =>
@@ -1167,15 +1133,15 @@ window.GameEngine = window.GameEngine || {};
         return ct && ct.landmassId === pioneerLandmassId;
       }).length;
       const emptyGalley = civ.units.find(u => u.typeId === "galley" && !u.carries);
-      // Either the old per-landmass city-count heuristic, or the civ already
+      // Either the per-landmass city-count heuristic, or the civ already
       // controls the majority of this landmass outright (see computeLandmassMajority)
       // -- a civ that conquered a whole island through combat rather than
       // founding 2+ cities on it should still send its pioneers on to new shores.
       const landmassConquered = !!(civ._landmassMajority && civ._landmassMajority.get(pioneerLandmassId));
       const shouldEmbark = !!emptyGalley && (citiesOnLandmass >= 2 || landmassConquered);
 
-      // "Radius fully filled" auto-settler (2026-07-22, user-directed): a
-      // Pioneer queued because one of this civ's cities has nothing left to
+      // "Radius fully filled" auto-settler: a Pioneer queued because one of
+      // this civ's cities has nothing left to
       // fill in (see chooseBuildAction's fullyFilledCityBonus) skips the
       // usual tile-SCORE search entirely and just grabs the nearest legal
       // spot -- see findClosestValidSettleSite. Stamped once at spawn
@@ -1212,10 +1178,10 @@ window.GameEngine = window.GameEngine || {};
           // wander fallbacks below since it's genuinely productive, not
           // just "less random."
         } else {
-          // Nothing left to settle and nothing remembered either (2026-07-20,
-          // user-directed): before falling back to a purely random walk,
-          // check whether any of this civ's own cities aren't yet
-          // road-connected to the rest -- a Pioneer with nothing to found is
+          // Nothing left to settle and nothing remembered either: before
+          // falling back to a purely random walk, check whether any of this
+          // civ's own cities aren't yet road-connected to the rest -- a
+          // Pioneer with nothing to found is
           // far more useful laying the missing link than wandering. See
           // findNearestDisconnectedCity.
           const disconnectedCity = findNearestDisconnectedCity(civ, gameState, pioneer.x, pioneer.y);
@@ -1235,22 +1201,19 @@ window.GameEngine = window.GameEngine || {};
 
       if (candidate.x === pioneer.x && candidate.y === pioneer.y) {
         // At destination — attempt to found (canFoundCityAt includes road check).
-        // Elf Druid (2026-07-19, user-directed): a Druid founding a city
-        // never needs road connectivity, unlike the Pioneer/Wanderer this
-        // same loop also handles -- its bond with the land runs deeper than
-        // infrastructure. Mirrors the skipRoadCheck already used for the
+        // Elf Druid: a Druid founding a city never needs road connectivity,
+        // unlike the Pioneer/Wanderer this same loop also handles -- its
+        // bond with the land runs deeper than infrastructure. Mirrors the
+        // skipRoadCheck already used for the
         // overseas/emergency-settle paths elsewhere in this file.
         const check = window.GameEngine.cities.canFoundCityAt(
           gameState.map, gameState.civs, pioneer.x, pioneer.y, civ.raceId,
           { emergencyFound: !!candidate.emergency, skipRoadCheck: pioneer.typeId === "druid" });
         if (check.ok) {
-          // Escort gate (2026-07-23, user-directed): founding a defenseless
-          // city in contested land is exactly how the founding/razing
-          // treadmill starts (see the 2026-07-23 balance-audit memory --
-          // Halfellow-vs-Orc and Human-vs-Elf/Dwarf both lost the large
-          // majority of every city founded this way). Holds off founding a
-          // NON-first city for a few turns if there's genuine local danger
-          // (settleDangerPenalty > 0 -- visible enemy military within
+          // Escort gate: founding a defenseless city in contested land is
+          // exactly how the founding/razing treadmill starts. Holds off
+          // founding a NON-first city for a few turns if there's genuine
+          // local danger (settleDangerPenalty > 0 -- visible enemy military within
           // SETTLE_DANGER_RADIUS, or the tile itself is contested) and no
           // friendly military unit is nearby to help hold it. Explicitly
           // exempt: this civ's very first city (civ.cities.length === 0)
@@ -1274,8 +1237,8 @@ window.GameEngine = window.GameEngine || {};
             log.push(`Pioneer holding at (${pioneer.x},${pioneer.y}) — no escort and local threat detected, waiting before founding (${pioneer._escortWaitTurns}/${ESCORT_WAIT_CAP})`);
             continue;
           }
-          // Automate Actions (2026-08-06, user-directed): an automated
-          // pioneer never founds on its own -- everything ABOVE this point
+          // Automate Actions: an automated pioneer never founds on its own
+          // -- everything ABOVE this point
           // (movement, road-gap filling, escort-wait safety) still runs
           // normally, since none of that spends resources or commits to
           // anything irreversible; only the actual founding pauses here,
@@ -1434,44 +1397,38 @@ window.GameEngine = window.GameEngine || {};
 
   /**
    * Generic, TARGET-AGNOSTIC "has this unit's position genuinely not
-   * changed across the last N calls" detector (2026-07-17, root-caused via
-   * [[project_roads_upkeep_stall_review]]'s per-unit stall tracking).
+   * changed across the last N calls" detector.
    *
    * Several long-running "march toward a chosen destination" behaviors
    * (exploreWith, exploreWater, the galley stranded-unit pickup logic)
-   * re-evaluate their target fresh every turn. When the freshly-chosen
-   * target happens to be a DIFFERENT tile than last turn's -- plausible
-   * any time fog-of-war/visibility shifts, or a nearest-tile search's tie-
-   * break varies -- while the unit is nonetheless still unable to make any
-   * real progress toward ANY of them (boxed in, cut off by water with no
-   * galley, etc.), a same-target-required stuck check never fires, because
-   * "same target" is never true two turns running even though the unit
-   * hasn't moved an inch. Measured cases of this defeating exploreWith's
-   * own same-target check ran up to 229 turns stationary before this fix.
+   * re-evaluate their target fresh every turn. A same-target-required stuck
+   * check can miss a genuinely stuck unit whenever the freshly-chosen target
+   * happens to differ from last turn's (fog-of-war shifts, tie-break
+   * variance in a nearest-tile search, ...) even though the unit hasn't
+   * moved an inch. This sidesteps that by only asking "did the unit itself
+   * actually move," never caring what it was trying to do.
    *
-   * This sidesteps that entirely by only ever asking "did the unit itself
-   * actually move," never caring what it was trying to do. Call once per
-   * turn for a unit pursuing an ongoing multi-turn goal; returns true once
-   * position has been unchanged for >= thresholdTurns consecutive calls.
-   * Self-resets the instant the unit's position differs from the last
-   * recorded one (including via the caller's own stuck-recovery action,
-   * e.g. wanderUnit actually moving it) -- callers never need to manually
-   * clear their tracking state.
+   * Call once per turn for a unit pursuing an ongoing multi-turn goal;
+   * returns true once position has been unchanged for >= thresholdTurns
+   * consecutive calls. Self-resets the instant the unit's position differs
+   * from the last recorded one (including via the caller's own stuck-
+   * recovery action) -- callers never need to manually clear their tracking
+   * state.
    *
-   * `key` namespaces the tracking per BEHAVIOR, not just per unit -- a
+   * `key` namespaces the tracking per BEHAVIOR, not just per unit -- e.g. a
    * galley's stranded-unit-pickup logic falls through to calling
-   * exploreWater as its own fallback within the same turn (pre-existing
-   * behavior); without separate keys, that fallback's own isUnitStalled
-   * check would see the position-hasn't-changed-yet state the pickup
-   * check just recorded THIS turn and double-count it, tripping its
-   * threshold about twice as fast as intended. Reuse the SAME key across
-   * calls that represent one continuous behavior even across function
-   * boundaries (e.g. exploreWith and exploreWater both use "explore" --
-   * a unit is only ever one or the other, land or naval, never both).
+   * exploreWater as its own fallback within the same turn; without separate
+   * keys, that fallback's own isUnitStalled check would double-count the
+   * position-hasn't-changed-yet state the pickup check just recorded THIS
+   * turn, tripping its threshold about twice as fast as intended. Reuse the
+   * SAME key across calls that represent one continuous behavior even
+   * across function boundaries (e.g. exploreWith and exploreWater both use
+   * "explore" -- a unit is only ever one or the other, land or naval, never
+   * both).
    *
    * Deliberately NOT applied to Dungeon Delve / Gold Vein "marching to
    * start a claim" -- those are long, genuinely stationary-once-arrived
-   * economic commitments by design, not a movement bug (user-confirmed).
+   * economic commitments by design, not a movement bug.
    */
   function isUnitStalled(unit, key, thresholdTurns = 3) {
     unit._stall = unit._stall || {};
@@ -1584,13 +1541,9 @@ window.GameEngine = window.GameEngine || {};
     // still get a new (ideally coastal) city from which to build a galley
     // and expand further. MUST match the threshold `canFoundCityAt` itself
     // applies when this candidate is later founded with `emergencyFound:
-    // true` (see the `candidate.emergency` arrival check above) -- this used
-    // to hardcode a bare `2` here while canFoundCityAt required
-    // EMERGENCY_CITY_SPACING (3), so a distance-2 tile could be returned as
-    // a "valid" candidate here and then unconditionally rejected on arrival
-    // every single time, with no memory of the failure -- confirmed
-    // directly as a real permanent pioneer-stall (see
-    // [[project_halfellow_tactics]]'s pacing investigation).
+    // true` (see the `candidate.emergency` arrival check above) -- a
+    // mismatch here would let a tile be returned as "valid" and then
+    // unconditionally rejected on arrival, permanently stalling the pioneer.
     const EMERGENCY_CITY_SPACING = window.GameEngine.cities.EMERGENCY_CITY_SPACING;
     bestScore = -Infinity;
     for (let dy = -SEARCH_RADIUS; dy <= SEARCH_RADIUS; dy++) {
@@ -1628,8 +1581,8 @@ window.GameEngine = window.GameEngine || {};
     return best;
   }
 
-  /** "Radius fully filled" auto-settler's site pick (2026-07-22, user-
-   *  directed): unlike findBestSettleSite above, this does NOT weigh
+  /** "Radius fully filled" auto-settler's site pick: unlike findBestSettleSite
+   *  above, this does NOT weigh
    *  candidates by computeTileCityScore at all -- it scans outward ring by
    *  ring (Chebyshev distance) from the pioneer and returns the FIRST
    *  legal spot found, i.e. the genuinely closest one, ties broken by scan
@@ -1696,9 +1649,8 @@ window.GameEngine = window.GameEngine || {};
     return null;
   }
 
-  /** True if `tile` holds an enemy structure (wall OR any other building --
-   *  previously this only checked walls, silently letting a unit walk onto/
-   *  through an enemy Bazaar, Guild Hall, etc.) that should block `unit`'s
+  /** True if `tile` holds an enemy structure (wall or any other building)
+   *  that should block `unit`'s
    *  movement onto it. Own structures never block (a civ isn't fenced in by
    *  its own buildings), and flying units bypass entirely (base property OR
    *  a temporary grant, e.g. Human's Flight -- see combat.js's isFlying) --
@@ -1721,7 +1673,7 @@ window.GameEngine = window.GameEngine || {};
   /**
    * True if (nx,ny) is a legal tile to directly PLACE a unit onto -- not
    * occupied by another unit, not water/impassable terrain, and not
-   * standing on an enemy wall/building/city (2026-08-03, user-reported).
+   * standing on an enemy wall/building/city.
    *
    * Used by every "find an open adjacent tile" mechanic that places a unit
    * WITHOUT going through the costed movement/pathfinding system --
@@ -1729,11 +1681,9 @@ window.GameEngine = window.GameEngine || {};
    * (spawnUnitAdjacentToUnit), Orc Dragon Riders' and Halfellow Devoted
    * Companions' disembark, and spawnUnitInCity's stacked-city fallback.
    * Each of those bypasses buildMoveRules' costFn entirely (a placement
-   * isn't a move), so each has always had to make this same check itself --
-   * the enemy-structure/city half was simply missing from every one of them
-   * until now, the one gap in an otherwise-consistent "never stand on an
-   * enemy's stuff" rule (buildMoveRules' costFn already enforces it for
-   * every ordinary move).
+   * isn't a move), so each has to make this same check itself, matching the
+   * "never stand on an enemy's stuff" rule buildMoveRules' costFn already
+   * enforces for every ordinary move.
    *
    * Deliberately does NOT exempt flying units the way
    * isEnemyStructureBlockingTile/isEnemyCityBlockingTile do for PASS-THROUGH

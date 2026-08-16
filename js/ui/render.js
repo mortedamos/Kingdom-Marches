@@ -11,16 +11,9 @@ window.UI = window.UI || {};
 
 (function () {
   // Base tile size in px; actual rendered size = TILE_SIZE * zoomLevel.
-  // Values live in js/data/config.js's VIEW section.
-  //
-  // TILE_SIZE was raised 34 -> 52 there (2026-08-03, user-directed: "the
-  // default state of the map should be zoomed in more"). Done via tile size
-  // rather than by shipping a zoomLevel > 1 default so that 100% still MEANS
-  // the intended default view -- the zoom readout would otherwise open every
-  // game reading "160%". MIN_ZOOM/MAX_ZOOM were rescaled to compensate,
-  // keeping the reachable absolute range essentially what it was:
-  // 0.25*52 = 13px/tile zoomed out (was 0.4*34 = 13.6) and 2.0*52 = 104px
-  // zoomed in (was 3.0*34 = 102).
+  // Values live in js/data/config.js's VIEW section. The default view is
+  // meant to read as 100% zoom, so the intended default is baked into
+  // TILE_SIZE itself rather than shipped as a zoomLevel > 1 default.
   const TILE_SIZE = window.GameConfig.view.tileSize;
   const MIN_ZOOM = window.GameConfig.view.minZoom;
   const MAX_ZOOM = window.GameConfig.view.maxZoom;
@@ -98,22 +91,20 @@ window.UI = window.UI || {};
   }
 
   // A terrain sprite variant is "tall" (e.g. the dramatic overhanging
-  // mountain_peak art added alongside the original flat mountain tiles) if
-  // its aspect ratio departs meaningfully from square -- the flat/legacy
-  // terrain sprites are exactly ts:ts square, while the tall variants are
-  // cropped-to-content portraits. 10% tolerance keeps this robust to minor
-  // crop-bbox noise without misclassifying a genuinely square sprite.
+  // mountain_peak art) if its aspect ratio departs meaningfully from square
+  // -- flat terrain sprites are exactly ts:ts square, while tall variants
+  // are cropped-to-content portraits. 10% tolerance keeps this robust to
+  // minor crop-bbox noise without misclassifying a genuinely square sprite.
   //
   // Checked against the manifest's per-FRAME dimensions, not the raw
   // image's naturalWidth/naturalHeight -- animated terrain (plains, hills,
   // forest, swamp, coast, ocean; see sprite-manifests.js) ships as a wide
   // horizontal strip of 2-4 square frames, so the raw sheet itself is far
-  // from square and was wrongly flagged "tall" here once, sending the
-  // whole strip through the bottom-anchored overhang path: squeezed into
-  // half a tile's height, leaving the top blank and the bottom showing
-  // two frames side by side. Single-frame art (mountains, both flat and
+  // from square and would otherwise get wrongly flagged "tall," sending the
+  // whole strip through the bottom-anchored overhang path and squeezing it
+  // into half a tile's height. Single-frame art (mountains, both flat and
   // tall peak) has frameWidth/frameHeight equal to the image's own
-  // dimensions (see sprites.js's resolveManifest), so this is unchanged
+  // dimensions (see sprites.js's resolveManifest), so this is unaffected
   // for them.
   function isTallTerrainSprite(manifest) {
     return Math.abs(manifest.frameHeight / manifest.frameWidth - 1) > 0.1;
@@ -155,9 +146,9 @@ window.UI = window.UI || {};
     ctx.drawImage(img, 0, 0, img.naturalWidth, img.naturalHeight, screenX, drawY, ts, drawHeight);
   }
 
-  // Jump-to-tile flash (2026-08-12, user-directed) -- see goToTile's own
-  // comment in main.js for where this gets armed. Pure fade-out, no pulsing/
-  // looping: a single clear "you are here" beat, not an ongoing distraction.
+  // Jump-to-tile flash -- see goToTile in main.js for where this gets armed.
+  // Pure fade-out, no pulsing/looping: a single clear "you are here" beat,
+  // not an ongoing distraction.
   const TILE_FLASH_ANIM_MS = 800;
   /** Draws the fading highlight for `tileFlash` ({x,y,start}) if it's still
    *  within its animation window. Returns `tileFlash` while still active, or
@@ -185,11 +176,11 @@ window.UI = window.UI || {};
 
   // Bottom-anchored box position for a tile enhancement icon of size `sz`,
   // in one of 3 horizontal slots (tileIconSlot) with margin from the tile
-  // edges -- user-directed: icons should sit low-left/low-center/low-right,
-  // never dead-center, with breathing room from the edge. Mirrors units'
-  // bottom-anchored biggerPct growth (see the unit draw loop below) rather
-  // than growing from a fixed center point, so `sz` is as freely adjustable
-  // per resource/ruin as biggerPct is per unit.
+  // edges -- icons sit low-left/low-center/low-right, never dead-center,
+  // with breathing room from the edge. Mirrors units' bottom-anchored
+  // biggerPct growth (see the unit draw loop below) rather than growing from
+  // a fixed center point, so `sz` is as freely adjustable per resource/ruin
+  // as biggerPct is per unit.
   function tileIconBox(screenX, screenY, ts, sz, x, y) {
     const margin = ts * RESOURCE_ICON_MARGIN_FRAC;
     const slot = tileIconSlot(x, y);
@@ -281,8 +272,8 @@ window.UI = window.UI || {};
       for (const city of c.cities) cityTileKeys.add(`${city.x},${city.y}`);
     }
 
-    // Construction placeholders (2026-08-07, user-directed): every queued
-    // building/wall already has its final tile locked in at queue time
+    // Construction placeholders: every queued building/wall already has its
+    // final tile locked in at queue time
     // (city.buildQueue.placeAt -- see orders.js's queueBuild), even though
     // the actual structure record doesn't exist until completion. Built
     // once per frame so the tile loop below is a plain lookup instead of
@@ -329,21 +320,13 @@ window.UI = window.UI || {};
           continue; // fog of war: nothing live (units, current buildings/roads) renders for unseen tiles
         }
 
-        // Terrain — sprite on top of a flat color-matched backing fill, not
-        // sprite-only. Some terrain art still carries a leftover chroma-key
-        // resize seam (a column of not-fully-opaque edge pixels -- see
-        // doc/art_style_guide.md's -SeamlessEdges section, only ever applied
-        // to some terrain types) -- confirmed live via direct pixel
-        // sampling: alpha<255 pixels recurring at every tile-boundary column
-        // even after the render-time pixel-alignment fix above. Drawn over a
-        // transparent canvas, that translucent seam blends with whatever's
-        // behind the canvas (dark page background), showing as a faint
-        // line at every tile edge independent of the grid-line stroke. The
-        // same backing fill this branch already used as its sprite-missing
-        // fallback works as a fix too: any translucent sprite pixel now
-        // blends into a matching solid terrain color instead of the empty
-        // canvas, so the seam disappears regardless of which terrain PNGs
-        // still have the defect.
+        // Terrain — sprite drawn over a flat color-matched backing fill, not
+        // sprite-only: some terrain art still carries a leftover chroma-key
+        // resize seam (translucent edge pixels -- see doc/art_style_guide.md's
+        // SeamlessEdges section) that would otherwise blend with whatever's
+        // behind the canvas and show as a faint line at every tile edge. The
+        // backing fill (also the sprite-missing fallback) hides it regardless
+        // of which terrain PNGs still have the defect.
         ctx.fillStyle = window.GameData.TERRAIN[tile.terrain].color;
         ctx.fillRect(screenX, screenY, ts, ts);
         const terrainSprite = window.UI.sprites.pick(terrainSpriteKey(tile, x, y, gameState.seed), tile);
@@ -422,34 +405,28 @@ window.UI = window.UI || {};
           }
         }
 
-        // Civ-influence ambient overlay (2026-08-12, user-directed) -- small
-        // non-animated per-race flavor sprites (assets/enhancements/
-        // influence_{raceId}_{1..5}.png) drawn on owned tiles so occupied
-        // land reads as "occupied and worked," independent of the
-        // `showInfluence` tint toggle below (this is always-on ambient
-        // detail, not a debug overlay). Skips tiles with a building/wall
-        // (`tile.structure`), a city center (`cityTileKeys`), or a river
-        // (`tile.hasRiver`) -- user-directed exclusion list; every other
-        // owned tile shows it, INCLUDING resource/ruin tiles and tiles with
-        // a road (this draws on top of a road, same as resource/ruin
-        // already do). Deliberately gated on `tile.status === "owned"` only,
-        // not "contested" -- this is meant to read as settled, not
-        // contested, ground. Picked deterministically (tileInfluenceVariantHash)
-        // rather than through sprites.js's pick(), so the same tile always
-        // shows the same variant across reloads of the same map -- see that
-        // function's own doc comment.
+        // Civ-influence ambient overlay: small non-animated per-race flavor
+        // sprites (assets/enhancements/influence_{raceId}_{1..5}.png) drawn
+        // on owned tiles so occupied land reads as "occupied and worked,"
+        // independent of the `showInfluence` tint toggle below (always-on
+        // ambient detail, not a debug overlay). Skips tiles with a
+        // building/wall (`tile.structure`), a city center (`cityTileKeys`),
+        // or a river (`tile.hasRiver`); every other owned tile shows it,
+        // including resource/ruin tiles and tiles with a road (drawn on top
+        // of them, same as resource/ruin icons). Gated on
+        // `tile.status === "owned"` only, not "contested" -- meant to read
+        // as settled ground. Picked deterministically
+        // (tileInfluenceVariantHash) rather than through sprites.js's
+        // pick(), so the same tile always shows the same variant across
+        // reloads of the same map.
         //
-        // Coast/ocean tiles (2026-08-13, user-directed) route to a SEPARATE
-        // sprite pool (`enhancement/influence-water/${raceId}`, one non-
-        // animated variant per race -- assets/enhancements/
-        // influence_water_{raceId}.png) instead of the land pool above --
-        // land-themed art (a cottage, a pig pen, a mining camp, ...) has no
-        // business sitting on open water, and ocean/coast tiles are a
-        // legal fill/claim target (see cities.js's own doc comment on
-        // isOffsetFilled), so they DO need their own answer here rather
-        // than just being skipped. Falls through to drawing nothing if a
-        // race's water variant hasn't been generated yet (pickDeterministic
-        // returns null the same way pick() does for a missing asset).
+        // Coast/ocean tiles route to a SEPARATE sprite pool
+        // (`enhancement/influence-water/${raceId}`, one non-animated variant
+        // per race) instead of the land pool above -- land-themed art has no
+        // business sitting on open water, and ocean/coast tiles are a legal
+        // fill/claim target (see cities.js's isOffsetFilled). Falls through
+        // to drawing nothing if a race's water variant hasn't been generated
+        // yet.
         if (tile.status === "owned" && tile.ownerCivId && !tile.structure
             && !cityTileKeys.has(`${x},${y}`) && !(tile.hasRiver && (tile.hasRiver.n || tile.hasRiver.s || tile.hasRiver.e || tile.hasRiver.w))) {
           const ownerCiv = civs[tile.ownerCivId];
@@ -505,9 +482,9 @@ window.UI = window.UI || {};
     drawReachableOverlay(ctx, gameState, viewState, offsetX, offsetY, ts);
     drawPlacementOverlay(ctx, viewState, offsetX, offsetY, ts);
 
-    // Jump-to-tile flash (2026-08-12, user-directed): a brief highlight on
-    // whichever tile a coordinate link (sidebar mission text, a dialog's
-    // "Go to", ...) just centered the view on -- same layer as the reachable/
+    // Jump-to-tile flash: a brief highlight on whichever tile a coordinate
+    // link (sidebar mission text, a dialog's "Go to", ...) just centered the
+    // view on -- same layer as the reachable/
     // placement overlays just above (over terrain, under cities/units), so
     // it's still visible under whatever's standing there without hiding it.
     if (viewState.tileFlash) {
@@ -539,12 +516,11 @@ window.UI = window.UI || {};
         if (citySprite) {
           if (tieredSprite) {
             // Draw height follows the image's own aspect ratio, anchored to
-            // the BOTTOM of the city's tile -- a square legacy image (e.g.
-            // Orc's existing tiers) draws exactly as before (drawHeight =
-            // ts), while a portrait image (e.g. Elf's taller tiers, see art
-            // style guide §12) bleeds upward into the tile north of the
-            // city instead of being squashed into one tile. No per-race
-            // format flag needed; the renderer just follows the art.
+            // the BOTTOM of the city's tile -- a square image draws at
+            // drawHeight = ts, while a portrait image (e.g. Elf's taller
+            // tiers, see art style guide §12) bleeds upward into the tile
+            // north of the city instead of being squashed into one tile. No
+            // per-race format flag needed; the renderer just follows the art.
             const img = tieredSprite.image;
             const drawHeight = ts * (img.naturalHeight / img.naturalWidth);
             const drawY = screenY + ts - drawHeight;
@@ -623,16 +599,15 @@ window.UI = window.UI || {};
       }
     }
 
-    // Deferred-pass queues (2026-07-22, moved up from just before the Units
-    // loop below) -- floating text should never be occluded by a unit sprite
-    // drawn later in the position-sorted pass, and now also needs to be
-    // populated from the Structures loop just below (burning walls/
-    // buildings), which runs before that Units loop.
+    // Deferred-pass queues, populated by the Structures loop below (burning
+    // walls/buildings) as well as the Units loop -- floating text should
+    // never be occluded by a unit sprite drawn later in the position-sorted
+    // pass.
     const quipBubbleQueue = [];
     const floatingTextQueue = [];
 
-    // Cities can raise floating text too (2026-08-06: "Resource Production"
-    // -- see cities.js's applyResourceProduction), matched by object identity
+    // Cities can raise floating text too ("Resource Production" -- see
+    // cities.js's applyResourceProduction), matched by object identity
     // exactly like a unit or a structure record. Its own pass rather than a
     // push inside the city loop above, which runs before these queues exist.
     for (const civ of Object.values(civs)) {
@@ -695,10 +670,10 @@ window.UI = window.UI || {};
             ctx.fillRect(bx, by, bw * Math.max(0, s.hp) / s.maxHp, bh);
           }
           // Floating text anchored to a STRUCTURE record rather than a unit
-          // (2026-07-22, user-directed: burning walls/buildings) -- matched
-          // by object identity against activeFloatingTexts, same convention
-          // as the per-unit queue below, just populated from this loop
-          // instead since a structure record never appears in civ.units.
+          // (burning walls/buildings) -- matched by object identity against
+          // activeFloatingTexts, same convention as the per-unit queue
+          // below, just populated from this loop instead since a structure
+          // record never appears in civ.units.
           if (overlays.hasActiveFloatingText(s)) {
             floatingTextQueue.push({ unit: s, screenX, screenY });
           }
@@ -775,22 +750,14 @@ window.UI = window.UI || {};
       const boxX = screenX + ts / 2 - boxSize / 2;
       const boxY = screenY + pad + normalSize - boxSize;
 
-      // Hidden transparency (2026-07-22, user-directed): a slight alpha
-      // reduction on OWN hidden units only (own units are always fully
-      // visible to their own civ regardless of Hidden -- this is a
-      // "notice at a glance which of my units are hidden" affordance, not
-      // a fog-of-war effect; an opponent's hidden unit is never drawn here
-      // at all, gated upstream by tile visibility). Applies uniformly in
-      // spectator mode (humanCivId null), where every civ's units are
+      // Slight alpha reduction on OWN hidden units only (own units are
+      // always fully visible to their own civ regardless of Hidden -- this
+      // is a "notice at a glance which of my units are hidden" affordance,
+      // not a fog-of-war effect; an opponent's hidden unit is never drawn
+      // here at all, gated upstream by tile visibility). Applies uniformly
+      // in spectator mode (humanCivId null), where every civ's units are
       // equally "own" to the viewer.
       const isOwnHidden = !!unit.conditions?.hidden && (humanCivId == null || unit.civId === humanCivId);
-      // Spent-unit dimming REMOVED (2026-08-06, user-directed): a unit that
-      // had nothing left to do this turn used to fade to 0.5 alpha, same
-      // mechanism as Hidden's 0.55 -- the two read as visually identical at a
-      // glance, which is exactly backwards for Hidden (a state the player
-      // specifically wants to notice). "Who still needs orders" has its own
-      // affordance already (the Next Unit cycler/footer count), so this isn't
-      // load-bearing information lost, just a redundant, confusable cue.
       const spriteAlpha = isOwnHidden ? 0.55 : 1;
       overlays.drawLevelUpGlowBehind(ctx, unit, boxX, boxY, boxSize, now);
       ctx.save();
@@ -841,29 +808,25 @@ window.UI = window.UI || {};
       }
     }
 
-    // Ambient villager figures -- drawn after Cities/Structures/Units
-    // (2026-08-07, user-reported: a figure standing on a wall's own tile
-    // was being fully painted over by that wall's sprite, which draws
-    // after the Cities loop this used to sit right beside) so they're
-    // never hidden behind a building or wall they're walking past. See
-    // villagers.js's own doc comment.
+    // Ambient villager figures -- drawn after Cities/Structures/Units so
+    // they're never hidden behind a building or wall they're walking past.
+    // See villagers.js's own doc comment.
     window.UI.villagers.tick(villagerCities, map);
     window.UI.villagers.draw(ctx, offsetX, offsetY, ts, villagerCities);
 
-    // Where the player's self-directing units are headed (2026-08-06,
-    // user-directed) -- above units, below the hover preview, same reasoning
-    // as the path preview: a route is only useful if it reads THROUGH
-    // whatever it passes over.
+    // Where the player's self-directing units are headed -- above units,
+    // below the hover preview, same reasoning as the path preview: a route
+    // is only useful if it reads THROUGH whatever it passes over.
     drawPlannedPaths(ctx, gameState, viewState, offsetX, offsetY, ts, now);
 
-    // "Next Unit" flash (2026-08-06, user-directed): drawn above cities/units
-    // so it reads clearly regardless of what's standing on the tile.
+    // "Next Unit" flash: drawn above cities/units so it reads clearly
+    // regardless of what's standing on the tile.
     drawFlashTile(ctx, viewState, offsetX, offsetY, ts, now);
 
-    // Enemy-in-range reticles (2026-08-07, user-directed): a persistent
-    // small target over every enemy unit the CURRENTLY SELECTED unit could
-    // actually attack right now, so the player doesn't have to hover each
-    // enemy one at a time to find out which ones are in range. Drawn before
+    // Enemy-in-range reticles: a persistent small target over every enemy
+    // unit the CURRENTLY SELECTED unit could actually attack right now, so
+    // the player doesn't have to hover each enemy one at a time to find out
+    // which ones are in range. Drawn before
     // the hover-driven order preview just below, so that preview's own
     // fuller attack reticle still reads clearly on top for whichever tile
     // is actually being considered.
@@ -886,7 +849,7 @@ window.UI = window.UI || {};
     }
   }
 
-  // --- Player order overlays (2026-08-01, user-directed) -----------------
+  // --- Player order overlays ----------------------------------------------
   // Only ever drawn for a unit the HUMAN player can actually command -- an AI
   // civ's units and a spectator game get none of this, since there's no order
   // to give. See js/engine/orders.js for the rules these visualize; this file
@@ -942,14 +905,11 @@ window.UI = window.UI || {};
    *
    * Unit-summon placements (Orc Wisp, Halfellow Frost/Fire Trap -- see
    * main.js's startWispSummonPlacement/startTrapPlacement) additionally set
-   * placement.previewUnitId/previewRaceId (2026-08-11, user-directed: "the
-   * graphic to indicate the target tile ... should instead be the semi
-   * transparent graphic of the unit to be placed"): every valid slot still
-   * gets the plain gold wash below so the candidate set reads at a glance,
-   * but the tile currently under the cursor (the one that would actually be
-   * picked) additionally gets a real, half-transparent render of the unit
-   * that would appear there (drawPlacementPreviewUnit), replacing the old
-   * placeholder-rune/brighter-rectangle-only affordance.
+   * placement.previewUnitId/previewRaceId: every valid slot still gets the
+   * plain gold wash below so the candidate set reads at a glance, but the
+   * tile currently under the cursor (the one that would actually be picked)
+   * additionally gets a real, half-transparent render of the unit that would
+   * appear there (drawPlacementPreviewUnit).
    */
   function drawPlacementOverlay(ctx, viewState, offsetX, offsetY, ts) {
     const placement = viewState.placement;
@@ -994,14 +954,14 @@ window.UI = window.UI || {};
 
   const FLASH_TILE_MS = 900;
 
-  /** "Next Unit" flash (2026-08-06, user-directed): a brief, brightening-
-   *  then-fading ring drawn on whichever tile main.js's handleNextUnit just
-   *  jumped to, so a click that recenters the map onto a unit the player
-   *  wasn't already looking at actually draws the eye there instead of
-   *  landing silently. viewState.flashTile = { x, y, startTime } is set
-   *  once per jump and self-clears here once FLASH_TILE_MS has elapsed --
-   *  no separate timer in main.js needed, same "just stop drawing it"
-   *  approach drawPlacementOverlay's own pulse uses for its animation. */
+  /** "Next Unit" flash: a brief, brightening-then-fading ring drawn on
+   *  whichever tile main.js's handleNextUnit just jumped to, so a click that
+   *  recenters the map onto a unit the player wasn't already looking at
+   *  actually draws the eye there instead of landing silently.
+   *  viewState.flashTile = { x, y, startTime } is set once per jump and
+   *  self-clears here once FLASH_TILE_MS has elapsed -- no separate timer in
+   *  main.js needed, same "just stop drawing it" approach
+   *  drawPlacementOverlay's own pulse uses for its animation. */
   function drawFlashTile(ctx, viewState, offsetX, offsetY, ts, now) {
     const flash = viewState.flashTile;
     if (!flash) return;
@@ -1032,9 +992,9 @@ window.UI = window.UI || {};
   const PATH_DASH_MS_PER_CYCLE = 700; // one dash+gap of travel; lower = faster crawl
 
   /**
-   * Every self-directing unit's route, drawn on the map (2026-08-06,
-   * user-directed): a dashed line crawling from the unit along the exact path
-   * it will take, with an X on the tile it's headed for. Covers units mid
+   * Every self-directing unit's route, drawn on the map: a dashed line
+   * crawling from the unit along the exact path it will take, with an X on
+   * the tile it's headed for. Covers units mid
    * multi-turn goto order and units running on Automate Actions -- see
    * orders.js's plannedPath, which decides what (if anything) each unit is
    * aiming at and does the pathfinding.
@@ -1056,11 +1016,9 @@ window.UI = window.UI || {};
     const dashOffset = -((now % PATH_DASH_MS_PER_CYCLE) / PATH_DASH_MS_PER_CYCLE) * dashCycle;
 
     for (const unit of civ.units) {
-      // Selected-unit-only (2026-08-07, user-directed): this used to draw
-      // every unit's own goto/planned-path line at once (full opacity for
-      // the selected one, half for the rest) -- a busy map with several
-      // units mid-route got cluttered with lines for units the player
-      // isn't even looking at right now.
+      // Only the selected unit's route is drawn -- showing every unit's
+      // planned path at once clutters a busy map with lines for units the
+      // player isn't even looking at right now.
       if (unit !== viewState.selectedUnit) continue;
       const plan = orders.plannedPath(unit, gameState);
       if (!plan) continue;
@@ -1125,8 +1083,8 @@ window.UI = window.UI || {};
 
   /**
    * Small red target reticle over every enemy unit currently in range of
-   * the selected unit (2026-08-07, user-directed) -- reuses
-   * ai.js's canAttackUnitNow (the same range/visibility/line-of-sight/
+   * the selected unit -- reuses ai.js's canAttackUnitNow (the same
+   * range/visibility/line-of-sight/
    * reachability check considerAttackOrGarrison itself consults) rather
    * than re-deriving range logic here, so this can never promise a target
    * that clicking wouldn't actually let the player attack. Deliberately
@@ -1209,9 +1167,9 @@ window.UI = window.UI || {};
         drawPreviewLabel(ctx, `${Math.round(preview.odds * 100)}%`, cx, screenY - 2, color);
       }
     } else if (preview.kind === "move") {
-      // Spelled out (2026-08-04, user-reported): "mp" read as a cryptic
-      // abbreviation floating on the map with nothing nearby to decode it
-      // from, unlike H/C/L which the sidebar spells out elsewhere first.
+      // Spelled out rather than abbreviated ("mp") since it floats on the
+      // map with nothing nearby to decode it from, unlike H/C/L which the
+      // sidebar spells out elsewhere first.
       drawPreviewLabel(ctx, `${preview.cost} movement point${preview.cost === 1 ? "" : "s"}`, cx, screenY - 2, color);
     } else {
       // Blocked: a slash through the tile, plus why.
@@ -1282,7 +1240,7 @@ window.UI = window.UI || {};
   /**
    * Draws the composited road overlay for one tile. `conn` has boolean
    * n/s/e/w/ne/se/sw/nw flags for which neighbours have a road. Falls back
-   * to the old brown cross if the road art hasn't loaded yet.
+   * to a plain brown cross if the road art hasn't loaded yet.
    */
   function drawRoadOverlay(ctx, screenX, screenY, ts, conn) {
     const cardinal = window.UI.sprites.pick("road/cardinal");
@@ -1320,8 +1278,8 @@ window.UI = window.UI || {};
    *  visually with adjacent segments instead of every tile showing the same
    *  fixed diorama regardless of layout (see art style guide §13). Unlike
    *  the road/river overlays above, walls can't just rotate one stub at draw
-   *  time -- a wall's art (per the user's 2026-07-21 design) has an upright
-   *  tree growing through the stonework, and rotating the whole image 90°
+   *  time -- a wall's art has an upright tree growing through the
+   *  stonework, and rotating the whole image 90°
    *  would tip that tree onto its side. So this picks between a small set of
    *  purpose-authored full-tile variants instead of compositing rotated
    *  pieces:
@@ -1595,9 +1553,9 @@ window.UI = window.UI || {};
    *  exact same on-screen test the main draw loop (above) uses to skip
    *  rendering off-screen tiles, factored out so other systems can ask "is
    *  this actually visible right now" without duplicating the scroll/zoom/
-   *  clamp math (see main.js's sfx visibility gating, 2026-07-24,
-   *  user-directed: don't play a unit's sound if it's off-screen). A pure
-   *  query -- unlike render(), it does NOT clamp/mutate viewState.scrollX/Y. */
+   *  clamp math (e.g. main.js's sfx visibility gating, which skips playing a
+   *  unit's sound if it's off-screen). A pure query -- unlike render(), it
+   *  does NOT clamp/mutate viewState.scrollX/Y. */
   function isTileOnScreen(x, y, canvas, gameState, viewState) {
     const { map } = gameState;
     const ts = Math.round(TILE_SIZE * (viewState.zoomLevel || 1));
@@ -1615,9 +1573,9 @@ window.UI = window.UI || {};
    * js/ui/ringmenu.js). Pure, like isTileOnScreen above: it does NOT clamp or
    * mutate viewState.scrollX/Y the way render() does.
    *
-   * Deliberately duplicates render()'s ts/offset derivation (2026-08-06,
-   * user-directed) rather than inverting screenToTile, which looks like the
-   * obvious way to do this and is wrong: screenToTile uses the UNROUNDED
+   * Deliberately duplicates render()'s ts/offset derivation rather than
+   * inverting screenToTile, which looks like the obvious way to do this and
+   * is wrong: screenToTile uses the UNROUNDED
    * tile size, while everything actually drawn uses Math.round(ts) and a
    * rounded offset (see render()'s own comment on why). At zoom 1.37 that's
    * 71.24 vs 71 px per tile -- a drift that accumulates across the map, so a

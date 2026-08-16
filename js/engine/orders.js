@@ -6,15 +6,14 @@
  *
  * Everything here is a thin adapter over the engine functions the AI already
  * uses -- ai.js's spendMovement, computeReachableTiles and
- * considerAttackOrGarrison. Deliberately so: an attack in this game drags a
- * long tail of race-specific follow-through behind it (Burning, Fireball
- * splash, Orc curses, Elf Freeze, zombie raising, Hound-and-Hunter/Undaunted
- * replacement spawns, cargo drops, plunder, XP and leveling, quips, sfx,
- * combat events). Reimplementing even a little of that for the player would
- * mean two divergent combat systems in one game. Instead a player order goes
- * into the AI's own attack path with the target pre-chosen (opts.forcedTarget
- * -- see considerAttackOrGarrison), so the player and the AI are running
- * identical code with a different decision-maker in front of it.
+ * considerAttackOrGarrison. An attack drags a long tail of race-specific
+ * follow-through behind it (Burning, Fireball splash, Orc curses, Elf
+ * Freeze, zombie raising, Hound-and-Hunter/Undaunted replacement spawns,
+ * cargo drops, plunder, XP and leveling, quips, sfx, combat events), so a
+ * player order goes into the AI's own attack path with the target
+ * pre-chosen (opts.forcedTarget -- see considerAttackOrGarrison), keeping
+ * the player and the AI on identical code with a different decision-maker
+ * in front of it.
  *
  * ACTION ECONOMY (see ai.js's "Turn-action-economy foundation" comment):
  * a unit's turn is movement points (unit.movesRemaining) PLUS one action
@@ -22,17 +21,15 @@
  * Build Road, founding, and starting a channel consume the action. This
  * module enforces that split for the player -- the AI enforces it for itself.
  *
- * RIGHT-CLICK RADIAL MENU (2026-08-06, user-directed): js/ui/input.js's
- * contextmenu handler no longer issues a move/attack immediately -- it opens
- * a ring of actions around the clicked tile, built from mapMenuOptions below
- * (which routes to contextMenuOptions for a unit or cityRingOptions for a
- * city), and the player's pick dispatches through main.js's
- * handleContextMenuAction. A destination out of this turn's movement range is
- * no longer just refused -- "Move to This Tile"/"Build Road to This Tile"
- * start a persisted gotoTarget order (see startGotoOrder/advanceGotoOrder)
- * that keeps making progress automatically every turn until it arrives or
- * gets blocked. This module is now the ONLY place that decides what a unit or
- * city can be told to do; the sidebar renders information only.
+ * RIGHT-CLICK RADIAL MENU: js/ui/input.js's contextmenu handler opens a ring
+ * of actions around the clicked tile, built from mapMenuOptions below (which
+ * routes to contextMenuOptions for a unit or cityRingOptions for a city),
+ * and the player's pick dispatches through main.js's handleContextMenuAction.
+ * A destination out of this turn's movement range starts a persisted
+ * gotoTarget order (see startGotoOrder/advanceGotoOrder) that keeps making
+ * progress automatically every turn until it arrives or gets blocked. This
+ * module is the ONLY place that decides what a unit or city can be told to
+ * do; the sidebar renders information only.
  */
 
 window.GameEngine = window.GameEngine || {};
@@ -50,27 +47,23 @@ window.GameEngine = window.GameEngine || {};
 
   /** True once a unit has nothing useful left to do this turn -- drives both
    *  the map's spent-unit dimming and the "next unit needing orders" cycler.
-   *  A unit with a pending gotoTarget order (2026-08-06, user-directed --
-   *  see startGotoOrder) counts as spent too: it's already been given
-   *  orders and will keep executing them automatically turn after turn, so
-   *  it shouldn't keep interrupting Next Unit or the End Turn reminder
-   *  until it arrives (gotoTarget clears) or its order gets cancelled
-   *  (blocked path, or a new order overriding it). */
+   *  A unit with a pending gotoTarget order (see startGotoOrder) counts as
+   *  spent too: it will keep executing that order automatically turn after
+   *  turn, so it shouldn't keep interrupting Next Unit or the End Turn
+   *  reminder until it arrives (gotoTarget clears) or its order gets
+   *  cancelled (blocked path, or a new order overriding it). */
   function isSpent(unit, gameState) {
     if (unit.usedThisTurn) return true;
     if (unit.channeling) return true;
     if (unit.gotoTarget) return true;
-    // Sentry / Follow (2026-08-12, user-directed): same standing-order
-    // exclusion as gotoTarget above -- both keep acting automatically every
-    // turn (see turns.js's finishCivTurn -> advanceSentryOrder/
-    // advanceFollowOrder) until they resolve on their own or the player
-    // cancels them, so neither should keep nagging Next Unit/End Turn.
+    // Sentry / Follow: same standing-order exclusion as gotoTarget above --
+    // both keep acting automatically every turn (see turns.js's
+    // finishCivTurn -> advanceSentryOrder/advanceFollowOrder) until they
+    // resolve on their own or the player cancels them.
     if (unit.sentry) return true;
     if (unit.followTarget) return true;
-    // Automate Actions (2026-08-06, user-directed): an automated unit is
-    // "already ordered" by definition -- same exclusion goto orders already
-    // get from the Next Unit/End Turn nagging cycle (a pendingIntent still
-    // gets its own blocking confirmation modal, just not this nag).
+    // An automated unit is "already ordered" by definition (a pendingIntent
+    // still gets its own blocking confirmation modal, just not this nag).
     if (unit.automated) return true;
     const budget = unit.movesRemaining != null
       ? unit.movesRemaining
@@ -209,8 +202,8 @@ window.GameEngine = window.GameEngine || {};
 
     if (log.length) window.GameEngine.ai.appendAIActionLog(gameState, civ.id, log);
     if (didAttack) {
-      // Combat can kill units on either side, which changes the board's
-      // occupancy -- the cached reachable set is no longer trustworthy.
+      // Combat can kill units on either side, changing the board's
+      // occupancy, so the cached reachable set is no longer trustworthy.
       invalidateReachCache();
       window.GameEngine.turns.refreshVisibility(gameState);
     }
@@ -218,42 +211,34 @@ window.GameEngine = window.GameEngine || {};
   }
 
   /**
-   * MULTI-TURN GOTO ORDERS (2026-08-06, user-directed)
-   * ---------------------------------------------------
-   * A unit that can't reach its destination in one turn used to just be
-   * refused ("Can't reach this turn" -- see previewOrder's `move` branch,
-   * fed by reachableTiles' single-turn budget). unit.gotoTarget = { x, y,
-   * buildRoad } is a persisted order that survives across turns: set once
-   * (startGotoOrder), then re-advanced by exactly one turn's worth of
-   * progress each time advanceGotoOrder is called -- once immediately when
-   * the order is issued (so a same-turn-reachable destination completes
-   * instantly, identical to the old one-shot move), and once automatically
-   * per turn after that for every human unit with a pending order (see
-   * turns.js's beginCivTurn, which calls this in the human civ's branch
-   * before the player gets to act that turn -- same "already decided,
-   * player can still override with a fresh order" spirit AI units get from
-   * their own per-turn re-decision).
+   * MULTI-TURN GOTO ORDERS
+   * -----------------------
+   * unit.gotoTarget = { x, y, buildRoad } is a persisted order that survives
+   * across turns: set once (startGotoOrder), then re-advanced by exactly one
+   * turn's worth of progress each time advanceGotoOrder is called -- once
+   * immediately when the order is issued (so a same-turn-reachable
+   * destination completes instantly), and once automatically per turn after
+   * that for every human unit with a pending order (see turns.js's
+   * beginCivTurn, which calls this in the human civ's branch before the
+   * player gets to act that turn).
    *
    * Two shapes:
    *   - Plain move (buildRoad: false): identical to moveTo/spendMovement --
    *     walks as far as the unit's movement budget allows this turn.
    *   - "Build road to this tile" (buildRoad: true): checks the unit's OWN
-   *     tile first (2026-08-07, user-reported fix -- see advanceGotoOrder),
-   *     then walks the path ONE step at a time, but the INSTANT it would
-   *     enter a tile with no road already on it, stops there and builds the
-   *     road (an instant action, same as the standalone "Build Road Here"
-   *     button) -- ending this turn's progress even if movement remains.
-   *     Guarantees a fully connected road with no gaps, including at the
-   *     starting tile: already-roaded ground along the way is crossed at
-   *     full speed with no stopping, but only one NEW segment can go down
-   *     per turn (building is always a whole action, regardless of the
-   *     unit's raw movement stat).
+   *     tile first (see advanceGotoOrder), then walks the path ONE step at a
+   *     time, but the INSTANT it would enter a tile with no road already on
+   *     it, stops there and builds the road (an instant action, same as the
+   *     standalone "Build Road Here" button) -- ending this turn's progress
+   *     even if movement remains. Guarantees a fully connected road with no
+   *     gaps: already-roaded ground along the way is crossed at full speed
+   *     with no stopping, but only one NEW segment can go down per turn
+   *     (building is always a whole action, regardless of the unit's raw
+   *     movement stat).
    *
-   * Blocked-path handling (2026-08-06, user-directed: "stop and wait for
-   * new orders", not auto-reroute/auto-fight like an AI unit): if a call
-   * makes literally NO progress at all (didn't move, didn't build), the
-   * order is cancelled outright rather than left to spin forever making
-   * zero progress every future turn too.
+   * Blocked-path handling: if a call makes literally NO progress at all
+   * (didn't move, didn't build), the order is cancelled outright rather than
+   * left to spin forever making zero progress every future turn too.
    */
   function startGotoOrder(unit, gameState, x, y, buildRoad, opts = {}) {
     unit.gotoTarget = { x, y, buildRoad: !!buildRoad, foundCity: !!opts.foundCity };
@@ -264,12 +249,11 @@ window.GameEngine = window.GameEngine || {};
     unit.gotoTarget = null;
   }
 
-  /** Rest and Defend (2026-08-07, user-directed): heals via unit.resting AND
-   *  doubles defense until the start of this unit's next turn via the
-   *  "defending" condition -- see combat.js's setCondition. Pulled out of
-   *  main.js's handleRestAndDefend into a plain engine function so it can
-   *  be re-invoked automatically by turns.js's per-turn "Shift-held: repeat
-   *  for the next 3 turns" auto-repeat (see finishCivTurn), not just from a
+  /** Rest and Defend: heals via unit.resting AND doubles defense until the
+   *  start of this unit's next turn via the "defending" condition -- see
+   *  combat.js's setCondition. A plain engine function so it can be
+   *  re-invoked automatically by turns.js's per-turn "Shift-held: repeat for
+   *  the next 3 turns" auto-repeat (see finishCivTurn), not just from a
    *  direct player click. Returns false (no-op) if the unit already acted
    *  this turn -- same guard the ring pill's own visibility uses. */
   function performRestAndDefend(unit, gameState) {
@@ -297,18 +281,13 @@ window.GameEngine = window.GameEngine || {};
     let progressed = false;
 
     if (target.buildRoad) {
-      // The STARTING tile first (2026-08-07, user-reported bug fix).
-      // pathfinding.js's findPath returns steps "from (but not including)
-      // the start tile" -- exactly right for movement, but it meant this
-      // order's own road-laying loop below (which walks `path`) never once
-      // looked at the tile the unit was ALREADY standing on. A unit ordered
-      // to build a road to some remote tile would happily road every tile
-      // it stepped onto along the way while leaving its own starting tile
-      // bare, so the finished road had a one-tile gap at the beginning --
-      // the exact opposite of "gapless" this mechanic's own doc comment
-      // above promises. Checked and handled before any movement happens
-      // this call, same "one new segment per turn, stop here regardless of
-      // leftover movement" rule the loop below applies to every other tile.
+      // The STARTING tile first: pathfinding.js's findPath returns steps
+      // "from (but not including) the start tile", so the road-laying loop
+      // below (which walks `path`) never looks at the tile the unit is
+      // already standing on. Handled here before any movement happens this
+      // call, same "one new segment per turn, stop regardless of leftover
+      // movement" rule the loop below applies to every other tile -- keeps
+      // the finished road gapless, including at the starting tile.
       const startTile = map.tiles[unit.y * map.width + unit.x];
       if (!unit.usedThisTurn && !startTile.hasRoad) {
         startTile.hasRoad = true;
@@ -365,8 +344,8 @@ window.GameEngine = window.GameEngine || {};
   }
 
   /**
-   * SENTRY (2026-08-12, user-directed)
-   * -----------------------------------
+   * SENTRY
+   * -------
    * A standing order: do nothing until an enemy unit comes within this
    * unit's own attack range, then attack the closest one -- no player input
    * either turn. Called once per turn for every sentried unit (see turns.js's
@@ -403,8 +382,8 @@ window.GameEngine = window.GameEngine || {};
   }
 
   /**
-   * FOLLOW (2026-08-12, user-directed)
-   * ------------------------------------
+   * FOLLOW
+   * -------
    * A standing order: every turn, walk toward unit.followTarget (another
    * allied unit, set via main.js's tile-placement flow) far enough to end
    * this turn adjacent to it, if not already. Re-targets the follower's
@@ -426,9 +405,7 @@ window.GameEngine = window.GameEngine || {};
       unit.currentMission = `Following ${label}`;
       return;
     }
-    // spendMovement (not the exported ai.js's own moveUnitToward, which
-    // ISN'T exported -- this is the exact same one-line body it wraps)
-    // paths toward the target's tile and stops as close as this turn's
+    // Paths toward the target's tile and stops as close as this turn's
     // budget allows; since the target's own tile is occupied it can never
     // actually be landed on, so this naturally settles adjacent once in
     // range rather than needing a separate "stop short" check here.
@@ -437,13 +414,12 @@ window.GameEngine = window.GameEngine || {};
   }
 
   /**
-   * WHERE IS THIS UNIT GOING? (2026-08-06, user-directed)
-   * ------------------------------------------------------
-   * A unit that keeps moving on its own between clicks -- one mid multi-turn
-   * goto order, or one running on Automate Actions -- used to give the player
-   * no way to see where it was headed short of reading the sidebar's mission
-   * text one unit at a time. This reports the route it will take and the tile
-   * it's aiming for, so render.js can draw it on the map (drawPlannedPaths).
+   * WHERE IS THIS UNIT GOING?
+   * ---------------------------
+   * For a unit that keeps moving on its own between clicks -- one mid
+   * multi-turn goto order, or one running on Automate Actions -- this
+   * reports the route it will take and the tile it's aiming for, so
+   * render.js can draw it on the map (drawPlannedPaths).
    *
    * Two sources, in priority order -- the same order sidebar.js's own
    * Order/Intent rows use, and for the same reason: a player-issued goto
@@ -493,13 +469,11 @@ window.GameEngine = window.GameEngine || {};
   }
 
   /**
-   * A UNIT'S ACTIONS (2026-08-06, user-directed)
-   * ---------------------------------------------
+   * A UNIT'S ACTIONS
+   * -----------------
    * Every action available for `unit` if the player right-clicks tile (x,y).
-   * Replaced the old immediate-move/attack right-click (see js/ui/input.js)
-   * with a menu the player picks from every time, no exceptions for "simple"
-   * in-range moves; that menu is now the radial one (js/ui/ringmenu.js).
-   * Two shapes:
+   * The player picks from a radial menu every time, no exceptions for
+   * "simple" in-range moves (js/ui/ringmenu.js). Two shapes:
    *   - Own tile: the unit's FULL action list -- Found City, Build Road,
    *     every channel start/claim/cancel variant, Go Hidden/Cancel Hidden,
    *     Stop (a pending goto order), Rest, Defend, Garrison, Automate, Level
@@ -510,26 +484,20 @@ window.GameEngine = window.GameEngine || {};
    *     have one) -- both start a gotoTarget order via startGotoOrder rather
    *     than a same-turn-only move.
    *
-   * THIS IS THE ONLY COPY OF THESE GATES. It used to be the second of two:
-   * sidebar.js's renderUnitPanel carried the same conditions for its own
-   * button set, and this comment warned to change both together. That button
-   * set is gone (2026-08-06 -- the sidebar is information-only now, see its
-   * "INFORMATION ONLY" note), so there is no longer another copy to keep in
-   * sync. What sidebar.js still derives independently is the NON-actionable
-   * half it always interleaved with those buttons -- "Cannot found here:
-   * <reason>", a channel's turn counter -- which answers a different
-   * question ("why can't I?") than this does ("what can I?").
+   * THIS IS THE ONLY COPY OF THESE GATES. sidebar.js is information-only
+   * (see its "INFORMATION ONLY" note) and derives independently only the
+   * NON-actionable half it interleaves with that information -- "Cannot
+   * found here: <reason>", a channel's turn counter -- which answers a
+   * different question ("why can't I?") than this does ("what can I?").
    *
    * Each option is {kind, label, danger?} -- `kind` is a stable string
    * main.js's handleContextMenuAction dispatches on; `danger` carries the
    * same red-styling hint sidebar.js's action-btn-danger class gives
    * Cancel/Disband. Pure/non-mutating, re-derived fresh every time the menu
-   * needs to render or a click needs resolving (same "recompute, don't cache
-   * a closure" convention availableBuilds/handleChooseBuild already use).
+   * needs to render or a click needs resolving.
    */
-  /** Whether `carrierUnit` could carry `passengerUnit` right now (2026-08-10,
-   *  user-directed: player-facing Carry/Board ring options, mirroring the
-   *  AI's own galley-boarding/Shadowsteed-carry rules -- see ai.js's Naval
+  /** Whether `carrierUnit` could carry `passengerUnit` right now, mirroring
+   *  the AI's own galley-boarding/Shadowsteed-carry rules (see ai.js's Naval
    *  boarding block and techs.js's elf_shadowsteed doc comment for where
    *  each restriction below comes from). Both directions (carrier's own
    *  ring offering "Carry X", passenger's own ring offering "Board Y") share
@@ -573,10 +541,8 @@ window.GameEngine = window.GameEngine || {};
     const options = [];
     if (!canCommand(unit, gameState, humanCivId)) return options;
 
-    // Halfellow "Set the Trap" (2026-08-11, user-directed: "trap units have
-    // no player defined actions other than to disband"): short-circuits
-    // every other branch below -- a trap has nothing to move, attack,
-    // channel, garrison, or automate, full stop.
+    // Trap units short-circuit every other branch below -- a trap has
+    // nothing to move, attack, channel, garrison, or automate, full stop.
     if (unit.typeId === "trap_frost" || unit.typeId === "trap_fire") {
       return [{ kind: "disband", label: "Disband Unit", danger: true }];
     }
@@ -596,18 +562,15 @@ window.GameEngine = window.GameEngine || {};
         if (baseUnit.canBuildRoad && !tile.hasRoad) {
           options.push({ kind: "buildRoadHere", label: "Build Road Here" });
         }
-        // Help Build (2026-08-12, user-directed): a Pioneer standing on its
-        // OWN civ's city can throw its turn into whatever that city is
-        // currently building, cutting 1 turn off the countdown -- same
-        // buildQueue.turnsRemaining field progressBuildQueue counts down
-        // every turn (see ai.js), so this is just an extra manual decrement
-        // on top of that automatic one. canBuildRoad rather than typeId ---
-        // ==="pioneer" would be the more general gate, but road-building
-        // itself is hardcoded to "pioneer" too (see main.js's
-        // handleBuildRoad), so this stays consistent with that. Only offered
-        // for the power-based cost model (turnsRemaining !== undefined) --
-        // the legacy coin-accumulation path this deliberately excludes is
-        // already unreachable in practice (see ai.js's progressBuildQueue).
+        // Help Build: a Pioneer standing on its own civ's city can throw its
+        // turn into whatever that city is currently building, decrementing
+        // buildQueue.turnsRemaining one extra time on top of the automatic
+        // per-turn countdown (ai.js's progressBuildQueue). Gated on
+        // canBuildRoad rather than typeId === "pioneer" for generality, but
+        // stays consistent since road-building itself is hardcoded to
+        // "pioneer" too (see main.js's handleBuildRoad). Only offered for
+        // the power-based cost model (turnsRemaining !== undefined); the
+        // legacy coin-accumulation path is unreachable in practice.
         if (baseUnit.canBuildRoad && !unit.usedThisTurn) {
           const homeCity = civ.cities.find((c) => c.x === unit.x && c.y === unit.y);
           if (homeCity && homeCity.buildQueue && homeCity.buildQueue.turnsRemaining !== undefined) {
@@ -617,24 +580,21 @@ window.GameEngine = window.GameEngine || {};
       }
 
       // Channeled actions -- sidebar.js's channelActions. Same
-      // CHANNEL_LABELS/gating as that block. (Dwarf's old separate
-      // "prospecting" channel/mechanic was removed 2026-08-17, user-
-      // directed -- Dwarves now use the shared "mining" channel below, via
-      // the Dwarven Mining OR-bypass.)
+      // CHANNEL_LABELS/gating as that block. Dwarves also use this shared
+      // "mining" channel via the Dwarven Mining OR-bypass below.
       const CHANNEL_LABELS = { delving: "Delving", fishing: "Fishing", hunting: "Hunting", farming: "Farming", mining: "Mining" };
       if (unit.channeling && CHANNEL_LABELS[unit.channeling]) {
         options.push({ kind: "claimChannel", label: "Claim Gathered Resources" });
         options.push({ kind: "cancelChannel", label: `Cancel ${CHANNEL_LABELS[unit.channeling]}`, danger: true });
       } else if (!unit.usedThisTurn && !unit.channeling) {
-        // !unit.channeling excludes "garrison" (2026-08-06) -- see
-        // sidebar.js's matching gate for why.
+        // !unit.channeling excludes "garrison" -- see sidebar.js's matching
+        // gate for why.
         const onVein = tile.resource === "gold" || tile.resource === "iron";
         const onGame = tile.resource === "game";
         const onFertile = tile.resource === "fertile";
         if (civ.unlockedMechanics && civ.unlockedMechanics.has("dungeon_delve") && tile.isRuin) {
-          // Universal since 2026-08-14 (see doc/world_encounters_design.md)
-          // -- was unit.typeId === "wizard"-only; any unit can Delve now,
-          // granted free to every race via the Level 0 "ruin_delving" tech.
+          // Granted free to every race via the Level 0 "ruin_delving" tech;
+          // any unit can Delve, not just Wizards.
           options.push({ kind: "startChannel:delving", label: "Start Delving" });
         } else if (unit.typeId === "galley" && !unit.carries && tile.resource === "fish"
             && civ.unlockedMechanics && civ.unlockedMechanics.has("fishing")) {
@@ -645,17 +605,13 @@ window.GameEngine = window.GameEngine || {};
           options.push({ kind: "startChannel:farming", label: "Farm Soil" });
         } else if (onVein
             && ((baseUnit.canProspect && civ.unlockedMechanics && civ.unlockedMechanics.has("mining"))
-              // Dwarven Mining (2026-08-17, user-directed): lets ANY dwarf
-              // unit mine, not just canProspect ones -- see techs.js's
-              // dwarf_dwarven_mining, layer 1 civic.
+              // Dwarven Mining lets ANY dwarf unit mine, not just
+              // canProspect ones -- see techs.js's dwarf_dwarven_mining,
+              // layer 1 civic.
               || (civ.raceId === "dwarf" && civ.unlockedMechanics && civ.unlockedMechanics.has("dwarven_mining")))) {
-          // Generic Vein prospecting (2026-08-12, user-directed: "Pioneer
-          // should be able to prospect all tile resource types except
-          // ruins"), gated behind the Level 0 "Mining" tech (2026-08-17,
-          // user-directed -- was previously ungated), same flat-payout
-          // shape (turns.js's "mining" channel block). Dwarf's Prospector's
-          // Claim/The Deep Mines apply as a yield multiplier on top of this
-          // same channel now, rather than their own separate one.
+          // Flat-payout shape (turns.js's "mining" channel block). Dwarf's
+          // Prospector's Claim/The Deep Mines apply as a yield multiplier on
+          // top of this same channel rather than their own separate one.
           options.push({ kind: "startChannel:mining", label: "Mine Vein" });
         }
       }
@@ -670,33 +626,21 @@ window.GameEngine = window.GameEngine || {};
         options.push({ kind: "openChest", label: "Open Chest" });
       }
 
-      // Cast Fly on an ally (2026-08-06, user-directed bug fix; range
-      // extended 2026-08-12): one pill per eligible ally within the
-      // Wizard's REACH (adjacency plus however far it can still walk this
-      // turn -- same "move there and still cast, same turn" formula
-      // maybeGrantFlight's AI play already used internally, now offered to
-      // the player too), offered from the WIZARD'S OWN tile -- not from
-      // right-clicking the ally directly. That would seem like the more
-      // natural gesture, but it's unreachable under this game's own
-      // interaction rule ("right-click always selects whichever of your own
-      // units is standing on the clicked tile" -- see mapMenuOptions' own
-      // doc comment): right-clicking an ally who is also a commandable unit
-      // of yours always retargets the ring to become THAT unit's own ring,
-      // before this function is ever even asked about the combination of
-      // "wizard selected, ally clicked". Right-click the caster instead, same
-      // as every other own-tile action here.
-      //
-      // This is the first of several AI-only caster-and-ally/enemy-target
-      // actions (ai.js's maybeGrantFlight and its siblings -- Freezing
-      // Touch, Teleport Strike, Nature's Grace, ...) promoted to a real
-      // player-facing option; see that audit's findings for why the others
-      // weren't done at the same time. See ai.js's castFlightOnAlly for the
-      // actual cast, which re-validates every one of these conditions
-      // itself (and walks the Wizard into adjacency first if the target
-      // isn't already there) rather than trusting this list stayed accurate
-      // since it was drawn.
+      // Cast Fly on an ally: one pill per eligible ally within the Wizard's
+      // REACH (adjacency plus however far it can still walk this turn --
+      // same "move there and still cast, same turn" formula maybeGrantFlight's
+      // AI play uses internally), offered from the WIZARD'S OWN tile rather
+      // than by right-clicking the ally directly, since right-clicking an
+      // ally who is also a commandable unit of yours always retargets the
+      // ring to become THAT unit's own ring first (see mapMenuOptions' own
+      // doc comment). Right-click the caster instead, same as every other
+      // own-tile action here. See ai.js's castFlightOnAlly for the actual
+      // cast, which re-validates every one of these conditions itself (and
+      // walks the Wizard into adjacency first if the target isn't already
+      // there) rather than trusting this list stayed accurate since it was
+      // drawn.
       if (unit.typeId === "wizard" && !unit.usedThisTurn && civ.unlockedMechanics?.has("flight_grant")) {
-        const reach = 1 + (unit.movesRemaining ?? window.GameEngine.ai.computeMovementBudget(unit, gameState.map, civs));
+        const reach = 1 + (unit.movesRemaining ?? window.GameEngine.ai.computeMovementBudget(unit, gameState.map, gameState.civs));
         for (const ally of civ.units) {
           if (ally === unit || ally.carriedBy) continue;
           if (window.GameEngine.influence.chebyshev(unit.x, unit.y, ally.x, ally.y) > reach) continue;
@@ -707,11 +651,11 @@ window.GameEngine = window.GameEngine || {};
         }
       }
 
-      // Carry / Board (2026-08-10, user-directed): one pill per eligible
-      // adjacent unit, same "offered from the ACTING unit's own tile" shape
-      // as "Cast Fly on an ally" above -- Carry from the carrier's ring,
-      // Board from the passenger's, both gated by the shared
-      // canCarryPassenger predicate so they can never disagree.
+      // Carry / Board: one pill per eligible adjacent unit, same "offered
+      // from the ACTING unit's own tile" shape as "Cast Fly on an ally"
+      // above -- Carry from the carrier's ring, Board from the passenger's,
+      // both gated by the shared canCarryPassenger predicate so they can
+      // never disagree.
       if (!unit.usedThisTurn) {
         for (let dy = -1; dy <= 1; dy++) {
           for (let dx = -1; dx <= 1; dx++) {
@@ -730,10 +674,8 @@ window.GameEngine = window.GameEngine || {};
         }
       }
 
-      // Drop Off (2026-08-11, user-directed: "a unit carrying another unit
-      // doesn't appear to have a ring menu option to drop off"): promotes
-      // the disembark half of ai.js's operateDragonCarry/operateGalley cargo
-      // logic -- previously AI-only -- to a real ring action. Gated on
+      // Drop Off: the disembark half of ai.js's operateDragonCarry/
+      // operateGalley cargo logic, as a real ring action. Gated on
       // hasOpenDisembarkTile so the pill never appears when there's nowhere
       // to actually put the passenger down (e.g. a Galley boxed in by water
       // on every side). Same "!unit.usedThisTurn" gate as Carry/Board above
@@ -744,12 +686,10 @@ window.GameEngine = window.GameEngine || {};
         options.push({ kind: "dropOff", label: `Drop Off ${label}` });
       }
 
-      // Troubadour aura activate/deactivate (2026-08-10, user-directed):
-      // researching Heavy Metal/Power Metal used to turn the aura on
-      // automatically and permanently -- now it's an opt-in/opt-out ring
-      // action, same shape as Hidden/Garrison below. See turns.js's own
-      // gate (civ.isHuman && !troubadour.auraActive) for where this
-      // actually takes effect; AI Troubadours are unaffected.
+      // Troubadour aura activate/deactivate: an opt-in/opt-out ring action,
+      // same shape as Hidden/Garrison below. See turns.js's own gate
+      // (civ.isHuman && !troubadour.auraActive) for where this actually
+      // takes effect; AI Troubadours are unaffected.
       if (unit.typeId === "troubadour"
           && civ.unlockedMechanics && (civ.unlockedMechanics.has("heavy_metal") || civ.unlockedMechanics.has("power_metal"))) {
         const hasHeavyMetal = civ.unlockedMechanics.has("heavy_metal");
@@ -764,14 +704,12 @@ window.GameEngine = window.GameEngine || {};
         }
       }
 
-      // Elf "Roots of the World" (2026-08-10, user-directed): promotes the
-      // AI-only teleport (ai.js's performDruidTeleport/attemptDruidTeleport)
-      // to a player-facing ring action, same "AI mechanic promoted to a real
-      // option" precedent as "Cast Fly on an ally" above. Two variants --
-      // teleport the Druid itself, or an adjacent ally -- both hand off to
-      // main.js's tile-placement mode (viewState.placement) to pick the
-      // destination, since unlike every other ring pill this one needs an
-      // arbitrary explored tile, not a fixed slot list.
+      // Elf "Roots of the World": Druid teleport (ai.js's
+      // performDruidTeleport/attemptDruidTeleport). Two variants -- teleport
+      // the Druid itself, or an adjacent ally -- both hand off to main.js's
+      // tile-placement mode (viewState.placement) to pick the destination,
+      // since unlike every other ring pill this one needs an arbitrary
+      // explored tile, not a fixed slot list.
       if (unit.typeId === "druid" && !unit.usedThisTurn
           && civ.unlockedMechanics?.has("roots_of_the_world")) {
         options.push({ kind: "teleportSelf", label: "Roots of the World (Teleport Self)" });
@@ -787,15 +725,11 @@ window.GameEngine = window.GameEngine || {};
         }
       }
 
-      // Human "Teleportation" (2026-08-11, user-directed): same promotion as
-      // Roots of the World above -- the AI-only teleport (ai.js's
-      // performWizardTeleport/attemptWizardTeleport/maybeTeleportStrike) had
-      // NO player-facing UI at all until now, only ever firing automatically
-      // (a badly-hurt Wizard fleeing, or the AI repositioning a Trebuchet/
-      // strongest adjacent ally onto an undefended enemy target). Reuses the
-      // SAME "teleportSelf"/"teleportAlly:X,Y" ring kinds as Druid above --
-      // main.js's handler picks performPlayerWizardTeleport vs.
-      // performPlayerDruidTeleport off the acting unit's own typeId, so
+      // Human "Teleportation": Wizard teleport (ai.js's
+      // performWizardTeleport/attemptWizardTeleport/maybeTeleportStrike).
+      // Reuses the SAME "teleportSelf"/"teleportAlly:X,Y" ring kinds as
+      // Druid above -- main.js's handler picks performPlayerWizardTeleport
+      // vs. performPlayerDruidTeleport off the acting unit's own typeId, so
       // there's no need for a second set of kind strings.
       if (unit.typeId === "wizard" && !unit.usedThisTurn
           && civ.unlockedMechanics?.has("teleportation")) {
@@ -812,27 +746,23 @@ window.GameEngine = window.GameEngine || {};
         }
       }
 
-      // Human "Freezing Touch" ring option removed (2026-08-17, user-
-      // directed rework): the tech is now a passive +50% frozen-on-hit
-      // chance on the Wizard's ordinary attacks (see ai.js's
-      // considerAttackOrGarrison), not a separate targeted action.
+      // Human "Freezing Touch" has no ring option: it's a passive +50%
+      // frozen-on-hit chance on the Wizard's ordinary attacks (see ai.js's
+      // considerAttackOrGarrison), not a targeted action.
 
-      // Human "Fireball!" (2026-08-17, user-directed rework: was automatic
-      // splash off an ordinary attack, now a standalone targeted action).
-      // Opens tile-placement mode (main.js's startFireballPlacement) over
-      // every in-bounds tile within FIREBALL_RANGE -- no visibility
-      // requirement, same as Teleportation's "anywhere explored" reach not
-      // being limited to current vision either.
+      // Human "Fireball!": a standalone targeted action. Opens tile-placement
+      // mode (main.js's startFireballPlacement) over every in-bounds tile
+      // within FIREBALL_RANGE -- no visibility requirement, same as
+      // Teleportation's "anywhere explored" reach.
       if (unit.typeId === "wizard" && !unit.usedThisTurn && civ.unlockedMechanics?.has("fireball_splash")) {
         options.push({ kind: "fireball", label: "Fireball!" });
       }
 
-      // Halfellow "Riddle" (2026-08-11, user-directed): same promotion,
-      // previously fired only by maybeRiddlePlay. One pill per enemy unit
-      // within this caster's own effectiveRange (scales with Boomerang,
-      // same as a normal attack -- see ai.js's maybeRiddlePlay), excluding
-      // Hidden or already-Befuddled targets, and respecting the per-caster
-      // cooldown (ai.js's RIDDLE_COOLDOWN_ROUNDS) the same way the AI does.
+      // Halfellow "Riddle": one pill per enemy unit within this caster's own
+      // effectiveRange (scales with Boomerang, same as a normal attack --
+      // see ai.js's maybeRiddlePlay), excluding Hidden or already-Befuddled
+      // targets, and respecting the per-caster cooldown
+      // (ai.js's RIDDLE_COOLDOWN_ROUNDS) the same way the AI does.
       if ((unit.typeId === "trouble_maker" || unit.typeId === "wanderer") && !unit.usedThisTurn
           && civ.unlockedMechanics?.has("riddle") && (unit._riddleCooldownUntilTurn || 0) <= (gameState.turnNumber || 0)) {
         const range = window.GameEngine.combat.effectiveRange(unit, civ);
@@ -847,13 +777,11 @@ window.GameEngine = window.GameEngine || {};
         }
       }
 
-      // Halfellow "Resource Heist" (2026-08-11, user-directed): same
-      // promotion, previously fired only by maybeResourceHeistPlay. Melee-
-      // range only (this ability requires adjacency to execute, unlike the
-      // two ranged ones above) -- one pill per adjacent enemy unit that's
-      // currently channeling (Prospector's Claim/Dungeon Delve/Fishing)
-      // with a non-empty stash, same eligibility findResourceHeistTarget
-      // itself checks.
+      // Halfellow "Resource Heist": melee-range only (requires adjacency to
+      // execute, unlike the two ranged ones above) -- one pill per adjacent
+      // enemy unit that's currently channeling (Prospector's Claim/Dungeon
+      // Delve/Fishing) with a non-empty stash, same eligibility
+      // findResourceHeistTarget itself checks.
       if (unit.typeId === "trouble_maker" && !unit.usedThisTurn && civ.unlockedMechanics?.has("resource_heist")) {
         for (let dy = -1; dy <= 1; dy++) {
           for (let dx = -1; dx <= 1; dx++) {
@@ -872,15 +800,13 @@ window.GameEngine = window.GameEngine || {};
         }
       }
 
-      // Halfellow "Unlock the Gate" (2026-08-11, user-directed): same
-      // promotion, previously fired only by maybeUnlockTheGatePlay. Melee-
-      // range only, same as Resource Heist above -- one pill per adjacent
-      // enemy wall that isn't already suppressed (combat.js's
-      // isWallDefenseSuppressed), same eligibility findUnlockTheGateTarget
-      // itself checks. Targets a structure, not a unit -- uses
-      // cities.js's findStructureAt (returns { civ, city, record, building
-      // }) to get the parent city performUnlockTheGate needs to walk its
-      // neighboring wall segments.
+      // Halfellow "Unlock the Gate": melee-range only, same as Resource
+      // Heist above -- one pill per adjacent enemy wall that isn't already
+      // suppressed (combat.js's isWallDefenseSuppressed), same eligibility
+      // findUnlockTheGateTarget itself checks. Targets a structure, not a
+      // unit -- uses cities.js's findStructureAt (returns { civ, city,
+      // record, building }) to get the parent city performUnlockTheGate
+      // needs to walk its neighboring wall segments.
       if (unit.typeId === "trouble_maker" && !unit.usedThisTurn && civ.unlockedMechanics?.has("unlock_the_gate")) {
         for (let dy = -1; dy <= 1; dy++) {
           for (let dx = -1; dx <= 1; dx++) {
@@ -894,17 +820,13 @@ window.GameEngine = window.GameEngine || {};
         }
       }
 
-      // Elf "Air Beneath, Eyes Above"/"Shadowsteed" (2026-08-10, user-
-      // directed: "mirror this setup for elf druid" -- same instant-summon
-      // + player-facing ring option as Orc's Bog Spirit/Wisp below): the
-      // Druid's summon used to be AI-only (maybeElfDruidPlay); this
-      // promotes it to a real ring action. No tile-placement mode needed --
-      // unlike the Wisp's arbitrary swamp destination, Raptor/Shadowsteed
-      // always land on an open tile adjacent to the Druid (see ai.js's
-      // spawnUnitAdjacentToUnit), so a single click is the whole
+      // Elf "Air Beneath, Eyes Above"/"Shadowsteed": no tile-placement mode
+      // needed -- unlike the Wisp's arbitrary swamp destination, Raptor/
+      // Shadowsteed always land on an open tile adjacent to the Druid (see
+      // ai.js's spawnUnitAdjacentToUnit), so a single click is the whole
       // interaction. Each option only appears while this Druid doesn't
       // already have a live one of that type (ai.js's druidHasLiveSummon --
-      // one Raptor, one Shadowsteed, per Druid, same cap as before).
+      // one Raptor, one Shadowsteed, per Druid).
       if (unit.typeId === "druid" && !unit.usedThisTurn) {
         if (civ.unlockedMechanics?.has("raptor_summon")
             && !window.GameEngine.ai.druidHasLiveSummon(civ, unit, "raptor")) {
@@ -916,30 +838,26 @@ window.GameEngine = window.GameEngine || {};
         }
       }
 
-      // Orc "Bog Spirit" (2026-08-10, user-directed; summon made instant
-      // 2026-08-10, user-reported bug fix -- see ai.js's
-      // startBogWitchWispSummon doc comment): promotes the Bog Witch's Wisp
-      // summon to a player-facing ring action, same "hand off to main.js's
-      // tile-placement mode" shape as Roots of the World above -- the
-      // destination is any ever-explored swamp tile, not a fixed slot list,
-      // so it needs the same arbitrary-tile picker. Gated on the civ-wide
-      // Wisp cap (see ai.js's wispCapReached) so the option simply doesn't
-      // appear once every Bog Witch's slot is already spoken for.
+      // Orc "Bog Spirit": same "hand off to main.js's tile-placement mode"
+      // shape as Roots of the World above -- the destination is any
+      // ever-explored swamp tile, not a fixed slot list, so it needs the
+      // same arbitrary-tile picker. Gated on the civ-wide Wisp cap (see
+      // ai.js's wispCapReached) so the option simply doesn't appear once
+      // every Bog Witch's slot is already spoken for.
       if (unit.typeId === "bog_witch" && !unit.usedThisTurn
           && civ.unlockedMechanics?.has("wisp_summon") && !window.GameEngine.ai.wispCapReached(civ)) {
         options.push({ kind: "summonWisp", label: "Summon Wisp" });
       }
 
-      // Halfellow "Set the Trap" (2026-08-11, user-directed): same
-      // "tile-placement mode, gated on the civ-wide trap cap" shape as the
-      // Wisp above, but the destination is any tile within the Trouble
-      // Maker's own short range (see ai.js's TRAP_PLACEMENT_RANGE), not an
-      // arbitrary ever-explored tile -- still needs the picker (more than
-      // one legal tile) rather than a single-click adjacent-spawn like
-      // Raptor/Shadowsteed. Two separate pills, one per flavor, both gated
-      // on the SAME shared cap (ai.js's trapCapReached counts both
-      // typeIds together) -- picking either one still only ever nets one
-      // trap for this cap slot.
+      // Halfellow "Set the Trap": same "tile-placement mode, gated on the
+      // civ-wide trap cap" shape as the Wisp above, but the destination is
+      // any tile within the Trouble Maker's own short range (see ai.js's
+      // TRAP_PLACEMENT_RANGE), not an arbitrary ever-explored tile -- still
+      // needs the picker (more than one legal tile) rather than a
+      // single-click adjacent-spawn like Raptor/Shadowsteed. Two separate
+      // pills, one per flavor, both gated on the SAME shared cap
+      // (ai.js's trapCapReached counts both typeIds together) -- picking
+      // either one still only ever nets one trap for this cap slot.
       if (unit.typeId === "trouble_maker" && !unit.usedThisTurn
           && civ.unlockedMechanics?.has("trap_summon") && !window.GameEngine.ai.trapCapReached(civ)) {
         options.push({ kind: "setTrap:frost", label: "Set Frost Trap" });
@@ -953,43 +871,40 @@ window.GameEngine = window.GameEngine || {};
         options.push({ kind: "goHidden", label: "Go Hidden" });
       }
 
-      // Goto order (2026-08-06) -- not in sidebar.js's original 3 blocks,
-      // added alongside gotoTarget itself; see sidebar.js's own
-      // stopOrderBtn for the equivalent sidebar button.
+      // Goto order -- see sidebar.js's own stopOrderBtn for the equivalent
+      // sidebar button.
       if (unit.gotoTarget) options.push({ kind: "stopOrder", label: "Stop Order", danger: true });
 
-      // Sentry (2026-08-12, user-directed): a standing order that does
-      // nothing until an enemy comes within range, then attacks it, without
-      // ever asking the player for a fresh order in the meantime (see
-      // isSpent above and advanceSentryOrder below, run every turn from
-      // turns.js's finishCivTurn). Only offered to units that could
-      // actually attack something -- a unit with no attack stat standing
-      // Sentry would never have anything to react to.
+      // Sentry: a standing order that does nothing until an enemy comes
+      // within range, then attacks it, without ever asking the player for a
+      // fresh order in the meantime (see isSpent above and
+      // advanceSentryOrder below, run every turn from turns.js's
+      // finishCivTurn). Only offered to units that could actually attack
+      // something -- a unit with no attack stat standing Sentry would never
+      // have anything to react to.
       if (unit.sentry) {
         options.push({ kind: "cancelSentry", label: "Cancel Sentry", danger: true });
       } else if (!unit.usedThisTurn && !unit.channeling && baseUnit.attack > 0) {
         options.push({ kind: "sentry", label: "Sentry" });
       }
 
-      // Follow (2026-08-12, user-directed): a standing order to move toward
-      // and stay adjacent to a chosen allied unit every turn (see
-      // advanceFollowOrder below). The target can be ANY allied unit
-      // anywhere on the map, not a small fixed set of adjacent candidates
-      // (unlike Cast Fly/Carry above), so this hands off to main.js's
-      // tile-placement mode -- same mechanism Roots of the World/
-      // Teleportation use for an arbitrary destination, just with the
-      // "slots" being wherever this civ's OTHER units currently stand
-      // instead of empty terrain.
+      // Follow: a standing order to move toward and stay adjacent to a
+      // chosen allied unit every turn (see advanceFollowOrder below). The
+      // target can be ANY allied unit anywhere on the map, not a small fixed
+      // set of adjacent candidates (unlike Cast Fly/Carry above), so this
+      // hands off to main.js's tile-placement mode -- same mechanism Roots
+      // of the World/Teleportation use for an arbitrary destination, just
+      // with the "slots" being wherever this civ's OTHER units currently
+      // stand instead of empty terrain.
       if (unit.followTarget) {
         options.push({ kind: "cancelFollow", label: "Cancel Follow", danger: true });
       } else if (!unit.usedThisTurn && !unit.channeling && civ.units.some((u) => u !== unit && !u.carriedBy)) {
         options.push({ kind: "follow", label: "Follow..." });
       }
 
-      // Rest and Defend (2026-08-07, user-directed): merged from two
-      // separate pills into one -- both effects (heal via unit.resting,
-      // x2 defense via the "defending" condition) still apply together;
-      // see main.js's handleRestAndDefend. overlays.js's drawConditionBadges
+      // Rest and Defend: one pill, both effects (heal via unit.resting, x2
+      // defense via the "defending" condition) apply together; see
+      // main.js's handleRestAndDefend. overlays.js's drawConditionBadges
       // skips the resting icon whenever "defending" is also active so this
       // shows exactly one badge, not two.
       if (!unit.usedThisTurn) {
@@ -1001,15 +916,11 @@ window.GameEngine = window.GameEngine || {};
       } else if (!unit.usedThisTurn && !unit.channeling && civ.cities.some((c) => c.x === unit.x && c.y === unit.y)) {
         options.push({ kind: "garrison", label: "Garrison" });
       }
-      // Automate Actions -- sidebar.js's automateBtn. Added here (2026-08-06)
-      // when the ring menu became the way actions are given, so it stops
-      // being the one unit verb reachable only from the sidebar. Same
-      // underlying unit.automated flag/handler for every unit type -- Dire
-      // Wolf just gets wolf-appropriate wording (2026-08-10, user-directed:
-      // "Hunt for Prey" in its ring menu, triggering "hunt automation"),
-      // since runAutomatedUnitTurn's cascade for a Dire Wolf is in practice
-      // almost entirely maybeDireWolfHunt (see ai.js) -- there's very little
-      // else for it to automate.
+      // Automate Actions -- sidebar.js's automateBtn. Same underlying
+      // unit.automated flag/handler for every unit type -- Dire Wolf just
+      // gets wolf-appropriate wording ("Hunt for Prey", triggering "hunt
+      // automation"), since runAutomatedUnitTurn's cascade for a Dire Wolf
+      // is in practice almost entirely maybeDireWolfHunt (see ai.js).
       const isDireWolf = unit.typeId === "dire_wolf";
       options.push({
         kind: "automate",
@@ -1028,12 +939,10 @@ window.GameEngine = window.GameEngine || {};
     }
 
     // Attack, when something targetable is standing there and is actually in
-    // range. Deliberately falls THROUGH to the move options below when it
-    // isn't (2026-08-06, user-directed fix): this used to return early on any
-    // target, so right-clicking an enemy one tile out of reach opened nothing
-    // at all -- indistinguishable from a broken click. "Move to This Tile"
-    // against an occupied tile paths to the closest reachable approach (see
-    // pathfinding.js), which reads correctly as "advance on it".
+    // range. Falls THROUGH to the move options below when it isn't: "Move to
+    // This Tile" against an occupied tile paths to the closest reachable
+    // approach (see pathfinding.js), which reads correctly as "advance on
+    // it" rather than opening nothing at all.
     const target = attackTargetAt(unit, gameState, x, y, humanCivId);
     if (target) {
       const preview = previewOrder(unit, gameState, x, y, humanCivId);
@@ -1043,10 +952,10 @@ window.GameEngine = window.GameEngine || {};
       }
     }
 
-    // Found City Here (2026-08-07, user-directed): offered on a remote tile
-    // whenever the site is otherwise valid, ignoring the road-connectivity
-    // check (skipRoadCheck) -- clicking it is what decides whether that check
-    // still applies, via main.js's confirm-a-road-first modal.
+    // Found City Here: offered on a remote tile whenever the site is
+    // otherwise valid, ignoring the road-connectivity check (skipRoadCheck)
+    // -- clicking it is what decides whether that check still applies, via
+    // main.js's confirm-a-road-first modal.
     if (baseUnit.canFoundCity && !unit.usedThisTurn
         && window.GameEngine.cities.canFoundCityAt(gameState.map, gameState.civs, x, y, civ.raceId, { skipRoadCheck: true }).ok) {
       options.push({ kind: "foundCityHere", label: "Found City Here" });
@@ -1060,12 +969,12 @@ window.GameEngine = window.GameEngine || {};
   }
 
   /**
-   * What one of the player's own cities offers the ring (2026-08-06,
-   * user-directed). Categories, not a build list: a build option carries a
-   * label, per-resource cost tokens coloured against the stockpile, a turn
-   * count and a placement marker, and a dozen of those arranged radially
-   * would be unreadable. "Build Unit"/"Build Structure" open the real list as
-   * a sub-page instead (see js/ui/ringmenu.js's popover).
+   * What one of the player's own cities offers the ring. Categories, not a
+   * build list: a build option carries a label, per-resource cost tokens
+   * coloured against the stockpile, a turn count and a placement marker,
+   * and a dozen of those arranged radially would be unreadable. "Build
+   * Unit"/"Build Structure" open the real list as a sub-page instead (see
+   * js/ui/ringmenu.js's popover).
    *
    * The gates are transcribed from sidebar.js's renderBuildSection, which is
    * the only other place that decides what a city can be told to do.
@@ -1150,12 +1059,12 @@ window.GameEngine = window.GameEngine || {};
 
   /**
    * Combines a unit's own action list with its co-located city's, for the
-   * MERGED RING (2026-08-06, user-directed): unit actions land in the LEFT
-   * column, city actions in the RIGHT, in one ring rather than a "City
-   * Actions" pill drilling down into a second one. `split` is consumed
-   * directly by js/ui/ringmenu.js's layout() as `ctx.split` -- see its own
-   * doc comment for why an explicit {leftCount, rightCount} bypasses that
-   * function's normal auto-fit column assignment.
+   * MERGED RING: unit actions land in the LEFT column, city actions in the
+   * RIGHT, in one ring rather than a "City Actions" pill drilling down into
+   * a second one. `split` is consumed directly by js/ui/ringmenu.js's
+   * layout() as `ctx.split` -- see its own doc comment for why an explicit
+   * {leftCount, rightCount} bypasses that function's normal auto-fit column
+   * assignment.
    *
    * Returns `split: null` when there's no city to merge in, so a caller can
    * pass the result straight through without a separate "was there
@@ -1172,9 +1081,9 @@ window.GameEngine = window.GameEngine || {};
   }
 
   /**
-   * THE ONE ENTRY POINT the ring menu asks (2026-08-06, user-directed).
-   * Keeps input.js's "decide WHERE, not WHAT" split intact: input.js reports
-   * a tile, this decides whose menu that tile opens and what's on it.
+   * THE ONE ENTRY POINT the ring menu asks. Keeps input.js's "decide WHERE,
+   * not WHAT" split intact: input.js reports a tile, this decides whose
+   * menu that tile opens and what's on it.
    *
    * The rule the whole interaction rests on:
    *
@@ -1209,13 +1118,11 @@ window.GameEngine = window.GameEngine || {};
 
     // 1. One of ours is standing there: that unit becomes the subject.
     //
-    // MERGED RING (2026-08-06, user-directed): when that tile is ALSO one of
-    // this civ's own cities -- unavoidably true here, since unitHere/cityHere
-    // both come from this civ's own units/cities -- the ring shows unit
-    // actions and city actions together (unit actions left, city actions
-    // right) instead of a single "City Actions" pill that drilled down into
-    // a separate city-only ring. See mergeUnitCityOptions below for the
-    // split main.js's ringmenu.js render reads.
+    // MERGED RING: when that tile is ALSO one of this civ's own cities, the
+    // ring shows unit actions and city actions together (unit actions left,
+    // city actions right) instead of a single "City Actions" pill that
+    // drills down into a separate city-only ring. See mergeUnitCityOptions
+    // below for the split main.js's ringmenu.js render reads.
     if (unitHere) {
       const selected = viewState.selectedUnit;
       const alreadyActive = selected && selected.x === x && selected.y === y
@@ -1253,15 +1160,11 @@ window.GameEngine = window.GameEngine || {};
    * Mirrors maybeBuildInCities' two cost models exactly: a power-based build
    * pays its multi-resource cost from the stockpile UP FRONT and then just
    * counts a turn timer down, while a legacy coin-accumulation build
-   * accumulates progress against coinCost each turn instead. Units and
-   * buildings both split across these two the same way now (2026-08-03):
-   * whichever ones have an unlocking tech with a costBreakdown use the
-   * modern model (see GameData.unitBuildCost/buildingBuildCost) -- as of
-   * 2026-08-06 that's EVERY unit and building, including Pioneer/Galley/
-   * Scout (each via its own Level 0 tech) and wall_section (via
-   * pioneer_infrastructure's costBreakdown) -- nothing is left on the
-   * legacy path any more, though the branch itself stays as a defensive
-   * fallback (see buildings.js's _TECH_FOR_BUILDING doc comment).
+   * accumulates progress against coinCost each turn instead. Every unit and
+   * building currently uses the modern (power-based) model via its
+   * unlocking tech's costBreakdown (see GameData.unitBuildCost/
+   * buildingBuildCost); the legacy branch stays as a defensive fallback
+   * (see buildings.js's _TECH_FOR_BUILDING doc comment).
    */
   function queueBuild(city, civ, gameState, option, placeAt) {
     if (!option || !city || civ.id !== gameState.civs[civ.id]?.id) return false;

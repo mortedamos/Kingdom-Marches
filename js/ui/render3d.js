@@ -16,74 +16,43 @@
  * (its raw elevation sample is discarded after classification, see
  * worldgen.js Pass 2), so height here is a BASE band per terrain type
  * (ocean/coast flat at water level, hills/mountains progressively raised),
- * not continuous elevation -- see elevationVarianceAt/v9 below for how
- * hills/mountains vary around that base instead of sitting dead flat.
- * Same "plateau + edge skirt" meshing technique validated in the standalone
- * WebGL prototype still applies on top of that.
+ * with elevationVarianceAt (below) adding variation on top of that base so
+ * hills/mountains don't all sit dead flat within their band.
  *
- * v1 scope: terrain (all 9 types) + city + unit billboards + orbit camera.
- * v2 adds roads and rivers as flat ground decals, using the real road/river
+ * Roads and rivers render as flat ground decals using the real road/river
  * sprite art (not procedural -- these are already flat overlay stamps, not
  * full-tile relief paintings, so they don't have the terrain art's shading
- * problem) rotated per-tile the same way render.js's drawRoadOverlay/
+ * problem), rotated per-tile the same way render.js's drawRoadOverlay/
  * drawRiverOverlay composite them, just in world space instead of on a 2D
  * canvas (see buildDecalQuad and the ROAD_CARDINAL_ANGLE/ROAD_DIAGONAL_ANGLE
- * tables, kept in exact agreement with render.js's).
+ * tables, kept in exact agreement with render.js's). Rivers additionally
+ * carve the terrain height field itself (see buildRiverNetwork/
+ * carveDepthAt/buildRiverTileGrid): every river tile gets one deterministic
+ * waypoint near its own center (riverWaypoint, hashed from tile index --
+ * never jittered per-viewer, so it's identical no matter which tile's
+ * geometry asks for it), and connecting neighboring river tiles' waypoints
+ * with straight segments builds a network that's continuous BY
+ * CONSTRUCTION -- two tiles sharing an edge always reference the exact same
+ * shared waypoint. Ground height at any world position is then just
+ * undisturbed height minus a falloff to the nearest network segment -- a
+ * pure function of world position, so a river-adjacent tile's carved grid
+ * (buildRiverTileGrid) spans its FULL footprint and two neighboring tiles
+ * evaluate identically along their shared boundary with no pinning/
+ * tapering trick required. A separate static water-ribbon mesh
+ * (buildRiverWaterRibbon, built once per map, no per-frame rebuild) follows
+ * the same network, one ribbon strip per segment, meeting exactly at shared
+ * waypoints the same way the carve does. The water shader (waterVS/waterFS)
+ * is procedural, not a texture -- two uTime-scrolling bands fake flow --
+ * and is this file's only alpha-blended surface (gl.BLEND is enabled/
+ * disabled tightly around just that one draw call). Roads keep the flat-
+ * decal technique throughout.
  *
- * v3 adds city structures (every built building, including walls) as
- * width-driven billboards -- unlike units/cities (a fixed height, width
- * follows the art's aspect ratio), structures fit the tile's width and let
- * height bleed upward for tall art, matching render.js's own sizing formula
- * (`drawHeight = ts * (img.naturalHeight / img.naturalWidth)`). Walls use
- * the same race+orientation art selection as 2D (see the ported
- * wallOrientation), just as a billboard instead of procedural 3D geometry
- * (boxes/cylinders) -- simpler and reuses the exact same real wall art the
- * 2D view does, at the cost of not being real connected geometry.
- *
- * v4 adds click-to-select: a click (not a drag) ray-casts into the world
- * and resolves to a tile (see pickTileAtClient), then hands off to
- * input.js's own handleTileClick (exported for this reuse -- same
- * selection logic 2D uses, no duplicated game rules) so the sidebar shows
- * whatever's on that tile exactly like clicking it in 2D would. No mesh
- * intersection or depth-buffer read needed for the picking itself: since
- * every tile is still a flat plateau, the ray is tested against every
- * distinct real height present in the built map (originally just the 4
- * bands in HEIGHT_BY_TERRAIN; see v9 for why that grew to a live per-map
- * set) and only a hit landing on a tile whose real height agrees with
- * that plane counts, closest-to-camera wins -- equivalent to real depth
- * testing for this terrain shape. Note this picks by ground footprint,
- * not billboard geometry -- clicking squarely on a tall sprite that's
- * leaning toward camera can occasionally resolve to its neighbor.
- *
- * v5 adds full fog of war -- previously terrain/roads/rivers always
- * rendered the whole map regardless of exploration state (only billboards
- * were gated). Now a 1-texel-per-tile mask texture (see
- * updateFogMaskTexture), rebuilt every frame from resolveFogSets (which
- * mirrors render.js's humanCivId/spectator split exactly, including the
- * Interface menu's fog-mode selector for spectator games), drives both the
- * terrain and decal fragment shaders: never-explored tiles render as flat
- * near-black, explored-but-not-currently-visible tiles render dimmed, and
- * visible tiles render at full brightness -- the same three states 2D's
- * black-fill/remembered-scrim/live-bright convention shows. Roads/rivers
- * still build geometry from LIVE tile data every frame rather than a
- * per-civ remembered snapshot (2D's tileMemory), so a remembered-but-not-
- * visible tile's road could in principle be a turn or two stale relative
- * to what that civ last actually saw -- a minor, documented simplification,
- * not a real information leak (a road tile's presence still requires
- * having explored it at all).
- *
- * v6 adds billboard animation: getBillboardTexture now uploads a sprite's
- * FULL sheet (previously cropped to frame 0 only), and every render() call
- * resolves each billboard's CURRENT frame through sprites.js's own
- * currentFrame() state machine (same per-instance hold/play/loop timing and
- * phase-staggering 2D uses -- reused as-is, not reimplemented), remapping
- * the billboard quad's UV into that frame's sub-rect via uFrameUVMin/Max.
- * Frame Y coordinates need an explicit flip in that remap (V = 1 -
- * pixelRow/imgH) to stay consistent with UNPACK_FLIP_Y_WEBGL=true, which
- * every other texture upload in this file already relies on.
- *
- * v7 replaces wall billboards with real 3D geometry (buildWallGroup),
- * ported from the standalone WebGL prototype: straight box runs for
+ * City structures (every built building, including walls) are width-driven
+ * billboards -- unlike units/cities (a fixed height, width follows the
+ * art's aspect ratio), structures fit the tile's width and let height bleed
+ * upward for tall art, matching render.js's own sizing formula
+ * (`drawHeight = ts * (img.naturalHeight / img.naturalWidth)`). Walls
+ * instead get real 3D geometry (buildWallGroup): straight box runs for
  * horizontal/vertical wall tiles (see the ported wallOrientation), round
  * towers for corner/junction/isolated ones, textured with the same
  * procedural stone material terrain uses for hills/mountains. Rebuilt from
@@ -92,77 +61,74 @@
  * fog-aware terrainProg rather than a new shader, since wall geometry is
  * only ever built for tiles already confirmed visible.
  *
- * v8 replaces rivers' flat sprite-decal rendering (the v2 approach, still
- * used by roads) with a genuine second pass over the terrain height field
- * -- a flat texture stamp read fine in the old top-down 2D canvas view but
- * looks pasted-on now that the game is 3D by default, and doesn't visually
- * connect between tiles. See buildRiverNetwork/carveDepthAt/
- * buildRiverTileGrid: every river tile gets one deterministic waypoint
- * near its own center (riverWaypoint, hashed from tile index -- never
- * jittered per-viewer, so it's identical no matter which tile's geometry
- * asks for it), and connecting neighboring river tiles' waypoints with
- * straight segments builds a network that's continuous BY CONSTRUCTION --
- * two tiles sharing an edge always reference the exact same shared
- * waypoint, unlike the earlier per-tile-local-curve approach this replaced
- * (which anchored curves at each tile's own edge midpoint and only
- * approximately bridged the gap with a separate decal). Ground height at
- * any world position is then just undisturbed height minus a falloff to
- * the nearest network segment -- a pure function of world position, so a
- * river-adjacent tile's flat plateau+skirt+corner fans are replaced with
- * one unified carved grid (buildRiverTileGrid) spanning its FULL
- * footprint, not just the margin-inset interior, and two neighboring such
- * tiles evaluate identically along their shared boundary with no
- * pinning/tapering trick required. A separate static water-ribbon mesh
- * (buildRiverWaterRibbon, built once per map like the terrain itself, no
- * per-frame rebuild and no async sprite-load dependency to retry against
- * unlike the old decal system) follows the same network, one ribbon strip
- * per segment, meeting exactly at shared waypoints the same way the carve
- * does. The water shader (waterVS/waterFS) is procedural, not a texture --
- * two uTime-scrolling bands fake flow -- and is this file's first real
- * alpha-blended surface (gl.BLEND is enabled/disabled tightly around just
- * that one draw call). Roads are unaffected and keep the old flat-decal
- * technique.
+ * Click-to-select: a click (not a drag) ray-casts into the world and
+ * resolves to a tile (see pickTileAtClient), then hands off to input.js's
+ * own handleTileClick (exported for this reuse -- same selection logic 2D
+ * uses, no duplicated game rules) so the sidebar shows whatever's on that
+ * tile exactly like clicking it in 2D would. No mesh intersection or
+ * depth-buffer read needed for the picking itself: since every tile is
+ * still a flat plateau, the ray is tested against every distinct real
+ * height present in the built map (st.heightPlanes, collected once in
+ * buildTerrainMesh) and only a hit landing on a tile whose real height
+ * agrees with that plane counts, closest-to-camera wins -- equivalent to
+ * real depth testing for this terrain shape. This picks by ground
+ * footprint, not billboard geometry -- clicking squarely on a tall sprite
+ * that's leaning toward camera can occasionally resolve to its neighbor.
  *
- * v9 adds elevation variance + snow peaks: previously every hill tile sat
- * at the exact same HILLS_HEIGHT and every mountain tile at the exact same
- * MOUNTAINS_HEIGHT, which read as one uniform plateau rather than a range.
- * See elevationVarianceAt: a hill/mountain tile now adds a small bump on
- * top of that base height, scaled by how many of its 8 neighbors are also
- * hills/mountains (mountains only count OTHER mountains; hills count either)
- * -- so a tile buried deep in a range reads taller than one at its edge.
- * Mountains get a SECOND term on top of that immediate-neighbor density:
- * mountainDepth counts how many full rings of solid mountain surround a
- * tile before hitting a non-mountain tile or the map edge (capped at
- * MOUNTAIN_DEPTH_MAX), because density alone saturates the instant all 8
- * neighbors are mountains and so can't tell a large massif's true center
- * apart from a tile just one ring in from a small cluster's edge -- both
- * read as equally "surrounded" to density, but depth keeps climbing ring
- * by ring for the real one. Deliberately NOT randomized per tile (an
- * earlier version of this added a
- * small independent hash-based jitter on top of the density term) -- that
- * made every same-terrain tile boundary a real slope discontinuity instead
- * of the flat, invisible skirt a uniform-height field used to have, which
- * under this renderer's flat (never smoothed/averaged) per-triangle normals
- * read as a field of torn-looking facets rather than rolling terrain, and
- * the random noise between neighbors swamped the one trend that's actually
- * supposed to read: taller toward a range's interior. isMountainPeak then
- * flags any mountain tile at least as tall as every neighboring mountain
- * (an isolated mountain is vacuously its own peak, and ties -- now common
- * without jitter -- both count as peaks) for a snow cap: a new per-vertex
- * aSnow attribute (0 normally, 1 on a peak tile's whole plateau+skirt, see
- * buildTerrainMesh's snowVal) blended toward white in terrainFS. Since
- * hill/mountain heights are no longer one fixed value per terrain type,
- * pickTileAtClient's ray-plane test (see the v4 note) now tests against
- * st.heightPlanes -- every distinct real height in the CURRENT map,
- * collected once in buildTerrainMesh -- instead of the static
- * HEIGHT_BY_TERRAIN table, and cellHeight/buildRiverNetwork's hcA/hcB both
- * route through the same terrainHeightAt used for meshing so units,
- * shadows, walls, and river carves/water all still sit flush on the
- * (now-bumpy) ground with no seam against it.
+ * Fog of war: a 1-texel-per-tile mask texture (see updateFogMaskTexture),
+ * rebuilt every frame from resolveFogSets (which mirrors render.js's
+ * humanCivId/spectator split exactly, including the Interface menu's
+ * fog-mode selector for spectator games), drives both the terrain and
+ * decal fragment shaders: never-explored tiles render as flat near-black,
+ * explored-but-not-currently-visible tiles render dimmed, and visible
+ * tiles render at full brightness -- the same three states 2D's
+ * black-fill/remembered-scrim/live-bright convention shows. Roads/rivers
+ * build geometry from LIVE tile data every frame rather than a per-civ
+ * remembered snapshot (2D's tileMemory), so a remembered-but-not-visible
+ * tile's road could in principle be a turn or two stale relative to what
+ * that civ last actually saw -- a minor, documented simplification, not a
+ * real information leak (a road tile's presence still requires having
+ * explored it at all).
  *
- * This is now a fairly complete implementation of the core loop: terrain,
- * roads/rivers, structures/walls, billboard animation, full fog of war,
- * click-to-select, and orbit camera controls all work together.
+ * Billboard animation: getBillboardTexture uploads a sprite's FULL sheet,
+ * and every render() call resolves each billboard's CURRENT frame through
+ * sprites.js's own currentFrame() state machine (same per-instance
+ * hold/play/loop timing and phase-staggering 2D uses -- reused as-is, not
+ * reimplemented), remapping the billboard quad's UV into that frame's
+ * sub-rect via uFrameUVMin/Max. Frame Y coordinates need an explicit flip
+ * in that remap (V = 1 - pixelRow/imgH) to stay consistent with
+ * UNPACK_FLIP_Y_WEBGL=true, which every other texture upload in this file
+ * already relies on.
+ *
+ * Elevation variance + snow peaks: see elevationVarianceAt -- a hill/
+ * mountain tile adds a small bump on top of its base height, scaled by how
+ * many of its 8 neighbors are also hills/mountains (mountains only count
+ * OTHER mountains; hills count either) -- so a tile buried deep in a range
+ * reads taller than one at its edge. Mountains get a SECOND term on top of
+ * that immediate-neighbor density: mountainDepth counts how many full rings
+ * of solid mountain surround a tile before hitting a non-mountain tile or
+ * the map edge (capped at MOUNTAIN_DEPTH_MAX), because density alone
+ * saturates the instant all 8 neighbors are mountains and so can't tell a
+ * large massif's true center apart from a tile just one ring in from a
+ * small cluster's edge -- both read as equally "surrounded" to density, but
+ * depth keeps climbing ring by ring for the real one. Deliberately NOT
+ * randomized per tile: independent per-tile jitter would make every
+ * same-terrain tile boundary a real slope discontinuity, which under this
+ * renderer's flat (never smoothed/averaged) per-triangle normals reads as a
+ * field of torn-looking facets rather than rolling terrain, and swamps the
+ * one trend that's actually supposed to read: taller toward a range's
+ * interior. isMountainPeak flags any mountain tile at least as tall as
+ * every neighboring mountain (an isolated mountain is vacuously its own
+ * peak, and ties both count as peaks) for a snow cap: a per-vertex aSnow
+ * attribute (0 normally, 1 on a peak tile's whole plateau+skirt, see
+ * buildTerrainMesh's snowVal) blended toward white in terrainFS. Because
+ * hill/mountain heights aren't one fixed value per terrain type,
+ * pickTileAtClient's ray-plane test tests against st.heightPlanes -- every
+ * distinct real height in the CURRENT map -- instead of a static
+ * per-terrain table, and cellHeight/buildRiverNetwork's hcA/hcB both route
+ * through the same terrainHeightAt used for meshing so units, shadows,
+ * walls, and river carves/water all still sit flush on the (bumpy) ground
+ * with no seam against it.
  */
 
 window.UI = window.UI || {};

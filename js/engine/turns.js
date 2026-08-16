@@ -10,14 +10,11 @@
 window.GameEngine = window.GameEngine || {};
 
 (function () {
-  // Pacing experiment (2026-07-12): 0.33 (original) -> 0.25 (too far --
-  // 20/20 territory, 0 elimination) -> 0.33 (restored) -> now 0.30, a
-  // deliberate middle point between "territory wins everything" and
+  // A deliberate middle point between "territory wins everything" and
   // "elimination is the only real path" -- influence/territory and
   // military/elimination are meant to be two genuinely opposite, equally
   // viable win conditions (Halfellow-style economy vs. Orc-style conquest),
-  // not one dominant path with the other as a rare fallback. See
-  // project_pacing_experiment memory.
+  // not one dominant path with the other as a rare fallback.
   const VICTORY_SHARE_THRESHOLD = window.GameConfig.victory.shareThreshold;
   const VICTORY_SUSTAIN_TURNS = window.GameConfig.victory.sustainTurns;
 
@@ -73,8 +70,8 @@ window.GameEngine = window.GameEngine || {};
         // Halfellow "Keep an Eye Out": +3 vision while holding a lookout
         // post (Hidden + stationary) -- see ai.js's maybeKeepAnEyeOutPlay.
         const watchVision = unit.conditions?.keepingWatch?.visionBonus || 0;
-        // Level-up "+1 Vision" pick (2026-08-07, user-directed) -- same flat-
-        // add convention as attack/defense, see combat.js's LEVEL_BONUS_VALUES.
+        // Level-up "+1 Vision" pick -- same flat-add convention as
+        // attack/defense, see combat.js's LEVEL_BONUS_VALUES.
         const levelVision = unit.levelBonuses?.visionRadius || 0;
         const r = (baseUnit.visionRadius || 3) + overrideVision + flightVision + watchVision + levelVision;
         for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) {
@@ -91,9 +88,9 @@ window.GameEngine = window.GameEngine || {};
       // Forest instead of Mountains.
       const revealMountains = civ.unlockedMechanics && civ.unlockedMechanics.has("mountains_on_the_horizon");
       const revealForest = civ.unlockedMechanics && civ.unlockedMechanics.has("wind_from_distant_treetops");
-      // Human "Sea Charts" (2026-08-06, user-directed): same reveal-mechanic
-      // shape as Mountains on the Horizon/Wind From Distant Treetops just
-      // above, keyed to Ocean and Coast instead of a land terrain.
+      // Human "Sea Charts": same reveal-mechanic shape as Mountains on the
+      // Horizon/Wind From Distant Treetops just above, keyed to Ocean and
+      // Coast instead of a land terrain.
       const revealSea = civ.unlockedMechanics && civ.unlockedMechanics.has("sea_charts");
       for (let i = 0; i < map.tiles.length; i++) {
         if (map.tiles[i].ownerCivId === civ.id
@@ -101,12 +98,12 @@ window.GameEngine = window.GameEngine || {};
             || (revealForest && map.tiles[i].terrain === "forest")
             || (revealSea && (map.tiles[i].terrain === "ocean" || map.tiles[i].terrain === "coast"))) visible.add(i);
       }
-      // Mountains on the Horizon (2026-07-18, user-directed): also reveals
-      // any Hills tile immediately adjacent (8-neighbor) to a Mountain tile
-      // -- the foothills leading up to a peak are visible from the peak
-      // itself, same reasoning as the Mountain reveal above. Separate pass
-      // (not folded into the loop above) since it needs each Hills tile's
-      // neighbors, not just its own terrain.
+      // Mountains on the Horizon also reveals any Hills tile immediately
+      // adjacent (8-neighbor) to a Mountain tile -- the foothills leading up
+      // to a peak are visible from the peak itself, same reasoning as the
+      // Mountain reveal above. Separate pass (not folded into the loop
+      // above) since it needs each Hills tile's neighbors, not just its own
+      // terrain.
       if (revealMountains) {
         for (let i = 0; i < map.tiles.length; i++) {
           if (map.tiles[i].terrain !== "hills" || visible.has(i)) continue;
@@ -121,17 +118,15 @@ window.GameEngine = window.GameEngine || {};
           }
         }
       }
-      // Elf "Beast Sight" (2026-08-17, user-directed): shares the Wandering
-      // Monsters pseudo-civ's own already-computed visibility set directly
-      // into this civ's -- Monsters is a real gameState.civs entry with its
-      // own gameState.visibility[MONSTER_CIV_ID], just never read by anyone
-      // else before now. Unioned in BEFORE this civ's own visible set is
-      // assigned/snapshotted below, so the shared tiles also feed explored/
-      // tileMemory normally, same as anything else this civ can see. May
-      // lag by up to one round if Monsters' own entry in civs hasn't been
-      // processed by this same loop yet this pass -- acceptable for a
-      // "sensed a moment ago" flavor mechanic, not worth a second pass to
-      // avoid.
+      // Elf "Beast Sight": shares the Wandering Monsters pseudo-civ's own
+      // already-computed visibility set directly into this civ's -- Monsters
+      // is a real gameState.civs entry with its own
+      // gameState.visibility[MONSTER_CIV_ID]. Unioned in BEFORE this civ's
+      // own visible set is assigned/snapshotted below, so the shared tiles
+      // also feed explored/tileMemory normally, same as anything else this
+      // civ can see. May lag by up to one round if Monsters' own entry in
+      // civs hasn't been processed by this same loop yet this pass --
+      // acceptable for a "sensed a moment ago" flavor mechanic.
       if (civ.unlockedMechanics && civ.unlockedMechanics.has("beast_sight")) {
         const monsterVisible = gameState.visibility[window.GameConfig.worldEncounters.monsters.civId];
         if (monsterVisible) for (const idx of monsterVisible) visible.add(idx);
@@ -174,26 +169,21 @@ window.GameEngine = window.GameEngine || {};
     }
   }
 
-  /** Treasure Chest "Map Fragment" reward (2026-08-14, user-directed; see
-   *  doc/world_encounters_design.md): reveals a random still-unexplored
-   *  area of the map to `civ`, live, for the rest of the CURRENT turn only.
-   *  Picks a random tile this civ hasn't explored yet as the center, and a
-   *  random radius (3-8 inclusive, Chebyshev -- a square, same "radius"
-   *  convention every vision-radius computation in refreshVisibility above
-   *  already uses). Every revealed tile is added to BOTH
-   *  gameState.explored[civ.id] (permanent -- the terrain stays known
-   *  forever after, same as normally exploring it) and this round's
-   *  already-computed gameState.visibility[civ.id] (live visibility, but
-   *  only for what's left of THIS round -- refreshVisibility fully
-   *  REPLACES the visibility set from scratch every round, so the live peek
-   *  automatically expires next round with no extra cleanup needed here).
-   *  Also writes gameState.tileMemory[civ.id] for each newly-revealed tile
-   *  so it still renders correctly once live visibility lapses -- builds
-   *  its own cityAt/structureAt lookup rather than sharing
-   *  refreshVisibility's (a few extra lines, but zero risk of touching that
-   *  function's own well-exercised per-round pass). Returns {x, y, radius}
-   *  of what was revealed, or null if this civ has already explored the
-   *  entire map (nothing left to find). */
+  /** Treasure Chest "Map Fragment" reward (see doc/world_encounters_design.md):
+   *  reveals a random still-unexplored area of the map to `civ`, live, for
+   *  the rest of the CURRENT turn only. Picks a random tile this civ hasn't
+   *  explored yet as the center, and a random radius (3-8 inclusive,
+   *  Chebyshev). Every revealed tile is added to BOTH
+   *  gameState.explored[civ.id] (permanent) and this round's already-computed
+   *  gameState.visibility[civ.id] (live visibility only -- refreshVisibility
+   *  fully REPLACES the visibility set from scratch every round, so the live
+   *  peek automatically expires next round with no extra cleanup). Also
+   *  writes gameState.tileMemory[civ.id] for each newly-revealed tile so it
+   *  still renders correctly once live visibility lapses -- builds its own
+   *  cityAt/structureAt lookup rather than sharing refreshVisibility's, to
+   *  avoid touching that function's own per-round pass. Returns
+   *  {x, y, radius} of what was revealed, or null if this civ has already
+   *  explored the entire map. */
   function revealMapFragment(civ, gameState) {
     const { map } = gameState;
     const explored = gameState.explored[civ.id] || new Set();
@@ -255,15 +245,14 @@ window.GameEngine = window.GameEngine || {};
   }
 
   /**
-   * Dungeon Delve: instantly reverts every tile in `unit`'s
-   * filled-offset set (relative to (centerX, centerY), its last-known delve
-   * position) back to neutral if this civ still owns it -- mirrors
-   * destroyCity's/eliminateCiv's immediate tile reset elsewhere in this file,
-   * since resolveOwnership's per-turn decay only winds an "owned" tile down
-   * if it's already "contested"; a tile that abruptly gets zero fresh
-   * influence (exactly what happens the instant a delve claim ends) has no
-   * decay path at all and would otherwise stay "owned" forever. A rival's own
-   * claim on a tile within this radius is left alone.
+   * Dungeon Delve: instantly reverts every tile in `unit`'s filled-offset set
+   * (relative to (centerX, centerY), its last-known delve position) back to
+   * neutral if this civ still owns it -- mirrors destroyCity's/eliminateCiv's
+   * immediate tile reset elsewhere in this file, since resolveOwnership's
+   * per-turn decay only winds an "owned" tile down if it's already
+   * "contested"; a tile that abruptly gets zero fresh influence has no decay
+   * path at all and would otherwise stay "owned" forever. A rival's own claim
+   * on a tile within this radius is left alone.
    */
   function clearDelveOwnership(unit, civ, map, centerX, centerY) {
     const filled = unit._delveFilledOffsets;
@@ -280,16 +269,15 @@ window.GameEngine = window.GameEngine || {};
     }
   }
 
-  // Resource exhaustion (2026-07-20, user-directed): each turn a Dungeon
-  // Delve Wizard or Prospector's Claim unit actively works its anchor tile,
-  // there's a flat chance the Ruin/Gold Vein runs out and is permanently
-  // removed from the map -- see beginRound's ritual-tracking loop below.
-  // Deliberately NOT applied to Dark Ritual (Undead), which the user didn't
-  // include in this request.
+  // Resource exhaustion: each turn a Dungeon Delve Wizard or Prospector's
+  // Claim unit actively works its anchor tile, there's a flat chance the
+  // Ruin/Gold Vein runs out and is permanently removed from the map -- see
+  // beginRound's ritual-tracking loop below. Not applied to Dark Ritual
+  // (Undead).
   const RESOURCE_EXHAUSTION_CHANCE = window.GameConfig.world.resourceExhaustionChance;
 
-  /** Elf's "Tending to the Earth" tech (2026-08-10, user-directed) halves
-   *  RESOURCE_EXHAUSTION_CHANCE for the researching civ. */
+  /** Elf's "Tending to the Earth" tech halves RESOURCE_EXHAUSTION_CHANCE for
+   *  the researching civ. */
   function resourceExhaustionChanceFor(civ) {
     if (civ.unlockedMechanics && civ.unlockedMechanics.has("tending_to_the_earth")) {
       return window.GameConfig.world.resourceExhaustionChanceTendingToTheEarth;
@@ -298,17 +286,15 @@ window.GameEngine = window.GameEngine || {};
   }
 
   /**
-   * RESOURCE RESPAWN (2026-08-06, user-directed)
-   * --------------------------------------------
+   * RESOURCE RESPAWN
+   * ----------------
    * A depleted resource (Game, Fish, Iron, Gold, Fertile Soil) reappears
    * somewhere else on the map within the next 3 turns, so the world doesn't
    * strictly drain toward zero over a long game. Ruins do NOT go through
    * this system -- they're a tile FEATURE (tile.isRuin), not a RESOURCES
    * entry, so they need their own respawn placement logic; see
    * scheduleRuinRespawn/processRuinRespawns just below, which mirror this
-   * pair's shape exactly. (Ruins respawning at all is a 2026-08-14,
-   * user-directed reversal of this system's original "Ruins are one-shot
-   * map features, not renewable" call -- see doc/world_encounters_design.md.)
+   * pair's shape exactly.
    *
    * Queued rather than placed immediately: gameState.pendingResourceRespawns
    * is a list of { resourceId, dueTurn } processed once per round by
@@ -363,7 +349,7 @@ window.GameEngine = window.GameEngine || {};
   }
 
   /**
-   * RUIN RESPAWN (2026-08-14, user-directed -- see doc/world_encounters_design.md)
+   * RUIN RESPAWN (see doc/world_encounters_design.md)
    * -----------------------------------------------------------------------
    * Same queue-then-place shape as scheduleResourceRespawn/
    * processResourceRespawns above, kept as its own pair rather than folded
@@ -406,18 +392,17 @@ window.GameEngine = window.GameEngine || {};
   }
 
   /**
-   * Prospecting/delving/fishing payout redesign (2026-07-24, user-directed):
-   * instead of paying out straight to civ.resources every qualifying turn,
-   * each turn's gain accumulates into unit._channelStash -- delivered to the
-   * civ only when the channel ends on its OWN terms (voluntary stop, see
-   * ai.js's maybeCashOutChannel, or natural exhaustion, handled right where
-   * RESOURCE_EXHAUSTION_CHANCE fires below). A FORCED interruption (the unit
-   * dies, moves away without stopping properly, or a Halfellow Trouble Maker
-   * uses Resource Heist on it) loses whatever's accumulated -- see the
-   * `!continuingRitual` cleanup below, which clears _channelStash without
-   * calling this. Gives Resource Heist something real to steal: a claim
-   * held for a while has real accumulated value sitting on the unit, not
-   * just a counter.
+   * Prospecting/delving/fishing payouts don't pay out straight to
+   * civ.resources every qualifying turn -- each turn's gain accumulates into
+   * unit._channelStash, delivered to the civ only when the channel ends on
+   * its OWN terms (voluntary stop, see ai.js's maybeCashOutChannel, or
+   * natural exhaustion, handled right where RESOURCE_EXHAUSTION_CHANCE fires
+   * below). A FORCED interruption (the unit dies, moves away without
+   * stopping properly, or a Halfellow Trouble Maker uses Resource Heist on
+   * it) loses whatever's accumulated -- see the `!continuingRitual` cleanup
+   * below, which clears _channelStash without calling this. Gives Resource
+   * Heist something real to steal: a claim held for a while has real
+   * accumulated value sitting on the unit, not just a counter.
    */
   function accumulateChannelStash(unit, gains) {
     const stash = unit._channelStash || { harvest: 0, coin: 0, lore: 0 };
@@ -465,26 +450,22 @@ window.GameEngine = window.GameEngine || {};
 
     refreshVisibility(gameState);
 
-    // Resource respawn (2026-08-06, user-directed): places anything queued
-    // by a depletion 1-3 turns ago -- see scheduleResourceRespawn.
+    // Places anything queued by a depletion 1-3 turns ago -- see
+    // scheduleResourceRespawn.
     processResourceRespawns(gameState);
-    // Ruin respawn (2026-08-14, user-directed) -- same idea, separate queue,
-    // see scheduleRuinRespawn/processRuinRespawns's own doc comment for why.
+    // Same idea, separate queue -- see scheduleRuinRespawn/
+    // processRuinRespawns's own doc comment for why.
     processRuinRespawns(gameState);
 
-    // Wandering Monsters (2026-08-14, see doc/world_encounters_design.md):
-    // at most one spawn roll per round. Lazily creates the "MONSTERS"
-    // pseudo-civ the first time this runs -- see ai.js's ensureMonsterCiv.
+    // Wandering Monsters (see doc/world_encounters_design.md): at most one
+    // spawn roll per round. Lazily creates the "MONSTERS" pseudo-civ the
+    // first time this runs -- see ai.js's ensureMonsterCiv.
     window.GameEngine.ai.maybeSpawnMonster(gameState);
 
     // Dark Ritual (Undead) / Dungeon Delve (Human Wizard): track consecutive
     // turns a qualifying unit has stood still on its anchor tile, evaluated
     // BEFORE this turn's influence computation so it reflects standing time
-    // as of the end of last turn's movement. (Dwarf's old "Prospector's
-    // Claim" territorial-claim system used to share this loop too -- removed
-    // 2026-08-17, user-directed: Prospector's Claim/The Deep Mines are now
-    // flat resource-yield multipliers with no claim/ritual-turn tracking of
-    // their own, applied directly in the Mine Vein channel block below.)
+    // as of the end of last turn's movement.
     for (const civ of Object.values(civs)) {
       if (civ.eliminated) continue;
       const hasDarkRitual = civ.unlockedMechanics && civ.unlockedMechanics.has("dark_ritual");
@@ -508,10 +489,7 @@ window.GameEngine = window.GameEngine || {};
       }
 
       for (const unit of civ.units) {
-        // Dark Ritual and Dungeon Delve both apply to any unit (Delve was
-        // Wizard-specific before 2026-08-14 -- see
-        // doc/world_encounters_design.md -- `isDelvingUnit` renamed to
-        // `isDelvingUnit` throughout this block accordingly).
+        // Dark Ritual and Dungeon Delve both apply to any unit.
         const isDelvingUnit = hasDungeonDelve;
         const qualifies = hasDarkRitual || isDelvingUnit;
         const oldX = unit._lastRitualX, oldY = unit._lastRitualY;
@@ -536,14 +514,11 @@ window.GameEngine = window.GameEngine || {};
         }
         const tile = map.tiles[unit.y * map.width + unit.x];
         const onRuin = !!(tile && tile.isRuin);
-        // Channeled action (2026-07-21, user-directed): Dungeon Delve now
-        // requires an EXPLICITLY started channel (unit.channeling, set by
-        // performStartChannel below -- either the player's own "Start
-        // Delving" action or the AI's equivalent decision in
-        // maybeDungeonDelvePlay), not just "happens to be standing on the
-        // tile." Dark Ritual (Undead) keeps its old always-on-Ruin
-        // behavior, unaffected -- out of scope for this request, same as
-        // RESOURCE_EXHAUSTION_CHANCE's own scope above.
+        // Dungeon Delve requires an EXPLICITLY started channel
+        // (unit.channeling, set by performStartChannel below -- either the
+        // player's own "Start Delving" action or the AI's equivalent
+        // decision in maybeDungeonDelvePlay), not just "happens to be
+        // standing on the tile." Dark Ritual (Undead) is always-on-Ruin.
         let onAnchor;
         if (isDelvingUnit) onAnchor = onRuin && unit.channeling === "delving";
         else onAnchor = onRuin;
@@ -554,9 +529,7 @@ window.GameEngine = window.GameEngine || {};
         // through the exact same "no longer on anchor" cleanup path as
         // moving away or dying -- no separate cleanup logic needed.
         if (isDelvingUnit && onAnchor && Math.random() < resourceExhaustionChanceFor(civ)) {
-          // Respawn (2026-08-14, user-directed reversal of the original
-          // "a Ruin never respawns" call -- see
-          // scheduleRuinRespawn/processRuinRespawns's own doc comment).
+          // See scheduleRuinRespawn/processRuinRespawns's own doc comment.
           scheduleRuinRespawn(gameState);
           tile.isRuin = false;
           window.GameEngine.floatingText.spawnFloatingText(unit, "Ruin Exhausted!", "warning");
@@ -571,17 +544,12 @@ window.GameEngine = window.GameEngine || {};
         const continuingRitual = onAnchor && stayedPut;
         unit._ritualTurns = onAnchor ? (stayedPut ? (unit._ritualTurns || 0) + 1 : 1) : 0;
         // Scoped to units actually engaged with Delve specifically, not just
-        // "isDelvingUnit is true" (2026-08-16, user-reported: tile-resource
-        // gathering -- Fishing/Hunt Game/Farm Soil/Mine Vein -- wasn't
-        // accumulating toward Claim Gathered Resources). isDelvingUnit is a
-        // CIV-LEVEL capability flag -- and since Ruin Delving became free
-        // Level 0 infrastructure every civ starts with, isDelvingUnit is
-        // true for essentially every civ, every game. Before this guard,
-        // THAT made this cleanup run for EVERY unit of a qualifying civ that
-        // wasn't this-instant delving -- including one mid-Fishing/Hunting/
-        // Farming/Mining, which also stashes its payout in this same
-        // unit._channelStash -- unconditionally deleting it, every single
-        // round, before it could ever compound past one round's worth.
+        // "isDelvingUnit is true": isDelvingUnit is a CIV-LEVEL capability
+        // flag, true for essentially every civ (Ruin Delving is free Level 0
+        // infrastructure) -- without this guard, the cleanup below would run
+        // for every unit of a qualifying civ that isn't this-instant
+        // delving, including one mid-Fishing/Hunting/Farming/Mining, which
+        // also stashes its payout in this same unit._channelStash.
         const wasDelving = unit.channeling === "delving" || unit._delveFilledOffsets !== undefined;
         if (isDelvingUnit && !continuingRitual && wasDelving) {
           clearDelveOwnership(unit, civ, map, oldX, oldY);
@@ -603,11 +571,10 @@ window.GameEngine = window.GameEngine || {};
     window.GameEngine.influence.resolveOwnership(gameState, influenceMap);
   }
 
-  /** True if (x,y) is Coast, Ocean, or carries the river feature -- the
-   *  Burning condition's own exemption (2026-07-22, user-directed): nearby
-   *  water smothers the fire, so no damage is dealt this turn while
-   *  standing there (the condition's own countdown to expiry is
-   *  unaffected -- only the damage tick is skipped). */
+  /** True if (x,y) is Coast, Ocean, or carries the river feature -- nearby
+   *  water smothers Burning, so no damage is dealt this turn while standing
+   *  there (the condition's own countdown to expiry is unaffected -- only
+   *  the damage tick is skipped). */
   function isBurningExempt(map, x, y) {
     const tile = map.tiles[y * map.width + x];
     if (!tile) return false;
@@ -617,22 +584,22 @@ window.GameEngine = window.GameEngine || {};
   }
 
   /**
-   * Burning (2026-07-22, user-directed): 1 point of damage at the start of
-   * the affected unit/building/wall's turn, for 3 turns (see ai.js's
-   * BURN_DURATION for where it's actually applied -- "Burn It All Down"
-   * and the reworked "Fireball!"), unless the target is currently on
-   * Coast, Ocean, or a river tile (see isBurningExempt above). Ticked here
-   * -- once per civ-turn, uniformly for EVERY civ, human or AI -- rather
-   * than in ai.js's beginAITurn/tickConditions pass, which only ever runs
-   * for AI-controlled civs (see beginCivTurn's own AI-only branch further
-   * below): Burning must still hurt a human player's own units/buildings.
+   * Burning: 1 point of damage at the start of the affected unit/
+   * building/wall's turn, for 3 turns (see ai.js's BURN_DURATION for where
+   * it's actually applied -- "Burn It All Down" and "Fireball!"), unless the
+   * target is currently on Coast, Ocean, or a river tile (see
+   * isBurningExempt above). Ticked here -- once per civ-turn, uniformly for
+   * EVERY civ, human or AI -- rather than in ai.js's beginAITurn/
+   * tickConditions pass, which only ever runs for AI-controlled civs (see
+   * beginCivTurn's own AI-only branch further below): Burning must still
+   * hurt a human player's own units/buildings.
    *
    * Units store it as unit.conditions.burning (so it shows the same fire
    * badge as every other condition -- see render.js's CONDITION_ICONS);
    * structures (buildings/walls, which have no `.conditions` container of
-   * their own) store it as a plain `.burning` field directly. Deliberately
-   * does NOT affect cities themselves (2026-07-22, user-directed) -- only
-   * units and the buildings/walls standing in their radius.
+   * their own) store it as a plain `.burning` field directly. Does NOT
+   * affect cities themselves -- only units and the buildings/walls standing
+   * in their radius.
    */
   function tickBurningDamage(gameState, civ) {
     const { map } = gameState;
@@ -655,17 +622,16 @@ window.GameEngine = window.GameEngine || {};
     civ.units = civ.units.filter((u) => u.hp > 0);
 
     for (const city of civ.cities.slice()) {
-      // 2026-07-22, user-directed: Burning no longer affects cities
-      // themselves (only units and buildings/walls) -- removed the
-      // population-level damage that used to live here.
+      // Burning doesn't affect cities themselves -- only units and
+      // buildings/walls.
       for (const s of city.structures.slice()) {
         if (!s.burning) continue;
         if (turnNumber > s.burning.expiresAtTurn) { delete s.burning; continue; }
         if (isBurningExempt(map, s.x, s.y)) continue;
         s.hp -= 1;
-        // Floating text anchored to the structure record itself (2026-07-22,
-        // user-directed) -- see render.js's Structures draw loop, which
-        // matches this by object identity, same convention as a unit.
+        // Floating text anchored to the structure record itself -- see
+        // render.js's Structures draw loop, which matches this by object
+        // identity, same convention as a unit.
         window.GameEngine.floatingText.spawnFloatingText(s, "-1 (Burning)", "warning");
         if (s.hp <= 0) window.GameEngine.cities.destroyStructure(gameState, s.x, s.y);
       }
@@ -673,17 +639,16 @@ window.GameEngine = window.GameEngine || {};
   }
 
   /**
-   * Poisoned (2026-08-14, user-directed; see doc/world_encounters_design.md
-   * -- Marsh Adder's venom): direct mirror of tickBurningDamage just above,
-   * unit-only (Poisoned currently only ever comes from a Wandering
-   * Monster's bite, and monsters never target structures/cities -- see
-   * ai.js's runMonsterUnitTurn). Same 1 damage/turn shape, same water/river
-   * exemption reuse (isBurningExempt is generic despite its name -- just a
-   * "this tile washes off a damage-over-time condition" check), same
-   * `poisoned` condition key so it gets its own icon/tint (overlays.js)
-   * instead of showing the fire badge. Ticked here for the same reason
-   * Burning is -- uniformly for every civ, human or AI, not just
-   * AI-controlled ones.
+   * Poisoned (see doc/world_encounters_design.md -- Marsh Adder's venom):
+   * direct mirror of tickBurningDamage just above, unit-only (Poisoned
+   * currently only ever comes from a Wandering Monster's bite, and monsters
+   * never target structures/cities -- see ai.js's runMonsterUnitTurn). Same
+   * 1 damage/turn shape, same water/river exemption reuse (isBurningExempt
+   * is generic despite its name -- just a "this tile washes off a
+   * damage-over-time condition" check), same `poisoned` condition key so it
+   * gets its own icon/tint (overlays.js) instead of showing the fire badge.
+   * Ticked here for the same reason Burning is -- uniformly for every civ,
+   * human or AI, not just AI-controlled ones.
    */
   function tickPoisonedDamage(gameState, civ) {
     const { map } = gameState;
@@ -717,24 +682,22 @@ window.GameEngine = window.GameEngine || {};
     if (civ.eliminated) return null;
     const { map } = gameState;
 
-    // Orc "Dire Wolf" drought detector (2026-07-22, user-directed): counts
-    // consecutive turns since any of this civ's units last saw real combat.
-    // Tracked uniformly for every civ (cheap, and matches every other
-    // civ-wide counter in this file) even though only Orc currently consumes
-    // it (see ai.js's chooseBuildAction). Reset to 0 at every real combat
-    // call site -- see ai.js's markCombatEngaged.
+    // Orc "Dire Wolf" drought detector: counts consecutive turns since any
+    // of this civ's units last saw real combat. Tracked uniformly for every
+    // civ (cheap, and matches every other civ-wide counter in this file)
+    // even though only Orc currently consumes it (see ai.js's
+    // chooseBuildAction). Reset to 0 at every real combat call site -- see
+    // ai.js's markCombatEngaged.
     civ.turnsSinceCombat = (civ.turnsSinceCombat || 0) + 1;
 
     tickBurningDamage(gameState, civ);
     tickPoisonedDamage(gameState, civ);
-    // Wall Defense (Defend the Walls/Treetop Snipers/Long Range Snipers)
-    // moved to endRound below (2026-08-18, user-reported): checking here,
-    // at the START of this civ's own turn, only ever saw enemy positions as
-    // of the END of the PREVIOUS round -- a Wandering Monster that moved
-    // adjacent, attacked, and moved away again all within a single round
-    // (a "quick skirmish") was invisible to every check that could have
-    // caught it, since by the time this civ's NEXT beginCivTurn ran, the
-    // monster had already left. See endRound's own comment.
+    // Wall Defense (Defend the Walls/Treetop Snipers/Long Range Snipers) is
+    // checked in endRound below, not here: checking at the START of this
+    // civ's own turn would only ever see enemy positions as of the END of
+    // the PREVIOUS round, so a quick skirmish (a monster that moved
+    // adjacent, attacked, and retreated within a single round) would be
+    // invisible to every check. See endRound's own comment.
 
     for (const city of civ.cities) {
       window.GameEngine.cities.tickCity(city, civ, map);
@@ -750,49 +713,40 @@ window.GameEngine = window.GameEngine || {};
       return acc;
     }, { harvest: 0, coin: 0, lore: 0 });
 
-    // Dungeon Delve: a qualifying unit (any race/type since 2026-08-14, see
-    // doc/world_encounters_design.md -- was Human Wizard-only; channeling
-    // for 1+ turns, i.e. every turn after the turn spent explicitly
-    // starting the channel -- 2026-07-30, user-directed fix: previously
-    // required 2+ turns of _ritualTurns, silently wasting the unit's first
-    // full turn of channeling with no payout) pays out +3 lore, +3 coin per
-    // turn on top of normal city income -- that flat
-    // bonus is the tech's ENTIRE resource effect (2026-07-19, user-directed:
-    // no per-tile harvest, unlike Dwarf's Prospector's Claim below). The
-    // unit still gradually claims the 1-tile radius around itself (see
-    // _delveFilledOffsets -- gradual, exactly like a city's own filled-in
-    // mechanic, NOT instant), and that filled-in influence still counts
-    // toward the 33% territorial victory condition through the normal
-    // ownership pipeline in resolveOwnership/countTerritory -- claiming and
-    // resource generation are deliberately decoupled here.
+    // Dungeon Delve: a qualifying unit (any race/type, see
+    // doc/world_encounters_design.md), channeling for 1+ turns (i.e. every
+    // turn after the turn spent explicitly starting the channel), pays out
+    // +3 lore, +3 coin per turn on top of normal city income -- that flat
+    // bonus is the tech's ENTIRE resource effect (no per-tile harvest,
+    // unlike Dwarf's Prospector's Claim below). The unit still gradually
+    // claims the 1-tile radius around itself (see _delveFilledOffsets --
+    // gradual, exactly like a city's own filled-in mechanic, NOT instant),
+    // and that filled-in influence still counts toward the 33% territorial
+    // victory condition through the normal ownership pipeline in
+    // resolveOwnership/countTerritory -- claiming and resource generation
+    // are deliberately decoupled here.
     if (civ.unlockedMechanics && civ.unlockedMechanics.has("dungeon_delve")) {
       const race = window.GameData.getRace(civ.raceId);
       const industriousness = race.industriousness ?? 0.5;
       const cities = window.GameEngine.cities;
       for (const unit of civ.units) {
         if ((unit._ritualTurns || 0) < 1) continue;
-        // Anchor check re-added 2026-08-14 (see doc/world_encounters_design.md):
         // _ritualTurns is shared across Dark Ritual/Dungeon Delve/
-        // Prospector's Claim, and Delve is no longer Wizard-exclusive, so a
-        // Dwarf civ now has BOTH Delve and Prospector's Claim unlocked at
-        // once -- without this, a unit prospecting a Gold Vein (which also
-        // sets _ritualTurns >= 1) would incorrectly ALSO collect this Ruin
-        // payout. Must actually be standing on a Ruin AND have explicitly
-        // started Delving specifically (not just Dark Ritual, which also
-        // anchors on a Ruin but -- per its own comment elsewhere in this
-        // file -- never sets unit.channeling at all, so this excludes it
-        // automatically once Undead ships and could otherwise unlock both
-        // mechanics on the same civ the same way Dwarf now can).
+        // Prospector's Claim, and a Dwarf civ can have BOTH Delve and
+        // Prospector's Claim unlocked at once -- without this check, a unit
+        // prospecting a Gold Vein (which also sets _ritualTurns >= 1) would
+        // incorrectly ALSO collect this Ruin payout. Must actually be
+        // standing on a Ruin AND have explicitly started Delving
+        // specifically (not just Dark Ritual, which also anchors on a Ruin
+        // but -- per its own comment elsewhere in this file -- never sets
+        // unit.channeling at all).
         const tile = map.tiles[unit.y * map.width + unit.x];
         if (!tile || !tile.isRuin || unit.channeling !== "delving") continue;
         // Accumulates instead of paying out directly -- see
         // accumulateChannelStash's doc comment above.
         accumulateChannelStash(unit, { coin: 3, lore: 3 });
 
-        // Ruin encounters (2026-08-15 addition -- config.js's
-        // worldEncounters.ruin.monsterEncounterChance/treasureFindChance
-        // were defined back when Ruins were reworked but never actually
-        // wired up until now). Each can fire AT MOST ONCE per Ruin, ever --
+        // Ruin encounters: each can fire AT MOST ONCE per Ruin, ever --
         // tracked on the TILE itself (not the unit), so it survives a
         // different unit later taking over the same claim, and never
         // carries over to whatever new Ruin eventually respawns elsewhere
@@ -808,9 +762,9 @@ window.GameEngine = window.GameEngine || {};
           tile._delveTreasureRolled = true;
           ruinLog.push(`Ruin: ${civ.id}'s ${unit.name || unit.typeId} finds treasure while delving at (${unit.x},${unit.y})`);
           const treasureResult = window.GameEngine.ai.grantMonsterKillReward(civ, unit, gameState);
-          // Modal for the human player (2026-08-17, user-directed) -- see
-          // main.js's offerNextTreasureNotice/queueTreasureNotice's own doc
-          // comment for why this is set unconditionally for every civ.
+          // Modal for the human player -- see main.js's
+          // offerNextTreasureNotice/queueTreasureNotice's own doc comment
+          // for why this is set unconditionally for every civ.
           const unitLabel = unit.name || window.GameData.getUnit(unit.typeId).label;
           window.GameEngine.ai.queueTreasureNotice(civ, unitLabel, treasureResult);
         }
@@ -846,17 +800,15 @@ window.GameEngine = window.GameEngine || {};
       }
     }
 
-    // Galley "Fishing" (2026-07-21, user-directed): a universal channeled
-    // action for ANY Galley (any race, gated on the Level 0 "Fishing" tech,
-    // 2026-08-17, user-directed) -- explicitly started (see ai.js's
-    // maybeGalleyFishingPlay / the player's own "Start Fishing" action),
-    // same shape as Dungeon Delve above but simpler: a flat +5 harvest/+2
-    // coin per turn while it stays
-    // on a Fish Shoal tile and keeps channeling, no graduated tiers and no
-    // territorial claim. Ends the instant it's no longer on the shoal
-    // (moved off, or the shoal was never there -- channeling got cleared
-    // elsewhere) or the shoal exhausts (same RESOURCE_EXHAUSTION_CHANCE
-    // used above).
+    // Galley "Fishing": a universal channeled action for ANY Galley (any
+    // race, gated on the Level 0 "Fishing" tech) -- explicitly started (see
+    // ai.js's maybeGalleyFishingPlay / the player's own "Start Fishing"
+    // action), same shape as Dungeon Delve above but simpler: a flat
+    // +5 harvest/+2 coin per turn while it stays on a Fish Shoal tile and
+    // keeps channeling, no graduated tiers and no territorial claim. Ends
+    // the instant it's no longer on the shoal (moved off, or the shoal was
+    // never there -- channeling got cleared elsewhere) or the shoal
+    // exhausts (same RESOURCE_EXHAUSTION_CHANCE used above).
     for (const unit of civ.units) {
       if (unit.typeId !== "galley" || unit.channeling !== "fishing") continue;
       const tile = map.tiles[unit.y * map.width + unit.x];
@@ -883,19 +835,18 @@ window.GameEngine = window.GameEngine || {};
       }
     }
 
-    // Pioneer/Scout "Hunt Game"/"Farm Soil" (2026-08-05, user-directed):
-    // two Tier 0 tech-gated channeled actions (techs.js's hunt_game/
-    // farm_soil) for ANY Pioneer or Scout (any race, gated on the
-    // canProspect unit-data flag) -- explicitly started via the player's
-    // own "Hunt Game"/"Farm Soil" actions (no AI counterpart yet, same as
-    // Pioneer's Build Road). Same shape as Galley Fishing just above: a
-    // flat +3 harvest per turn while it stays on its resource tile and
-    // keeps channeling, no graduated tiers and no territorial claim. Ends
-    // the instant it's no longer on a qualifying tile, the tech is no
-    // longer unlocked (shouldn't normally happen -- defense in depth, same
-    // check the sidebar button is already gated on), or the resource
-    // exhausts (same RESOURCE_EXHAUSTION_CHANCE used above). Internally
-    // keyed "hunting"/"farming" -- see sidebar.js's CHANNEL_LABELS.
+    // Pioneer/Scout "Hunt Game"/"Farm Soil": two Tier 0 tech-gated channeled
+    // actions (techs.js's hunt_game/farm_soil) for ANY Pioneer or Scout (any
+    // race, gated on the canProspect unit-data flag) -- explicitly started
+    // via the player's own "Hunt Game"/"Farm Soil" actions (no AI
+    // counterpart yet, same as Pioneer's Build Road). Same shape as Galley
+    // Fishing just above: a flat +3 harvest per turn while it stays on its
+    // resource tile and keeps channeling, no graduated tiers and no
+    // territorial claim. Ends the instant it's no longer on a qualifying
+    // tile, the tech is no longer unlocked (defense in depth, same check
+    // the sidebar button is already gated on), or the resource exhausts
+    // (same RESOURCE_EXHAUSTION_CHANCE used above). Internally keyed
+    // "hunting"/"farming" -- see sidebar.js's CHANNEL_LABELS.
     for (const unit of civ.units) {
       if (!window.GameData.getUnit(unit.typeId).canProspect || unit.channeling !== "hunting") continue;
       const tile = map.tiles[unit.y * map.width + unit.x];
@@ -933,15 +884,13 @@ window.GameEngine = window.GameEngine || {};
       }
     }
 
-    // Pioneer/Scout/Druid/(any Dwarf unit w/ Dwarven Mining) "Mine Vein"
-    // (2026-08-12, user-directed: "Pioneer should be able to prospect all
-    // tile resource types except ruins"): same flat-payout, no-territorial-
-    // claim shape as Hunt Game/Farm Soil just above, extended to Gold/Iron
-    // Veins. Gated on the Level 0 "Mining" tech (2026-08-17, user-directed);
-    // Dwarves additionally get
-    // an OR-bypass via "Dwarven Mining" (dwarf_dwarven_mining) letting ANY
-    // dwarf unit start this, not just canProspect ones -- mirrors the same
-    // OR-condition in orders.js's ring-menu gate.
+    // Pioneer/Scout/Druid/(any Dwarf unit w/ Dwarven Mining) "Mine Vein":
+    // same flat-payout, no-territorial-claim shape as Hunt Game/Farm Soil
+    // just above, extended to Gold/Iron Veins. Gated on the Level 0 "Mining"
+    // tech; Dwarves additionally get an OR-bypass via "Dwarven Mining"
+    // (dwarf_dwarven_mining) letting ANY dwarf unit start this, not just
+    // canProspect ones -- mirrors the same OR-condition in orders.js's
+    // ring-menu gate.
     for (const unit of civ.units) {
       const baseUnit = window.GameData.getUnit(unit.typeId);
       const canMine = baseUnit.canProspect
@@ -954,10 +903,9 @@ window.GameEngine = window.GameEngine || {};
         delete unit._channelStash;
         continue;
       }
-      // Dwarf "Prospector's Claim"/"The Deep Mines" (2026-08-17, user-
-      // directed rework): flat resource-yield multipliers on ordinary
-      // mining, not their own territorial channel anymore -- each just sets
-      // its own mechanicValues entry (tech.js), summed here.
+      // Dwarf "Prospector's Claim"/"The Deep Mines": flat resource-yield
+      // multipliers on ordinary mining -- each just sets its own
+      // mechanicValues entry (tech.js), summed here.
       const yieldMult = 1
         + (civ.mechanicValues?.prospectors_claim_yield || 0)
         + (civ.mechanicValues?.deep_mines_yield || 0);
@@ -974,14 +922,10 @@ window.GameEngine = window.GameEngine || {};
     // Orc "Pillage and Loot": any Orc unit standing within an enemy city's
     // radius (raiding range) generates +1 harvest/+1 coin/+1 lore for EACH
     // tile where it actually suppressed enemy influence this turn (see
-    // influence.js computeInfluenceMap, which sets `unit._pillageTilesSuppressed`
-    // during beginRound -- runs BEFORE this civ turn in the same round, so
-    // the count here is always fresh, not stale from last turn). Merged
-    // 2026-07-14 (user-directed) from the former standalone "Campaign of
-    // Terror" tech, which only ever did the suppression side with no
-    // resource payout at all -- this replaces this mechanic's old flat
-    // +1/+1/+1-regardless-of-position payout with one scaled to how much
-    // enemy territory is actually being denied, not just "is a unit nearby."
+    // influence.js computeInfluenceMap, which sets
+    // `unit._pillageTilesSuppressed` during beginRound -- runs BEFORE this
+    // civ turn in the same round, so the count here is always fresh, not
+    // stale from last turn).
     if (civ.unlockedMechanics && civ.unlockedMechanics.has("pillage_and_loot")) {
       for (const unit of civ.units) {
         const tilesSuppressed = unit._pillageTilesSuppressed || 0;
@@ -1009,9 +953,8 @@ window.GameEngine = window.GameEngine || {};
           if (window.GameEngine.influence.chebyshev(paladin.x, paladin.y, ally.x, ally.y) > 1) continue;
           healed.add(ally);
           const crusadeBefore = ally.hp;
-          // Minimum 1 HP (2026-08-03, user-directed) -- brings this in line
-          // with the Heavy Metal/Wellspring Grove auras just below, which
-          // already floored their own smaller 5% heals the same way.
+          // Minimum 1 HP -- same floor the Heavy Metal/Wellspring Grove
+          // auras just below apply to their own smaller 5% heals.
           ally.hp = Math.min(ally.maxHp, ally.hp + Math.max(1, Math.round(ally.maxHp * 0.10)));
           window.GameEngine.floatingText.spawnHealGain(ally, ally.hp - crusadeBefore);
           window.GameEngine.combat.setCondition(ally, "crusadeAura", {
@@ -1038,13 +981,12 @@ window.GameEngine = window.GameEngine || {};
       const healed = new Set();
       for (const troubadour of civ.units) {
         if (troubadour.typeId !== "troubadour") continue;
-        // Human-controlled Troubadours (2026-08-10, user-directed): the
-        // aura is opt-in/opt-out via the ring menu (see orders.js's
-        // contextMenuOptions Carry/Board-style "Activate"/"Deactivate Aura"
-        // pills), not automatically on the instant the tech is researched.
-        // AI civs are unaffected -- their Troubadour's aura stays always-on,
-        // same as before this change; only ai.js's maybeSwitchTroubadourAura
-        // ever touches activeAura for them.
+        // Human-controlled Troubadours: the aura is opt-in/opt-out via the
+        // ring menu (see orders.js's contextMenuOptions Carry/Board-style
+        // "Activate"/"Deactivate Aura" pills), not automatically on the
+        // instant the tech is researched. AI civs are unaffected -- their
+        // Troubadour's aura stays always-on; only ai.js's
+        // maybeSwitchTroubadourAura ever touches activeAura for them.
         if (civ.isHuman && !troubadour.auraActive) continue;
         const aura = (hasHeavyMetal && hasPowerMetal)
           ? (troubadour.activeAura || "heavy_metal")
@@ -1102,15 +1044,10 @@ window.GameEngine = window.GameEngine || {};
     }
 
     // Tech: lore_per_city (e.g. Human "Common Tongue") -- flat lore scaling
-    // with city count. Applied to civ.resources BEFORE the stockpile sweep
-    // just below (2026-08-04, fixed alongside the research redesign): this
-    // used to run AFTER the stockpile already pulled from civ.resources,
-    // so the bonus reached tickResearch's old loreThisTurn argument but
-    // never actually landed in the stockpile itself. Harmless under the old
-    // income-accumulation research model (tickResearch read the argument
-    // directly), but research now spends ONLY from the stockpile (see
-    // tech.js's chooseResearch) -- left in the old order, this bonus tech
-    // would have gone completely inert.
+    // with city count. Must be applied to civ.resources BEFORE the
+    // stockpile sweep just below: research spends ONLY from the stockpile
+    // (see tech.js's chooseResearch), so a bonus added after the sweep
+    // would never actually reach it.
     if (civ.lorePerCity) civ.resources.lore += civ.lorePerCity * civ.cities.length;
 
     // Running stockpile: accumulate production, then deduct unit upkeep
@@ -1144,14 +1081,12 @@ window.GameEngine = window.GameEngine || {};
       }
       const disbandable = civ.units.filter(u => u.typeId !== "pioneer" && !u.carriedBy);
       if (disbandable.length > 0) {
-        // Starvation unit loss (2026-08-10, user-directed): the human
-        // player is asked which unit to lose instead of one vanishing at
-        // random with no warning -- see main.js's
+        // The human player is asked which unit to lose instead of one
+        // vanishing at random with no warning -- see main.js's
         // offerStarvationDisbandChoice, which drains this queue once the
-        // round finishes (civ.pendingUnitBuiltNotices' own convention: live
-        // unit references, not ids, consumed same-session -- see
-        // ai.js's queueUnitBuiltNotice). An AI civ has no one to ask, so it
-        // keeps the old immediate random pick.
+        // round finishes (live unit references, not ids, consumed
+        // same-session -- see ai.js's queueUnitBuiltNotice). An AI civ has
+        // no one to ask, so it picks randomly.
         if (civ.isHuman) {
           civ.pendingStarvationDisbands = civ.pendingStarvationDisbands || [];
           civ.pendingStarvationDisbands.push({ candidates: disbandable });
@@ -1163,16 +1098,15 @@ window.GameEngine = window.GameEngine || {};
       }
     }
 
-    // Orc "Bog Spirit" Wisp population cap (2026-08-10, user-directed): the
-    // kingdom may field at most one Wisp per living Bog Witch. A Bog Witch
-    // can die anywhere -- combat, starvation just above, anywhere else --
-    // so rather than hook every individual death site, this re-checks the
-    // cap once at the top of the civ's own turn, the same "catch it here"
-    // timing the starvation check just above uses. Same human/AI split as
-    // starvation: the human player picks which Wisp to lose (see main.js's
-    // offerNextWispDisband, drained the same way offerNextStarvationDisband
-    // is); an AI civ has no one to ask, so it disbands at random, repeatedly,
-    // until back under the cap.
+    // Orc "Bog Spirit" Wisp population cap: the kingdom may field at most
+    // one Wisp per living Bog Witch. A Bog Witch can die anywhere --
+    // combat, starvation just above, anywhere else -- so rather than hook
+    // every individual death site, this re-checks the cap once at the top
+    // of the civ's own turn, same "catch it here" timing the starvation
+    // check just above uses. Same human/AI split as starvation: the human
+    // player picks which Wisp to lose (see main.js's offerNextWispDisband,
+    // drained the same way offerNextStarvationDisband is); an AI civ
+    // disbands at random, repeatedly, until back under the cap.
     {
       const bogWitchCount = civ.units.filter((u) => u.typeId === "bog_witch").length;
       let wisps = civ.units.filter((u) => u.typeId === "wisp");
@@ -1198,10 +1132,9 @@ window.GameEngine = window.GameEngine || {};
 
     const totalLoreTrickleInfluence = civ.cities.reduce((sum, c) => sum + (c.loreInfluenceTrickle || 0), 0);
     civ.lastLoreTrickleInfluence = totalLoreTrickleInfluence;
-    // No longer fed this turn's Lore income directly (2026-08-04) -- see
-    // tech.js's own doc comment: research now pays its full cost up front
-    // from the stockpile when chosen, so this is purely a turn-count
-    // countdown with nothing left for beginCivTurn to hand it each turn.
+    // This is purely a turn-count countdown -- research pays its full cost
+    // up front from the stockpile when chosen (see tech.js), so there's
+    // nothing else for beginCivTurn to hand it each turn.
     const finishedTechId = window.GameEngine.tech.tickResearch(civ);
     if (finishedTechId) civ.lastCompletedTech = finishedTechId; // for music "discovery" trigger
 
@@ -1216,32 +1149,27 @@ window.GameEngine = window.GameEngine || {};
         window.GameEngine.ai.appendAIActionLog(gameState, civ.id, civ.lastAILog);
       }
     } else {
-      // Condition expiry (2026-08-06, user-directed bug fix): tickConditions
-      // is what actually removes an expired unit.conditions entry (Defend's
-      // x2-defense brace, Frozen, Befuddled, ...) once its expiresAtTurn is
-      // reached -- previously called ONLY from beginAITurn (skipped
-      // entirely for the human civ, right below) or primeUnitForAutomation
-      // (only for a human unit that's specifically automated), so a regular
-      // human-controlled unit's own Defend click never actually expired --
-      // it silently stayed doubled forever instead of lapsing "until the
-      // start of this unit's own next turn" as documented/intended. Mirrors
-      // beginAITurn's own per-unit loop, minus the AI-only heuristic resets
-      // (_seekingInvasion/_seekingLandmassId) that have no meaning for a
-      // player-directed unit.
+      // tickConditions is what actually removes an expired unit.conditions
+      // entry (Defend's x2-defense brace, Frozen, Befuddled, ...) once its
+      // expiresAtTurn is reached, and must run here too since the human civ
+      // skips beginAITurn (the only other place that calls it, aside from
+      // primeUnitForAutomation for automated units) -- without this, a
+      // regular human-controlled unit's own Defend click never expires.
+      // Mirrors beginAITurn's own per-unit loop, minus the AI-only
+      // heuristic resets (_seekingInvasion/_seekingLandmassId) that have no
+      // meaning for a player-directed unit.
       const turnNumber = gameState.turnNumber || 0;
-      // Movement modifiers (2026-08-06, user-directed bug fix): the human
-      // civ skips beginAITurn entirely (right below this comment explains
-      // why for build queues; same reason applies here), and beginAITurn was
-      // the ONLY place that stamped unit._moveMods -- so a regular,
-      // player-moved unit never had it at all. Every mods?.xxx read in
-      // ai.js's getMoveCost/computeMovementBudget/landCostForTerrain is
-      // optional-chained, so nothing crashed; it just silently evaluated to
-      // "no bonus" for terrain-movement techs, terrain-override techs, and
-      // mountain-tunneling, for every unit the player actually clicked and
-      // moved themselves -- which is most of a human game. See ai.js's
-      // civMoveMods for the shared shape (also used by beginAITurn and
-      // primeUnitForAutomation) and landCostForTerrain for where the newer
-      // terrainDiscount/unitTerrainDiscount fields in it actually apply.
+      // civMoveMods must be stamped here too, for the same reason: the
+      // human civ skips beginAITurn, the only other place unit._moveMods
+      // gets stamped, so a player-moved unit would otherwise never have it.
+      // Every mods?.xxx read in ai.js's getMoveCost/computeMovementBudget/
+      // landCostForTerrain is optional-chained, so nothing crashes -- it
+      // just silently evaluates to "no bonus" for terrain-movement techs,
+      // terrain-override techs, and mountain-tunneling on every
+      // player-moved unit. See ai.js's civMoveMods for the shared shape
+      // (also used by beginAITurn and primeUnitForAutomation) and
+      // landCostForTerrain for where terrainDiscount/unitTerrainDiscount
+      // actually apply.
       const moveMods = window.GameEngine.ai.civMoveMods(civ);
       for (const u of civ.units) {
         u._moveMods = moveMods;
@@ -1253,12 +1181,10 @@ window.GameEngine = window.GameEngine || {};
         if (u.hp <= 0) civ.units = civ.units.filter((x) => x !== u);
       }
 
-      // The human civ skips beginAITurn entirely -- but city production is
-      // NOT an AI behavior, it's a rule of the game, and it used to be
-      // trapped inside that skipped call (ai.js's maybeBuildInCities). A
-      // human player's cities therefore never advanced a build at all.
-      // Progress their queues here; the player still makes the CHOICE of what
-      // to build via the sidebar, this only ticks whatever they picked.
+      // City production isn't an AI behavior, it's a rule of the game, so it
+      // must run here even though the human civ skips beginAITurn (see
+      // ai.js's maybeBuildInCities). The player still makes the CHOICE of
+      // what to build via the sidebar; this only ticks whatever they picked.
       try {
         const buildLog = window.GameEngine.ai.progressBuildQueues(civ, gameState);
         if (buildLog.length) window.GameEngine.ai.appendAIActionLog(gameState, civ.id, buildLog);

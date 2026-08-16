@@ -5,10 +5,9 @@
  * modifiers (attackMult etc.) live in races.js and are applied by
  * engine/combat.js -- never baked into these base numbers.
  *
- * HP is derived, not stored: maxHP = round(attack + defense + unitTechLayer).
- * (2026-07-21, user-directed: dropped the flat HP_RATIO multiplier in favor
- * of adding the unit's own tech-tree depth -- see techs.js's unitTechLayer --
- * so later-tree units are innately tougher, not just better-statted.)
+ * HP is derived, not stored: maxHP = round(attack + defense + unitTechLayer)
+ * -- adding the unit's own tech-tree depth (see techs.js's unitTechLayer)
+ * means later-tree units are innately tougher, not just better-statted.
  *
  * visionRadius: how far (in tiles) this unit sees, feeding gameState.visibility
  * (see turns.js's refreshVisibility). Default 3 for every unit below; a tech
@@ -22,20 +21,17 @@
  *
  * Combat identity now comes from PROPERTIES, not the old role/counter-triangle
  * system (removed -- see game_rules_adjustments.md):
- *   firstStrikePct  0-1   two effects (see combat.js's resolveRound,
- *                          2026-07-16 redesign): (1) order -- whichever
- *                          side has the strictly higher value simply acts
- *                          first (a comparison, not a roll), which only
- *                          matters if that hit is lethal (skips the
- *                          loser's hit entirely); (2) counter denial --
- *                          independently, the ATTACKER's own value is
- *                          rolled fresh EVERY round as a flat chance to
- *                          prevent the defender's counter from happening
- *                          at all, lethal or not. Values are ~10x smaller
- *                          than the old system's since effect (2) now
- *                          fires on every exchange instead of only a
- *                          fight's final lethal round -- see
- *                          project_first_strike_redesign memory.
+ *   firstStrikePct  0-1   two effects (see combat.js's resolveRound): (1)
+ *                          order -- whichever side has the strictly higher
+ *                          value simply acts first (a comparison, not a
+ *                          roll), which only matters if that hit is lethal
+ *                          (skips the loser's hit entirely); (2) counter
+ *                          denial -- independently, the ATTACKER's own
+ *                          value is rolled fresh EVERY round as a flat
+ *                          chance to prevent the defender's counter from
+ *                          happening at all, lethal or not. Values are kept
+ *                          small since effect (2) fires on every exchange,
+ *                          not just a fight's final lethal round.
  *   doubleStrikePct 0-1   flat chance, rolled once per exchange, that this
  *                          unit immediately attacks a SECOND time (see
  *                          combat.js's resolveRound). The follow-up hit:
@@ -84,9 +80,7 @@
  *                          no evasion/ignoring-penalties benefit crosses
  *                          over into "can leave." Checked ahead of the
  *                          `flying` bypass in ai.js's getMoveCost/canLandOn/
- *                          canReachByLand (2026-08-10, user-directed: "even
- *                          though it has flying it cannot leave swamp
- *                          tiles"). Unset for every other unit -- a plain
+ *                          canReachByLand. Unset for every other unit -- a plain
  *                          `flying` unit with no restriction behaves exactly
  *                          as before.
  *   biggerPct       0-1   purely cosmetic render-size boost -- no gameplay
@@ -184,12 +178,6 @@
  * (see techs.js's unitUpkeep/unitPower), NOT its build cost.
  * `coinCost` here only matters for a unit whose unlocking tech has no
  * costBreakdown -- see ai.js's buildUnitOption's legacy-flat-coin fallback.
- * As of 2026-08-06 every unit, including Pioneer/Galley/Scout (each via its
- * own Level 0 tech's costBreakdown -- pioneer_infrastructure/
- * distant_shores/distant_horizons), resolves to the modern power-derived
- * multi-resource cost instead, so no unit currently carries a `coinCost`
- * field any more -- the fallback machinery is kept only as a defensive
- * path for a future tech authored without one.
  */
 
 
@@ -203,11 +191,11 @@ window.GameData.UNITS = {
     id: "pioneer", label: "Pioneer", symbol: "⌂", category: "civilian",
     attack: 0, defense: 2, movement: 2, visionRadius: 3,
     canFoundCity: true, canBuildRoad: true, canImprove: true, canProspect: true,
-    // Hard floor on build time (2026-08-06, user-directed) -- see ai.js's
-    // unitBuildTurns, which honors this the same way buildingBuildTurns
-    // already honors wall_section's. Every Level 0 unit's low base stats put
-    // it right at unitPower's rounding floor for every race, so without
-    // this it always finished in 1 flat turn no matter what.
+    // Hard floor on build time -- see ai.js's unitBuildTurns, which honors
+    // this the same way buildingBuildTurns already honors wall_section's.
+    // Every Level 0 unit's low base stats put it right at unitPower's
+    // rounding floor for every race, so without this it always finished in
+    // 1 flat turn no matter what.
     minBuildTurns: 3,
   },
   scout: {
@@ -224,9 +212,8 @@ window.GameData.UNITS = {
     // A ship, not a person -- see unit-names.js's UNIT_TYPE_PROPER_NAMES doc.
     nameSpecial: true,
     // Opts out of Boomerang's civ-wide Ranged-2 floor (combat.js
-    // effectiveRange), same reasoning as Militia's exemption above: a Galley
-    // isn't a scouting/skirmish unit Boomerang is meant to cover (2026-07-21,
-    // user-directed).
+    // effectiveRange) -- a Galley isn't a scouting/skirmish unit Boomerang
+    // is meant to cover.
     exemptFromUniversalRangeGrant: true,
   },
 
@@ -274,17 +261,13 @@ window.GameData.UNITS = {
     nameSpecial: true, // a machine, not a person -- see unit-names.js
   },
   wizard: {
-    // attack/defense cut 5/5 -> 3/3 (2026-07-17, user-directed, alongside
-    // moving the unlocking tech Wizardry to L2 -- see techs.js). Its combat
-    // stats were already "deliberately unremarkable" (see ai.js's
+    // Combat stats are deliberately unremarkable (see ai.js's
     // UTILITY_UNIT_MECHANICS comment) since the real value is the spell kit
     // (Fireball/Teleportation/Freezing Touch/Flight/Dungeon Delve/
-    // Invisibility/Invulnerability), not front-line stats -- this leans
-    // further into that. The AI build-priority mechanism that ensures
-    // Wizards actually get built (ai.js's UTILITY_UNIT_MECHANICS taper,
-    // `relevantMechanics.length * 7 * 0.6^owned`) is entirely stat-
-    // independent by design, so it needs no change here; verified this
-    // still holds live after the cut, not just assumed.
+    // Invisibility/Invulnerability), not front-line stats. The AI
+    // build-priority mechanism that ensures Wizards actually get built
+    // (ai.js's UTILITY_UNIT_MECHANICS taper, `relevantMechanics.length * 7
+    // * 0.6^owned`) is entirely stat-independent by design.
     id: "wizard", label: "Wizard", symbol: "✦", category: "military", raceOnly: "human",
     attack: 3, defense: 3, movement: 2, visionRadius: 3, range: 2, burnChancePct: 0.05, frozenChancePct: 0.05, 
     coinCost: 35, attackChars: ["⚡", "❄️", "🔥", "☄", "✨"], doubleStrikePct: 0.1, biggerPct: .1,
@@ -310,11 +293,9 @@ window.GameData.UNITS = {
     id: "druid", label: "Druid", symbol: "✦", category: "military", raceOnly: "elf",
     attack: 3, defense: 3, movement: 2, visionRadius: 3, range: 2, siegePct: 0.1,
     canFoundCity: true, // additional settler option alongside the shared Pioneer -- see elf_druidism
-    // canProspect (2026-08-10, user-directed): "like a pioneer, a druid
-    // should have the option to gather resources from soil or game" --
-    // orders.js's contextMenuOptions/turns.js's Hunt Game/Farm Soil channels
-    // both gate purely on this flag already, no race/unit-type restriction,
-    // so this is the only change needed.
+    // canProspect: orders.js's contextMenuOptions/turns.js's Hunt Game/Farm
+    // Soil channels gate purely on this flag, no race/unit-type
+    // restriction.
     canProspect: true,
     coinCost: 30, attackChars: ["🍃", "✨", "🌙"],
   },
@@ -329,8 +310,8 @@ window.GameData.UNITS = {
     id: "raptor", label: "Raptor", symbol: "◈", category: "military", raceOnly: "elf",
     attack: 0, defense: 1, movement: 5, visionRadius: 7, flying: true, firstStrikePct: 0.02,
     coinCost: 20, attackChars: ["彡"], biggerPct: -0.1, rare: true,
-    // noUpkeep (2026-07-18, user-directed): a Druid-summoned support unit,
-    // not a standing-army one -- see techs.js's unitUpkeep.
+    // noUpkeep: a Druid-summoned support unit, not a standing-army one --
+    // see techs.js's unitUpkeep.
     cityBuildable: false, noUpkeep: true, nameSpecial: true, // a beast, not a person -- see unit-names.js
   },
   // Druid-summoned only, same convention as Raptor above. Weak alone by
@@ -342,15 +323,14 @@ window.GameData.UNITS = {
     id: "shadowsteed", label: "Shadowsteed", symbol: "♞", category: "military", raceOnly: "elf",
     attack: 1, defense: 2, movement: 6, visionRadius: 4, flying: true, canCarryUnit: true, firstStrikePct: 0.05,
     coinCost: 40, attackChars: ["ʊ"], biggerPct: 0.2, rare: true,
-    // noUpkeep (2026-07-18, user-directed): a Druid-summoned support unit,
-    // not a standing-army one -- see techs.js's unitUpkeep.
-    // neverExplores (2026-07-19, user-directed): "they exist to find a
-    // rider, then fight" -- excluded from the generic curiosity-driven
-    // explore fallback (see ai.js's exploreWith call sites) the same way
-    // Dwarf's Runeforged Titan is. Its own dedicated dispatch branch
-    // (ai.js's "Shadowsteed first priority" block) never calls exploreWith
-    // either, so this covers a MOUNTED Shadowsteed that falls through to
-    // the ordinary cascade too.
+    // noUpkeep: a Druid-summoned support unit, not a standing-army one --
+    // see techs.js's unitUpkeep.
+    // neverExplores: excluded from the generic curiosity-driven explore
+    // fallback (see ai.js's exploreWith call sites) the same way Dwarf's
+    // Runeforged Titan is. Its own dedicated dispatch branch (ai.js's
+    // "Shadowsteed first priority" block) never calls exploreWith either,
+    // so this covers a MOUNTED Shadowsteed that falls through to the
+    // ordinary cascade too.
     cityBuildable: false, noUpkeep: true, neverExplores: true, nameSpecial: true, // a construct, not a person -- see unit-names.js
   },
   // Pinnacle unit, but a deliberately different shape from Dwarf's
@@ -388,10 +368,10 @@ window.GameData.UNITS = {
     id: "militia", label: "Militia", symbol: "⚔", category: "military", raceOnly: "halfellow",
     attack: 5, defense: 7, movement: 2, visionRadius: 4, siegePct: .3,
     coinCost: 22, attackChars: ["🔪", "🔱"], biggerPct: .2, rare: true, nameSpecial: true,
-    // Opts out of Boomerang's civ-wide Ranged-2 floor (combat.js effectiveRange)
-    // -- see the 2026-07-14 comment there. Militia is Halfellow's numerically
-    // dominant standing-army unit; exempting it keeps Boomerang's risk-free
-    // ranged combat scoped to the race's early/scouting units instead of the
+    // Opts out of Boomerang's civ-wide Ranged-2 floor (combat.js
+    // effectiveRange). Militia is Halfellow's numerically dominant
+    // standing-army unit; exempting it keeps Boomerang's risk-free ranged
+    // combat scoped to the race's early/scouting units instead of the
     // whole army.
     exemptFromUniversalRangeGrant: true,
   },
@@ -482,15 +462,15 @@ window.GameData.UNITS = {
   },
 
   // --- ORC full roster (redesigned tree, no stubs -- see techs.js) ---
-  // Goblin Miscreant (2026-07-14, user-directed): deliberately the weakest
-  // unit in the game -- not a scaled-down fighter, a gap-filler. `cheap:
-  // true` gives it 30% off cost/build-time/upkeep on top of what its
-  // already-minimal power would naturally cost (see ai.js buildUnitOption's
-  // CHEAP_UNIT_DISCOUNT_RATE, mirror image of Dragon's `rare` premium).
-  // Meant to be Orc's fallback build when nothing else is affordable or
-  // worth building, and its expected deaths feed Honor the Dead's +5-lore-
-  // per-death bonus automatically (no special-casing needed -- that tech
-  // applies to any Orc unit dying).
+  // Goblin Miscreant: deliberately the weakest unit in the game -- not a
+  // scaled-down fighter, a gap-filler. `cheap: true` gives it 30% off
+  // cost/build-time/upkeep on top of what its already-minimal power would
+  // naturally cost (see ai.js buildUnitOption's CHEAP_UNIT_DISCOUNT_RATE,
+  // mirror image of Dragon's `rare` premium). Meant to be Orc's fallback
+  // build when nothing else is affordable or worth building, and its
+  // expected deaths feed Honor the Dead's +5-lore-per-death bonus
+  // automatically (no special-casing needed -- that tech applies to any
+  // Orc unit dying).
   goblin_miscreant: {
     id: "goblin_miscreant", label: "Goblin Miscreant", symbol: "◇", category: "military", raceOnly: "orc",
     attack: 1, defense: 0, movement: 2, visionRadius: 2,
@@ -533,22 +513,19 @@ window.GameData.UNITS = {
     // whenever this unit dies -- applies to whichever unit lands the kill.
     curseOnDeath: { attackMult: 0.5, moveMult: 0.5, duration: 5 },
   },
-  // Bog Spirit summon (2026-08-10, user-directed; made INSTANT 2026-08-10,
-  // user-reported bug fix -- see ai.js's startBogWitchWispSummon doc
-  // comment for why the original Druid-summon-style multi-turn build never
-  // actually completed for a human player's own manual summon): the Bog
-  // Witch calls it into being at a player-chosen SWAMP tile the civ has
-  // ever explored, not adjacent to herself -- see ai.js's
-  // maybeOrcBogWitchPlay/startBogWitchWispSummon (mirrors Elf's Raptor/
-  // Shadowsteed's unlock_unit/cost-derivation convention, just instant and
-  // with a chosen-tile destination instead of adjacent-spawn). Flying
-  // (flying-speed movement, 25% evasion vs. a non-Ranged hitter) but
-  // restrictedToTerrain: "swamp" means it can never actually LEAVE swamp --
-  // see this file's own FIELD REFERENCE doc comment above and ai.js's
-  // getMoveCost/canLandOn/canReachByLand. cityBuildable: false + noUpkeep
-  // mirror Raptor/Shadowsteed exactly (never a city build-menu option, no
-  // ongoing cost) -- capped civ-wide at the current Bog Witch count instead
-  // (see ai.js's wispCapReached), not built freely.
+  // Bog Spirit summon: the Bog Witch calls it into being instantly at a
+  // player-chosen SWAMP tile the civ has ever explored, not adjacent to
+  // herself -- see ai.js's maybeOrcBogWitchPlay/startBogWitchWispSummon
+  // (mirrors Elf's Raptor/Shadowsteed's unlock_unit/cost-derivation
+  // convention, just instant and with a chosen-tile destination instead of
+  // adjacent-spawn). Flying (flying-speed movement, 25% evasion vs. a
+  // non-Ranged hitter) but restrictedToTerrain: "swamp" means it can never
+  // actually LEAVE swamp -- see this file's own FIELD REFERENCE doc
+  // comment above and ai.js's getMoveCost/canLandOn/canReachByLand.
+  // cityBuildable: false + noUpkeep mirror Raptor/Shadowsteed exactly
+  // (never a city build-menu option, no ongoing cost) -- capped civ-wide
+  // at the current Bog Witch count instead (see ai.js's wispCapReached),
+  // not built freely.
   wisp: {
     id: "wisp", label: "Wisp", symbol: "◌", category: "military", raceOnly: "orc",
     attack: 1, defense: 0, movement: 1, visionRadius: 6, flying: false,
@@ -576,7 +553,7 @@ window.GameData.UNITS = {
   },
 
   // =========================================================================
-  // WANDERING MONSTERS (see doc/world_encounters_design.md, 2026-08-14)
+  // WANDERING MONSTERS (see doc/world_encounters_design.md)
   // -------------------------------------------------------------------------
   // Belong to no real race -- owned by the "MONSTERS" pseudo-civ (see ai.js's
   // ensureMonsterCiv), never buildable by any real civ (cityBuildable: false,
@@ -630,11 +607,11 @@ window.GameData.UNITS = {
   marsh_adder: {
     id: "marsh_adder", label: "Marsh Adder", symbol: "🐍", category: "military",
     attack: 3, defense: 3, movement: 2, visionRadius: 3, restrictedToTerrain: "swamp",
-    // Poisoned (2026-08-14, user-directed): functionally identical to
-    // Burning (1 damage/turn, ai.js's tickPoisonedDamage mirrors
-    // tickBurningDamage exactly) but its own condition key/visual, since a
-    // venomous snake inflicting fire damage reads wrong -- see ai.js's
-    // applyPoisoned and overlays.js's "poisoned" visual.
+    // Poisoned: functionally identical to Burning (1 damage/turn, ai.js's
+    // tickPoisonedDamage mirrors tickBurningDamage exactly) but its own
+    // condition key/visual, since a venomous snake inflicting fire damage
+    // reads wrong -- see ai.js's applyPoisoned and overlays.js's "poisoned"
+    // visual.
     poisonChancePct: 0.30,
     coinCost: 12, attackChars: ["🐍"],
     cityBuildable: false, noUpkeep: true, nameSpecial: true, neverExplores: true,

@@ -18,32 +18,23 @@
  *
  * WHICH CLIPS EXIST: read from js/data/sfx-manifest.js, a generated list of
  * the real contents of assets/sfx/ (regenerate with
- * working/tools/build-sfx-manifest.ps1 after adding clips). This replaced
- * (2026-08-03, user-reported) a lazy probe-and-learn scheme that discovered
- * availability by requesting every plausible filename and watching which ones
- * 404'd. That scheme had three user-visible problems:
- *
- *   1. Console noise -- every miss logged a browser-level "failed to load
- *      resource" line that no JS try/catch can suppress.
- *   2. Silent misfires -- a variant pick that landed on a nonexistent file
- *      played nothing at all that time ("sometimes the move sfx doesn't play").
- *   3. Latency -- the first play of any clip was a cold network fetch plus
- *      decode, which is what made attacks and unit selection sound delayed.
+ * working/tools/build-sfx-manifest.ps1 after adding clips) rather than
+ * discovered by probing every plausible filename and watching which ones
+ * 404 -- that avoids the browser-level "failed to load resource" console
+ * noise a probe-and-learn scheme produces, and guarantees a variant pick
+ * never lands on a nonexistent file.
  *
  * PRELOADING: init() fetches and decodes every clip belonging to the races in
  * play, up front, behind the loading screen (the "Sound Effects" progress bar
- * in index.html reports this -- it used to complete instantly because init()
- * did nothing). Playback then clones an already-decoded element, so it starts
- * on the same frame it's asked for. Clips whose race is not in play are never
- * fetched at all; if one is somehow requested anyway it loads on demand and
- * is cached from then on, so nothing is ever unplayable, just late once.
+ * in index.html reports this). Playback then clones an already-decoded
+ * element, so it starts on the same frame it's asked for. Clips whose race is
+ * not in play are never fetched at all; if one is somehow requested anyway it
+ * loads on demand and is cached from then on, so nothing is ever unplayable,
+ * just late once.
  */
 
 window.SfxSystem = (function () {
-  // Checked in this order when the manifest offers a clip under more than one
-  // Every sfx file is mp3 (2026-08-03, user-directed). wav support was
-  // dropped outright -- there are no wav files and none are planned, so the
-  // two-extension lookup was dead weight.
+  // Every sfx file is mp3 -- there is no wav support, since none are planned.
   const SFX_EXTENSION = "mp3";
 
   // How many simultaneous voices one clip may occupy. Beyond this, the oldest
@@ -70,10 +61,9 @@ window.SfxSystem = (function () {
   let muted = false;
   // Optional (x, y) -> boolean predicate, registered by main.js once a game
   // is running (see setVisibilityCheck) -- lets playAction() skip sounds for
-  // units currently off-screen (2026-07-24, user-directed). null = no
-  // gating, e.g. before a game starts, or in a headless sim context that
-  // never registers one -- see js/ui/render.js's isTileOnScreen for the
-  // actual on-screen test this wraps.
+  // units currently off-screen. null = no gating, e.g. before a game starts,
+  // or in a headless sim context that never registers one -- see
+  // js/ui/render.js's isTileOnScreen for the actual on-screen test this wraps.
   let visibilityCheck = null;
 
   function effectiveVolume() {
@@ -81,12 +71,10 @@ window.SfxSystem = (function () {
   }
 
   // Volume persistence, mirroring music.js's own (separate key, so the two
-  // sliders are independent). Added alongside the Audio menu's Sound Effects
-  // slider (2026-08-03, user-directed) -- a slider that silently resets on
-  // every reload, while the Music slider right above it remembers, reads as
-  // broken. `muted` is deliberately NOT stored here: mute is a single
-  // cross-system toggle owned by music.js's settings (see main.js's
-  // setupAudioControls, which drives both systems from one checkbox).
+  // sliders are independent). `muted` is deliberately NOT stored here: mute
+  // is a single cross-system toggle owned by music.js's settings (see
+  // main.js's setupAudioControls, which drives both systems from one
+  // checkbox).
   const SFX_SETTINGS_KEY = "roi_sfx_settings";
   function loadPersistedVolume() {
     try {
@@ -140,8 +128,7 @@ window.SfxSystem = (function () {
     return entry ? entry.variants : [];
   }
 
-  /** Public: does this combo have any clip at all? Now an exact answer rather
-   *  than the optimistic guess it used to be. playAction() is still safe to
+  /** Public: does this combo have any clip at all? playAction() is safe to
    *  call unconditionally either way. */
   function hasClip(raceId, unitId, action) {
     return candidateVariants(raceId, unitId, action).length > 0;
@@ -229,7 +216,7 @@ window.SfxSystem = (function () {
    *  delayMs (optional): defers the whole call (variant pick, visibility
    *  check, and playback) by this many ms -- e.g. ai.js's death sfx, which
    *  wants to land a beat after the killing blow's own "attack" clip
-   *  instead of overlapping it (2026-07-30, user-directed). */
+   *  instead of overlapping it. */
   function playAction(raceId, unitId, action, x, y, delayMs) {
     if (delayMs) { setTimeout(() => playAction(raceId, unitId, action, x, y), delayMs); return; }
     if (visibilityCheck && x !== undefined && y !== undefined && !visibilityCheck(x, y)) return;
@@ -263,17 +250,15 @@ window.SfxSystem = (function () {
     if (!loaded.has(key)) loaded.set(key, voice);
   }
 
-  // SYSTEM SFX (2026-08-06, user-directed): UI sounds -- a button click, a
-  // tech-researched sting -- that aren't tied to any race/unit/action combo
-  // the manifest-driven model above covers. Deliberately NOT folded into
-  // that model (there's no "system" race and no unit to key off), but reuses
-  // its low-level plumbing directly: preloadClip/acquireVoice/clipPath are
-  // already generic on an arbitrary string key (clipPath's
-  // `assets/sfx/${key}.mp3` needs nothing race/unit-shaped), so
-  // "system_button_click" and "system_research_complete_1/2/3" work as
-  // literal keys with zero new machinery. Preloaded alongside everything
-  // else in init() below so they're warm the first time they're needed, same
-  // "no cold-load lag" reasoning as the rest of this file.
+  // SYSTEM SFX: UI sounds -- a button click, a tech-researched sting -- that
+  // aren't tied to any race/unit/action combo the manifest-driven model
+  // above covers. Deliberately NOT folded into that model (there's no
+  // "system" race and no unit to key off), but reuses its low-level plumbing
+  // directly: preloadClip/acquireVoice/clipPath are already generic on an
+  // arbitrary string key, so "system_button_click" and
+  // "system_research_complete_1/2/3" work as literal keys with zero new
+  // machinery. Preloaded alongside everything else in init() below so
+  // they're warm the first time they're needed.
   const SYSTEM_BUTTON_CLICK_KEY = "system_button_click";
   const SYSTEM_CONFIRM_ACTION_KEY = "system_confirm_action";
   const SYSTEM_TREASURE_CHEST_OPEN_KEY = "system_treasure_chest_open_1";
@@ -322,8 +307,8 @@ window.SfxSystem = (function () {
   }
 
   /** Public: a Treasure Chest or Ruin Delve treasure find modal is about to
-   *  show (2026-08-17, user-directed) -- see main.js's "openChest" case and
-   *  the Ruin Delve treasure-find dialog. */
+   *  show -- see main.js's "openChest" case and the Ruin Delve treasure-find
+   *  dialog. */
   function playTreasureChestOpen() {
     playSystemKey(SYSTEM_TREASURE_CHEST_OPEN_KEY);
   }
