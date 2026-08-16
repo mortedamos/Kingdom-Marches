@@ -13,9 +13,12 @@
  * skips for the human civ -- a human game sat at "Research: None selected"
  * forever. Available nodes in your own tree are now buttons.
  *
- * Every layer row (2026-08-06, user-directed) is collapsible -- click the
- * "Level N" label to toggle, wired in main.js against the `expandedState`
- * object this module's render() is passed (see render's own doc comment).
+ * Every layer row always renders fully expanded (2026-08-16, user-directed
+ * removal of the collapse/expand mechanic that used to live here) -- the
+ * caller instead vertically centers the view on the highest currently-
+ * available layer the moment the screen opens (see main.js's redraw(),
+ * which does this via `data-avail` below rather than anything in this pure-
+ * render module).
  */
 
 window.UI = window.UI || {};
@@ -37,24 +40,12 @@ window.UI = window.UI || {};
     return COLUMNS.includes(tech.category) ? tech.category : "civic";
   }
 
-  /**
-   * `expandedState` (2026-08-06, user-directed; auto collapse/expand added
-   * 2026-08-10): the collapse/expand state for each layer row,
-   * `{ [civId]: { [layer]: { expanded, avail } } }` -- OWNED by main.js as
-   * part of viewState (this module stays a pure render function, same
-   * split as every other UI module) and passed in by reference so a click
-   * on a layer header can mutate it directly and force a rebuild.
-   *
-   * `avail` is whether that layer currently has any tech worth showing
-   * (available to research, or actively being researched -- see
-   * layerHasAvailable). Each render compares the layer's CURRENT avail
-   * against the stored one: unchanged means a prior manual toggle (or the
-   * initial default) still stands, changed means the tech tree just gained
-   * or lost its last actionable node in that layer, so `expanded` is reset
-   * to match -- "collapse a level with nothing left to build, uncollapse
-   * one with something available" per the user's own wording, while still
-   * letting a manual toggle stick between those transitions.
-   */
+  /** Whether `layer` currently has any tech worth calling out as its own
+   *  "highest available" -- available to research, or actively being
+   *  researched. Stamped onto each row as `data-avail` so main.js can find
+   *  the highest such layer (last matching row, DOM order is ascending) and
+   *  center on it the moment the tech tree opens, without this module
+   *  needing to know anything about scrolling. */
   function layerHasAvailable(civ, cols) {
     for (const col of COLUMNS) {
       for (const tech of cols[col]) {
@@ -79,13 +70,9 @@ window.UI = window.UI || {};
    * DIRECT ancestors/descendants are one hop away (tech.prereqs itself, and
    * whatever else's prereqs name this tech); INDIRECT ones are everything
    * further up/down the chain. Both get their own relationKindFor() CSS
-   * class on any node that's actually visible; a still-collapsed layer
-   * holding either kind of relation gets a small "N related" badge on its
-   * header instead (2026-08-10, user-directed: hovering used to force such
-   * a layer open, but that -- plus dimming every unrelated node -- caused
-   * too much visual "flicker" as the cursor moved around, so neither
-   * happens anymore; a layer's expand/collapse state now comes ONLY from a
-   * manual toggle).
+   * class on any node -- every node is always visible now (2026-08-16, see
+   * this file's own top-of-file doc comment), so relations just recolor the
+   * nodes themselves, nothing more.
    */
   function computeRelations(civ, hoverTechId) {
     if (!hoverTechId) return null;
@@ -146,7 +133,7 @@ window.UI = window.UI || {};
     return null;
   }
 
-  function render(civ, isPlayerCiv, expandedState, focusTechId, hoverTechId) {
+  function render(civ, isPlayerCiv, focusTechId, hoverTechId) {
     const race = window.GameData.getRace(civ.raceId);
     // The AI's "intends to research next" hint is meaningless for the human's
     // own tree -- nothing is going to pick for them, that's the whole point.
@@ -166,7 +153,6 @@ window.UI = window.UI || {};
       byLayer[layer][columnFor(tech)].push(tech);
     }
 
-    const civExpanded = expandedState[civ.id] = expandedState[civ.id] || {};
     const relations = computeRelations(civ, hoverTechId);
 
     let rows = "";
@@ -174,56 +160,15 @@ window.UI = window.UI || {};
       const cols = byLayer[layer];
       if (!cols) continue;
       const avail = layerHasAvailable(civ, cols);
-      let entry = civExpanded[layer];
-      if (!entry || entry.avail !== avail) {
-        entry = { expanded: avail, avail };
-        civExpanded[layer] = entry;
-      }
-      // A "jump to this tech" link (research-complete modal, 2026-08-10,
-      // user-directed) always forces its target's layer open, even if it
-      // would otherwise be collapsed -- otherwise the linked entry wouldn't
-      // actually be visible/readable. This one PERSISTS (writes into `entry`).
-      const layerHasFocus = focusTechId && COLUMNS.some((col) => cols[col].some((t) => t.id === focusTechId));
-      if (layerHasFocus) entry.expanded = true;
 
-      // Hover-driven relation indicator (2026-08-10, user-directed: hovering
-      // used to force a collapsed layer open to reveal a related tech, plus
-      // dim every unrelated node -- both caused too much "flicker" as the
-      // cursor moved around, so neither happens anymore. A layer's
-      // expand/collapse state now comes ONLY from `entry` (manual toggle or
-      // the focus-link case above) -- hovering never changes it. A still-
-      // collapsed layer holding a related tech (direct or indirect, either
-      // direction) just recolors its own "Level N" label (2026-08-13,
-      // user-directed -- replaces an earlier "N related" badge, which read
-      // as more clutter than signal) so the relation is still discoverable
-      // without any layout shift. See computeRelations for what counts as
-      // a relation.
-      const expanded = entry.expanded;
-      let hasRelated = false;
-      if (relations && !expanded) {
-        for (const col of COLUMNS) {
-          for (const t of cols[col]) {
-            if (relations.directAncestors.has(t.id) || relations.directDescendants.has(t.id)
-                || relations.indirectAncestors.has(t.id) || relations.indirectDescendants.has(t.id)) {
-              hasRelated = true;
-              break;
-            }
-          }
-          if (hasRelated) break;
-        }
-      }
-
-      rows += `<div class="techtree-layer">
-        <div class="techtree-layer-label techtree-layer-toggle" data-toggle-layer="${layer}">
-          <span class="techtree-arrow${expanded ? " techtree-arrow-expanded" : ""}">▸</span>
-          <span class="${hasRelated ? "techtree-layer-level-related" : ""}">Level ${layer}</span>
-        </div>
-        ${expanded ? COLUMNS.map((col) => `<div class="techtree-column">${
+      rows += `<div class="techtree-layer" data-layer="${layer}" data-avail="${avail}">
+        <div class="techtree-layer-label">Level ${layer}</div>
+        ${COLUMNS.map((col) => `<div class="techtree-column">${
           cols[col].map((tech) => renderNode(
             civ, tech, nextPick, isPlayerCiv, tech.id === focusTechId,
             tech.id === hoverTechId ? "self" : relationKindFor(relations, tech.id),
           )).join("") || ""
-        }</div>`).join("") : ""}
+        }</div>`).join("")}
       </div>`;
     }
 

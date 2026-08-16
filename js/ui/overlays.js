@@ -989,5 +989,10 @@ window.UI = window.UI || {};
     drawLevelUpGlowBehind, drawLevelUpSparkles,
     hexToRgba, drawHatch, drawConstructionSite, auraInfoForUnit, drawTileScoreOverlay,
     ATTACK_ANIM_MS, SLASH_ANIM_MS, AREA_EFFECT_ANIM_MS, AREA_EFFECT_COLORS, DEATH_EFFECT_ANIM_MS,
+    // Exported (2026-08-16, user-directed KMKB feature) so the Knowledge
+    // Base's Conditions page can read the same icon set this module draws
+    // on the map, rather than keeping a second hand-copied list that could
+    // drift out of sync with it.
+    CONDITION_ICONS,
   };
 })();

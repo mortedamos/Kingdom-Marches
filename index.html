@@ -55,6 +55,13 @@
           </label>
         </div>
       </div>
+      <div class="menu-item">
+        <button class="menu-btn" id="title-menu-knowledge-btn">Knowledge</button>
+        <div class="menu-dropdown" id="title-menu-knowledge-dropdown" style="display:none;">
+          <button id="title-kb-units-btn" class="menu-dropdown-btn">Units</button>
+          <button id="title-kb-conditions-btn" class="menu-dropdown-btn">Conditions</button>
+        </div>
+      </div>
     </div>
     <input type="file" id="title-load-game-file-input" accept=".kmsg,.kms,application/json" style="display:none;">
 
@@ -203,6 +210,13 @@
         </div>
       </div>
       <div class="menu-item">
+        <button class="menu-btn" id="menu-knowledge-btn">Knowledge</button>
+        <div class="menu-dropdown" id="menu-knowledge-dropdown" style="display:none;">
+          <button id="kb-units-btn" class="menu-dropdown-btn">Units</button>
+          <button id="kb-conditions-btn" class="menu-dropdown-btn">Conditions</button>
+        </div>
+      </div>
+      <div class="menu-item">
         <button class="menu-btn" id="menu-report-btn">Report</button>
         <div class="menu-dropdown" id="menu-report-dropdown" style="display:none;">
           <button class="menu-dropdown-btn" id="report-influence-btn">Influence</button>
@@ -306,6 +320,24 @@
     </div>
   </div>
 
+  <!-- Kingdom Marches Knowledge Base (KMKB) -- Units/Conditions reference
+       pages, opened from the "Knowledge" menu on both the title screen and
+       the in-game menu bar (see js/main.js's setupMenuBar/
+       setupTitleMenuBar, and the #knowledge-overlay block in redraw()).
+       Deliberately OUTSIDE both #title-screen and #game-screen, same
+       reasoning as #keyboard-shortcuts-overlay just above -- it has to open
+       from the title screen too, before #game-screen even exists.
+       .knowledge-overlay-ingame (toggled by main.js based on whether a game
+       is actually running) narrows the backdrop to stop at the sidebar's
+       edge -- see .knowledge-overlay's own CSS for why a plain
+       .techtree-overlay wouldn't do that on its own. -->
+  <div id="knowledge-overlay" class="knowledge-overlay" style="display:none;">
+    <div id="knowledge-modal" class="knowledge-modal">
+      <button class="techtree-close-btn" id="knowledge-close-btn">Close</button>
+      <div id="knowledge-content"></div>
+    </div>
+  </div>
+
   <!-- Balance/tuning constants -- must load FIRST; every other file reads
        window.GameConfig at module scope. -->
   <script src="js/data/config.js"></script>
@@ -354,6 +386,7 @@
   <script src="js/ui/sidebar.js"></script>
   <script src="js/ui/techtree.js"></script>
   <script src="js/ui/reports.js"></script>
+  <script src="js/ui/knowledgebase.js"></script>
   <script src="js/ui/dialog.js"></script>
   <script src="js/ui/credits.js"></script>
   <script src="js/ui/buildlist.js"></script>

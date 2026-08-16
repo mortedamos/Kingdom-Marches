@@ -854,22 +854,6 @@ html, body {
   padding-top: 6px;
 }
 .techtree-header { border-top: none; padding-bottom: 4px; }
-/* Collapsible layer rows (2026-08-06, user-directed) -- click "Level N" to
-   toggle; see main.js's data-toggle-layer wiring / techtree.js's render(). */
-.techtree-layer-toggle {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  cursor: pointer;
-  user-select: none;
-}
-.techtree-layer-toggle:hover { color: var(--text-main); }
-.techtree-arrow {
-  display: inline-block;
-  font-size: 10px;
-  transition: transform 0.15s ease;
-}
-.techtree-arrow-expanded { transform: rotate(90deg); }
 
 /* "Right-click for actions" (2026-08-06, user-directed). Once every verb
    moved to the radial map menu, this became the only signpost to the whole
@@ -1110,15 +1094,6 @@ html, body {
 .techtree-node.techtree-node-relation-descendant { border-color: #e0a050; box-shadow: 0 0 0 1px #e0a050 inset; }
 .techtree-node.techtree-node-relation-indirect { opacity: 0.6; }
 
-/* Collapsed layer holding a related (direct OR indirect) tech to the
-   hovered node (2026-08-10, user-directed; recolored instead of badged as
-   of 2026-08-13 -- see techtree.js's render()): discoverable without being
-   forced open -- hovering never expands/collapses a layer anymore (same
-   "too much flicker" fix as the dimming removal above). */
-.techtree-layer-level-related {
-  color: #8a7fd6;
-}
-
 .reports-modal { width: min(800px, 94vw); }
 /* AI Tech Trees (2026-08-10, user-directed): the embedded tree reuses
    .techtree-layer's 4-column grid (civic/building/military/mystic), which
@@ -1162,6 +1137,172 @@ html, body {
   text-align: center;
   white-space: nowrap;
 }
+/* Kingdom Marches Knowledge Base (KMKB) -- js/ui/knowledgebase.js.
+   A separate overlay class from .techtree-overlay (not just a reused one)
+   specifically so .knowledge-overlay-ingame can narrow it to stop at the
+   sidebar's edge -- every OTHER .techtree-overlay-based modal deliberately
+   covers the full viewport, but this one was explicitly required not to
+   overlap #sidebar. Base rule still covers the full viewport (right: 0),
+   matching every other modal, for the title-screen case where there's no
+   sidebar to avoid at all. */
+.knowledge-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.65);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+}
+.knowledge-overlay.knowledge-overlay-ingame {
+  right: 280px; /* matches .sidebar's own width -- never overlaps it */
+}
+.knowledge-modal {
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  width: min(1400px, 94%);
+  height: 88vh;
+  padding: 20px 24px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden; /* .kb-list-pane/.kb-profile-pane scroll themselves */
+}
+.kb-header { flex: 0 0 auto; margin-bottom: 8px; }
+.kb-header h2 { margin: 0; }
+/* Shared by both KMKB pages (2026-08-16, user-directed: Conditions reuses
+   the Units page's exact list+profile layout instead of its own grid, for
+   visual consistency) -- .kb-list-pane/.kb-list-btn/etc. are generic, not
+   unit-specific; only .kb-unit-portrait below stays unit-only (conditions
+   show an icon glyph instead, styled separately). */
+.kb-body { flex: 1; min-height: 0; display: flex; gap: 16px; }
+.kb-list-pane {
+  flex: 0 0 240px;
+  overflow-y: auto;
+  border-right: 1px solid var(--border);
+  padding-right: 12px;
+}
+.kb-list-group { margin-bottom: 14px; }
+.kb-list-group-label {
+  color: var(--accent);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 3px;
+  margin-bottom: 4px;
+}
+.kb-list-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  padding: 5px 6px;
+  color: var(--text-main);
+  font-size: 13px;
+  cursor: pointer;
+}
+.kb-list-btn:hover { background: var(--bg-panel-raised); }
+.kb-list-btn-selected { background: var(--bg-panel-raised); border-color: var(--accent); }
+.kb-list-btn-symbol { width: 18px; text-align: center; color: var(--text-dim); }
+.kb-profile-pane { flex: 1; min-width: 0; overflow-y: auto; }
+.kb-profile-empty {
+  color: var(--text-dim);
+  font-style: italic;
+  padding-top: 40px;
+  text-align: center;
+}
+.kb-profile-empty-inline { color: var(--text-dim); font-size: 12px; font-style: italic; }
+.kb-profile-header { display: flex; gap: 14px; align-items: flex-start; margin-bottom: 10px; }
+.kb-unit-portrait {
+  flex: 0 0 auto;
+  width: 96px;
+  height: 96px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-panel-raised);
+}
+.kb-profile-header h2 { margin: 0 0 2px 0; }
+.kb-profile-subline { color: var(--text-dim); font-size: 12px; margin-bottom: 6px; }
+.kb-chip-row { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 10px 0; }
+.kb-chip {
+  display: inline-block;
+  padding: 2px 8px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  font-size: 11px;
+  color: var(--text-dim);
+  background: var(--bg-panel-raised);
+}
+.kb-chip-action { color: var(--accent); border-color: var(--accent); }
+.kb-tech-rel {
+  font-size: 12px;
+  color: var(--text-main);
+  border-top: 1px solid var(--border);
+  padding: 6px 0;
+}
+.kb-tech-rel-label {
+  display: inline-block;
+  min-width: 90px;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  font-size: 10px;
+  letter-spacing: 0.05em;
+}
+.kb-tech-badge { color: var(--text-dim); font-size: 10px; margin-left: 4px; }
+/* A unit's own default properties that map to a Conditions-page entry
+   (2026-08-16, user-directed) -- e.g. Wizard's "Burning — 5% chance to
+   inflict on hit". A real <button>, not a styled <div>, so it's keyboard-
+   reachable like every other clickable KMKB row. */
+.kb-condition-link {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 6px 8px;
+  margin-bottom: 4px;
+  color: var(--text-main);
+  font-size: 12px;
+  cursor: pointer;
+}
+.kb-condition-link:hover { border-color: var(--accent); background: var(--bg-panel-raised); }
+.kb-condition-link-icon { font-size: 16px; flex: 0 0 auto; }
+.kb-condition-link-text { flex: 1; }
+.kb-condition-link-arrow { color: var(--accent); font-size: 11px; flex: 0 0 auto; }
+.kb-back-btn {
+  display: inline-block;
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 4px 10px;
+  margin-bottom: 12px;
+  color: var(--text-dim);
+  font-size: 12px;
+  cursor: pointer;
+}
+.kb-back-btn:hover { border-color: var(--accent); color: var(--accent); }
+.kb-condition-profile-icon {
+  flex: 0 0 auto;
+  width: 96px;
+  height: 96px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 52px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-panel-raised);
+}
+.kb-condition-profile-desc { color: var(--text-dim); font-size: 13px; line-height: 1.5; }
+
 .reports-subtitle {
   font-size: 12px;
   color: var(--text-dim);

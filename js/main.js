@@ -10,6 +10,19 @@
 (function () {
   let gameState = null;
   let viewState = null;
+  // Knowledge Base (KMKB) state (2026-08-16, user-directed): deliberately
+  // module-level rather than part of viewState -- the Knowledge menu has to
+  // work from the title screen too, before viewState (or gameState) exists
+  // at all. "units" | "conditions" | null; knowledgeSelectedUnitId only
+  // matters for the "units" page. See setupKnowledgeBase/renderKnowledgeOverlay.
+  let knowledgeView = null;
+  let knowledgeSelectedUnitId = null;
+  let knowledgeSelectedConditionKey = null;
+  // Set when a unit profile's condition cross-link is clicked (2026-08-16,
+  // user-directed) -- remembers which unit to return to so the Conditions
+  // page's "Back" button can jump straight back to it. null whenever the
+  // Conditions page was opened directly from the menu instead.
+  let knowledgeBackTarget = null;
   let humanCivId = null;
   let spectatorMode = false;
   let spectatorSpeed = 1; // 1x/2x/4x/8x/16x -- see the speed-btn row in index.html
@@ -501,6 +514,7 @@
     setupButtonClickSfx();
     setupGlobalShortcuts();
     setupKeyboardShortcutsOverlay();
+    setupKnowledgeBase();
     setupTitleMenuBar();
     setupTitleAudioControls();
     setupTitleLoadGameControl();
@@ -609,6 +623,7 @@
       { btn: $("title-menu-file-btn"), dropdown: $("title-menu-file-dropdown") },
       { btn: $("title-menu-interface-btn"), dropdown: $("title-menu-interface-dropdown") },
       { btn: $("title-menu-audio-btn"), dropdown: $("title-menu-audio-dropdown") },
+      { btn: $("title-menu-knowledge-btn"), dropdown: $("title-menu-knowledge-dropdown") },
     ];
     if (!menus[0].btn) return;
     function closeAll() {
@@ -675,6 +690,113 @@
     overlay.addEventListener("mousedown", (e) => { if (e.target === overlay) close(); });
     document.addEventListener("keydown", (e) => {
       if (e.key === "Escape" && overlay.style.display === "flex") close();
+    });
+  }
+
+  /** Renders whatever the Knowledge Base overlay is currently showing
+   *  (knowledgeView/knowledgeSelectedUnitId) into #knowledge-content, and
+   *  shows/hides the overlay itself. Standalone rather than folded into the
+   *  main redraw() loop (2026-08-16, user-directed KMKB feature) -- it has
+   *  to work identically before a game exists (no gameState/viewState to
+   *  hang a re-render key off of) and mid-game, and its content never goes
+   *  stale on its own (pure reference data, not live game state), so there's
+   *  nothing for a per-frame redraw to refresh -- every call site that
+   *  changes knowledgeView/knowledgeSelectedUnitId calls this directly. */
+  function renderKnowledgeOverlay() {
+    const overlay = $("knowledge-overlay");
+    if (!knowledgeView) {
+      overlay.style.display = "none";
+      return;
+    }
+    // Narrows the backdrop to stop at the sidebar's edge only while an
+    // actual game is running (#game-screen visible) -- from the title
+    // screen there's no sidebar to avoid, so the base full-viewport rule
+    // applies instead. See .knowledge-overlay-ingame's own CSS comment.
+    const inGame = $("game-screen").style.display !== "none";
+    overlay.classList.toggle("knowledge-overlay-ingame", inGame);
+
+    const content = $("knowledge-content");
+    if (knowledgeView === "conditions") {
+      // "Units" is the only page a cross-link can currently arrive from,
+      // so the back label is hardcoded here rather than threaded through
+      // knowledgeBackTarget -- see jumpToCondition/goBackFromCondition.
+      content.innerHTML = window.UI.knowledgebase.renderConditions(
+        knowledgeSelectedConditionKey, knowledgeBackTarget ? "Units" : null);
+      for (const btn of content.querySelectorAll(".kb-list-btn[data-condition-id]")) {
+        btn.onclick = () => {
+          knowledgeSelectedConditionKey = btn.dataset.conditionId;
+          renderKnowledgeOverlay();
+        };
+      }
+      const backBtn = $("kb-back-btn");
+      if (backBtn) backBtn.onclick = goBackFromCondition;
+    } else {
+      content.innerHTML = window.UI.knowledgebase.renderUnits(knowledgeSelectedUnitId);
+      const canvas = content.querySelector(".kb-unit-portrait");
+      if (canvas) {
+        window.UI.knowledgebase.drawUnitPortrait(canvas, canvas.dataset.portraitUnitId, canvas.dataset.portraitRaceId);
+      }
+      for (const btn of content.querySelectorAll(".kb-list-btn[data-unit-id]")) {
+        btn.onclick = () => {
+          knowledgeSelectedUnitId = btn.dataset.unitId;
+          renderKnowledgeOverlay();
+        };
+      }
+      for (const link of content.querySelectorAll(".kb-condition-link[data-condition-link]")) {
+        link.onclick = () => jumpToCondition(link.dataset.conditionLink);
+      }
+    }
+    overlay.style.display = "flex";
+  }
+
+  function openKnowledge(view) {
+    knowledgeView = view;
+    knowledgeSelectedUnitId = null;
+    knowledgeSelectedConditionKey = null;
+    knowledgeBackTarget = null;
+    renderKnowledgeOverlay();
+  }
+  function closeKnowledge() {
+    knowledgeView = null;
+    knowledgeBackTarget = null;
+    renderKnowledgeOverlay();
+  }
+  /** A unit profile's condition cross-link (e.g. Wizard's "Burning — 5%
+   *  chance to inflict on hit") -- jumps to that condition's own page,
+   *  remembering the unit so "Back" can return to it. */
+  function jumpToCondition(conditionKey) {
+    knowledgeBackTarget = { unitId: knowledgeSelectedUnitId };
+    knowledgeView = "conditions";
+    knowledgeSelectedConditionKey = conditionKey;
+    renderKnowledgeOverlay();
+  }
+  function goBackFromCondition() {
+    if (!knowledgeBackTarget) return;
+    knowledgeView = "units";
+    knowledgeSelectedUnitId = knowledgeBackTarget.unitId;
+    knowledgeBackTarget = null;
+    renderKnowledgeOverlay();
+  }
+
+  /** Wires the "Knowledge" menu's Units/Conditions buttons on BOTH menu bars
+   *  (title screen and in-game -- same "one shared overlay, two triggers"
+   *  convention as setupKeyboardShortcutsOverlay just above) plus the
+   *  overlay's own close button/backdrop-click/Escape. */
+  function setupKnowledgeBase() {
+    const overlay = $("knowledge-overlay");
+    if (!overlay) return;
+    const unitsBtn = $("kb-units-btn");
+    if (unitsBtn) unitsBtn.addEventListener("click", () => openKnowledge("units"));
+    const conditionsBtn = $("kb-conditions-btn");
+    if (conditionsBtn) conditionsBtn.addEventListener("click", () => openKnowledge("conditions"));
+    const titleUnitsBtn = $("title-kb-units-btn");
+    if (titleUnitsBtn) titleUnitsBtn.addEventListener("click", () => openKnowledge("units"));
+    const titleConditionsBtn = $("title-kb-conditions-btn");
+    if (titleConditionsBtn) titleConditionsBtn.addEventListener("click", () => openKnowledge("conditions"));
+    $("knowledge-close-btn").addEventListener("click", closeKnowledge);
+    overlay.addEventListener("mousedown", (e) => { if (e.target === overlay) closeKnowledge(); });
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape" && knowledgeView) closeKnowledge();
     });
   }
 
@@ -1444,6 +1566,7 @@
       { btn: $("menu-file-btn"), dropdown: $("menu-file-dropdown") },
       { btn: $("menu-interface-btn"), dropdown: $("menu-interface-dropdown") },
       { btn: $("menu-audio-btn"), dropdown: $("menu-audio-dropdown") },
+      { btn: $("menu-knowledge-btn"), dropdown: $("menu-knowledge-dropdown") },
       { btn: $("menu-report-btn"), dropdown: $("menu-report-dropdown") },
       { btn: $("menu-speed-btn"), dropdown: $("menu-speed-dropdown") },
     ];
@@ -2085,6 +2208,7 @@
   const SHORTCUT_OVERLAY_IDS = [
     "launch-options-overlay", "credits-overlay", "techtree-overlay",
     "reports-overlay", "game-dialog-overlay", "keyboard-shortcuts-overlay",
+    "knowledge-overlay",
   ];
 
   /** True while any full-screen modal is up -- gates the gameplay shortcuts
@@ -3011,15 +3135,19 @@
       // something, not just once per turn -- otherwise the node they clicked
       // wouldn't visibly become "Researching" until the turn rolled over.
       const civ = gameState.civs[viewState.techTreeCivId];
-      // Collapsible layer rows (2026-08-06, user-directed): owned here (not
-      // techtree.js, which stays a pure render function) so a header click
-      // can mutate it directly -- see techtree.js's render() doc comment
-      // for the exact shape/default-collapse rule.
-      viewState.techTreeExpandedLayers = viewState.techTreeExpandedLayers || {};
+      // "Just opened" (2026-08-16, user-directed, replacing the old
+      // collapsible-layer mechanic): the overlay's display is always reset
+      // to "none" by the close handler below, and only ever set back to
+      // "flex" by this block -- so display not already being "flex" here
+      // means this render is the first one since the screen opened, which
+      // is exactly the one-shot moment to auto-center on the highest
+      // available layer (skipped if a focusTechId link is also driving its
+      // own scroll target this render -- that one wins).
+      const justOpened = overlay.style.display !== "flex";
       const key = `${viewState.techTreeCivId}:${gameState.turnNumber}:${civ.currentResearch || ""}`;
       if (key !== lastRenderedTechTreeKey) {
         const focusTechId = viewState.techTreeFocusTechId || null;
-        $("techtree-content").innerHTML = window.UI.techtree.render(civ, isPlayerCiv, viewState.techTreeExpandedLayers, focusTechId, viewState.techTreeHoverId || null);
+        $("techtree-content").innerHTML = window.UI.techtree.render(civ, isPlayerCiv, focusTechId, viewState.techTreeHoverId || null);
         lastRenderedTechTreeKey = key;
         if (focusTechId) {
           viewState.techTreeFocusTechId = null; // one-shot: scroll/pulse once, not on every future open
@@ -3031,6 +3159,16 @@
           overlay.style.display = "flex";
           const node = $("techtree-content").querySelector(`.techtree-node[data-tech-id="${focusTechId}"]`);
           if (node) node.scrollIntoView({ block: "center", behavior: "smooth" });
+        } else if (justOpened) {
+          // Same display-before-scroll ordering as the focusTechId case
+          // above. Rows render in ascending layer order, so the LAST
+          // data-avail="true" row is the highest available layer -- no
+          // available layer at all (everything done/unaffordable) just
+          // leaves the view at its default scroll position.
+          overlay.style.display = "flex";
+          const rows = $("techtree-content").querySelectorAll('.techtree-layer[data-avail="true"]');
+          const target = rows[rows.length - 1];
+          if (target) target.scrollIntoView({ block: "center" });
         }
       }
       $("techtree-close-btn").onclick = () => {
@@ -3055,21 +3193,6 @@
       for (const node of document.querySelectorAll(".techtree-node-selectable")) {
         node.onclick = () => {
           window.GameEngine.tech.chooseResearch(civ, node.dataset.techId);
-          redraw();
-        };
-      }
-      // Layer header click toggles that layer's row -- forces a rebuild
-      // (the identity key above doesn't change on its own from a toggle)
-      // by dropping lastRenderedTechTreeKey before redraw().
-      for (const header of document.querySelectorAll(".techtree-layer-toggle[data-toggle-layer]")) {
-        header.onclick = () => {
-          const civExpanded = viewState.techTreeExpandedLayers[civ.id] || {};
-          const layer = header.dataset.toggleLayer;
-          // entry is always populated by the last render (techtree.js's
-          // render()) before this handler can ever fire.
-          civExpanded[layer].expanded = !civExpanded[layer].expanded;
-          viewState.techTreeExpandedLayers[civ.id] = civExpanded;
-          lastRenderedTechTreeKey = null;
           redraw();
         };
       }
@@ -3125,13 +3248,6 @@
       if (key !== lastRenderedReportKey && !hasFocusedControlIn($("reports-content"))) {
         $("reports-content").innerHTML = window.UI.reports.render(gameState, viewState.reportView);
         lastRenderedReportKey = key;
-        // AI Tech Trees only (2026-08-10, user-directed): wires the "Level N"
-        // collapse/expand toggle headers this report's own embedded tree
-        // renders -- harmless no-op for every other report type (they never
-        // render that markup). reports.js's own re-renders (civ-picker,
-        // clicking a toggle) already wire themselves; this covers the
-        // render just above, which reports.js has no hook into.
-        if (viewState.reportView === "ai_tech_trees") window.UI.reports.wireTechTreeToggles();
       }
       // Widen the modal for AI Tech Trees' 4-column grid (see .reports-modal-
       // wide in style.css) -- every other report type keeps the narrower

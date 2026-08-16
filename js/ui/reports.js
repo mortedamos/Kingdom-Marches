@@ -342,15 +342,6 @@ window.UI = window.UI || {};
    */
   let _techTreesState = { civId: null };
   let _techTreesGameStateRef = null;
-  // Collapsible-layer state for the embedded tree, same shape as main.js's
-  // own viewState.techTreeExpandedLayers (keyed by civ.id) -- this screen
-  // needs its own copy since it isn't the sidebar's tech-tree overlay and
-  // has no access to that viewState. render() below requires this object
-  // (crashes on `expandedState[civ.id]` if omitted -- 2026-08-10 bug fix,
-  // this call site was never updated when render()'s signature grew the
-  // expandedState/focusTechId/hoverTechId params for the hover-relations
-  // feature).
-  let _techTreesExpandedLayers = {};
 
   function renderAITechTrees(gameState) {
     _techTreesGameStateRef = gameState;
@@ -382,48 +373,12 @@ window.UI = window.UI || {};
     // "AI intends to research next" hint should always show here rather
     // than being suppressed the way it is on the player's own sidebar
     // overlay. No focus/hover target in this embedding (null, null).
-    return `<h2>AI Tech Trees</h2>${controlsHtml}${window.UI.techtree.render(civ, false, _techTreesExpandedLayers, null, null)}`;
+    return `<h2>AI Tech Trees</h2>${controlsHtml}${window.UI.techtree.render(civ, false, null, null)}`;
   }
 
   function refreshTechTreesView() {
     const content = document.getElementById("reports-content");
     if (content && _techTreesGameStateRef) content.innerHTML = renderAITechTrees(_techTreesGameStateRef);
-    wireTechTreeToggles();
-  }
-
-  /** Wires the "Level N" collapse/expand toggle headers within the embedded
-   *  AI Tech Trees screen. techtree.js's render() emits these as pure
-   *  markup (data-toggle-layer) with no built-in interactivity -- the
-   *  sidebar's own tech-tree overlay wires an equivalent block in main.js's
-   *  redraw(), but that one is scoped to viewState.techTreeExpandedLayers/
-   *  viewState.techTreeCivId, which doesn't apply here (this screen has its
-   *  own separate civ selection and expand-state, see _techTreesState/
-   *  _techTreesExpandedLayers above). Exported so main.js can call it right
-   *  after ITS OWN innerHTML write into #reports-content (the initial
-   *  open/per-turn refresh); refreshTechTreesView above covers every
-   *  in-module re-render (civ-picker, a toggle click itself) by calling
-   *  this at the end of every re-render, so wiring never goes stale after
-   *  either path. Harmless no-op when this report isn't showing (no
-   *  matching elements) or before it's rendered once (_techTreesState.civId
-   *  still null). */
-  function wireTechTreeToggles() {
-    if (!_techTreesGameStateRef || !_techTreesState.civId) return;
-    const civ = _techTreesGameStateRef.civs[_techTreesState.civId];
-    if (!civ) return;
-    const content = document.getElementById("reports-content");
-    if (!content) return;
-    for (const header of content.querySelectorAll(".techtree-layer-toggle[data-toggle-layer]")) {
-      header.onclick = () => {
-        const civExpanded = _techTreesExpandedLayers[civ.id] || {};
-        const layer = header.dataset.toggleLayer;
-        // entry is always populated by the last render (techtree.js's
-        // render()) before this handler can ever fire -- same guarantee
-        // main.js's own equivalent wiring relies on.
-        civExpanded[layer].expanded = !civExpanded[layer].expanded;
-        _techTreesExpandedLayers[civ.id] = civExpanded;
-        refreshTechTreesView();
-      };
-    }
   }
 
   function setTechTreesCiv(civId) {
@@ -433,6 +388,6 @@ window.UI = window.UI || {};
 
   window.UI.reports = {
     render, onHover, onLeave, setLogCivFilter, loadMoreLogEntries, exportAIActionLog,
-    setTechTreesCiv, wireTechTreeToggles,
+    setTechTreesCiv,
   };
 })();
