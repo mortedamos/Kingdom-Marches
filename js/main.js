@@ -138,6 +138,18 @@
   }
 
   function playTitleMusic() {
+    // Respect the global mute (2026-08-16, user-reported): titleAudio is a
+    // standalone element outside MusicSystem, so without this check it
+    // would start playing regardless of the Audio dropdown/in-game menu's
+    // mute checkbox -- most visibly when clicking "Begin", which calls this
+    // unconditionally to seed the browser's autoplay permission. setGlobalMuted
+    // keeps titleAudioMuted/titleAudio.volume in sync with the real mute
+    // state, so this one check covers every call site (Begin, the modal's
+    // own "Play Title Music" button, and re-opening the modal later).
+    if (titleAudioMuted) {
+      console.log("[title music] muted -- not starting playback");
+      return;
+    }
     const audio = initTitleAudio();
     console.log("[title music] calling play()…");
     audio.play()
@@ -294,6 +306,13 @@
    * reason.
    */
   function applyMuteUrlSwitch() {
+    // Seed titleAudioMuted from whatever mute state music.js already
+    // persisted/loaded (2026-08-16, user-reported) -- a returning player who
+    // muted last session otherwise has MusicSystem.isMuted() correctly true
+    // from the start, but this standalone flag stays at its `false` default
+    // until the player re-toggles mute THIS session, so clicking "Begin"
+    // would start title music right through their still-in-effect mute.
+    titleAudioMuted = window.MusicSystem.isMuted();
     const params = new URLSearchParams(window.location.search);
     if (!params.has("mute") || params.get("mute") === "0") return;
     window.MusicSystem.setMuted(true, { persist: false });
@@ -478,7 +497,6 @@
 
     setupLaunchOptionsOverlay();
     setupCreditsOverlay();
-    setupTitleMuteControl();
     setupContextMenuDismissal();
     setupButtonClickSfx();
     setupGlobalShortcuts();
@@ -521,18 +539,15 @@
     });
   }
 
-  /** Every mute control across the app -- the title screen's standalone
-   *  "Mute Sound" button, the title menu bar's Audio checkbox (2026-08-12),
-   *  the in-game Audio menu's checkbox, and the "M" global shortcut -- all
-   *  drive and reflect this one shared pair of functions rather than each
-   *  keeping its own copy of the mute state, so none of them can ever drift
-   *  out of sync with the others no matter which one the player actually
-   *  uses (a control that isn't in the DOM yet, e.g. the in-game checkbox
-   *  before a game starts, is just skipped). */
+  /** Every mute control across the app -- the title menu bar's Audio
+   *  checkbox (2026-08-12), the in-game Audio menu's checkbox, and the "M"
+   *  global shortcut -- all drive and reflect this one shared pair of
+   *  functions rather than each keeping its own copy of the mute state, so
+   *  none of them can ever drift out of sync with the others no matter which
+   *  one the player actually uses (a control that isn't in the DOM yet, e.g.
+   *  the in-game checkbox before a game starts, is just skipped). */
   function syncAllMuteControls() {
     const muted = window.MusicSystem.isMuted();
-    const titleBtn = $("title-mute-btn");
-    if (titleBtn) titleBtn.textContent = muted ? "Unmute Sound" : "Mute Sound";
     const titleCheckbox = $("title-menu-audio-mute-checkbox");
     if (titleCheckbox) titleCheckbox.checked = muted;
     const gameCheckbox = $("audio-mute-checkbox");
@@ -541,17 +556,17 @@
   function setGlobalMuted(muted) {
     window.MusicSystem.setMuted(muted);
     window.SfxSystem.setMuted(muted);
+    // Title screen music (2026-08-16, user-reported) -- titleAudio is a
+    // standalone <audio> element outside MusicSystem entirely (see
+    // initTitleAudio), so without this it never learned about a mute toggled
+    // through the Audio dropdown/in-game menu; only applyMuteUrlSwitch's
+    // ?mute param ever set titleAudioMuted before now. Kept in lockstep here
+    // so an already-playing title track goes silent immediately too, not
+    // just future play() calls -- see playTitleMusic's own mute check for
+    // the "don't even start" half of this.
+    titleAudioMuted = muted;
+    if (titleAudio) titleAudio.volume = muted ? 0 : 1.0;
     syncAllMuteControls();
-  }
-
-  /** Title screen's own master-mute button (2026-08-07, user-directed) --
-   *  same "mute covers BOTH systems" master switch as the in-game Audio
-   *  menu's checkbox, just reachable before a game even starts. */
-  function setupTitleMuteControl() {
-    const btn = $("title-mute-btn");
-    if (!btn) return;
-    syncAllMuteControls();
-    btn.addEventListener("click", () => setGlobalMuted(!window.MusicSystem.isMuted()));
   }
 
   /** Title menu bar's Audio dropdown (2026-08-12, user-directed: the in-game

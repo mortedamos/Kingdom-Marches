@@ -93,27 +93,6 @@ html, body {
   border-color: var(--accent);
   color: #1a1a1a;
 }
-/* Mute Sound (2026-08-07, user-directed) -- a secondary, quieter control
-   below Begin, not competing with it for attention. */
-.title-mute-btn {
-  display: block;
-  margin: 12px auto 0;
-  padding: 7px 20px;
-  background: transparent;
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  color: var(--text-dim);
-  font-family: "Cinzel", Georgia, serif;
-  font-size: 12px;
-  letter-spacing: 0.08em;
-  cursor: pointer;
-  transition: border-color 0.2s, color 0.2s;
-}
-.title-mute-btn:hover {
-  border-color: var(--accent);
-  color: var(--accent);
-}
-
 /* --- Loading screen: between clicking Begin and the game being ready --- */
 .loading-screen {
   position: fixed;
