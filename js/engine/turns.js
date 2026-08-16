@@ -121,6 +121,21 @@ window.GameEngine = window.GameEngine || {};
           }
         }
       }
+      // Elf "Beast Sight" (2026-08-17, user-directed): shares the Wandering
+      // Monsters pseudo-civ's own already-computed visibility set directly
+      // into this civ's -- Monsters is a real gameState.civs entry with its
+      // own gameState.visibility[MONSTER_CIV_ID], just never read by anyone
+      // else before now. Unioned in BEFORE this civ's own visible set is
+      // assigned/snapshotted below, so the shared tiles also feed explored/
+      // tileMemory normally, same as anything else this civ can see. May
+      // lag by up to one round if Monsters' own entry in civs hasn't been
+      // processed by this same loop yet this pass -- acceptable for a
+      // "sensed a moment ago" flavor mechanic, not worth a second pass to
+      // avoid.
+      if (civ.unlockedMechanics && civ.unlockedMechanics.has("beast_sight")) {
+        const monsterVisible = gameState.visibility[window.GameConfig.worldEncounters.monsters.civId];
+        if (monsterVisible) for (const idx of monsterVisible) visible.add(idx);
+      }
       gameState.visibility[civ.id] = visible;
 
       const explored = gameState.explored[civ.id] || new Set();
@@ -252,23 +267,6 @@ window.GameEngine = window.GameEngine || {};
    */
   function clearDelveOwnership(unit, civ, map, centerX, centerY) {
     const filled = unit._delveFilledOffsets;
-    if (!filled || centerX == null || centerY == null) return;
-    for (const key of filled) {
-      const [dx, dy] = key.split(",").map(Number);
-      const tx = centerX + dx, ty = centerY + dy;
-      if (tx < 0 || tx >= map.width || ty < 0 || ty >= map.height) continue;
-      const tile = map.tiles[ty * map.width + tx];
-      if (tile.ownerCivId !== civ.id) continue;
-      tile.ownerCivId = null;
-      tile.status = "neutral";
-      tile.contestedTurns = 0;
-    }
-  }
-
-  /** Dwarf "Prospector's Claim"/"The Deep Mines": same shape as
-   *  clearDelveOwnership above, for a unit's own _claimFilledOffsets. */
-  function clearClaimOwnership(unit, civ, map, centerX, centerY) {
-    const filled = unit._claimFilledOffsets;
     if (!filled || centerX == null || centerY == null) return;
     for (const key of filled) {
       const [dx, dy] = key.split(",").map(Number);
@@ -479,38 +477,32 @@ window.GameEngine = window.GameEngine || {};
     // pseudo-civ the first time this runs -- see ai.js's ensureMonsterCiv.
     window.GameEngine.ai.maybeSpawnMonster(gameState);
 
-    // Dark Ritual (Undead) / Dungeon Delve (Human Wizard) / Prospector's Claim
-    // (Dwarf, any unit, gold veins): track consecutive turns a qualifying
-    // unit has stood still on its anchor tile, evaluated BEFORE this turn's
-    // influence computation so it reflects standing time as of the end of
-    // last turn's movement.
+    // Dark Ritual (Undead) / Dungeon Delve (Human Wizard): track consecutive
+    // turns a qualifying unit has stood still on its anchor tile, evaluated
+    // BEFORE this turn's influence computation so it reflects standing time
+    // as of the end of last turn's movement. (Dwarf's old "Prospector's
+    // Claim" territorial-claim system used to share this loop too -- removed
+    // 2026-08-17, user-directed: Prospector's Claim/The Deep Mines are now
+    // flat resource-yield multipliers with no claim/ritual-turn tracking of
+    // their own, applied directly in the Mine Vein channel block below.)
     for (const civ of Object.values(civs)) {
       if (civ.eliminated) continue;
       const hasDarkRitual = civ.unlockedMechanics && civ.unlockedMechanics.has("dark_ritual");
       const hasDungeonDelve = civ.unlockedMechanics && civ.unlockedMechanics.has("dungeon_delve");
-      const hasProspectorsClaim = civ.unlockedMechanics && civ.unlockedMechanics.has("prospectors_claim");
-      if (!hasDarkRitual && !hasDungeonDelve && !hasProspectorsClaim) continue;
+      if (!hasDarkRitual && !hasDungeonDelve) continue;
 
-      // Dungeon Delve / Prospector's Claim: catch a unit that died (in combat,
-      // disbanded, starved -- any cause) since last round, not just one that
-      // moved. It's already gone from civ.units by now, so the loop below
-      // would never visit it again to clean up. civ._trackedDelvingUnits/
-      // _trackedClaimUnits hold onto the object REFERENCE specifically so its
-      // last-known position/filled-offsets are still readable here even after
-      // removal from the civ's live unit list (removing an object from an
-      // array doesn't erase the object itself, as long as something else
-      // still points to it).
+      // Dungeon Delve: catch a unit that died (in combat, disbanded, starved
+      // -- any cause) since last round, not just one that moved. It's
+      // already gone from civ.units by now, so the loop below would never
+      // visit it again to clean up. civ._trackedDelvingUnits holds onto the
+      // object REFERENCE specifically so its last-known position/filled-
+      // offsets are still readable here even after removal from the civ's
+      // live unit list (removing an object from an array doesn't erase the
+      // object itself, as long as something else still points to it).
       if (hasDungeonDelve && civ._trackedDelvingUnits) {
         civ._trackedDelvingUnits = civ._trackedDelvingUnits.filter((u) => {
           if (civ.units.includes(u)) return true;
           clearDelveOwnership(u, civ, map, u._lastRitualX, u._lastRitualY);
-          return false;
-        });
-      }
-      if (hasProspectorsClaim && civ._trackedClaimUnits) {
-        civ._trackedClaimUnits = civ._trackedClaimUnits.filter((u) => {
-          if (civ.units.includes(u)) return true;
-          clearClaimOwnership(u, civ, map, u._lastRitualX, u._lastRitualY);
           return false;
         });
       }
@@ -519,62 +511,41 @@ window.GameEngine = window.GameEngine || {};
         // Dark Ritual and Dungeon Delve both apply to any unit (Delve was
         // Wizard-specific before 2026-08-14 -- see
         // doc/world_encounters_design.md -- `isDelvingUnit` renamed to
-        // `isDelvingUnit` throughout this block accordingly); Prospector's
-        // Claim applies to any Dwarf unit (its own tech text: "Any dwarven
-        // unit stationed...").
+        // `isDelvingUnit` throughout this block accordingly).
         const isDelvingUnit = hasDungeonDelve;
-        const isClaimUnit = hasProspectorsClaim;
-        const qualifies = hasDarkRitual || isDelvingUnit || isClaimUnit;
+        const qualifies = hasDarkRitual || isDelvingUnit;
         const oldX = unit._lastRitualX, oldY = unit._lastRitualY;
         if (isDelvingUnit) {
           civ._trackedDelvingUnits = civ._trackedDelvingUnits || [];
           if (!civ._trackedDelvingUnits.includes(unit)) civ._trackedDelvingUnits.push(unit);
         }
-        if (isClaimUnit) {
-          civ._trackedClaimUnits = civ._trackedClaimUnits || [];
-          if (!civ._trackedClaimUnits.includes(unit)) civ._trackedClaimUnits.push(unit);
-        }
         if (!qualifies) {
           unit._ritualTurns = 0;
           // Moving off the anchor tile (or no longer qualifying at all)
           // instantly wipes out everything it was claiming/generating -- see
-          // clearDelveOwnership/clearClaimOwnership and computeInfluenceMap's
-          // use of _delveFilledOffsets/_claimFilledOffsets (unlike a city's
-          // filledOffsets, which is permanent once earned).
+          // clearDelveOwnership and computeInfluenceMap's use of
+          // _delveFilledOffsets (unlike a city's filledOffsets, which is
+          // permanent once earned).
           if (isDelvingUnit) {
             clearDelveOwnership(unit, civ, map, oldX, oldY);
             delete unit._delveFilledOffsets;
             unit._delveFillProgress = 0;
             if (unit.channeling === "delving") unit.channeling = null;
           }
-          if (isClaimUnit) {
-            clearClaimOwnership(unit, civ, map, oldX, oldY);
-            delete unit._claimFilledOffsets;
-            unit._claimFillProgress = 0;
-            if (unit.channeling === "prospecting") unit.channeling = null;
-          }
           continue;
         }
         const tile = map.tiles[unit.y * map.width + unit.x];
         const onRuin = !!(tile && tile.isRuin);
-        // Prospector's Claim/The Deep Mines (2026-07-21, user-directed):
-        // Iron Veins qualify as an anchor exactly like Gold Veins, just at a
-        // different payout -- see the resource-specific yield table in
-        // beginCivTurn below.
-        const onGoldVein = !!(tile && tile.resource === "gold");
-        const onIronVein = !!(tile && tile.resource === "iron");
-        // Channeled action (2026-07-21, user-directed): Prospector's
-        // Claim/Dungeon Delve now require an EXPLICITLY started channel
-        // (unit.channeling, set by performStartChannel below -- either the
-        // player's own "Start Prospecting"/"Start Delving" action or the
-        // AI's equivalent decision in maybeProspectorsClaimPlay/
+        // Channeled action (2026-07-21, user-directed): Dungeon Delve now
+        // requires an EXPLICITLY started channel (unit.channeling, set by
+        // performStartChannel below -- either the player's own "Start
+        // Delving" action or the AI's equivalent decision in
         // maybeDungeonDelvePlay), not just "happens to be standing on the
         // tile." Dark Ritual (Undead) keeps its old always-on-Ruin
         // behavior, unaffected -- out of scope for this request, same as
         // RESOURCE_EXHAUSTION_CHANCE's own scope above.
         let onAnchor;
-        if (isClaimUnit) onAnchor = (onGoldVein || onIronVein) && unit.channeling === "prospecting";
-        else if (isDelvingUnit) onAnchor = onRuin && unit.channeling === "delving";
+        if (isDelvingUnit) onAnchor = onRuin && unit.channeling === "delving";
         else onAnchor = onRuin;
 
         // Resource exhaustion (see RESOURCE_EXHAUSTION_CHANCE above):
@@ -582,22 +553,13 @@ window.GameEngine = window.GameEngine || {};
         // ownership/_ritualTurns bookkeeping below, makes exhaustion fall
         // through the exact same "no longer on anchor" cleanup path as
         // moving away or dying -- no separate cleanup logic needed.
-        if ((isDelvingUnit || isClaimUnit) && onAnchor && Math.random() < resourceExhaustionChanceFor(civ)) {
-          if (isDelvingUnit) {
-            // Respawn (2026-08-14, user-directed reversal of the original
-            // "a Ruin never respawns" call -- see
-            // scheduleRuinRespawn/processRuinRespawns's own doc comment).
-            scheduleRuinRespawn(gameState);
-            tile.isRuin = false;
-          } else {
-            // Respawn (2026-08-06, user-directed) -- a depleted Gold/Iron
-            // Vein reappears elsewhere within a few turns. See
-            // scheduleResourceRespawn/processResourceRespawns.
-            scheduleResourceRespawn(gameState, tile.resource);
-            tile.resource = null;
-          }
-          window.GameEngine.floatingText.spawnFloatingText(
-            unit, isDelvingUnit ? "Ruin Exhausted!" : "Vein Exhausted!", "warning");
+        if (isDelvingUnit && onAnchor && Math.random() < resourceExhaustionChanceFor(civ)) {
+          // Respawn (2026-08-14, user-directed reversal of the original
+          // "a Ruin never respawns" call -- see
+          // scheduleRuinRespawn/processRuinRespawns's own doc comment).
+          scheduleRuinRespawn(gameState);
+          tile.isRuin = false;
+          window.GameEngine.floatingText.spawnFloatingText(unit, "Ruin Exhausted!", "warning");
           onAnchor = false;
           unit.channeling = null;
           // Natural end -- bank whatever accumulated before exhaustion hit,
@@ -608,21 +570,19 @@ window.GameEngine = window.GameEngine || {};
         const stayedPut = unit.x === oldX && unit.y === oldY;
         const continuingRitual = onAnchor && stayedPut;
         unit._ritualTurns = onAnchor ? (stayedPut ? (unit._ritualTurns || 0) + 1 : 1) : 0;
-        // Scoped to units actually engaged with Delve/Claim specifically,
-        // not just "isDelvingUnit/isClaimUnit is true" (2026-08-16, user-
-        // reported: tile-resource gathering -- Fishing/Hunt Game/Farm Soil/
-        // Mine Vein -- wasn't accumulating toward Claim Gathered Resources).
-        // isDelvingUnit/isClaimUnit are CIV-LEVEL capability flags -- and
-        // since Ruin Delving became free Level 0 infrastructure every civ
-        // starts with, isDelvingUnit is true for essentially every civ,
-        // every game. Before this guard, THAT made this cleanup run for
-        // EVERY unit of a qualifying civ that wasn't this-instant delving/
-        // claiming -- including one mid-Fishing/Hunting/Farming/Mining,
-        // which also stashes its payout in this same unit._channelStash --
-        // unconditionally deleting it, every single round, before it could
-        // ever compound past one round's worth.
+        // Scoped to units actually engaged with Delve specifically, not just
+        // "isDelvingUnit is true" (2026-08-16, user-reported: tile-resource
+        // gathering -- Fishing/Hunt Game/Farm Soil/Mine Vein -- wasn't
+        // accumulating toward Claim Gathered Resources). isDelvingUnit is a
+        // CIV-LEVEL capability flag -- and since Ruin Delving became free
+        // Level 0 infrastructure every civ starts with, isDelvingUnit is
+        // true for essentially every civ, every game. Before this guard,
+        // THAT made this cleanup run for EVERY unit of a qualifying civ that
+        // wasn't this-instant delving -- including one mid-Fishing/Hunting/
+        // Farming/Mining, which also stashes its payout in this same
+        // unit._channelStash -- unconditionally deleting it, every single
+        // round, before it could ever compound past one round's worth.
         const wasDelving = unit.channeling === "delving" || unit._delveFilledOffsets !== undefined;
-        const wasClaiming = unit.channeling === "prospecting" || unit._claimFilledOffsets !== undefined;
         if (isDelvingUnit && !continuingRitual && wasDelving) {
           clearDelveOwnership(unit, civ, map, oldX, oldY);
           delete unit._delveFilledOffsets;
@@ -632,13 +592,6 @@ window.GameEngine = window.GameEngine || {};
           // handled its own transfer) -- whatever's left in the stash is
           // simply lost, same as the territorial claim above. Already
           // delivered above if exhaustion was the actual cause.
-          delete unit._channelStash;
-        }
-        if (isClaimUnit && !continuingRitual && wasClaiming) {
-          clearClaimOwnership(unit, civ, map, oldX, oldY);
-          delete unit._claimFilledOffsets;
-          unit._claimFillProgress = 0;
-          if (unit.channeling === "prospecting") unit.channeling = null;
           delete unit._channelStash;
         }
         unit._lastRitualX = unit.x;
@@ -774,7 +727,7 @@ window.GameEngine = window.GameEngine || {};
 
     tickBurningDamage(gameState, civ);
     tickPoisonedDamage(gameState, civ);
-    window.GameEngine.ai.tickTreetopSnipers(gameState, civ);
+    window.GameEngine.ai.tickWallDefense(gameState, civ);
 
     for (const city of civ.cities) {
       window.GameEngine.cities.tickCity(city, civ, map);
@@ -847,7 +800,12 @@ window.GameEngine = window.GameEngine || {};
         if (!tile._delveTreasureRolled && Math.random() < ruinCfg.treasureFindChance) {
           tile._delveTreasureRolled = true;
           ruinLog.push(`Ruin: ${civ.id}'s ${unit.name || unit.typeId} finds treasure while delving at (${unit.x},${unit.y})`);
-          window.GameEngine.ai.grantMonsterKillReward(civ, unit, gameState);
+          const treasureResult = window.GameEngine.ai.grantMonsterKillReward(civ, unit, gameState);
+          // Modal for the human player (2026-08-17, user-directed) -- see
+          // main.js's offerNextTreasureNotice/queueTreasureNotice's own doc
+          // comment for why this is set unconditionally for every civ.
+          const unitLabel = unit.name || window.GameData.getUnit(unit.typeId).label;
+          window.GameEngine.ai.queueTreasureNotice(civ, unitLabel, treasureResult);
         }
         if (ruinLog.length) window.GameEngine.ai.appendAIActionLog(gameState, civ.id, ruinLog);
 
@@ -881,113 +839,12 @@ window.GameEngine = window.GameEngine || {};
       }
     }
 
-    // Dwarf "Prospector's Claim"/"The Deep Mines": same gradual-fill shape as
-    // Dungeon Delve above, but ANY Dwarf unit qualifies (not just one type --
-    // the tech's own wording), anchored on a Gold Vein tile instead of a
-    // Ruin. Base payout (1+ turns of channeling, i.e. every turn after the
-    // turn spent explicitly starting the channel -- 2026-07-30, user-
-    // directed fix, see Dungeon Delve's comment above): +3 coin/+1 lore
-    // (2026-07-18: dropped the harvest component entirely). Once The Deep
-    // Mines is ALSO unlocked and the same unit has held its position 5+
-    // turns (continuing straight through the same _ritualTurns counter --
-    // not a separate clock; kept at 4 turns past the base tier's own
-    // threshold when that threshold moved from 2 to 1), the
-    // payout is REPLACED (not stacked) by +5 coin/+4 lore, plus +2 defense
-    // while it remains there (applied as a refreshed-every-turn
-    // "deepMinesGuard" condition, same convention as Crusade's aura -- see
-    // combat.js's effectiveDefense).
-    if (civ.unlockedMechanics && civ.unlockedMechanics.has("prospectors_claim")) {
-      const hasDeepMines = civ.unlockedMechanics.has("deep_mines");
-      const race = window.GameData.getRace(civ.raceId);
-      const industriousness = race.industriousness ?? 0.5;
-      const cities = window.GameEngine.cities;
-      for (const unit of civ.units) {
-        if ((unit._ritualTurns || 0) < 1) continue;
-        // Anchor check added 2026-08-14 (see doc/world_encounters_design.md):
-        // _ritualTurns is shared across Dark Ritual/Dungeon Delve/
-        // Prospector's Claim, and Delve is no longer Wizard-exclusive, so a
-        // Dwarf civ now has BOTH Delve and Prospector's Claim unlocked at
-        // once -- without this, a unit Delving a Ruin (which also sets
-        // _ritualTurns >= 1) would incorrectly ALSO collect this vein
-        // payout. Must actually be standing on a Gold or Iron Vein.
-        const onIron = map.tiles[unit.y * map.width + unit.x].resource === "iron";
-        const onGold = map.tiles[unit.y * map.width + unit.x].resource === "gold";
-        if (!onIron && !onGold) continue;
-        // Accumulates instead of paying out directly -- see
-        // accumulateChannelStash's doc comment above.
-        const deepened = hasDeepMines && (unit._ritualTurns || 0) >= 5;
-        // Rebalanced 2026-07-18 (user-directed): both tiers dropped their
-        // harvest component entirely on Gold Veins -- Prospector's Claim
-        // +1 harvest/+5 coin/+2 lore -> +3 coin/+1 lore; The Deep Mines
-        // +3 harvest/+10 coin/+4 lore -> +5 coin/+4 lore. The +2 defense
-        // guard while deepened is unchanged. Iron Veins (2026-07-21,
-        // user-directed) get their own, separately-set payout at each tier
-        // -- these DO keep a harvest component, unlike Gold's.
-        if (deepened) {
-          if (onIron) accumulateChannelStash(unit, { harvest: 1, coin: 6, lore: 2 });
-          else accumulateChannelStash(unit, { coin: 5, lore: 4 });
-          window.GameEngine.combat.setCondition(unit, "deepMinesGuard", {
-            expiresAtTurn: (gameState.turnNumber || 0) + 1, defenseBonus: 2,
-          });
-        } else if (onIron) {
-          accumulateChannelStash(unit, { harvest: 1, coin: 3, lore: 1 });
-        } else {
-          accumulateChannelStash(unit, { coin: 3, lore: 1 });
-        }
-
-        const filled = unit._claimFilledOffsets || new Set();
-        let tileHarvest = 0, tileCoin = 0, tileLore = 0;
-        for (const key of filled) {
-          const [dx, dy] = key.split(",").map(Number);
-          const tx = unit.x + dx, ty = unit.y + dy;
-          if (tx < 0 || tx >= map.width || ty < 0 || ty >= map.height) continue;
-          const tile = map.tiles[ty * map.width + tx];
-          if (tile.status !== "owned" || tile.ownerCivId !== civ.id) continue;
-          const terrainYield = window.GameData.TERRAIN[tile.terrain].yield;
-          tileHarvest += terrainYield.harvest || 0;
-          tileCoin    += terrainYield.coin    || 0;
-          tileLore    += terrainYield.lore    || 0;
-          if (tile.resource) {
-            const resBonus = window.GameData.RESOURCES[tile.resource].bonus;
-            tileHarvest += resBonus.harvest || 0;
-            tileCoin    += resBonus.coin    || 0;
-            tileLore    += resBonus.lore    || 0;
-          }
-        }
-        accumulateChannelStash(unit, { harvest: tileHarvest, coin: tileCoin, lore: tileLore });
-
-        // Advance next round's filled set -- same rate/threshold constants a
-        // city's own advanceCityFill uses, deliberately AFTER this round's
-        // harvest above (a newly-filled tile only starts paying out next round).
-        unit._claimFilledOffsets = filled;
-        const candidates = [];
-        for (let dy = -1; dy <= 1; dy++) {
-          for (let dx = -1; dx <= 1; dx++) {
-            const key = `${dx},${dy}`;
-            if (filled.has(key)) continue;
-            const tx = unit.x + dx, ty = unit.y + dy;
-            if (tx < 0 || tx >= map.width || ty < 0 || ty >= map.height) continue;
-            candidates.push(key);
-          }
-        }
-        if (candidates.length > 0) {
-          unit._claimFillProgress = (unit._claimFillProgress || 0)
-            + cities.FILL_RATE_BASE + industriousness * cities.FILL_RATE_PER_INDUSTRIOUSNESS;
-          while (unit._claimFillProgress >= cities.FILL_THRESHOLD && candidates.length > 0) {
-            unit._claimFillProgress -= cities.FILL_THRESHOLD;
-            const idx = Math.floor(Math.random() * candidates.length);
-            filled.add(candidates[idx]);
-            candidates.splice(idx, 1);
-          }
-        }
-      }
-    }
-
     // Galley "Fishing" (2026-07-21, user-directed): a universal channeled
-    // action for ANY Galley (any race, no tech required) -- explicitly
-    // started (see ai.js's maybeGalleyFishingPlay / the player's own "Start
-    // Fishing" action), same shape as Dungeon Delve/Prospector's Claim
-    // above but simpler: a flat +5 harvest/+2 coin per turn while it stays
+    // action for ANY Galley (any race, gated on the Level 0 "Fishing" tech,
+    // 2026-08-17, user-directed) -- explicitly started (see ai.js's
+    // maybeGalleyFishingPlay / the player's own "Start Fishing" action),
+    // same shape as Dungeon Delve above but simpler: a flat +5 harvest/+2
+    // coin per turn while it stays
     // on a Fish Shoal tile and keeps channeling, no graduated tiers and no
     // territorial claim. Ends the instant it's no longer on the shoal
     // (moved off, or the shoal was never there -- channeling got cleared
@@ -996,9 +853,12 @@ window.GameEngine = window.GameEngine || {};
     for (const unit of civ.units) {
       if (unit.typeId !== "galley" || unit.channeling !== "fishing") continue;
       const tile = map.tiles[unit.y * map.width + unit.x];
-      if (!tile || tile.resource !== "fish") {
-        // Forced end (shoal gone / channeling cleared elsewhere) -- lose
-        // whatever's accumulated, same rule as Prospector's Claim/Delve.
+      const hasTech = civ.unlockedMechanics && civ.unlockedMechanics.has("fishing");
+      if (!tile || tile.resource !== "fish" || !hasTech) {
+        // Forced end (shoal gone / tech no longer unlocked -- defense in
+        // depth, same check the ring menu is already gated on / channeling
+        // cleared elsewhere) -- lose whatever's accumulated, same rule as
+        // Prospector's Claim/Delve.
         unit.channeling = null;
         delete unit._channelStash;
         continue;
@@ -1028,10 +888,7 @@ window.GameEngine = window.GameEngine || {};
     // longer unlocked (shouldn't normally happen -- defense in depth, same
     // check the sidebar button is already gated on), or the resource
     // exhausts (same RESOURCE_EXHAUSTION_CHANCE used above). Internally
-    // keyed "hunting"/"farming" (not "prospecting") to stay distinct from
-    // Dwarf's Prospector's Claim, a different mechanic keyed
-    // unit.channeling === "prospecting" -- see that block's own doc
-    // comment above and sidebar.js's CHANNEL_LABELS.
+    // keyed "hunting"/"farming" -- see sidebar.js's CHANNEL_LABELS.
     for (const unit of civ.units) {
       if (!window.GameData.getUnit(unit.typeId).canProspect || unit.channeling !== "hunting") continue;
       const tile = map.tiles[unit.y * map.width + unit.x];
@@ -1069,24 +926,35 @@ window.GameEngine = window.GameEngine || {};
       }
     }
 
-    // Pioneer/Scout/Druid "Mine Vein" (2026-08-12, user-directed: "Pioneer
-    // should be able to prospect all tile resource types except ruins"):
-    // same flat-payout, no-territorial-claim shape as Hunt Game/Farm Soil
-    // just above, extended to Gold/Iron Veins for ANY canProspect unit of
-    // ANY race -- deliberately separate from Dwarf's "prospecting" channel
-    // (Prospector's Claim, above) so this never entangles with that
-    // mechanic's territorial fill/Deep Mines tiering. No tech gate yet
-    // (unlike hunt_game/farm_soil) -- a proper tech is expected to gate this
-    // later; for now any canProspect unit can start it unconditionally.
+    // Pioneer/Scout/Druid/(any Dwarf unit w/ Dwarven Mining) "Mine Vein"
+    // (2026-08-12, user-directed: "Pioneer should be able to prospect all
+    // tile resource types except ruins"): same flat-payout, no-territorial-
+    // claim shape as Hunt Game/Farm Soil just above, extended to Gold/Iron
+    // Veins. Gated on the Level 0 "Mining" tech (2026-08-17, user-directed);
+    // Dwarves additionally get
+    // an OR-bypass via "Dwarven Mining" (dwarf_dwarven_mining) letting ANY
+    // dwarf unit start this, not just canProspect ones -- mirrors the same
+    // OR-condition in orders.js's ring-menu gate.
     for (const unit of civ.units) {
-      if (!window.GameData.getUnit(unit.typeId).canProspect || unit.channeling !== "mining") continue;
+      const baseUnit = window.GameData.getUnit(unit.typeId);
+      const canMine = baseUnit.canProspect
+        || (civ.raceId === "dwarf" && civ.unlockedMechanics && civ.unlockedMechanics.has("dwarven_mining"));
+      if (!canMine || unit.channeling !== "mining") continue;
       const tile = map.tiles[unit.y * map.width + unit.x];
-      if (!tile || (tile.resource !== "gold" && tile.resource !== "iron")) {
+      const hasTech = civ.unlockedMechanics && civ.unlockedMechanics.has("mining");
+      if (!tile || (tile.resource !== "gold" && tile.resource !== "iron") || !hasTech) {
         unit.channeling = null;
         delete unit._channelStash;
         continue;
       }
-      accumulateChannelStash(unit, { coin: 3 });
+      // Dwarf "Prospector's Claim"/"The Deep Mines" (2026-08-17, user-
+      // directed rework): flat resource-yield multipliers on ordinary
+      // mining, not their own territorial channel anymore -- each just sets
+      // its own mechanicValues entry (tech.js), summed here.
+      const yieldMult = 1
+        + (civ.mechanicValues?.prospectors_claim_yield || 0)
+        + (civ.mechanicValues?.deep_mines_yield || 0);
+      accumulateChannelStash(unit, { coin: 3 * yieldMult });
       if (Math.random() < resourceExhaustionChanceFor(civ)) {
         scheduleResourceRespawn(gameState, tile.resource);
         tile.resource = null;
@@ -1462,11 +1330,6 @@ window.GameEngine = window.GameEngine || {};
       const inOwnCity = civ.cities.some((c) => c.x === unit.x && c.y === unit.y);
       const tile = map.tiles[unit.y * map.width + unit.x];
       window.GameEngine.combat.healUnit(unit, civ, inOwnCity, tile);
-      // Teleportation exhaustion clears once the unit is fully healed -- an
-      // event-based clear, not turn-based, so tickConditions doesn't touch it.
-      if (unit.conditions?.exhausted && unit.hp >= unit.maxHp) {
-        window.GameEngine.combat.clearCondition(unit, "exhausted");
-      }
     }
 
     // Tech: Halfellow "Devoted Companions" -- a carried passenger heals
@@ -1488,19 +1351,6 @@ window.GameEngine = window.GameEngine || {};
     // from last turn is stale and must be lazily recomputed on first use.
     for (const unit of civ.units) {
       unit.usedThisTurn = false; unit.resting = false; unit.movesRemaining = null;
-      // Teleportation exhaustion (2026-08-12, user-directed fix): forced
-      // straight back into Resting for the upcoming turn, for every civ --
-      // ai.js's own per-unit turn loop already does this for AI-controlled
-      // units (see its "Teleportation exhaustion" comment), but a
-      // human-controlled unit had no equivalent hook, so it just sat
-      // un-rested (and therefore un-healing, and therefore permanently
-      // exhausted -- see the heal-phase clear check above, which only ever
-      // runs for a unit that IS resting) unless the player remembered to
-      // manually re-click Rest on it every single turn. usedThisTurn=true
-      // alongside it is what makes orders.js's isSpent skip nagging the
-      // player for a new order on a unit that can't do anything else this
-      // turn anyway.
-      if (unit.conditions?.exhausted) { unit.resting = true; unit.usedThisTurn = true; }
     }
 
     // Multi-turn goto orders (2026-08-06, user-directed): MUST run here,

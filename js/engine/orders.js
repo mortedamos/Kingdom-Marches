@@ -617,11 +617,11 @@ window.GameEngine = window.GameEngine || {};
       }
 
       // Channeled actions -- sidebar.js's channelActions. Same
-      // CHANNEL_LABELS/gating as that block, including the "hunting"/
-      // "farming" vs. Dwarf's "prospecting" naming split -- see that
-      // file's own doc comment for why they're deliberately distinct
-      // unit.channeling values.
-      const CHANNEL_LABELS = { prospecting: "Prospecting", delving: "Delving", fishing: "Fishing", hunting: "Hunting", farming: "Farming", mining: "Mining" };
+      // CHANNEL_LABELS/gating as that block. (Dwarf's old separate
+      // "prospecting" channel/mechanic was removed 2026-08-17, user-
+      // directed -- Dwarves now use the shared "mining" channel below, via
+      // the Dwarven Mining OR-bypass.)
+      const CHANNEL_LABELS = { delving: "Delving", fishing: "Fishing", hunting: "Hunting", farming: "Farming", mining: "Mining" };
       if (unit.channeling && CHANNEL_LABELS[unit.channeling]) {
         options.push({ kind: "claimChannel", label: "Claim Gathered Resources" });
         options.push({ kind: "cancelChannel", label: `Cancel ${CHANNEL_LABELS[unit.channeling]}`, danger: true });
@@ -631,29 +631,31 @@ window.GameEngine = window.GameEngine || {};
         const onVein = tile.resource === "gold" || tile.resource === "iron";
         const onGame = tile.resource === "game";
         const onFertile = tile.resource === "fertile";
-        if (civ.raceId === "dwarf" && civ.unlockedMechanics && civ.unlockedMechanics.has("prospectors_claim") && onVein) {
-          options.push({ kind: "startChannel:prospecting", label: "Start Prospecting" });
-        } else if (civ.unlockedMechanics && civ.unlockedMechanics.has("dungeon_delve") && tile.isRuin) {
+        if (civ.unlockedMechanics && civ.unlockedMechanics.has("dungeon_delve") && tile.isRuin) {
           // Universal since 2026-08-14 (see doc/world_encounters_design.md)
           // -- was unit.typeId === "wizard"-only; any unit can Delve now,
           // granted free to every race via the Level 0 "ruin_delving" tech.
           options.push({ kind: "startChannel:delving", label: "Start Delving" });
-        } else if (unit.typeId === "galley" && !unit.carries && tile.resource === "fish") {
+        } else if (unit.typeId === "galley" && !unit.carries && tile.resource === "fish"
+            && civ.unlockedMechanics && civ.unlockedMechanics.has("fishing")) {
           options.push({ kind: "startChannel:fishing", label: "Start Fishing" });
         } else if (baseUnit.canProspect && onGame && civ.unlockedMechanics && civ.unlockedMechanics.has("hunt_game")) {
           options.push({ kind: "startChannel:hunting", label: "Hunt Game" });
         } else if (baseUnit.canProspect && onFertile && civ.unlockedMechanics && civ.unlockedMechanics.has("farm_soil")) {
           options.push({ kind: "startChannel:farming", label: "Farm Soil" });
-        } else if (baseUnit.canProspect && onVein) {
+        } else if (onVein
+            && ((baseUnit.canProspect && civ.unlockedMechanics && civ.unlockedMechanics.has("mining"))
+              // Dwarven Mining (2026-08-17, user-directed): lets ANY dwarf
+              // unit mine, not just canProspect ones -- see techs.js's
+              // dwarf_dwarven_mining, layer 1 civic.
+              || (civ.raceId === "dwarf" && civ.unlockedMechanics && civ.unlockedMechanics.has("dwarven_mining")))) {
           // Generic Vein prospecting (2026-08-12, user-directed: "Pioneer
           // should be able to prospect all tile resource types except
-          // ruins"): fills the gap Prospector's Claim above deliberately
-          // leaves for every non-Dwarf civ (and any Dwarf civ that hasn't
-          // researched it yet) -- same canProspect flag as Hunt Game/Farm
-          // Soil, same flat-payout shape (turns.js's "mining" channel
-          // block), just no tech gate yet. Untech-gated on purpose for now;
-          // a proper tech is expected to gate this later, same as hunt_game/
-          // farm_soil do for game/fertile.
+          // ruins"), gated behind the Level 0 "Mining" tech (2026-08-17,
+          // user-directed -- was previously ungated), same flat-payout
+          // shape (turns.js's "mining" channel block). Dwarf's Prospector's
+          // Claim/The Deep Mines apply as a yield multiplier on top of this
+          // same channel now, rather than their own separate one.
           options.push({ kind: "startChannel:mining", label: "Mine Vein" });
         }
       }
@@ -770,14 +772,14 @@ window.GameEngine = window.GameEngine || {};
       // main.js's tile-placement mode (viewState.placement) to pick the
       // destination, since unlike every other ring pill this one needs an
       // arbitrary explored tile, not a fixed slot list.
-      if (unit.typeId === "druid" && !unit.usedThisTurn && !unit.conditions?.exhausted
+      if (unit.typeId === "druid" && !unit.usedThisTurn
           && civ.unlockedMechanics?.has("roots_of_the_world")) {
         options.push({ kind: "teleportSelf", label: "Roots of the World (Teleport Self)" });
         for (let dy = -1; dy <= 1; dy++) {
           for (let dx = -1; dx <= 1; dx++) {
             if (dx === 0 && dy === 0) continue;
             const ax = unit.x + dx, ay = unit.y + dy;
-            const ally = civ.units.find((u) => u.x === ax && u.y === ay && u !== unit && !u.carriedBy && !u.conditions?.exhausted);
+            const ally = civ.units.find((u) => u.x === ax && u.y === ay && u !== unit && !u.carriedBy);
             if (!ally) continue;
             const label = ally.name || window.GameData.getUnit(ally.typeId).label;
             options.push({ kind: `teleportAlly:${ax},${ay}`, label: `Roots of the World (Teleport ${label})` });
@@ -795,14 +797,14 @@ window.GameEngine = window.GameEngine || {};
       // main.js's handler picks performPlayerWizardTeleport vs.
       // performPlayerDruidTeleport off the acting unit's own typeId, so
       // there's no need for a second set of kind strings.
-      if (unit.typeId === "wizard" && !unit.usedThisTurn && !unit.conditions?.exhausted
+      if (unit.typeId === "wizard" && !unit.usedThisTurn
           && civ.unlockedMechanics?.has("teleportation")) {
         options.push({ kind: "teleportSelf", label: "Teleportation (Teleport Self)" });
         for (let dy = -1; dy <= 1; dy++) {
           for (let dx = -1; dx <= 1; dx++) {
             if (dx === 0 && dy === 0) continue;
             const ax = unit.x + dx, ay = unit.y + dy;
-            const ally = civ.units.find((u) => u.x === ax && u.y === ay && u !== unit && !u.carriedBy && !u.conditions?.exhausted);
+            const ally = civ.units.find((u) => u.x === ax && u.y === ay && u !== unit && !u.carriedBy);
             if (!ally) continue;
             const label = ally.name || window.GameData.getUnit(ally.typeId).label;
             options.push({ kind: `teleportAlly:${ax},${ay}`, label: `Teleportation (Teleport ${label})` });
@@ -810,25 +812,19 @@ window.GameEngine = window.GameEngine || {};
         }
       }
 
-      // Human "Freezing Touch" (2026-08-11, user-directed): same promotion
-      // as Teleportation above -- previously fired only by maybeFreezingTouch's
-      // defensive/offensive AI triggers. One pill per enemy unit currently
-      // within FREEZING_TOUCH_RANGE (2, mirrored here as a literal -- see
-      // ai.js), excluding Hidden (can't be targeted) or already-Frozen (no
-      // point) targets, same shape as findRiddleTarget's own filter below.
-      // Commits instantly on click (performPlayerFreezingTouch) -- no
-      // placement mode needed, this targets a unit, not a tile.
-      if (unit.typeId === "wizard" && !unit.usedThisTurn && civ.unlockedMechanics?.has("freezing_touch")) {
-        const range = 2; // FREEZING_TOUCH_RANGE, ai.js
-        for (const otherCiv of Object.values(gameState.civs)) {
-          if (otherCiv.id === civ.id || otherCiv.eliminated) continue;
-          for (const eu of otherCiv.units) {
-            if (eu.carriedBy || eu.conditions?.hidden || eu.conditions?.frozen) continue;
-            if (window.GameEngine.influence.chebyshev(unit.x, unit.y, eu.x, eu.y) > range) continue;
-            const label = eu.name || window.GameData.getUnit(eu.typeId).label;
-            options.push({ kind: `freeze:${eu.x},${eu.y}`, label: `Freeze ${label}` });
-          }
-        }
+      // Human "Freezing Touch" ring option removed (2026-08-17, user-
+      // directed rework): the tech is now a passive +50% frozen-on-hit
+      // chance on the Wizard's ordinary attacks (see ai.js's
+      // considerAttackOrGarrison), not a separate targeted action.
+
+      // Human "Fireball!" (2026-08-17, user-directed rework: was automatic
+      // splash off an ordinary attack, now a standalone targeted action).
+      // Opens tile-placement mode (main.js's startFireballPlacement) over
+      // every in-bounds tile within FIREBALL_RANGE -- no visibility
+      // requirement, same as Teleportation's "anywhere explored" reach not
+      // being limited to current vision either.
+      if (unit.typeId === "wizard" && !unit.usedThisTurn && civ.unlockedMechanics?.has("fireball_splash")) {
+        options.push({ kind: "fireball", label: "Fireball!" });
       }
 
       // Halfellow "Riddle" (2026-08-11, user-directed): same promotion,

@@ -188,32 +188,6 @@ window.GameEngine = window.GameEngine || {};
       }
     }
 
-    // --- Dwarf "Prospector's Claim"/"The Deep Mines": same gradual-claim
-    // shape as Dungeon Delve above (only offsets that have actually filled in
-    // project any influence at all; moving off the vein or dying wipes the
-    // whole filled set instantly -- see turns.js's beginRound), but keyed on
-    // _claimFilledOffsets/a Gold Vein anchor instead of _delveFilledOffsets/
-    // a Ruin, and open to any Dwarf unit rather than one type.
-    for (const civ of Object.values(civs)) {
-      if (civ.eliminated) continue;
-      if (!civ.unlockedMechanics || !civ.unlockedMechanics.has("prospectors_claim")) continue;
-      for (const unit of civ.units) {
-        // Kept in sync with turns.js's own payout gate (2026-07-30,
-        // user-directed fix: was < 2).
-        if ((unit._ritualTurns || 0) < 1) continue;
-        const filled = unit._claimFilledOffsets;
-        if (!filled || filled.size === 0) continue;
-        const strength = unitMilitaryInfluenceBase(unit) * 2;
-        for (const key of filled) {
-          const [dx, dy] = key.split(",").map(Number);
-          const tx = unit.x + dx, ty = unit.y + dy;
-          if (tx < 0 || tx >= map.width || ty < 0 || ty >= map.height) continue;
-          const tileIdx = ty * map.width + tx;
-          addInfluence(tileIdx, civ.id, strength);
-        }
-      }
-    }
-
     // --- Orc "Pillage and Loot": only while an Orc unit is standing within
     // some OTHER civ's city radius (raiding range, not anywhere on the map),
     // it projects a zone of terror in a 2-tile (Chebyshev) radius around

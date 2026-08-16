@@ -2921,20 +2921,12 @@ window.GameEngine = window.GameEngine || {};
   // project_pairwise_balance_human_orc_halfellow memory.
   const CHEAP_UNIT_DISCOUNT_RATE = window.GameConfig.units.cheapUnitDiscountRate;
 
-  // "Cultural Influence" tech-tree capstone (2026-07-21, user-directed):
-  // flat multi-resource cost + turn count, deliberately large/slow --
-  // "high cost... several turns" per the user's own spec -- since its whole
-  // purpose is soaking up a late-game surplus stockpile, not competing with
-  // real economy/military spending on price. See chooseBuildAction's own
-  // option push above and performClaimInfluenceTile below.
-  const CULTURAL_INFLUENCE_COST = { harvest: 60, coin: 60, lore: 60 };
-  const CULTURAL_INFLUENCE_TURNS = 6;
-
   /** Whether `city` still has at least one tile within its own influence
    *  radius that isn't already filled in -- mirrors advanceCityFill's own
    *  candidate computation (cities.js) exactly, just as a yes/no check
-   *  instead of picking one. Cultural Influence has nothing left to do once
-   *  this is false (the whole radius is already this civ's). */
+   *  instead of picking one. Used by the "radius fully filled" auto-settler
+   *  check below (the "Cultural Influence" tech/build-option this also used
+   *  to gate was removed 2026-08-17, user-directed). */
   function cityHasUnclaimedInfluenceTile(city, map) {
     const radius = city.influenceRadius;
     for (let dy = -radius; dy <= radius; dy++) {
@@ -2946,32 +2938,6 @@ window.GameEngine = window.GameEngine || {};
       }
     }
     return false;
-  }
-
-  /** Completes a "Cultural Influence" build (see progressBuildQueue's
-   *  "influence" branch): claims exactly ONE random currently-unfilled
-   *  offset within the city's radius, immediately (unlike organic growth's
-   *  gradual advanceCityFill) -- the whole point of paying the tech's steep
-   *  cost is skipping the wait. No-ops (silently) if the radius filled in
-   *  from some other source since this build started -- rare, but possible
-   *  if a radius bonus tech was researched mid-build. */
-  function performClaimInfluenceTile(city, map, log) {
-    const radius = city.influenceRadius;
-    const candidates = [];
-    for (let dy = -radius; dy <= radius; dy++) {
-      for (let dx = -radius; dx <= radius; dx++) {
-        const key = `${dx},${dy}`;
-        if (city.filledOffsets.has(key)) continue;
-        const tx = city.x + dx, ty = city.y + dy;
-        if (tx < 0 || tx >= map.width || ty < 0 || ty >= map.height) continue;
-        candidates.push(key);
-      }
-    }
-    if (candidates.length === 0) return;
-    const key = candidates[Math.floor(Math.random() * candidates.length)];
-    city.filledOffsets.add(key);
-    const [dx, dy] = key.split(",").map(Number);
-    log.push(`Cultural Influence: ${city.name} claims influence over (${city.x + dx},${city.y + dy})`);
   }
 
   /**
@@ -3909,25 +3875,10 @@ window.GameEngine = window.GameEngine || {};
       }
     }
 
-    // "Cultural Influence" (2026-07-21, user-directed): the tech-tree
-    // capstone for every race (requires every OTHER tech in that civ's own
-    // tree already researched -- see techs.js's programmatic prereqs at the
-    // bottom of that file). A city with the mechanic unlocked and at least
-    // one still-unclaimed tile in its own radius may spend several turns
-    // and a large multi-resource cost to claim exactly one more -- same
-    // power-based cost/turnsRemaining shape buildUnitOption uses, just
-    // producing a claimed tile instead of a unit (see progressBuildQueue's
-    // "influence" branch and performClaimInfluenceTile below). Deliberately
-    // scored far below every real option (military/building/settle) so it
-    // only ever wins the slot when nothing more useful is available this
-    // turn -- exactly the late-game resource sink the surplus-stockpile
-    // problem (see project_roads_upkeep_stall_review memory) calls for.
-    if (civ.unlockedMechanics && civ.unlockedMechanics.has("cultural_influence")
-        && cityHasUnclaimedInfluenceTile(city, map)
-        && canAffordBuildCost(civ, CULTURAL_INFLUENCE_COST)) {
-      options.push({ kind: "influence", id: "cultural_influence",
-        cost: { ...CULTURAL_INFLUENCE_COST }, turns: CULTURAL_INFLUENCE_TURNS, score: 1 });
-    }
+    // "Cultural Influence" tech and this whole build option REMOVED
+    // (2026-08-17, user-directed) -- cityHasUnclaimedInfluenceTile itself
+    // stays (still used by the "radius fully filled" auto-settler check
+    // above, unrelated to this).
 
     // Orc "Miscreant" true last-resort: the garrison/offense retries above
     // already cover "budget strained" (substituting Miscreant for whichever
@@ -4038,19 +3989,13 @@ window.GameEngine = window.GameEngine || {};
   function progressBuildQueue(civ, city, gameState, log) {
     const item = city.buildQueue;
 
-    // Power-based unit/building/influence build (see buildUnitOption/
-    // unitBuildTurns, buildingOption/buildingBuildTurns, and
-    // chooseBuildAction's Cultural Influence option): the cost was already
-    // paid up front in maybeBuildInCities, so this is purely a countdown
+    // Power-based unit/building build (see buildUnitOption/unitBuildTurns,
+    // buildingOption/buildingBuildTurns): the cost was already paid up
+    // front in maybeBuildInCities, so this is purely a countdown
     // independent of the city's income.
     if (item.turnsRemaining !== undefined) {
       item.turnsRemaining--;
       if (item.turnsRemaining > 0) return;
-      if (item.kind === "influence") {
-        performClaimInfluenceTile(city, gameState.map, log);
-        city.buildQueue = null;
-        return;
-      }
       if (item.kind === "building") {
         completeBuildingStructure(civ, city, gameState, item, log);
         city.buildQueue = null;
@@ -4309,13 +4254,10 @@ window.GameEngine = window.GameEngine || {};
       const recentlyDamaged = unit._hpAtTurnStart != null && unit.hp < unit._hpAtTurnStart;
       unit._hpAtTurnStart = unit.hp;
 
-      // Teleportation exhaustion: forced to Rest every turn until healed to 100% HP
-      if (unit.conditions?.exhausted) {
-        unit.resting = true;
-        unit.usedThisTurn = true;
-        unit.currentMission = "Recovering from teleportation (resting)";
-        continue;
-      }
+      // Teleportation exhaustion removed (2026-08-17, user-directed) --
+      // Teleportation/Roots of the World no longer leave the caster
+      // exhausted, so nothing in the game sets the "exhausted" condition
+      // anymore.
 
       // Tech: Halfellow "Resilient Spirit" -- a death-save trigger forces
       // exactly one Rest turn (unlike exhausted, this doesn't repeat until
@@ -4407,14 +4349,11 @@ window.GameEngine = window.GameEngine || {};
         continue;
       }
 
-      // Elf staged invasion (2026-07-21, user-directed): a unit ferried to
-      // an overseas staging ground (see maybeRootsInvasionFerry's
-      // `_ambushTarget` stamp) hides and WAITS for the rest of the force
-      // before anyone attacks -- checked ahead of every generic combat/
-      // stealth branch so a lone arrival never picks its own fight early.
-      // Falls through (returns false) the moment the force is strong
-      // enough, letting this same turn's normal cascade launch the ambush.
-      if (maybeInvasionAmbushWait(civ, unit, gameState, log)) continue;
+      // Elf "Roots of the World" overseas invasion ferry/ambush-staging
+      // system removed (2026-08-17, user-directed): Roots of the World is
+      // now a forest-tile-only teleport (see performDruidTeleport), which
+      // the ferry's staging-tile logic could no longer reliably satisfy near
+      // an arbitrary overseas enemy target.
 
       // Halfellow "fight smarter, not harder": before committing to a
       // straight fight, weigh going Hidden instead (defensively when
@@ -4588,13 +4527,15 @@ window.GameEngine = window.GameEngine || {};
       }
       if (!nearActiveCombat && maybeEscortTitan(civ, unit, gameState, log)) continue;
 
-      // Dwarf "Prospector's Claim"/"The Deep Mines": an otherwise-idle Dwarf
-      // unit (nothing better to fight or defend) pursues/protects a Gold
-      // Vein claim instead of falling through to generic explore/patrol.
-      // Checked here (any unit type, not race-gated in code -- purely via
-      // civ.unlockedMechanics) so it only fires once combat/reinforcement
-      // priorities above have already passed on this unit.
-      if (civ.unlockedMechanics && civ.unlockedMechanics.has("prospectors_claim")
+      // Dwarf Mining: an otherwise-idle Dwarf unit (nothing better to fight
+      // or defend) pursues/protects a Gold or Iron Vein instead of falling
+      // through to generic explore/patrol. Dwarf-only proactive AI play
+      // (2026-08-17, user-directed rework: Prospector's Claim/The Deep
+      // Mines are now flat yield multipliers on the shared "mining" channel,
+      // not their own territorial one -- see maybeProspectorsClaimPlay's own
+      // doc comment). Checked here so it only fires once combat/
+      // reinforcement priorities above have already passed on this unit.
+      if (civ.raceId === "dwarf" && civ.unlockedMechanics && civ.unlockedMechanics.has("mining")
           && maybeProspectorsClaimPlay(civ, unit, gameState, log)) continue;
 
       // Universal Ruin Delve (see doc/world_encounters_design.md, 2026-08-14
@@ -4829,6 +4770,28 @@ window.GameEngine = window.GameEngine || {};
       pushTowardInfluenceFrontier(civ, unit, gameState, log);
       if (unit.usedThisTurn) continue;
 
+      // Human "Ramparts" AI support (2026-08-17, user-directed rework
+      // follow-up): Ramparts now requires an explicitly Garrisoned unit
+      // (the same unit.channeling === "garrison" state the player's own
+      // Garrison button sets -- see main.js's handleGarrisonUnit), but no
+      // AI play ever sets that flag; reinforceHomeCity/
+      // maybeDefendCityUnderAttack above just leave a defender standing on
+      // the tile. Same x2 "defending" bonus as an ordinary Rest/Defend
+      // (see sidebar.js), just persistent and Ramparts-eligible, so there's
+      // no downside to a military unit that's ALREADY confirmed to have
+      // nothing better to do this turn (every branch above already
+      // fell through) garrisoning instead of just idling.
+      if (civ.unlockedMechanics && civ.unlockedMechanics.has("ramparts")
+          && window.GameData.getUnit(unit.typeId).category === "military"
+          && civ.cities.some((c) => c.x === unit.x && c.y === unit.y)) {
+        unit.channeling = "garrison";
+        window.GameEngine.combat.setCondition(unit, "defending", { expiresAtTurn: (gameState.turnNumber || 0) + 1 });
+        unit.usedThisTurn = true;
+        unit.resting = true;
+        unit.currentMission = "Garrisoned (Ramparts)";
+        continue;
+      }
+
       // Damaged and nothing better to do: Rest to heal, but only when it's
       // actually safe (see REST_HP_THRESHOLD above for "how low"). Safety is
       // no longer this check's job -- nearActiveCombat is unconditionally
@@ -4958,6 +4921,30 @@ window.GameEngine = window.GameEngine || {};
     return null;
   }
 
+  /** Elf "Roots of the World" (2026-08-17, user-directed rework): same
+   *  legality as isValidTeleportTile, plus the destination tile itself must
+   *  be Forest -- the Druid's teleport is forest-tile-only now, unlike the
+   *  Wizard's Teleportation. */
+  function isValidForestTeleportTile(gameState, x, y, targetUnit) {
+    const { map } = gameState;
+    if (x < 0 || x >= map.width || y < 0 || y >= map.height) return false;
+    if (map.tiles[y * map.width + x].terrain !== "forest") return false;
+    return isValidTeleportTile(gameState, x, y, targetUnit);
+  }
+
+  /** Forest-restricted counterpart to resolveTeleportLanding -- same
+   *  "exact tile, else first legal neighbor" shape, but every candidate
+   *  (including the 8 neighbors) must also be Forest. */
+  function resolveForestTeleportLanding(gameState, x, y, targetUnit) {
+    if (isValidForestTeleportTile(gameState, x, y, targetUnit)) return { x, y };
+    const dirs = [[-1,-1],[-1,0],[-1,1],[0,-1],[0,1],[1,-1],[1,0],[1,1]].sort(() => Math.random() - 0.5);
+    for (const [dx, dy] of dirs) {
+      const nx = x + dx, ny = y + dy;
+      if (isValidForestTeleportTile(gameState, nx, ny, targetUnit)) return { x: nx, y: ny };
+    }
+    return null;
+  }
+
   /**
    * Human "Teleportation": the Wizard (`caster`) instantly teleports either
    * itself or an adjacent allied unit (`targetUnit`) to (destX, destY) -- or
@@ -4967,12 +4954,11 @@ window.GameEngine = window.GameEngine || {};
    * the same whether the caster is currently Hidden or not -- Invisibility
    * doesn't block casting.
    *
-   * Costs the WIZARD's whole turn and leaves IT exhausted (forced to Rest
-   * every turn until healed to 100% HP -- see maybeMoveUnits/turns.js)
-   * regardless of who was actually moved. When teleporting an ally rather
-   * than itself, that ally's turn is also consumed (it's already been moved
-   * this turn) but it does NOT become exhausted -- only the caster pays that
-   * price. Returns true on success.
+   * Costs the WIZARD's whole turn (2026-08-17, user-directed: no longer
+   * leaves the caster exhausted afterward -- it can act normally again next
+   * turn). When teleporting an ally rather than itself, that ally's turn is
+   * also consumed (it's already been moved this turn). Returns true on
+   * success.
    */
   function performWizardTeleport(civ, caster, targetUnit, destX, destY, gameState, log) {
     if (targetUnit !== caster
@@ -4992,16 +4978,15 @@ window.GameEngine = window.GameEngine || {};
     targetUnit._renderY = landing.y;
     targetUnit._animStart = 0;
 
-    window.GameEngine.combat.setCondition(caster, "exhausted", {});
     caster.usedThisTurn = true;
     if (targetUnit !== caster) targetUnit.usedThisTurn = true;
 
     if (targetUnit === caster) {
-      caster.currentMission = "Blinked away (exhausted, must rest)";
-      log.push(`Teleport: ${civ.id}'s Wizard blinked to (${landing.x},${landing.y}), exhausted until fully healed`);
+      caster.currentMission = "Blinked away";
+      log.push(`Teleport: ${civ.id}'s Wizard blinked to (${landing.x},${landing.y})`);
     } else {
-      caster.currentMission = `Teleported a ${describeUnit(targetUnit)} to (${landing.x},${landing.y}) (exhausted, must rest)`;
-      log.push(`Teleport: ${civ.id}'s Wizard teleported a ${describeUnit(targetUnit)} to (${landing.x},${landing.y}), Wizard exhausted until fully healed`);
+      caster.currentMission = `Teleported a ${describeUnit(targetUnit)} to (${landing.x},${landing.y})`;
+      log.push(`Teleport: ${civ.id}'s Wizard teleported a ${describeUnit(targetUnit)} to (${landing.x},${landing.y})`);
     }
     return true;
   }
@@ -5022,10 +5007,106 @@ window.GameEngine = window.GameEngine || {};
     return ok;
   }
 
-  // How far a Wizard's Freezing Touch can reach -- a "touch" spell, so short
-  // range rather than Teleportation's whole-map reach. Same order of
-  // magnitude as Halfellow's short-range tactical checks (HALFELLOW_STEALTH_RANGE).
-  const FREEZING_TOUCH_RANGE = 2;
+  // How far a Wizard's Fireball can reach -- a thrown spell, further than a
+  // melee/touch range but not Teleportation's whole-map reach.
+  const FIREBALL_RANGE = 3;
+  const FIREBALL_IGNITE_CHANCE = 0.5;
+
+  /**
+   * Human "Fireball!" (2026-08-17, user-directed rework: was automatic splash
+   * damage tacked onto an ordinary attack, now its own standalone targeted
+   * action). The Wizard (`caster`) targets ANY tile within FIREBALL_RANGE --
+   * it doesn't need to contain an enemy itself, since the blast covers the
+   * full 3x3 area centered there (see combat.js's applyFireballBlast). Every
+   * hit unit/structure independently rolls FIREBALL_IGNITE_CHANCE to catch
+   * fire. Costs the caster's whole turn, no exhaustion afterward -- same
+   * convention as the reworked Teleportation. Returns true on success
+   * (always succeeds once called; an empty target tile is a legal, if
+   * wasted, cast -- callers are responsible for picking a worthwhile one).
+   */
+  function performWizardFireball(civ, caster, tx, ty, gameState, log) {
+    if (caster.usedThisTurn) return false;
+    const hits = window.GameEngine.combat.applyFireballBlast(caster, civ, tx, ty, gameState);
+    let ignited = 0;
+    for (const hit of hits) {
+      if (Math.random() < FIREBALL_IGNITE_CHANCE) {
+        ignited++;
+        if (hit.kind === "unit") applyBurning(hit.unit, "unit", gameState);
+        else if (hit.kind === "structure") applyBurning(hit.record, "structure", gameState);
+      }
+      if (hit.kind === "unit" && hit.unit.hp <= 0) otherCivRemoveDeadUnit(gameState.civs, hit.unit);
+    }
+    window.GameEngine.combat.spawnAreaEffect(tx, ty, 1, "fireball");
+    caster.usedThisTurn = true;
+    caster.currentMission = `Cast Fireball at (${tx},${ty})`;
+    log.push(`Fireball: ${civ.id}'s Wizard blasts (${tx},${ty}), hitting ${hits.length} target(s), igniting ${ignited}`);
+    return true;
+  }
+
+  /** Direct player-invoked Fireball (2026-08-17, user-directed): same
+   *  "always confirmed, bypasses any automated/pendingIntent gate entirely"
+   *  shape as performPlayerWizardTeleport -- a manual ring click + tile pick
+   *  already IS the confirmation. */
+  function performPlayerFireball(civ, wizard, tx, ty, gameState) {
+    currentTurnNumber = gameState.turnNumber || 0;
+    currentGameStateRef = gameState;
+    const log = [];
+    const ok = performWizardFireball(civ, wizard, tx, ty, gameState, log);
+    if (log.length) appendAIActionLog(gameState, civ.id, log);
+    return ok;
+  }
+
+  // Minimum enemy units/structures a Fireball must catch to be worth casting
+  // -- see maybeFireballStrike. A Fireball spent on a single isolated enemy
+  // is a worse trade than just attacking normally with effectiveAttack.
+  const FIREBALL_MIN_TARGETS = 2;
+
+  /** Dry-run count of how many enemy units/structures a Fireball centered on
+   *  (cx, cy) would hit -- same 3x3 scan applyFireballBlast itself uses, but
+   *  counting instead of dealing damage, since this runs during target
+   *  SELECTION (see maybeFireballStrike). */
+  function countFireballTargets(cx, cy, civs, casterCivId, gameState) {
+    const { map } = gameState;
+    let count = 0;
+    for (let dy = -1; dy <= 1; dy++) {
+      for (let dx = -1; dx <= 1; dx++) {
+        const x = cx + dx, y = cy + dy;
+        if (x < 0 || x >= map.width || y < 0 || y >= map.height) continue;
+        for (const otherCiv of Object.values(civs)) {
+          if (otherCiv.id === casterCivId || otherCiv.eliminated) continue;
+          if (otherCiv.units.some((u) => u.x === x && u.y === y && !u.conditions?.hidden)) count++;
+        }
+        const struct = window.GameEngine.cities.findStructureAt(gameState, x, y);
+        if (struct && struct.civ.id !== casterCivId) count++;
+      }
+    }
+    return count;
+  }
+
+  /**
+   * Human "Fireball!" AI: scans every currently-visible tile within
+   * FIREBALL_RANGE for the one whose 3x3 blast would catch the most enemy
+   * units/structures (see countFireballTargets), and casts there if it
+   * clears FIREBALL_MIN_TARGETS. Returns true if it consumed the turn.
+   */
+  function maybeFireballStrike(civ, unit, gameState, log) {
+    const { map, civs } = gameState;
+    const visible = gameState.visibility[civ.id] || new Set();
+    let best = null, bestCount = 0;
+    for (let dy = -FIREBALL_RANGE; dy <= FIREBALL_RANGE; dy++) {
+      for (let dx = -FIREBALL_RANGE; dx <= FIREBALL_RANGE; dx++) {
+        const x = unit.x + dx, y = unit.y + dy;
+        if (x < 0 || x >= map.width || y < 0 || y >= map.height) continue;
+        if (window.GameEngine.influence.chebyshev(unit.x, unit.y, x, y) > FIREBALL_RANGE) continue;
+        if (!visible.has(y * map.width + x)) continue;
+        const count = countFireballTargets(x, y, civs, civ.id, gameState);
+        if (count > bestCount) { bestCount = count; best = { x, y }; }
+      }
+    }
+    if (!best || bestCount < FIREBALL_MIN_TARGETS) return false;
+    return performWizardFireball(civ, unit, best.x, best.y, gameState, log);
+  }
+
   const FROZEN_DURATION = 3;
 
   // Burning (2026-07-22, user-directed): 1 point of damage at the start of
@@ -5054,112 +5135,6 @@ window.GameEngine = window.GameEngine || {};
     } else {
       target.burning = { expiresAtTurn };
     }
-  }
-
-  /** Applies the Frozen condition (0 movement, -25% attack -- see combat.js
-   *  effectiveAttack and this file's moveUnitToward) to `target` for
-   *  FROZEN_DURATION turns. Costs the caster's whole turn, same convention as
-   *  Teleportation, but does NOT leave the caster exhausted afterward --
-   *  Freezing Touch is a lesser, more frequently-usable L3 ability. */
-  function performFreezingTouch(civ, caster, target, log) {
-    window.GameEngine.combat.setCondition(target, "frozen", {
-      attackMult: 0.75, expiresAtTurn: currentTurnNumber + FROZEN_DURATION,
-    });
-    caster.usedThisTurn = true;
-    caster.currentMission = `Froze ${target.civId}'s ${describeUnit(target)} at (${target.x},${target.y})`;
-    log.push(`Freezing Touch: ${civ.id}'s Wizard freezes ${target.civId}'s ${describeUnit(target)} at (${target.x},${target.y})`);
-  }
-
-  /** Direct player-invoked Freezing Touch (2026-08-11, user-directed):
-   *  promotes performFreezingTouch above -- previously AI-only, fired only
-   *  by maybeFreezingTouch's defensive/offensive triggers -- to a real ring
-   *  action. `target` must already be within FREEZING_TOUCH_RANGE -- the
-   *  "Freeze: [target]" ring option only ever offers in-range candidates. */
-  function performPlayerFreezingTouch(civ, wizard, target, gameState) {
-    currentTurnNumber = gameState.turnNumber || 0;
-    currentGameStateRef = gameState;
-    const log = [];
-    performFreezingTouch(civ, wizard, target, log);
-    if (log.length) appendAIActionLog(gameState, civ.id, log);
-    return true;
-  }
-
-  /**
-   * Human "Freezing Touch" AI: two short-range triggers (see
-   * FREEZING_TOUCH_RANGE), both skipping targets already Hidden (can't be
-   * targeted) or already Frozen (no point re-casting):
-   *
-   *   DEFENSIVE (flee) -- checked first, since the Wizard's own survival
-   *   comes before supporting an ally's fight: a nearby enemy the WIZARD
-   *   ITSELF would lose a straight fight against gets frozen instead of
-   *   fought -- it can't close distance or reposition next turn, buying a
-   *   window to retreat or regroup rather than get run down.
-   *
-   *   OFFENSIVE (support) -- an ally within striking range of the same
-   *   enemy is in a marginal-or-losing matchup against it: freeze the enemy
-   *   first. -25% attack, plus guaranteed immobility so it can't disengage,
-   *   meaningfully improves the ally's odds on its next exchange.
-   *
-   * Returns true if it consumed the Wizard's turn.
-   */
-  function maybeFreezingTouch(civ, unit, gameState, log) {
-    const { map, civs } = gameState;
-    const visible = gameState.visibility[civ.id] || new Set();
-    const threshold = minAcceptableWinProbability(civ);
-
-    // Freezing Touch is a normal action (2026-07-20, user-directed): the
-    // Wizard may close distance and still cast the same turn, so candidates
-    // are gathered out to spell range PLUS however far it can still walk
-    // this turn -- not just the old in-range-only search -- see
-    // project_turn_action_economy memory. `reach` is a cheap upper bound
-    // (straight-line Chebyshev, ignoring terrain cost); tryFreeze below
-    // re-checks the REAL post-move distance before casting.
-    const reach = FREEZING_TOUCH_RANGE + (unit.movesRemaining ?? computeMovementBudget(unit, map, civs));
-
-    const candidates = [];
-    for (const otherCiv of Object.values(civs)) {
-      if (otherCiv.id === civ.id || otherCiv.eliminated) continue;
-      for (const eu of otherCiv.units) {
-        if (eu.conditions?.hidden || eu.conditions?.frozen) continue;
-        if (!visible.has(eu.y * map.width + eu.x)) continue;
-        if (window.GameEngine.influence.chebyshev(unit.x, unit.y, eu.x, eu.y) > reach) continue;
-        candidates.push(eu);
-      }
-    }
-    if (candidates.length === 0) return false;
-
-    // Moves into spell range if not already there, then casts -- only if
-    // the move actually closes enough distance this turn (a target that
-    // turns out to be unreachable this turn is left for a later turn, not
-    // half-chased).
-    const tryFreeze = (eu) => {
-      if (window.GameEngine.influence.chebyshev(unit.x, unit.y, eu.x, eu.y) > FREEZING_TOUCH_RANGE) {
-        moveTowardWithStandoff(civ, unit, eu.x, eu.y, map, civs, FREEZING_TOUCH_RANGE);
-        if (window.GameEngine.influence.chebyshev(unit.x, unit.y, eu.x, eu.y) > FREEZING_TOUCH_RANGE) return false;
-      }
-      performFreezingTouch(civ, unit, eu, log);
-      return true;
-    };
-
-    for (const eu of candidates) {
-      if (estimateWinProbability(unit, eu, civs, {}, 20) < threshold) {
-        if (tryFreeze(eu)) return true;
-      }
-    }
-
-    for (const eu of candidates) {
-      const strugglingAlly = civ.units.some((ally) => {
-        if (ally === unit || ally.carriedBy) return false;
-        if (window.GameData.getUnit(ally.typeId).category !== "military") return false;
-        if (window.GameEngine.influence.chebyshev(ally.x, ally.y, eu.x, eu.y) > 1) return false;
-        return estimateWinProbability(ally, eu, civs, {}, 20) < threshold;
-      });
-      if (strugglingAlly) {
-        if (tryFreeze(eu)) return true;
-      }
-    }
-
-    return false;
   }
 
   const FLIGHT_DURATION = 5;
@@ -5384,12 +5359,10 @@ window.GameEngine = window.GameEngine || {};
    * an adjacent ALLY over the Wizard itself -- a Trebuchet if one's on hand
    * (its 200% siege property makes it devastating against an undefended
    * target, and Teleport erases its crippling movement-1 mobility), else the
-   * strongest adjacent military unit -- since only the CASTER becomes
-   * exhausted (see performWizardTeleport): a teleported ally can swing the
-   * very next turn, while a self-teleported Wizard still needs a full turn
-   * of forced Rest first even at 100% HP. Self-teleport is only used as a
-   * fallback (to set up a Fireball once it recovers), and only if Fireball
-   * is actually researched -- otherwise there's nothing for it to do once it
+   * strongest adjacent military unit -- a real fighter lands a harder strike
+   * than the squishy Wizard would. Self-teleport is only used as a fallback
+   * (to set up a Fireball once it's in range), and only if Fireball is
+   * actually researched -- otherwise there's nothing for it to do once it
    * arrives. Never strips the civ down to zero military units. Returns true
    * if it consumed the turn.
    */
@@ -5474,7 +5447,7 @@ window.GameEngine = window.GameEngine || {};
   }
 
   /** Finds the nearest known Gold OR Iron Vein tile (currently visible OR
-   *  remembered via tileMemory) that isn't already being claimed by one of
+   *  remembered via tileMemory) that isn't already being mined by one of
    *  this civ's OTHER units, within a reasonable search radius. Returns
    *  {x,y,landmassId} or null. Mirrors findNearbyUnclaimedRuin above --
    *  see Dwarf "Prospector's Claim", including the `sameLandmassOnly`
@@ -5486,7 +5459,7 @@ window.GameEngine = window.GameEngine || {};
     const memory = (gameState.tileMemory && gameState.tileMemory[civ.id]) || {};
     const claimedByOther = new Set(
       civ.units
-        .filter((u) => u !== unit && (u._ritualTurns || 0) >= 1)
+        .filter((u) => u !== unit && u.channeling === "mining")
         .map((u) => `${u.x},${u.y}`)
     );
     const isVeinResource = (r) => r === "gold" || r === "iron";
@@ -5509,17 +5482,18 @@ window.GameEngine = window.GameEngine || {};
   }
 
   /**
-   * Dwarf "Prospector's Claim"/"The Deep Mines" pursuit/protection -- mirrors
-   * maybeDungeonDelvePlay below, but open to any idle Dwarf unit (not just
-   * one type) and anchored on Gold Veins instead of Ruins. Two cases:
+   * Dwarf Mining pursuit/protection -- mirrors maybeDungeonDelvePlay below,
+   * but open to any idle Dwarf unit and anchored on Gold/Iron Veins instead
+   * of Ruins. Two cases:
    *
-   *   ALREADY CLAIMING (standing on a Gold Vein, _ritualTurns >= 1): protect
-   *   the investment -- moving away or dying wipes out everything it's
-   *   claimed INSTANTLY (see turns.js), so an idle claiming unit must never
-   *   wander off. An adjacent enemy is left to the normal attack dispatch.
+   *   ALREADY MINING (standing on a Vein, unit.channeling === "mining"):
+   *   protect the investment -- moving away or dying loses whatever's
+   *   accumulated in unit._channelStash (see turns.js), so an idle mining
+   *   unit must never wander off. An adjacent enemy is left to the normal
+   *   attack dispatch.
    *
-   *   NOT YET CLAIMING: pursuit of the nearest known unclaimed Gold Vein,
-   *   gated on being reasonably healthy first.
+   *   NOT YET MINING: pursuit of the nearest known unclaimed Vein, gated on
+   *   being reasonably healthy first.
    *
    * Returns true if it consumed the turn.
    */
@@ -5861,13 +5835,29 @@ window.GameEngine = window.GameEngine || {};
     return false;
   }
 
+  /** Dwarf Mining AI play (2026-08-17, user-directed rework of the old
+   *  "Prospector's Claim" territorial-claim system): an idle Dwarf unit
+   *  seeks out a Gold or Iron Vein and starts the shared "mining" channel
+   *  (turns.js's Mine Vein block) on it, same as any race's Mine Vein
+   *  action -- Prospector's Claim/The Deep Mines just multiply that
+   *  channel's yield now (see turns.js), rather than running their own
+   *  gradual-claim/tiered-payout system. Kept as a dedicated Dwarf-only
+   *  proactive play since no other race gets AI-driven vein-seeking (Mine
+   *  Vein is player-only for everyone else, same as Hunt Game/Farm Soil). */
   function maybeProspectorsClaimPlay(civ, unit, gameState, log) {
+    // Guard matches turns.js's own canMine check exactly -- a unit that
+    // can't actually mine must never be sent chasing a vein / left parked
+    // mid-"mining" channel, since turns.js's Mine Vein block only cleans up
+    // channeling units it recognizes as eligible.
+    const canMine = window.GameData.getUnit(unit.typeId).canProspect
+      || (civ.unlockedMechanics && civ.unlockedMechanics.has("dwarven_mining"));
+    if (!canMine) return false;
     const { map } = gameState;
     const curResource = map.tiles[unit.y * map.width + unit.x]?.resource;
     const onVeinNow = curResource === "gold" || curResource === "iron";
-    const alreadyClaiming = onVeinNow && (unit._ritualTurns || 0) >= 1;
+    const alreadyMining = onVeinNow && unit.channeling === "mining";
 
-    if (alreadyClaiming) {
+    if (alreadyMining) {
       const { civs } = gameState;
       const visible = gameState.visibility[civ.id] || new Set();
       let nearestEnemyDist = Infinity;
@@ -5882,11 +5872,11 @@ window.GameEngine = window.GameEngine || {};
       // An adjacent enemy is a fight, not a wander risk -- let the normal
       // attack dispatch handle it further down the cascade.
       if (nearestEnemyDist <= 1) return false;
-      if (maybeCashOutChannel(civ, unit, gameState, log, "Prospector's Claim")) return true;
+      if (maybeCashOutChannel(civ, unit, gameState, log, "Mining")) return true;
       unit.resting = true;
       unit.usedThisTurn = true;
       const veinLabel = curResource === "iron" ? "Iron Vein" : "Gold Vein";
-      unit.currentMission = `Working a ${veinLabel} claim (${unit._ritualTurns} turn${unit._ritualTurns === 1 ? "" : "s"})`;
+      unit.currentMission = `Mining a ${veinLabel}`;
       return true;
     }
 
@@ -5904,21 +5894,19 @@ window.GameEngine = window.GameEngine || {};
       }
       if (veinSpot.x === unit.x && veinSpot.y === unit.y) {
         // Already there, or arrived with movement to spare this turn --
-        // start the channel (2026-07-21, user-directed: prospecting is now
-        // an explicitly-started channel, not just "happens to be standing
-        // here" -- see turns.js's onAnchor gate). _ritualTurns hasn't
-        // accrued yet (that happens at the start of the NEXT turn, see
-        // turns.js), this just claims the spot and begins the channel.
-        unit.channeling = "prospecting";
+        // start the shared "mining" channel (turns.js's Mine Vein block;
+        // same channel any race's Pioneer/Scout/Druid uses via the ring
+        // menu, gated here on Dwarven Mining letting any unit start it).
+        unit.channeling = "mining";
         unit.resting = true;
         unit.usedThisTurn = true;
-        unit.currentMission = `Settling in to start a ${veinLabel} claim`;
+        unit.currentMission = `Settling in to start mining a ${veinLabel}`;
         window.GameEngine.quips.maybeQuip(unit, civ, "prospect", gameState);
         return true;
       }
       unit.usedThisTurn = true;
-      unit.currentMission = `Marching to a ${veinLabel} to start a claim at (${veinSpot.x},${veinSpot.y})`;
-      log.push(`Prospector's Claim: ${civ.id}'s ${describeUnit(unit)} heading to ${veinLabel} at (${veinSpot.x},${veinSpot.y})`);
+      unit.currentMission = `Marching to a ${veinLabel} to start mining at (${veinSpot.x},${veinSpot.y})`;
+      log.push(`Mining: ${civ.id}'s ${describeUnit(unit)} heading to ${veinLabel} at (${veinSpot.x},${veinSpot.y})`);
       return true;
     }
 
@@ -5935,7 +5923,8 @@ window.GameEngine = window.GameEngine || {};
 
   /**
    * Galley "Fishing" (2026-07-21, user-directed): a universal channeled
-   * action for ANY Galley (any race, no tech required) -- see turns.js's
+   * action for ANY Galley (any race, gated on the Level 0 "Fishing" tech,
+   * 2026-08-17, user-directed) -- see turns.js's
    * beginCivTurn for the actual +5 harvest/+2 coin per-turn payout and
    * exhaustion chance. Purely opportunistic, unlike Prospector's Claim/
    * Dungeon Delve above -- a Galley never goes out of its way SEEKING a
@@ -5981,6 +5970,7 @@ window.GameEngine = window.GameEngine || {};
     }
 
     if (!onShoal || unit.carries) return false;
+    if (!civ.unlockedMechanics || !civ.unlockedMechanics.has("fishing")) return false;
     unit.channeling = "fishing";
     unit.resting = true;
     unit.usedThisTurn = true;
@@ -6088,39 +6078,42 @@ window.GameEngine = window.GameEngine || {};
   }
 
   /**
-   * Human Wizard AI: proactively considers its full kit (Freezing Touch,
-   * Flight, Dungeon Delve, Teleportation) as OFFENSIVE/UTILITY plays, on top
-   * of the purely defensive flee triggers above (attemptWizardTeleport/
-   * attemptWizardInvisibility). Priority order:
-   *   1. Freezing Touch, flee-or-support -- see maybeFreezingTouch. Checked
-   *      first: it's the cheapest, most frequently-usable response to an
-   *      immediate threat, and doesn't cost anything the later branches need.
-   *   2. Flight, an opportunistic support cast -- see maybeGrantFlight.
-   *      Checked next since it's also a same-turn, adjacent-range support
-   *      play, just proactive rather than reactive.
-   *   3. Protect an already-active Dungeon Delve, or pursue a new one --
+   * Human Wizard AI: proactively considers its kit (Flight, Dungeon Delve,
+   * Teleportation) as OFFENSIVE/UTILITY plays, on top of the purely
+   * defensive flee triggers above (attemptWizardTeleport/
+   * attemptWizardInvisibility). Freezing Touch no longer has an AI play of
+   * its own -- it's a passive +50% frozen-on-hit chance on the Wizard's
+   * ordinary attacks now (2026-08-17, user-directed rework -- see
+   * considerAttackOrGarrison). Priority order:
+   *   1. Flight, an opportunistic support cast -- see maybeGrantFlight.
+   *   2. Protect an already-active Dungeon Delve, or pursue a new one --
    *      see maybeDungeonDelvePlay (handles both sub-cases, and always wins
    *      when actively delving so the investment is never abandoned).
-   *   4. Offensive Teleport strike against a confirmed-undefended target --
+   *   3. Offensive Teleport strike against a confirmed-undefended target --
    *      see maybeTeleportStrike.
-   * All four are gated on the relevant tech actually being researched.
+   * All three are gated on the relevant tech actually being researched.
    * Returns true if it consumed the Wizard's turn.
    */
   function maybeHumanWizardPlay(civ, unit, gameState, weights, difficulty, log) {
     if (unit.typeId !== "wizard" || !civ.unlockedMechanics) return false;
 
-    if (civ.unlockedMechanics.has("freezing_touch")
-        && maybeFreezingTouch(civ, unit, gameState, log)) return true;
+    // Freezing Touch is now a passive +50% frozen-on-hit chance (2026-08-17,
+    // user-directed rework -- see considerAttackOrGarrison's Freezing Touch
+    // block, right next to Fireball's burnChancePct trigger), not an active
+    // targeted cast, so there's no AI play to dispatch here anymore.
 
     if (civ.unlockedMechanics.has("flight_grant")
         && maybeGrantFlight(civ, unit, gameState, log)) return true;
+
+    if (civ.unlockedMechanics.has("fireball_splash")
+        && maybeFireballStrike(civ, unit, gameState, log)) return true;
 
     // Dungeon Delve moved out of here 2026-08-14 (see
     // doc/world_encounters_design.md) -- no longer Wizard-specific, now
     // checked in the generic runUnitTurn cascade alongside Prospector's
     // Claim so any race/unit type can pursue it.
 
-    if (civ.unlockedMechanics.has("teleportation") && !unit.conditions?.exhausted
+    if (civ.unlockedMechanics.has("teleportation")
         && maybeTeleportStrike(civ, unit, gameState, log)) return true;
 
     return false;
@@ -6433,11 +6426,11 @@ window.GameEngine = window.GameEngine || {};
     return false;
   }
 
-  /** Elf "Nature's Grace": restores 10%-30% (random) of `target`'s max HP.
-   *  Costs the Druid's whole turn, no exhaustion afterward (unlike Roots of
-   *  the World). */
+  /** Elf "Nature's Grace": restores 30%-60% (random, 2026-08-17 user-
+   *  directed) of `target`'s max HP. Costs the Druid's whole turn, no
+   *  exhaustion afterward (unlike Roots of the World). */
   function performNaturesGrace(civ, caster, target, log) {
-    const healPct = 0.10 + Math.random() * 0.20;
+    const healPct = 0.30 + Math.random() * 0.30;
     const healAmount = Math.max(1, Math.round(target.maxHp * healPct)); // minimum 1 HP, 2026-08-03 user-directed
     const before = target.hp;
     target.hp = Math.min(target.maxHp, target.hp + healAmount);
@@ -6479,18 +6472,17 @@ window.GameEngine = window.GameEngine || {};
   /** Elf "Roots of the World": instantly moves `targetUnit` -- the Druid
    *  itself, or (mirroring Human's Teleportation) a currently-adjacent ally
    *  -- to any unoccupied, ever-explored tile. Reuses the same
-   *  isValidTeleportTile/resolveTeleportLanding helpers Human's Teleportation
-   *  uses -- those are already fully generic, not Wizard-specific. Costs the
-   *  DRUID's whole turn and leaves IT exhausted (forced Rest until healed to
-   *  100%) regardless of who was actually moved -- an ally relocated this way
-   *  does NOT become exhausted, only the Druid pays that price, same
-   *  convention as performWizardTeleport. */
+   *  isValidForestTeleportTile/resolveForestTeleportLanding helpers -- same
+   *  shape as Human's Teleportation, restricted to Forest destinations only
+   *  (2026-08-17, user-directed rework). Costs the DRUID's whole turn, no
+   *  exhaustion afterward (2026-08-17, user-directed -- matches the
+   *  reworked Teleportation). */
   function performDruidTeleport(civ, druid, targetUnit, destX, destY, gameState, log) {
     if (targetUnit !== druid
         && window.GameEngine.influence.chebyshev(druid.x, druid.y, targetUnit.x, targetUnit.y) > 1) {
       return false; // can only teleport an ally that's currently adjacent
     }
-    const landing = resolveTeleportLanding(gameState, destX, destY, targetUnit);
+    const landing = resolveForestTeleportLanding(gameState, destX, destY, targetUnit);
     if (!landing) return false;
     targetUnit.x = landing.x;
     targetUnit.y = landing.y;
@@ -6500,15 +6492,14 @@ window.GameEngine = window.GameEngine || {};
     targetUnit._renderX = landing.x;
     targetUnit._renderY = landing.y;
     targetUnit._animStart = 0;
-    window.GameEngine.combat.setCondition(druid, "exhausted", {});
     druid.usedThisTurn = true;
     if (targetUnit !== druid) targetUnit.usedThisTurn = true;
     if (targetUnit === druid) {
-      druid.currentMission = "Blinked into the roots of the world (exhausted, must rest)";
-      log.push(`Roots of the World: ${civ.id}'s Druid blinked to (${landing.x},${landing.y}), exhausted until fully healed`);
+      druid.currentMission = "Blinked into the roots of the world";
+      log.push(`Roots of the World: ${civ.id}'s Druid blinked to (${landing.x},${landing.y})`);
     } else {
-      druid.currentMission = `Teleported a ${describeUnit(targetUnit)} to (${landing.x},${landing.y}) (exhausted, must rest)`;
-      log.push(`Roots of the World: ${civ.id}'s Druid teleported a ${describeUnit(targetUnit)} to (${landing.x},${landing.y}), Druid exhausted until fully healed`);
+      druid.currentMission = `Teleported a ${describeUnit(targetUnit)} to (${landing.x},${landing.y})`;
+      log.push(`Roots of the World: ${civ.id}'s Druid teleported a ${describeUnit(targetUnit)} to (${landing.x},${landing.y})`);
     }
     return true;
   }
@@ -6518,10 +6509,10 @@ window.GameEngine = window.GameEngine || {};
    *  castFlightOnAlly above, promoting performDruidTeleport (previously only
    *  ever called from the AI's own attemptDruidTeleport/maybeRootsExpansion)
    *  to something main.js's ring-menu handler can call directly. Re-validates
-   *  nothing itself beyond what performDruidTeleport/resolveTeleportLanding
+   *  nothing itself beyond what performDruidTeleport/resolveForestTeleportLanding
    *  already check -- main.js's own startDruidTeleportPlacement only ever
-   *  offers slots isValidTeleportTile already approved, same "menu built
-   *  from the same predicate that re-validates" pattern used elsewhere. */
+   *  offers slots isValidForestTeleportTile already approved, same "menu
+   *  built from the same predicate that re-validates" pattern used elsewhere. */
   function performPlayerDruidTeleport(civ, druid, targetUnit, destX, destY, gameState) {
     currentTurnNumber = gameState.turnNumber || 0;
     currentGameStateRef = gameState;
@@ -6547,7 +6538,7 @@ window.GameEngine = window.GameEngine || {};
     let best = null, bestDist = -1;
     for (const idx of explored) {
       const x = idx % map.width, y = Math.floor(idx / map.width);
-      if (!isValidTeleportTile(gameState, x, y, targetUnit)) continue;
+      if (!isValidForestTeleportTile(gameState, x, y, targetUnit)) continue;
       const nearestEnemyDist = enemyPositions.reduce((min, eu) =>
         Math.min(min, window.GameEngine.influence.chebyshev(x, y, eu.x, eu.y)), Infinity);
       if (nearestEnemyDist > bestDist) { bestDist = nearestEnemyDist; best = { x, y }; }
@@ -6558,10 +6549,10 @@ window.GameEngine = window.GameEngine || {};
 
   /** Finds a badly hurt (<40% HP), adjacent, uncarried ally for Roots of the
    *  World's rescue play (see attemptDruidTeleport) -- never the Druid
-   *  itself, and never a unit already exhausted from its own teleport. */
+   *  itself. */
   function findAdjacentHurtAlly(civ, druid) {
     return civ.units.find((u) =>
-      u !== druid && !u.carriedBy && !u.conditions?.exhausted
+      u !== druid && !u.carriedBy
       && u.hp < u.maxHp * 0.4
       && window.GameEngine.influence.chebyshev(druid.x, druid.y, u.x, u.y) <= 1) || null;
   }
@@ -6585,9 +6576,9 @@ window.GameEngine = window.GameEngine || {};
    *  user-directed -- see project_turn_action_economy memory): Teleportation
    *  is a full-turn action, so founding can't happen in the same play. This
    *  function only ever teleports; it stamps `unit._wantsFoundCityAt` on
-   *  success, and maybeElfDruidPlay re-validates + founds there once the
-   *  Druid is no longer `exhausted` (performDruidTeleport's own aftermath)
-   *  and standing on that tile. Returns true if it consumed the Druid's turn. */
+   *  success, and maybeElfDruidPlay re-validates + founds there on the
+   *  Druid's next turn once it's standing on that tile. Returns true if it
+   *  consumed the Druid's turn. */
   function maybeRootsExpansion(civ, unit, gameState, log) {
     if (civ.cities.length >= 6) return false;
     const { map, civs } = gameState;
@@ -6605,14 +6596,15 @@ window.GameEngine = window.GameEngine || {};
     if (!best || bestScore < 5) return false;
     if (!performDruidTeleport(civ, unit, unit, best.x, best.y, gameState, log)) return false;
     unit._wantsFoundCityAt = { x: best.x, y: best.y };
-    log.push(`Roots of the World: ${civ.id}'s Druid teleported to (${best.x},${best.y}), will found a city once rested`);
+    log.push(`Roots of the World: ${civ.id}'s Druid teleported to (${best.x},${best.y}), will found a city there next turn`);
     return true;
   }
 
   /** Second half of Roots of the World (see maybeRootsExpansion above): once
-   *  a Druid carrying `_wantsFoundCityAt` is no longer `exhausted` and is
-   *  standing on that tile, RE-VALIDATE the site (2026-07-20, user-directed
-   *  -- things may have changed during the forced Rest, e.g. a rival
+   *  a Druid carrying `_wantsFoundCityAt` is standing on that tile again (its
+   *  next turn -- performDruidTeleport already consumed the teleport turn
+   *  itself), RE-VALIDATE the site (2026-07-20, user-directed -- things may
+   *  have changed in the meantime, e.g. a rival
    *  settling nearby) rather than blindly trusting the stale plan, using the
    *  exact same legality + score bar maybeRootsExpansion applied. Abandons
    *  (clears the marker, no city) if it no longer qualifies, letting the
@@ -6622,7 +6614,6 @@ window.GameEngine = window.GameEngine || {};
   function maybeCompleteRootsExpansion(civ, unit, gameState, log) {
     const target = unit._wantsFoundCityAt;
     if (!target) return false;
-    if (unit.conditions?.exhausted) return false; // still resting -- try again once healed
     if (unit.x !== target.x || unit.y !== target.y) { delete unit._wantsFoundCityAt; return false; }
     const { map, civs } = gameState;
     const check = window.GameEngine.cities.canFoundCityAt(map, civs, target.x, target.y, civ.raceId, { skipRoadCheck: true });
@@ -6638,232 +6629,6 @@ window.GameEngine = window.GameEngine || {};
     unit.usedThisTurn = true;
     unit.currentMission = `Founded ${city.name} (Roots of the World)`;
     log.push(`Roots of the World: ${civ.id}'s Druid founded ${city.name} at (${target.x},${target.y})`);
-    return true;
-  }
-
-  // Elf "Roots of the World" overseas invasion ferry (2026-07-21,
-  // user-directed): once the civ KNOWS of an enemy city/wall/building on a
-  // landmass other than the Druid's own (seen at least once --
-  // gameState.tileMemory, the same remembered-not-just-currently-visible
-  // convention assessInvasionTarget uses), Druids should get much more
-  // focused on teleporting combat units across the water at it -- Elf's
-  // answer to the galley bottleneck, the same role Deep Gates fill for
-  // Dwarves. Only these three unit types are ever ferried: the army's
-  // actual fighters, per the composition ratio (see RACE_UNIT_RATIO's "elf" entry).
-  // Ferrying an Awakened Oak (movement 1, could never march there) is the
-  // headline play. Scouts/Pioneers/summons are never ferried.
-  const ROOTS_FERRY_PASSENGERS = new Set(["ranger", "blade_dancer", "awakened_oak"]);
-  // Same order of magnitude as SHADOWSTEED_SEEK_RADIUS -- how far a Druid
-  // will walk to pick up a passenger for the ferry play.
-  const ROOTS_FERRY_SEEK_RADIUS = 8;
-
-  /** Best remembered enemy city/structure tile on a landmass OTHER than the
-   *  Druid's own, or null. Prefers a city over a lone structure, then
-   *  nearer over farther. Reads tileMemory records (city/structure
-   *  snapshots keyed by raceId -- races are 1:1 with civs in this game,
-   *  same convention as assessInvasionTarget). */
-  function findOverseasInvasionTeleportTarget(civ, druid, gameState) {
-    const { map } = gameState;
-    const memory = (gameState.tileMemory && gameState.tileMemory[civ.id]) || {};
-    const druidTile = map.tiles[druid.y * map.width + druid.x];
-    const druidLandmassId = druidTile ? druidTile.landmassId : -1;
-    if (druidLandmassId < 0) return null;
-    let best = null, bestScore = -Infinity;
-    for (const idxStr of Object.keys(memory)) {
-      const rec = memory[idxStr];
-      const isEnemyCity = !!(rec.city && rec.city.raceId !== civ.raceId);
-      const isEnemyStructure = !!(rec.structure && rec.structure.raceId !== civ.raceId);
-      if (!isEnemyCity && !isEnemyStructure) continue;
-      const idx = Number(idxStr);
-      const tile = map.tiles[idx];
-      if (!tile || tile.landmassId < 0 || tile.landmassId === druidLandmassId) continue;
-      const x = idx % map.width, y = Math.floor(idx / map.width);
-      const score = (isEnemyCity ? 100 : 0) - window.GameEngine.influence.chebyshev(druid.x, druid.y, x, y);
-      if (score > bestScore) { bestScore = score; best = { x, y, isCity: isEnemyCity }; }
-    }
-    return best;
-  }
-
-  // Ambush staging (2026-07-21, user-directed redesign): ferried units were
-  // arriving right beside the enemy city one at a time and getting killed
-  // before doing anything substantial. Now they land AMBUSH_STAGING_MIN..
-  // MAX tiles out, go Hidden (if researched), and WAIT -- accumulating into
-  // an invasion force that only springs its attack once its combined power
-  // can actually overcome the defenders. See findInvasionStagingTile /
-  // maybeInvasionAmbushWait below.
-  const AMBUSH_STAGING_MIN = 3;
-  const AMBUSH_STAGING_MAX = 4;
-  // How far around the ambush target enemy units count as "defenders" for
-  // the launch-power comparison -- covers the city radius plus environs.
-  const AMBUSH_ENEMY_SCAN_RADIUS = 5;
-  // The gathered force launches once its power exceeds the visible
-  // defenders' by this ratio -- "enough power to overcome the enemy", with
-  // margin so the ambush actually wins rather than trades evenly.
-  const AMBUSH_LAUNCH_POWER_RATIO = 1.25;
-  // Safety valve: never wait forever (ferry Druid died, defenders keep
-  // growing) -- after this many waiting turns the force attacks anyway.
-  const AMBUSH_MAX_WAIT_TURNS = 12;
-
-  /** Picks the landing tile for a ferried passenger: ring
-   *  AMBUSH_STAGING_MIN..MAX around the target, on the target's own
-   *  landmass, legal to teleport onto -- preferring Forest (Elf defense
-   *  bonus + ambush concealment) and tiles near allies already staged on
-   *  the same target, so the force clusters instead of scattering around
-   *  the whole ring. Returns {x,y} or null if the entire ring is blocked. */
-  function findInvasionStagingTile(civ, passenger, target, gameState) {
-    const { map } = gameState;
-    const targetTile = map.tiles[target.y * map.width + target.x];
-    const targetLm = targetTile ? targetTile.landmassId : -1;
-    const staged = civ.units.filter((u) => !u.carriedBy && u._ambushTarget
-      && u._ambushTarget.x === target.x && u._ambushTarget.y === target.y);
-    let best = null, bestScore = -Infinity;
-    for (let dy = -AMBUSH_STAGING_MAX; dy <= AMBUSH_STAGING_MAX; dy++) {
-      for (let dx = -AMBUSH_STAGING_MAX; dx <= AMBUSH_STAGING_MAX; dx++) {
-        const ring = Math.max(Math.abs(dx), Math.abs(dy));
-        if (ring < AMBUSH_STAGING_MIN || ring > AMBUSH_STAGING_MAX) continue;
-        const x = target.x + dx, y = target.y + dy;
-        if (x < 0 || x >= map.width || y < 0 || y >= map.height) continue;
-        const tile = map.tiles[y * map.width + x];
-        if (targetLm >= 0 && tile.landmassId !== targetLm) continue;
-        if (!isValidTeleportTile(gameState, x, y, passenger)) continue;
-        let score = 0;
-        if (tile.terrain === "forest") score += 2;
-        for (const ally of staged) {
-          if (window.GameEngine.influence.chebyshev(x, y, ally.x, ally.y) <= 2) score += 3;
-        }
-        if (score > bestScore) { bestScore = score; best = { x, y }; }
-      }
-    }
-    return best;
-  }
-
-  /** The ferry play itself: an adjacent, healthy, eligible passenger gets
-   *  teleported to a STAGING tile 3-4 tiles out from the overseas target
-   *  (see findInvasionStagingTile -- not dropped right beside the enemy
-   *  city, where lone arrivals were getting picked off one by one) and
-   *  tagged with `_ambushTarget`, joining the gathering invasion force
-   *  maybeInvasionAmbushWait manages from there. Otherwise the Druid spends
-   *  the turn closing distance to the nearest eligible passenger within
-   *  ROOTS_FERRY_SEEK_RADIUS. Checked FIRST among the Druid's proactive
-   *  plays (see maybeElfDruidPlay) -- "much more focused" per the user's
-   *  own wording -- so while a known overseas target exists, ferrying the
-   *  army across outranks healing, summoning, and expansion. Each ferry
-   *  exhausts the Druid (performDruidTeleport's own aftermath), naturally
-   *  pacing the airlift to roughly every other turn per Druid. Returns
-   *  true if it consumed the Druid's turn. */
-  function maybeRootsInvasionFerry(civ, unit, gameState, log) {
-    const target = findOverseasInvasionTeleportTarget(civ, unit, gameState);
-    if (!target) return false;
-    const { map, civs } = gameState;
-    const canFerry = (u) =>
-      u !== unit && ROOTS_FERRY_PASSENGERS.has(u.typeId)
-      && !u.carriedBy && !u.carries && !u.usedThisTurn && !u.conditions?.exhausted
-      && u.hp >= u.maxHp * 0.7;
-    const adjacent = civ.units.find((u) => canFerry(u)
-      && window.GameEngine.influence.chebyshev(unit.x, unit.y, u.x, u.y) <= 1);
-    if (adjacent) {
-      const staging = findInvasionStagingTile(civ, adjacent, target, gameState);
-      if (!staging) return false; // whole staging ring blocked -- don't ferry into a death trap
-      if (!performDruidTeleport(civ, unit, adjacent, staging.x, staging.y, gameState, log)) return false;
-      const targetTile = map.tiles[target.y * map.width + target.x];
-      adjacent._ambushTarget = { x: target.x, y: target.y, landmassId: targetTile ? targetTile.landmassId : -1 };
-      delete adjacent._ambushWaitTurns;
-      unit.currentMission = `Ferried a ${describeUnit(adjacent)} to the overseas staging ground at (${adjacent.x},${adjacent.y}) (exhausted, must rest)`;
-      log.push(`Roots of the World: ${civ.id}'s Druid ferried a ${describeUnit(adjacent)} to stage against the enemy ${target.isCity ? "city" : "structure"} at (${target.x},${target.y})`);
-      return true;
-    }
-    let nearest = null, nearestDist = Infinity;
-    for (const u of civ.units) {
-      if (!canFerry(u)) continue;
-      const d = window.GameEngine.influence.chebyshev(unit.x, unit.y, u.x, u.y);
-      if (d < nearestDist) { nearestDist = d; nearest = u; }
-    }
-    if (!nearest || nearestDist > ROOTS_FERRY_SEEK_RADIUS) return false;
-    moveUnitToward(unit, nearest.x, nearest.y, map, civs);
-    unit.usedThisTurn = true;
-    unit.currentMission = `Moving to ferry a ${describeUnit(nearest)} overseas (Roots of the World)`;
-    log.push(`Roots of the World: ${civ.id}'s Druid moves to ferry a ${describeUnit(nearest)} overseas`);
-    return true;
-  }
-
-  /**
-   * Staged-invasion wait/launch logic (2026-07-21, user-directed) -- runs
-   * early in every unit's dispatch (see runUnitTurn) but only ever applies
-   * to a unit carrying `_ambushTarget` (stamped by maybeRootsInvasionFerry
-   * when it lands the unit at the staging ground). Behavior:
-   *
-   *   GATHERING (visible defenders still stronger than the staged force):
-   *   hold position and go Hidden if researched/possible (Elf's Shadowed
-   *   Hush -- canGoHidden/enterHidden), else quietly Rest in place. An
-   *   ADJACENT enemy is a fight, not a wait -- falls through to the normal
-   *   attack dispatch, same carve-out prospecting/delving use.
-   *
-   *   LAUNCH (no visible defenders, force power >= defenders *
-   *   AMBUSH_LAUNCH_POWER_RATIO, or AMBUSH_MAX_WAIT_TURNS exceeded):
-   *   clears `_ambushTarget` on EVERY unit staged on this target at once --
-   *   the whole force springs the same civ-turn, each member falling
-   *   through to the ordinary combat cascade (attack, hunt, siege), with
-   *   any still-Hidden member attacking out of stealth for Strike from the
-   *   Shadows' full ambush bonus via the existing combat pipeline.
-   *
-   * Returns true if it consumed the unit's turn (only ever while waiting).
-   */
-  function maybeInvasionAmbushWait(civ, unit, gameState, log) {
-    const t = unit._ambushTarget;
-    if (!t) return false;
-    const { map, civs } = gameState;
-    const here = map.tiles[unit.y * map.width + unit.x];
-    // The marker only means something on the target's own landmass --
-    // anywhere else it's stale (unit somehow displaced); drop it.
-    if (!here || (t.landmassId >= 0 && here.landmassId !== t.landmassId)) {
-      delete unit._ambushTarget; delete unit._ambushWaitTurns;
-      return false;
-    }
-
-    const staged = civ.units.filter((u) => !u.carriedBy && u._ambushTarget
-      && u._ambushTarget.x === t.x && u._ambushTarget.y === t.y);
-    const allyPower = staged.reduce((s, u) => s + unitCombatPower(u, civ), 0);
-    const visible = gameState.visibility[civ.id] || new Set();
-    let enemyPower = 0;
-    for (const oc of Object.values(civs)) {
-      if (oc.id === civ.id || oc.eliminated) continue;
-      for (const eu of oc.units) {
-        if (eu.carriedBy || eu.conditions?.hidden) continue;
-        if (!visible.has(eu.y * map.width + eu.x)) continue;
-        if (window.GameEngine.influence.chebyshev(eu.x, eu.y, t.x, t.y) > AMBUSH_ENEMY_SCAN_RADIUS) continue;
-        enemyPower += unitCombatPower(eu, oc);
-      }
-    }
-
-    const waited = unit._ambushWaitTurns || 0;
-    const strongEnough = enemyPower <= 0 || allyPower >= enemyPower * AMBUSH_LAUNCH_POWER_RATIO;
-    if (strongEnough || waited >= AMBUSH_MAX_WAIT_TURNS) {
-      for (const u of staged) { delete u._ambushTarget; delete u._ambushWaitTurns; }
-      log.push(`Ambush: ${civ.id}'s ${staged.length}-unit invasion force springs its attack on (${t.x},${t.y})`
-        + (!strongEnough ? " (waited long enough -- attacking anyway)" : ""));
-      return false; // fall through to the normal combat cascade this same turn
-    }
-
-    // Still gathering. An adjacent enemy is a fight, not a wait -- let the
-    // normal attack dispatch handle it further down the cascade.
-    for (const oc of Object.values(civs)) {
-      if (oc.id === civ.id || oc.eliminated) continue;
-      for (const eu of oc.units) {
-        if (eu.conditions?.hidden) continue;
-        if (window.GameEngine.influence.chebyshev(eu.x, eu.y, unit.x, unit.y) <= 1) return false;
-      }
-    }
-    unit._ambushWaitTurns = waited + 1;
-    if (!unit.conditions?.hidden && window.GameEngine.combat.canGoHidden(unit, civ, civs)) {
-      window.GameEngine.combat.enterHidden(unit, currentTurnNumber);
-      unit.usedThisTurn = true;
-      unit.currentMission = `Hiding in ambush near (${t.x},${t.y}) (${staged.length} gathered, awaiting reinforcements)`;
-      log.push(`Ambush: ${civ.id}'s ${describeUnit(unit)} goes hidden near (${t.x},${t.y}), waiting for the invasion force to gather`);
-      return true;
-    }
-    unit.resting = true;
-    unit.usedThisTurn = true;
-    unit.currentMission = `Waiting in ambush near (${t.x},${t.y}) (${staged.length} gathered, awaiting reinforcements)`;
     return true;
   }
 
@@ -7375,6 +7140,13 @@ window.GameEngine = window.GameEngine || {};
     unit.usedThisTurn = true;
 
     if (Math.random() < cfg.trapChance) {
+      // Halfellow "Making Trouble" (2026-08-17, user-directed): a Trouble
+      // Maker disarms the trap instead of springing it -- no damage, no
+      // condition, and the caller shows a "found a trap, but disarmed it"
+      // message rather than the ordinary trap notice.
+      if (unit.typeId === "trouble_maker") {
+        return { trapped: true, disarmed: true };
+      }
       const isFire = Math.random() < 0.5;
       unit.hp = Math.max(0, unit.hp - cfg.trapDamage);
       window.GameEngine.floatingText.spawnFloatingText(unit, `-${cfg.trapDamage} (Trapped!)`, "warning");
@@ -7424,12 +7196,15 @@ window.GameEngine = window.GameEngine || {};
     if (!tile || tile.resource !== "chest") return false;
     const result = openTreasureChest(civ, unit, gameState);
     if (!result) return false;
-    unit.currentMission = result.trapped ? "Opened a chest -- it was trapped!" : `Opened a chest -- found ${result.rewardType}`;
+    unit.currentMission = result.disarmed ? "Opened a chest -- found a trap, disarmed it"
+      : result.trapped ? "Opened a chest -- it was trapped!"
+      : `Opened a chest -- found ${result.rewardType}`;
     // mapFragment has no `.amount` (see openTreasureChest) -- was logging
     // "finds undefined mapFragment" before this special case, confirmed live
     // via a headless playtest.
     let outcome;
-    if (result.trapped) outcome = " and springs a trap";
+    if (result.disarmed) outcome = " and disarms a trap inside it";
+    else if (result.trapped) outcome = " and springs a trap";
     else if (result.rewardType === "mapFragment") outcome = " and finds a Map Fragment";
     else outcome = ` and finds ${result.amount} ${result.rewardType}`;
     log.push(`Treasure Chest: ${civ.id}'s ${describeUnit(unit)} opens a chest at (${unit.x},${unit.y})${outcome}`);
@@ -7490,29 +7265,43 @@ window.GameEngine = window.GameEngine || {};
     return civ;
   }
 
-  /** Reward for killing a Wandering Monster -- reuses Treasure Chest's own
+  /** Reward for killing a Wandering Monster (or a Ruin Delve treasure find,
+   *  see turns.js's once-per-Ruin roll) -- reuses Treasure Chest's own
    *  reward table (see openTreasureChest above) rather than a separate loot
    *  table, per the design doc. No trap possibility here -- that's a
-   *  chest-opening risk, not a combat one. */
+   *  chest-opening risk, not a combat/delving one. Returns the same result
+   *  shape openTreasureChest's non-trapped branch does (2026-08-17, user-
+   *  directed), so callers that want a "you found X" modal (Ruin Delve) can
+   *  build one the same way main.js's openChest handler already does. */
   function grantMonsterKillReward(civ, unit, gameState) {
     const cfg = window.GameConfig.worldEncounters.treasureChest;
     const rewardType = cfg.rewardTypes[Math.floor(Math.random() * cfg.rewardTypes.length)];
     if (rewardType === "xp") {
       applyComputedXP(unit, civ, cfg.rewardAmount);
-      return;
+      return { trapped: false, rewardType, amount: cfg.rewardAmount };
     }
     if (rewardType === "mapFragment") {
       const revealed = window.GameEngine.turns.revealMapFragment(civ, gameState);
       if (!revealed) {
         civ.stockpile.coin = (civ.stockpile.coin || 0) + cfg.rewardAmount;
         window.GameEngine.floatingText.spawnFloatingText(unit, `+${cfg.rewardAmount} coin`, "resource");
-        return;
+        return { trapped: false, rewardType: "coin", amount: cfg.rewardAmount };
       }
       window.GameEngine.floatingText.spawnFloatingText(unit, "Map Fragment!", "resource");
-      return;
+      return { trapped: false, rewardType: "mapFragment", revealed };
     }
     civ.stockpile[rewardType] = (civ.stockpile[rewardType] || 0) + cfg.rewardAmount;
     window.GameEngine.floatingText.spawnFloatingText(unit, `+${cfg.rewardAmount} ${rewardType}`, "resource");
+    return { trapped: false, rewardType, amount: cfg.rewardAmount };
+  }
+
+  /** Queues a Ruin Delve treasure-find modal for main.js's
+   *  offerNextTreasureNotice to drain (2026-08-17, user-directed) -- same
+   *  "set unconditionally for every civ, only the human-civ check in
+   *  main.js ever reads it" convention as queueUnitBuiltNotice above. */
+  function queueTreasureNotice(civ, unitLabel, result) {
+    civ.pendingTreasureNotices = civ.pendingTreasureNotices || [];
+    civ.pendingTreasureNotices.push({ unitLabel, result });
   }
 
   /** Dire Spider's Web -- same shape as applyBurning above (a tiny wrapper
@@ -7839,19 +7628,17 @@ window.GameEngine = window.GameEngine || {};
    * Elf Druid AI: proactively considers its full kit on top of the purely
    * defensive flee trigger (attemptDruidTeleport, checked earlier in
    * maybeMoveUnits, same placement as Human's Wizard). Priority order:
-   *   1. Roots of the World overseas invasion ferry -- teleport Ranger/
-   *      Blade Dancer/Awakened Oak at a known enemy city/structure on
-   *      another landmass (2026-07-21, user-directed: "much more focused"
-   *      on this whenever such a target is known). See
-   *      maybeRootsInvasionFerry.
-   *   2. Nature's Grace -- opportunistic heal, cheapest and most frequently
+   *   1. Nature's Grace -- opportunistic heal, cheapest and most frequently
    *      usable. See maybeNaturesGrace.
-   *   3. Start a Raptor summon, if THIS Druid doesn't already have a live
+   *   2. Start a Raptor summon, if THIS Druid doesn't already have a live
    *      one (or one mid-summon) -- see druidHasLiveSummon/startDruidSummon.
    *      One per Druid, not a civ-wide cap (2026-07-18, user-directed).
-   *   4. Start a Shadowsteed summon, same one-per-Druid shape.
-   *   5. Roots of the World expansion play -- see maybeRootsExpansion.
-   * All are gated on the relevant tech actually being researched.
+   *   3. Start a Shadowsteed summon, same one-per-Druid shape.
+   *   4. Roots of the World expansion play -- see maybeRootsExpansion.
+   * All are gated on the relevant tech actually being researched. (The
+   * overseas invasion ferry/ambush-staging play that used to lead this list
+   * was removed 2026-08-17, user-directed -- see maybeMoveUnits's own
+   * comment where its ambush-wait counterpart used to be checked.)
    * Returns true if it consumed the Druid's turn.
    */
   function maybeElfDruidPlay(civ, unit, gameState, weights, difficulty, log) {
@@ -7862,9 +7649,6 @@ window.GameEngine = window.GameEngine || {};
     // something new -- it's the second half of a play already in motion,
     // checked before every fresh decision below.
     if (unit._wantsFoundCityAt && maybeCompleteRootsExpansion(civ, unit, gameState, log)) return true;
-
-    if (civ.unlockedMechanics.has("roots_of_the_world") && !unit.conditions?.exhausted
-        && maybeRootsInvasionFerry(civ, unit, gameState, log)) return true;
 
     if (civ.unlockedMechanics.has("natures_grace")
         && maybeNaturesGrace(civ, unit, gameState, log)) return true;
@@ -7877,7 +7661,7 @@ window.GameEngine = window.GameEngine || {};
         && !druidHasLiveSummon(civ, unit, "shadowsteed")
         && startDruidSummon(civ, unit, "shadowsteed", gameState, log)) return true;
 
-    if (civ.unlockedMechanics.has("roots_of_the_world") && !unit.conditions?.exhausted
+    if (civ.unlockedMechanics.has("roots_of_the_world")
         && maybeRootsExpansion(civ, unit, gameState, log)) return true;
 
     return false;
@@ -9775,8 +9559,8 @@ window.GameEngine = window.GameEngine || {};
    *  chasing a moving target). Checked ahead of every other dispatch
    *  branch. An adjacent enemy is a fight, not a wait -- falls through to
    *  the normal attack dispatch, same carve-out every other "hold position
-   *  and wait" play in this file uses (see maybeInvasionAmbushWait/
-   *  maybeProspectorsClaimPlay). Clears the reservation (and resumes normal
+   *  and wait" play in this file uses (see maybeProspectorsClaimPlay).
+   *  Clears the reservation (and resumes normal
    *  behavior) the instant it's stale: the carrier died, got reassigned to
    *  someone else, picked up a different passenger, or this unit healed
    *  back above the injury threshold on its own. Returns true if it
@@ -10758,8 +10542,7 @@ window.GameEngine = window.GameEngine || {};
    * Halfellow "Envoy" (2026-07-24, user-directed): Pioneer or Wanderer may
    * channel for a flat 2 turns on an already-in-radius, unclaimed tile to
    * claim it outright (city.filledOffsets.add, same underlying claim
-   * mechanism organic growth and Cultural Influence both use -- see
-   * performClaimInfluenceTile) -- independent of the normal gradual
+   * mechanism organic growth uses) -- independent of the normal gradual
    * fill-in rate, and lets the AI CHOOSE which tile gets priority instead
    * of waiting on the passive fill order. Checked as a low priority
    * (secondary to settling/fighting) opportunistic action for an otherwise
@@ -10866,44 +10649,11 @@ window.GameEngine = window.GameEngine || {};
     return false;
   }
 
-  /**
-   * Human "Fireball!": how many additional enemy units/structures adjacent to
-   * (x,y) would also take splash damage if this tile's occupant became the
-   * primary attack target -- mirrors combat.js's applySplashDamage exactly
-   * (same 8-neighbor scan, same "any civ but the attacker" rule), but only
-   * counts eligible targets rather than dealing damage, since this runs
-   * during target SELECTION, before an attack is committed to. Used to bias
-   * considerAttackOrGarrison's target scoring toward clustered enemies --
-   * without this, a Wizard with Fireball researched picks a target purely on
-   * win probability, the same as any other unit, and the tech's whole point
-   * (free splash damage) never factors into which fight it actually starts.
-   */
-  function countSplashTargets(x, y, civs, attackerCivId, gameState) {
-    const { map } = gameState;
-    let count = 0;
-    for (let dy = -1; dy <= 1; dy++) {
-      for (let dx = -1; dx <= 1; dx++) {
-        if (dx === 0 && dy === 0) continue;
-        const nx = x + dx, ny = y + dy;
-        if (nx < 0 || nx >= map.width || ny < 0 || ny >= map.height) continue;
-        for (const otherCiv of Object.values(civs)) {
-          if (otherCiv.id === attackerCivId || otherCiv.eliminated) continue;
-          if (otherCiv.units.some((u) => u.x === nx && u.y === ny)) count++;
-        }
-        const struct = window.GameEngine.cities.findStructureAt(gameState, nx, ny);
-        if (struct && struct.civ.id !== attackerCivId) count++;
-      }
-    }
-    return count;
-  }
-
-  // Score bonus per extra splash-eligible target -- see countSplashTargets.
-  // Target score elsewhere in considerAttackOrGarrison runs roughly 0-20+
-  // (winProb * 20 * weights.attack), so this is enough to swing target
-  // selection toward a clustered enemy over a modestly-better-odds isolated
-  // one, without ever overriding the below-threshold suppression (applied
-  // after this bonus, not before -- see considerAttackOrGarrison).
-  const FIREBALL_SPLASH_TARGET_BONUS = 3;
+  // countSplashTargets/FIREBALL_SPLASH_TARGET_BONUS removed (2026-08-17,
+  // user-directed): Fireball no longer rides on an ordinary attack, so
+  // target selection no longer needs to bias toward clustered enemies --
+  // see performWizardFireball/maybeFireballStrike, which pick their own
+  // target tile directly.
 
   // Score bonus for an uncarried Galley targeting an enemy Galley over any
   // other candidate -- see considerAttackOrGarrison. Deliberately large
@@ -11038,13 +10788,6 @@ window.GameEngine = window.GameEngine || {};
 
         const threshold = minAcceptableWinProbability(civ);
         let score = winProb * 20 * (weights.attack || 1.0);
-        // Human "Fireball!": prefer a target clustered with other enemies --
-        // see countSplashTargets. Added before the below-threshold suppression
-        // so a genuinely bad matchup still gets suppressed even if it happens
-        // to be well-clustered.
-        if (unit.typeId === "wizard" && civ.unlockedMechanics && civ.unlockedMechanics.has("fireball_splash")) {
-          score += countSplashTargets(enemyUnit.x, enemyUnit.y, civs, civ.id, gameState) * FIREBALL_SPLASH_TARGET_BONUS;
-        }
         // Galley vs Galley (user-directed): an uncarried Galley prefers
         // fighting an enemy Galley over any other target -- sea control
         // takes priority over land skirmishes when it's actually free to
@@ -11227,28 +10970,23 @@ window.GameEngine = window.GameEngine || {};
         log.push(`Burn It All Down: ${civ.id}'s ${describeUnit(unit)} sets ${bestTarget.civId}'s ${describeUnit(bestTarget)} ablaze`);
       }
 
-      // Human "Fireball!": Wizard splash damage to everything adjacent to the
-      // target, PLUS Burning (2026-07-22, user-directed) on the primary
-      // target and every splash victim -- units and buildings/walls, but
-      // NOT cities themselves (2026-07-22, user-directed removal). Ignite
-      // chance is the Wizard's own burnChancePct (2026-08-10, user-directed),
-      // rolled independently per hit -- see fireball's unit_stat_upgrade effect.
-      if (unit.typeId === "wizard" && civ.unlockedMechanics && civ.unlockedMechanics.has("fireball_splash")) {
-        const fireballBurnChance = window.GameEngine.combat.getUnitProperty(unit, civ, "burnChancePct", 0);
-        if (!result.fullNegated && !result.fullMissed && fireballBurnChance > 0 && Math.random() < fireballBurnChance) {
-          applyBurning(bestTarget, "unit", gameState);
+      // Human "Fireball!" no longer rides on an ordinary attack (2026-08-17,
+      // user-directed rework) -- it's its own standalone targeted action now,
+      // see performWizardFireball below.
+
+      // Human "Freezing Touch" (2026-08-17, user-directed rework: was an
+      // active targeted cast, now a passive chance on the Wizard's own
+      // attacks -- same shape as Fireball's burnChancePct trigger just
+      // above). frozenChancePct is per-unit data (see units.js's wizard
+      // entry for its small 0.05 baseline; this tech adds +0.50 on top via
+      // its own unit_stat_upgrade effect).
+      if (unit.typeId === "wizard" && civ.unlockedMechanics && civ.unlockedMechanics.has("freezing_touch")) {
+        const freezeChance = window.GameEngine.combat.getUnitProperty(unit, civ, "frozenChancePct", 0);
+        if (!result.fullNegated && !result.fullMissed && freezeChance > 0 && Math.random() < freezeChance) {
+          window.GameEngine.combat.setCondition(bestTarget, "frozen", {
+            attackMult: 0.75, expiresAtTurn: (gameState.turnNumber || 0) + FROZEN_DURATION,
+          });
         }
-        const hits = window.GameEngine.combat.applySplashDamage(unit, civ, bestTarget.x, bestTarget.y, gameState);
-        for (const hit of hits) {
-          if (fireballBurnChance <= 0 || Math.random() >= fireballBurnChance) continue;
-          if (hit.kind === "unit") applyBurning(hit.unit, "unit", gameState);
-          else if (hit.kind === "structure") applyBurning(hit.record, "structure", gameState);
-        }
-        if (hits.length) log.push(`Fireball splash: ${hits.length} additional target(s) hit and set ablaze`);
-        // Highlights the splash radius for a moment (2026-07-22, user-directed)
-        // -- applySplashDamage's own radius is a fixed 1-tile adjacency (see
-        // combat.js), centered on the primary target, same as the damage itself.
-        window.GameEngine.combat.spawnAreaEffect(bestTarget.x, bestTarget.y, 1, "fireball");
       }
 
       // Orc curse abilities: Bog Witch's death-curse and Malefic Malediction's
@@ -11807,24 +11545,43 @@ window.GameEngine = window.GameEngine || {};
   // shared wall_section building data (js/data/buildings.js), since every
   // race's wall uses that same universal definition but only an Elf civ
   // with this tech can ever make one actually fire.
-  const TREETOP_SNIPER_RANGE = 2;
-  const TREETOP_SNIPER_ATTACK = 1;
-  const TREETOP_SNIPER_FIRE_CHANCE = 0.5;
-  const TREETOP_SNIPER_ATTACK_CHARS = ["➵", "➳"];
+  // Wall Defense (2026-08-17, user-directed): generalizes Elf's original
+  // Treetop Snipers into a shared "walls take potshots" mechanic every race
+  // can unlock its own tier of, via a dedicated mechanic id per tier. A civ
+  // that has unlocked more than one tier (e.g. Elf's Treetop Snipers AND
+  // Long Range Snipers) only fires its single best (highest-range) tier per
+  // wall per turn -- an upgrade relationship, not a stack.
+  const WALL_DEFENSE_FIRE_CHANCE = 0.5;
+  const WALL_DEFENSE_ATTACK_CHARS = ["➵", "➳"];
+  const WALL_DEFENSE_TIERS = [
+    { mechanic: "treetop_snipers", range: 2, attack: 2 },
+    { mechanic: "long_range_snipers", range: 3, attack: 2 },
+    { mechanic: "defend_the_walls_dwarf", range: 1, attack: 1 },
+    { mechanic: "defend_the_walls_human", range: 1, attack: 2 },
+    { mechanic: "defend_the_walls_halfellow", range: 1, attack: 1 },
+    { mechanic: "defend_the_walls_orc", range: 1, attack: 2 },
+  ];
 
-  /** Elf "Treetop Snipers" (2026-07-22, user-directed): each of this civ's
-   *  wall segments independently rolls a 50% chance, once per civ-turn, to
-   *  take a single potshot at the nearest enemy unit within range 2 -- a
-   *  passive structure ability with no unit or turn-order of its own, so
+  /** Wall Defense (2026-08-17, user-directed generalization of Elf's
+   *  original "Treetop Snipers"): each of this civ's wall segments
+   *  independently rolls a 50% chance, once per civ-turn, to take a single
+   *  potshot at the nearest enemy unit within its unlocked tier's range --
+   *  a passive structure ability with no unit or turn-order of its own, so
    *  it's ticked here directly from turns.js's beginCivTurn (see the call
    *  site there) rather than through the normal per-unit dispatch cascade.
    *  Damage uses the same mitigatedDamage formula (and the target's full
    *  effective defense, conditions included) every other attack in the game
-   *  uses -- only the attacker's own flat "attack 1" is special-cased here,
-   *  since a wall has no unit object of its own to read a real attack stat
-   *  from. */
-  function tickTreetopSnipers(gameState, civ) {
-    if (!civ.unlockedMechanics || !civ.unlockedMechanics.has("treetop_snipers")) return;
+   *  uses -- only the attacker's own flat tier attack value is special-cased
+   *  here, since a wall has no unit object of its own to read a real attack
+   *  stat from. */
+  function tickWallDefense(gameState, civ) {
+    let tier = null;
+    for (const t of WALL_DEFENSE_TIERS) {
+      if (civ.unlockedMechanics && civ.unlockedMechanics.has(t.mechanic)) {
+        if (!tier || t.range > tier.range) tier = t;
+      }
+    }
+    if (!tier) return;
     const { civs } = gameState;
     const log = [];
     for (const city of civ.cities) {
@@ -11833,28 +11590,28 @@ window.GameEngine = window.GameEngine || {};
         // Halfellow "Unlock the Gate": suppressed the same as every other
         // special wall defense while active.
         if (window.GameEngine.combat.isWallDefenseSuppressed(s, gameState.turnNumber)) continue;
-        if (Math.random() >= TREETOP_SNIPER_FIRE_CHANCE) continue;
+        if (Math.random() >= WALL_DEFENSE_FIRE_CHANCE) continue;
         let target = null, targetCiv = null, bestDist = Infinity;
         for (const otherCiv of Object.values(civs)) {
           if (otherCiv.id === civ.id || otherCiv.eliminated) continue;
           for (const eu of otherCiv.units) {
             if (eu.conditions?.hidden) continue;
             const dist = window.GameEngine.influence.chebyshev(s.x, s.y, eu.x, eu.y);
-            if (dist > TREETOP_SNIPER_RANGE) continue;
+            if (dist > tier.range) continue;
             if (dist < bestDist) { bestDist = dist; target = eu; targetCiv = otherCiv; }
           }
         }
         if (!target) continue;
         const dmg = window.GameEngine.combat.mitigatedDamage(
-          TREETOP_SNIPER_ATTACK, window.GameEngine.combat.effectiveDefense(target, targetCiv, {}));
+          tier.attack, window.GameEngine.combat.effectiveDefense(target, targetCiv, {}));
         target.hp = Math.max(0, target.hp - dmg);
         window.GameEngine.combat.recordCombatEvent({
           ax: s.x, ay: s.y, atkUnit: { typeId: "wall_section" }, dx: target.x, dy: target.y, defUnit: target,
-          attackChars: TREETOP_SNIPER_ATTACK_CHARS,
+          attackChars: WALL_DEFENSE_ATTACK_CHARS,
         });
-        log.push(`Treetop Snipers: ${civ.id}'s wall at (${s.x},${s.y}) shoots ${targetCiv.id}'s ${describeUnit(target)} for ${dmg}`);
+        log.push(`Wall Defense: ${civ.id}'s wall at (${s.x},${s.y}) attacks ${targetCiv.id}'s ${describeUnit(target)} for ${dmg}`);
         if (target.hp <= 0) {
-          log.push(`Treetop Snipers: ${targetCiv.id}'s ${describeUnit(target)} is slain by ${civ.id}'s wall at (${s.x},${s.y})`);
+          log.push(`Wall Defense: ${targetCiv.id}'s ${describeUnit(target)} is slain by ${civ.id}'s wall at (${s.x},${s.y})`);
           otherCivRemoveDeadUnit(civs, target);
         }
       }
@@ -11875,6 +11632,32 @@ window.GameEngine = window.GameEngine || {};
   // meant to read as one fast flurry. See the resolveRound call site.
   const DOUBLE_STRIKE_SFX_DELAY_MS = 220;
 
+  // Death-spot Treasure Chest (2026-08-17, user-directed): every unit that
+  // dies via otherCivRemoveDeadUnit is by definition dying to something
+  // hostile to it -- there's no alliance system in this game, every civ
+  // (and Wandering Monsters) is always hostile to every other, so nothing
+  // beyond "died in combat" needs checking. Starvation/Wisp-cap disbands
+  // never route through here, so they never roll this.
+  const DEATH_CHEST_SPAWN_CHANCE = 0.10;
+
+  /** Rolls DEATH_CHEST_SPAWN_CHANCE and places a "chest" resource on the
+   *  dead unit's tile if it hits -- same minimal placement check
+   *  scheduleResourceRespawn's own candidate scan uses (valid terrain, tile
+   *  not already holding a resource), no city/Ruin exclusion, same
+   *  precedent. No-ops quietly if gameState isn't available (shouldn't
+   *  happen -- currentGameStateRef is stamped at the top of every civ-turn
+   *  entry point before any combat can resolve -- but this is cosmetic
+   *  loot, not worth a hard failure over). */
+  function maybeSpawnDeathChest(deadUnit, gameState) {
+    if (!gameState) return;
+    if (Math.random() >= DEATH_CHEST_SPAWN_CHANCE) return;
+    const { map } = gameState;
+    const tile = map.tiles[deadUnit.y * map.width + deadUnit.x];
+    if (!tile || tile.resource) return;
+    if (!window.GameData.RESOURCES.chest.validTerrain.includes(tile.terrain)) return;
+    tile.resource = "chest";
+  }
+
   /** Single chokepoint every combat-kill path in this file funnels a dead
    *  unit's removal through (city/structure counterattacks are the two
    *  exceptions that used to filter civ.units directly -- both now route
@@ -11888,6 +11671,7 @@ window.GameEngine = window.GameEngine || {};
       window.SfxSystem.playAction(civ.raceId, deadUnit.typeId, "death", deadUnit.x, deadUnit.y, DEATH_SFX_DELAY_MS);
       window.GameEngine.deathFx.spawnDeathEffect(deadUnit.x, deadUnit.y);
       civ.units = civ.units.filter((u) => u !== deadUnit);
+      maybeSpawnDeathChest(deadUnit, currentGameStateRef);
     }
   }
 
@@ -11933,10 +11717,10 @@ window.GameEngine = window.GameEngine || {};
   // already ran) survives untouched through turn T+1's movement/combat and
   // only expires at the T+2 tick, giving exactly one full subsequent turn of
   // the bonus, matching "the previous turn".
-  const VIOLENT_MOMENTUM_MOVE_BONUS = 2;
+  const VIOLENT_MOMENTUM_MOVE_BONUS = 3;
   const VIOLENT_MOMENTUM_FIRST_STRIKE_BONUS = 0.10;
   const VIOLENT_MOMENTUM_DOUBLE_STRIKE_BONUS = 0.10;
-  const VIOLENT_MOMENTUM_DURATION = 2;
+  const VIOLENT_MOMENTUM_DURATION = 3;
 
   /**
    * Orc-specific post-combat effects layered on top of the core damage/counter
@@ -12200,15 +11984,12 @@ window.GameEngine = window.GameEngine || {};
     resolveMonsterAttack,
     triggerRuinMonsterEncounter,
     grantMonsterKillReward,
+    queueTreasureNotice,
     seekOverseasResource,
     seekOverseasInvasion,
     tryDeepGateOverseas,
-    findOverseasInvasionTeleportTarget,
-    maybeRootsInvasionFerry,
-    findInvasionStagingTile,
-    maybeInvasionAmbushWait,
     appendAIActionLog,
-    tickTreetopSnipers,
+    tickWallDefense,
     operateGalley,
     exploreWater,
     exploreWith,
@@ -12224,9 +12005,10 @@ window.GameEngine = window.GameEngine || {};
     civMoveMods,
     castFlightOnAlly,
     isValidTeleportTile,
+    isValidForestTeleportTile,
     performPlayerDruidTeleport,
     performPlayerWizardTeleport,
-    performPlayerFreezingTouch,
+    performPlayerFireball,
     performPlayerRiddle,
     performPlayerResourceHeist,
     performPlayerUnlockTheGate,

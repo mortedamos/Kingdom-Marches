@@ -740,11 +740,6 @@ window.GameEngine = window.GameEngine || {};
     // Dwarf "Heavy Metal"/"Epic Metal": Troubadour's aura -- same shape as Crusade.
     if (unit.conditions?.heavyMetalAura) def += unit.conditions.heavyMetalAura.defenseBonus || 0;
 
-    // Dwarf "The Deep Mines": +2 defense while a unit is deep-claiming a Gold
-    // Vein (6+ turns) -- refreshed every turn in turns.js, same convention
-    // as crusadeAura/heavyMetalAura above.
-    if (unit.conditions?.deepMinesGuard) def += unit.conditions.deepMinesGuard.defenseBonus || 0;
-
     // Dwarf "Shield Wall": flat +2 defense as long as at least one other
     // Dwarf military unit is adjacent -- doesn't scale with how many are
     // adjacent (2026-07-15: was +1/adjacent up to 3, now just a binary
@@ -1249,33 +1244,43 @@ window.GameEngine = window.GameEngine || {};
   }
 
   /**
-   * Human "Ramparts": walls AND cities (not other buildings) can
-   * counterattack once researched -- see attackStructure (walls) and
-   * attackCity (cities) for the two call sites. Attack rating is at least
-   * the Archer's (never less than whatever the structure/city already had),
-   * with no bonus multiplier and no militia spawn -- deliberately weaker
-   * than Halfellow's Rouse the People, which this mirrors structurally. Same
-   * structure-specific First-Strike discount as Rouse the People above, and
-   * now the SAME flat 25% rate too -- this used to key off the Archer's own
-   * firstStrikePct instead, but Archer no longer has that property (its
-   * identity moved to `range` -- see units.js), so there's nothing left to
-   * derive a discount rate from.
-   *
-   * Reach: the wall/city fires back with the Archer's own range (read live
-   * from units.js, so retuning the Archer automatically retunes this too) --
-   * an attacker sitting further away than that is simply out of its
-   * retaliatory reach and takes no counter damage at all, same as any other
-   * defender a Ranged attack keeps at arm's length (see resolveRound).
-   * Mutates attackerUnit.hp; returns the raw counter damage dealt (0 if out
-   * of reach).
+   * Human "Ramparts" (2026-08-17, user-directed rework): walls AND cities
+   * (not other buildings) can counterattack ONLY while a unit is Garrisoned
+   * (unit.channeling === "garrison") in this city -- see attackStructure
+   * (walls) and attackCity (cities) for the two call sites. No garrison, no
+   * counterattack at all (structureRecord's own base attack, if any, no
+   * longer applies here either -- Ramparts' whole premise is now "the walls
+   * fight as well as whoever's holding them"). The wall's attack rating AND
+   * reach both become that garrisoned unit's own effectiveAttack/
+   * effectiveRange, exactly ("becomes the same as that unit"). Same
+   * structure-specific 25% First-Strike discount as Rouse the People/
+   * Spikes! use. Mutates attackerUnit.hp; returns the raw counter damage
+   * dealt (0 if nothing's garrisoned, or the attacker is out of the
+   * garrisoned unit's reach).
    */
-  function wallCounterattack(structureRecord, defenderCiv, attackerUnit, attackerCiv) {
-    const archer = window.GameData.getUnit("archer");
+  function wallCounterattack(structureRecord, defenderCiv, attackerUnit, attackerCiv, gameState) {
+    if (!gameState) return 0;
+    // A wall segment can sit anywhere in the city's radius, not necessarily
+    // on the city's own tile (unlike attackCity's call, where
+    // structureRecord IS the city -- its x/y already ARE the city's own).
+    // Resolve via the tile's structure pointer (cityX/cityY, same fields
+    // cities.js's findStructureAt reads) when there is one; falls back to
+    // structureRecord's own x/y otherwise, which is exactly correct for the
+    // city-attack call.
+    const { map } = gameState;
+    const tile = map.tiles[structureRecord.y * map.width + structureRecord.x];
+    const ptr = tile && tile.structure;
+    const cityX = ptr ? ptr.cityX : structureRecord.x;
+    const cityY = ptr ? ptr.cityY : structureRecord.y;
+    const garrison = defenderCiv.units.find((u) =>
+      u.channeling === "garrison" && u.x === cityX && u.y === cityY);
+    if (!garrison) return 0;
+    const range = effectiveRange(garrison, defenderCiv);
     const dist = Math.max(Math.abs(attackerUnit.x - structureRecord.x), Math.abs(attackerUnit.y - structureRecord.y));
-    if (dist > (archer.range || 1)) return 0;
-    const baseAtk = Math.max(structureRecord.attack || 0, archer.attack);
+    if (dist > range) return 0;
+    const atk = effectiveAttack(garrison, defenderCiv, {});
     const defStat = effectiveDefense(attackerUnit, attackerCiv, {});
-    let dmg = mitigatedDamage(baseAtk, defStat);
+    let dmg = mitigatedDamage(atk, defStat);
     if (hasFirstStrike(attackerUnit, attackerCiv)) dmg = Math.round(dmg * 0.75);
     attackerUnit.hp -= dmg;
     return dmg;
@@ -1284,11 +1289,12 @@ window.GameEngine = window.GameEngine || {};
   /** Orc "Spikes!"/"Bigger Spikes!" (2026-07-20, user-directed): the higher
    *  tech (if known) always wins rather than stacking with the lower one --
    *  same "upgrade tech" convention as e.g. Sudden Doom replacing Strike
-   *  from the Shadows. 0 if the civ has neither. */
+   *  from the Shadows. 0 if the civ has neither. Ratings 2/4 (2026-08-17,
+   *  user-directed, up from 1/2). */
   function spikesAttackRating(civ) {
     if (!civ.unlockedMechanics) return 0;
-    if (civ.unlockedMechanics.has("bigger_spikes")) return 2;
-    if (civ.unlockedMechanics.has("spikes")) return 1;
+    if (civ.unlockedMechanics.has("bigger_spikes")) return 4;
+    if (civ.unlockedMechanics.has("spikes")) return 2;
     return 0;
   }
 
@@ -1376,7 +1382,7 @@ window.GameEngine = window.GameEngine || {};
    *  defense (Rouse the People, Ramparts, Spikes/Bigger Spikes, Treetop
    *  Snipers), regardless of which the defender has unlocked. A single flag
    *  on the structure record, checked at every one of those four call
-   *  sites (attackStructure below, and ai.js's tickTreetopSnipers) instead
+   *  sites (attackStructure below, and ai.js's tickWallDefense) instead
    *  of each mechanic needing its own awareness of it. */
   function isWallDefenseSuppressed(structureRecord, turnNumber) {
     return structureRecord.gateUnlockedUntilTurn != null && (turnNumber || 0) < structureRecord.gateUnlockedUntilTurn;
@@ -1432,8 +1438,12 @@ window.GameEngine = window.GameEngine || {};
       counterDamage = structureCounterattack(structureRecord, defenderCiv, unit, attackerCiv);
       if (gameState) militiaSpawned = maybeSpawnMilitia(defenderCiv, structureRecord.x, structureRecord.y, gameState.map, gameState.civs);
     } else if (building.isWall && defenderCiv && defenderCiv.unlockedMechanics && defenderCiv.unlockedMechanics.has("ramparts")) {
-      counterDamage = wallCounterattack(structureRecord, defenderCiv, unit, attackerCiv);
-    } else if (building.isWall && defenderCiv && spikesAttackRating(defenderCiv) > 0) {
+      counterDamage = wallCounterattack(structureRecord, defenderCiv, unit, attackerCiv, gameState);
+    } else if (defenderCiv && spikesAttackRating(defenderCiv) > 0) {
+      // Orc "Spikes!"/"Bigger Spikes!" (2026-08-17, user-directed): scope
+      // widened from walls-only to any structure (walls, buildings, and
+      // cities via attackCity below) -- same "any structure" scope Rouse
+      // the People already uses just above, no isWall gate anymore.
       counterDamage = spikesCounterattack(structureRecord, defenderCiv, unit, attackerCiv, spikesAttackRating(defenderCiv));
     }
     return { damage: dmg, destroyed: structureRecord.hp <= 0, counterDamage, militiaSpawned, doubleStruck, doubleDamage };
@@ -1551,7 +1561,7 @@ window.GameEngine = window.GameEngine || {};
       counterDamage = structureCounterattack(city, defenderCiv, unit, attackerCiv);
       if (gameState) militiaSpawned = maybeSpawnMilitia(defenderCiv, city.x, city.y, gameState.map, gameState.civs);
     } else if (defenderCiv && defenderCiv.unlockedMechanics && defenderCiv.unlockedMechanics.has("ramparts")) {
-      counterDamage = wallCounterattack(city, defenderCiv, unit, attackerCiv);
+      counterDamage = wallCounterattack(city, defenderCiv, unit, attackerCiv, gameState);
     } else if (defenderCiv && spikesAttackRating(defenderCiv) > 0) {
       counterDamage = spikesCounterattack(city, defenderCiv, unit, attackerCiv, spikesAttackRating(defenderCiv));
     }
@@ -1600,6 +1610,49 @@ window.GameEngine = window.GameEngine || {};
     return hits;
   }
 
+  /**
+   * Human "Fireball!" (2026-08-17, user-directed rework: was an automatic
+   * half-damage splash tacked onto an ordinary attack, now its own standalone
+   * targeted action -- see ai.js's performWizardFireball). Deals a FULL
+   * damage roll (not applySplashDamage's half-roll) to every enemy unit AND
+   * structure in the 3x3 area centered on (centerX, centerY) -- the target
+   * tile itself, plus its 8 neighbors, no "primary target" distinction since
+   * there's no ordinary attack this is riding on top of anymore. Never hits
+   * the caster's own civ, or cities directly (same "structures, not cities"
+   * scope applySplashDamage already uses). Returns a log of hits, same shape
+   * as applySplashDamage's, for the caller to roll ignite chance against.
+   */
+  function applyFireballBlast(casterUnit, casterCiv, centerX, centerY, gameState) {
+    const { map, civs } = gameState;
+    const atk = effectiveAttack(casterUnit, casterCiv, {});
+    const hits = [];
+    for (let dy = -1; dy <= 1; dy++) {
+      for (let dx = -1; dx <= 1; dx++) {
+        const x = centerX + dx, y = centerY + dy;
+        if (x < 0 || x >= map.width || y < 0 || y >= map.height) continue;
+        for (const otherCiv of Object.values(civs)) {
+          if (otherCiv.id === casterUnit.civId || otherCiv.eliminated) continue;
+          const hitUnit = otherCiv.units.find((u) => u.x === x && u.y === y);
+          if (hitUnit) {
+            const dmg = mitigatedDamage(atk, effectiveDefense(hitUnit, otherCiv, {}));
+            hitUnit.hp -= dmg;
+            // Hidden: an AoE blast isn't "aimed," so it can still catch a
+            // Hidden unit by accident -- being hit this way reveals it.
+            revealHidden(hitUnit, gameState.turnNumber || 0);
+            hits.push({ kind: "unit", x, y, damage: dmg, civId: otherCiv.id, typeId: hitUnit.typeId, unit: hitUnit });
+          }
+        }
+        const structFound = window.GameEngine.cities.findStructureAt(gameState, x, y);
+        if (structFound && structFound.civ.id !== casterUnit.civId) {
+          const dmg = mitigatedDamage(atk, 0);
+          structFound.record.hp -= dmg;
+          hits.push({ kind: "structure", x, y, damage: dmg, civId: structFound.civ.id, id: structFound.record.id, record: structFound.record });
+        }
+      }
+    }
+    return hits;
+  }
+
   window.GameEngine.combat = {
     roll3d6,
     damageRoll,
@@ -1633,6 +1686,7 @@ window.GameEngine = window.GameEngine || {};
     healUnit,
     attackStructure,
     applySplashDamage,
+    applyFireballBlast,
     cityDefenseValue,
     cityMaxHp,
     cityAttackWinProbability,

@@ -2515,7 +2515,7 @@
       // behind the other if both happen the same round (see
       // openTechResearchedDialog/offerNextUnitBuiltNotice).
       if (!victoryResult && !humanLost) {
-        const afterUnitBuilt = () => offerNextPendingIntent(civ, () => offerFoundCityIfPending(civ));
+        const afterUnitBuilt = () => offerNextTreasureNotice(civ, () => offerNextPendingIntent(civ, () => offerFoundCityIfPending(civ)));
         const afterTech = () => {
           if (finishedTechId) {
             openTechResearchedDialog(civ, finishedTechId, () => offerNextUnitBuiltNotice(civ, afterUnitBuilt));
@@ -2533,6 +2533,7 @@
         civ.pendingStarvationDisbands = [];
         civ.pendingWispDisbands = [];
         civ.pendingUnitBuiltNotices = [];
+        civ.pendingTreasureNotices = [];
         for (const unit of civ.units) { unit.pendingIntent = null; unit._foundCityPending = false; }
       }
     }
@@ -2669,15 +2670,9 @@
   function openTechResearchedDialog(civ, techId, onDone) {
     const tech = window.GameData.getTech(techId);
     if (!tech) { if (onDone) onDone(); return; }
-    // "Cultural Influence" (2026-08-06, user-directed) is excluded from this
-    // list -- it's the tech-tree capstone, gated on nearly every OTHER tech
-    // rather than genuinely "unlocked by" any single one of them, so naming
-    // it here on every last prerequisite read like noise rather than a
-    // meaningful "here's what just opened up" callout.
     const unlockedTechs = window.GameData.techsForRace(civ.raceId)
       .filter((id) => window.GameData.getTech(id).prereqs.includes(techId))
-      .map((id) => ({ id, label: window.GameData.getTech(id).label }))
-      .filter((t) => t.label !== "Cultural Influence");
+      .map((id) => ({ id, label: window.GameData.getTech(id).label }));
     window.SfxSystem.playResearchComplete();
     viewState.dialog = {
       kind: "techResearched",
@@ -2761,6 +2756,53 @@
         offerNextUnitBuiltNotice(civ, onDone);
       },
     };
+    redraw();
+  }
+
+  /** Treasure find flavor text (2026-08-17, user-directed): names the
+   *  object found, then its effect -- shared by the immediate "openChest"
+   *  ring action below and offerNextTreasureNotice's deferred Ruin Delve
+   *  notices, so both read identically. Trap results aren't routed through
+   *  here -- nothing was "found," so they keep their own dedicated text. */
+  function describeTreasureFind(unitLabel, result) {
+    if (result.rewardType === "mapFragment") {
+      return {
+        title: "Map Fragment!",
+        text: `${unitLabel} finds a map fragment -- unrolling it reveals a swath of unexplored land around (${result.revealed.x},${result.revealed.y}) for the rest of this turn.`,
+      };
+    }
+    if (result.rewardType === "xp") {
+      return {
+        title: "Treasure Found!",
+        text: `${unitLabel} finds an experience crystal -- absorbing it grants +${result.amount} XP.`,
+      };
+    }
+    if (result.rewardType === "lore") {
+      return {
+        title: "Treasure Found!",
+        text: `${unitLabel} finds an ancient tome -- its knowledge is worth +${result.amount} lore.`,
+      };
+    }
+    return {
+      title: "Treasure Found!",
+      text: `${unitLabel} finds a pile of gold coins -- worth +${result.amount} coin.`,
+    };
+  }
+
+  /** Ruin Delve treasure-find announcements (2026-08-17, user-directed):
+   *  same drain-one-at-a-time-as-its-own-modal shape as
+   *  offerNextUnitBuiltNotice above -- ai.js's queueTreasureNotice (called
+   *  from turns.js's once-per-Ruin treasure roll) pushes one per find onto
+   *  civ.pendingTreasureNotices. Set unconditionally for every civ (see
+   *  queueTreasureNotice's own doc comment); only reached here for the
+   *  human civ. */
+  function offerNextTreasureNotice(civ, onDone) {
+    const notices = civ.pendingTreasureNotices;
+    if (!notices || !notices.length) { if (onDone) onDone(); return; }
+    const { unitLabel, result } = notices.shift();
+    const { title, text } = describeTreasureFind(unitLabel, result);
+    window.SfxSystem.playTreasureChestOpen();
+    viewState.dialog = { kind: "message", title, text, onDismiss: () => offerNextTreasureNotice(civ, onDone) };
     redraw();
   }
 
@@ -4055,15 +4097,18 @@
           if (result) {
             const unitLabel = unit.name || window.GameData.getUnit(unit.typeId).label;
             let title, text;
-            if (result.trapped) {
+            if (result.disarmed) {
+              // Halfellow "Making Trouble" (2026-08-17, user-directed): a
+              // Trouble Maker disarms a chest trap instead of springing it --
+              // no damage, no condition.
+              title = "Trap Disarmed!";
+              text = `${unitLabel} finds a trap, but disarms it.`;
+            } else if (result.trapped) {
               title = "It's a Trap!";
               text = `${unitLabel} springs a ${result.kind} trap: -${result.damage} HP and ${result.kind === "fire" ? "Burning" : "Frozen"}.`;
-            } else if (result.rewardType === "mapFragment") {
-              title = "Map Fragment!";
-              text = `${unitLabel} finds a Map Fragment -- a swath of unexplored land around (${result.revealed.x},${result.revealed.y}) is revealed for the rest of this turn.`;
             } else {
-              title = "Treasure Found!";
-              text = `${unitLabel} finds +${result.amount} ${result.rewardType === "xp" ? "XP" : result.rewardType}!`;
+              ({ title, text } = describeTreasureFind(unitLabel, result));
+              window.SfxSystem.playTreasureChestOpen();
             }
             viewState.dialog = { kind: "message", title, text };
             redraw();
@@ -4149,18 +4194,8 @@
           const civ = gameState.civs[humanCivId];
           const ally = civ.units.find((u) => u.x === tx && u.y === ty && u !== unit && !u.carriedBy);
           if (ally) startTeleportPlacement(unit, ally);
-        } else if (kind && kind.startsWith("freeze:")) {
-          // Human "Freezing Touch" (2026-08-11, user-directed): commits
-          // instantly, no placement mode -- see orders.js's "Freeze:
-          // [target]" ring option, which only ever offers in-range enemy
-          // units. attackTargetAt reuses the same "what's standing on this
-          // tile that isn't mine" lookup right-click-to-attack already uses.
-          const [tx, ty] = kind.slice("freeze:".length).split(",").map(Number);
-          const civ = gameState.civs[humanCivId];
-          const found = window.GameEngine.orders.attackTargetAt(unit, gameState, tx, ty, humanCivId);
-          if (civ && found && found.kind === "unit") {
-            window.GameEngine.ai.performPlayerFreezingTouch(civ, unit, found.unit, gameState);
-          }
+        } else if (kind === "fireball") {
+          startFireballPlacement(unit);
         } else if (kind && kind.startsWith("riddle:")) {
           // Halfellow "Riddle" (2026-08-11, user-directed) -- same shape as
           // Freezing Touch above.
@@ -4223,12 +4258,15 @@
     if (!civ) return;
     const explored = gameState.explored[civ.id] || new Set();
     const { map } = gameState;
+    const isWizard = caster.typeId === "wizard";
+    // Elf "Roots of the World" is Forest-only (2026-08-17, user-directed) --
+    // Human "Teleportation" isn't restricted by terrain.
+    const isValidSlot = isWizard ? window.GameEngine.ai.isValidTeleportTile : window.GameEngine.ai.isValidForestTeleportTile;
     const slots = [];
     for (const idx of explored) {
       const x = idx % map.width, y = Math.floor(idx / map.width);
-      if (window.GameEngine.ai.isValidTeleportTile(gameState, x, y, targetUnit)) slots.push({ x, y });
+      if (isValidSlot(gameState, x, y, targetUnit)) slots.push({ x, y });
     }
-    const isWizard = caster.typeId === "wizard";
     const abilityLabel = isWizard ? "Teleportation" : "Roots of the World";
     const performTeleport = isWizard
       ? window.GameEngine.ai.performPlayerWizardTeleport
@@ -4252,6 +4290,41 @@
           // two since the destination can be anywhere already explored.
           window.GameEngine.turns.refreshVisibility(gameState);
         }
+        redraw();
+      },
+    };
+    redraw();
+  }
+
+  /** Human "Fireball!" (2026-08-17, user-directed): tile-placement mode over
+   *  every in-bounds tile within FIREBALL_RANGE (3, mirrored here as a
+   *  literal -- see ai.js) of the caster -- no explored/visibility
+   *  requirement, matching orders.js's own gate on the ring option. Picking
+   *  a slot commits via performPlayerFireball; clicking outside every
+   *  highlighted tile cancels, same convention as every other placement
+   *  flow. No preview sprite (see startTeleportPlacement's previewUnitId)
+   *  -- Fireball doesn't relocate a unit, it detonates on the chosen tile. */
+  function startFireballPlacement(caster) {
+    if (!humanCivId) return;
+    const civ = gameState.civs[humanCivId];
+    if (!civ) return;
+    const { map } = gameState;
+    const range = 3; // FIREBALL_RANGE, ai.js
+    const slots = [];
+    for (let dy = -range; dy <= range; dy++) {
+      for (let dx = -range; dx <= range; dx++) {
+        const x = caster.x + dx, y = caster.y + dy;
+        if (x < 0 || x >= map.width || y < 0 || y >= map.height) continue;
+        if (window.GameEngine.influence.chebyshev(caster.x, caster.y, x, y) > range) continue;
+        slots.push({ x, y });
+      }
+    }
+    viewState.placement = {
+      slots,
+      label: "Fireball!",
+      onPick: (slot) => {
+        viewState.placement = null;
+        if (slot) window.GameEngine.ai.performPlayerFireball(civ, caster, slot.x, slot.y, gameState);
         redraw();
       },
     };

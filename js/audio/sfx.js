@@ -276,11 +276,12 @@ window.SfxSystem = (function () {
   // "no cold-load lag" reasoning as the rest of this file.
   const SYSTEM_BUTTON_CLICK_KEY = "system_button_click";
   const SYSTEM_CONFIRM_ACTION_KEY = "system_confirm_action";
+  const SYSTEM_TREASURE_CHEST_OPEN_KEY = "system_treasure_chest_open_1";
   const SYSTEM_RESEARCH_COMPLETE_VARIANTS = 3;
   let lastResearchCompleteVariant = null;
 
   function systemKeys() {
-    const keys = [SYSTEM_BUTTON_CLICK_KEY, SYSTEM_CONFIRM_ACTION_KEY];
+    const keys = [SYSTEM_BUTTON_CLICK_KEY, SYSTEM_CONFIRM_ACTION_KEY, SYSTEM_TREASURE_CHEST_OPEN_KEY];
     for (let n = 1; n <= SYSTEM_RESEARCH_COMPLETE_VARIANTS; n++) keys.push(`system_research_complete_${n}`);
     return keys;
   }
@@ -318,6 +319,13 @@ window.SfxSystem = (function () {
     const choice = pool[Math.floor(Math.random() * pool.length)];
     lastResearchCompleteVariant = choice;
     playSystemKey(`system_research_complete_${choice}`);
+  }
+
+  /** Public: a Treasure Chest or Ruin Delve treasure find modal is about to
+   *  show (2026-08-17, user-directed) -- see main.js's "openChest" case and
+   *  the Ruin Delve treasure-find dialog. */
+  function playTreasureChestOpen() {
+    playSystemKey(SYSTEM_TREASURE_CHEST_OPEN_KEY);
   }
 
   function setMasterVolume(v) { masterVolume = Math.max(0, Math.min(1, v)); }
@@ -377,6 +385,7 @@ window.SfxSystem = (function () {
     playButtonClick,
     playConfirmAction,
     playResearchComplete,
+    playTreasureChestOpen,
     setMasterVolume,
     setSfxVolume,
     setMuted,

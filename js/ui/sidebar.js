@@ -505,7 +505,7 @@ window.UI = window.UI || {};
     // the ring can't tell you (its start/claim/cancel verbs live there now).
     let channelActions = "";
     if (isHumanUnit) {
-      const CHANNEL_LABELS = { prospecting: "Prospecting", delving: "Delving", fishing: "Fishing", hunting: "Hunting", farming: "Farming", mining: "Mining" };
+      const CHANNEL_LABELS = { delving: "Delving", fishing: "Fishing", hunting: "Hunting", farming: "Farming", mining: "Mining" };
       const label = CHANNEL_LABELS[unit.channeling];
       const turnsIn = unit._ritualTurns || 0;
       if (label && turnsIn > 0) {
@@ -573,7 +573,6 @@ window.UI = window.UI || {};
     // this unit currently do," just with different lifetimes.
     const curse = unit.conditions?.curse;
     if (curse) properties.push(`Cursed (${Math.round((1 - curse.attackMult) * 100)}% attack, ${Math.round((1 - curse.moveMult) * 100)}% move)`);
-    if (unit.conditions?.exhausted) properties.push('Exhausted (must Rest)');
     const frozen = unit.conditions?.frozen;
     if (frozen) properties.push(`Frozen (0 movement, ${Math.round((1 - frozen.attackMult) * 100)}% attack)`);
     const killMomentum = unit.conditions?.killMomentum;
