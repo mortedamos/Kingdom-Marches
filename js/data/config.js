@@ -66,14 +66,14 @@ window.GameConfig = {
   // stamp, and the only cost of forgetting is being told the wrong thing.
   build: {
     /** Local date this build was cut, YYYY-MM-DD. */
-    date: "2026-08-15",
+    date: "2026-08-16",
     /** Local time this build was cut, 24-hour HH:MM. */
-    time: "23:46",
+    time: "00:13",
     /** Monotonic build counter. Continues the numbering the old GitHub-
      *  derived stamp used (it showed the repo's total commit count), so
      *  builds from before and after this change still sort against each
      *  other. Increment it; don't recompute it. */
-    number: 100,
+    number: 101,
   },
 
   // =========================================================================
@@ -512,11 +512,26 @@ window.GameConfig = {
       /** Each turn, if under the population cap, spawn chance = this *
        *  (1 - exploredFraction), where exploredFraction is the share of
        *  LAND tiles explored by any civ. Linear falloff (user-confirmed
-       *  over the steeper squared alternative). */
-      baseSpawnChance: 0.06,
+       *  over the steeper squared alternative). Raised 0.06 -> 0.15
+       *  (2026-08-16, user-reported): at 0.06 a fresh game had roughly a
+       *  75-90% chance of showing literally zero monsters through its
+       *  first five turns -- see the headless probability sweep this was
+       *  measured with -- which read as "these don't work" rather than
+       *  "rare early." */
+      baseSpawnChance: 0.15,
       /** Population cap = this * number of civs still alive (not
        *  eliminated). Shrinks as civs are eliminated. */
       perKingdomCap: 2,
+      /** Monsters placed at world-gen time, before turn 1 (2026-08-16,
+       *  user-directed: "some monsters should exist at game start" --
+       *  previously the roster started empty and only the per-round roll
+       *  above ever added to it). Count = this * number of civs in play,
+       *  same multiply-by-headcount shape as perKingdomCap -- see
+       *  ai.js's seedInitialMonsters, which also keeps every initial
+       *  placement well clear of every civ's starting units so a fresh
+       *  Pioneer never has one bearing down on it before the player's had
+       *  a real turn. */
+      initialPerKingdom: 1,
     },
   },
 

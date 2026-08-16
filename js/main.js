@@ -1174,10 +1174,17 @@
       [turnOrder[i], turnOrder[j]] = [turnOrder[j], turnOrder[i]];
     }
 
-    return {
+    const gameState = {
       map, civs, turnNumber: 0, visibility: {}, explored: {}, tileMemory: {},
       turnOrder, turnStepIndex: 0, seed, aiActionLog: [],
     };
+    // World-gen-time Wandering Monster seeding (2026-08-16, user-directed:
+    // "some monsters should exist at game start") -- see ai.js's
+    // seedInitialMonsters for placement rules. Deliberately after the civs
+    // above are fully placed, not before: it needs every civ's starting
+    // units already on the map to keep its own placements clear of them.
+    window.GameEngine.ai.seedInitialMonsters(gameState);
+    return gameState;
   }
 
   /**

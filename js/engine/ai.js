@@ -7702,6 +7702,69 @@ window.GameEngine = window.GameEngine || {};
     civ.units.push(newUnit);
   }
 
+  // Chebyshev distance every initial placement must clear from every civ's
+  // starting units -- comfortably past a monster's own vision/wander range
+  // (2-4 tiles, see runMonsterUnitTurn) so nothing beelines into a fresh
+  // Pioneer before the player's had a real turn.
+  const INITIAL_MONSTER_MIN_DISTANCE_FROM_START = 10;
+
+  /** Places a handful of Wandering Monsters at world-gen time, before turn 1
+   *  (2026-08-16, user-directed: "some monsters should exist at game
+   *  start" -- previously the roster started empty and only maybeSpawnMonster's
+   *  per-round roll above ever added to it, so a fresh game commonly went
+   *  several turns before showing any). Reuses MONSTER_TERRAIN placement,
+   *  but skips maybeSpawnMonster's "not yet explored" filter entirely
+   *  (nothing is explored yet at this point in createNewGame) and instead
+   *  requires distance from every civ's starting units -- see
+   *  INITIAL_MONSTER_MIN_DISTANCE_FROM_START. */
+  function seedInitialMonsters(gameState) {
+    const cfg = window.GameConfig.worldEncounters.monsters;
+    const civ = ensureMonsterCiv(gameState);
+    const { civs, map } = gameState;
+
+    const startingUnits = [];
+    for (const oc of Object.values(civs)) {
+      if (oc.id === MONSTER_CIV_ID) continue;
+      for (const u of oc.units) startingUnits.push(u);
+    }
+    const farEnough = (x, y) => startingUnits.every(
+      (u) => window.GameEngine.influence.chebyshev(x, y, u.x, u.y) >= INITIAL_MONSTER_MIN_DISTANCE_FROM_START
+    );
+
+    function collectCandidates(requireDistance) {
+      const found = [];
+      for (let i = 0; i < map.tiles.length; i++) {
+        const tile = map.tiles[i];
+        if (!window.GameEngine.worldgen.isLand(tile)) continue;
+        if (!window.GameData.MONSTER_TERRAIN[tile.terrain]) continue;
+        const x = i % map.width, y = Math.floor(i / map.width);
+        if (requireDistance && !farEnough(x, y)) continue;
+        found.push(i);
+      }
+      return found;
+    }
+    // A small/cramped map can leave nothing at the full distance -- relax
+    // rather than seed zero monsters (same "fall back to the unfiltered
+    // pool" convention createNewGame's own landmass selection already uses).
+    let candidates = collectCandidates(true);
+    if (!candidates.length) candidates = collectCandidates(false);
+    if (!candidates.length) return;
+
+    const activeKingdoms = Object.keys(civs).filter((cId) => cId !== MONSTER_CIV_ID).length;
+    const targetCount = Math.min(cfg.initialPerKingdom * activeKingdoms, candidates.length);
+
+    for (let n = 0; n < targetCount; n++) {
+      const pick = Math.floor(Math.random() * candidates.length);
+      const idx = candidates[pick];
+      candidates.splice(pick, 1); // no two initial monsters sharing a tile
+      const x = idx % map.width, y = Math.floor(idx / map.width);
+      const typeId = window.GameData.MONSTER_TERRAIN[map.tiles[idx].terrain];
+      const newUnit = { typeId, civId: MONSTER_CIV_ID, x, y, isCivilian: false };
+      window.GameEngine.combat.initUnitHP(newUnit, civ);
+      civ.units.push(newUnit);
+    }
+  }
+
   /** Ruin monster encounter (see doc/world_encounters_design.md) -- called
    *  from turns.js's Dungeon Delve payout loop, at most once per Ruin ever
    *  (the caller tracks that on the tile itself). Spawns one terrain-
@@ -12097,6 +12160,7 @@ window.GameEngine = window.GameEngine || {};
     maybeOpenChestPlay,
     ensureMonsterCiv,
     maybeSpawnMonster,
+    seedInitialMonsters,
     runMonsterUnitTurn,
     resolveMonsterAttack,
     triggerRuinMonsterEncounter,
