@@ -13,15 +13,18 @@
   // Knowledge Base (KMKB) state (2026-08-16, user-directed): deliberately
   // module-level rather than part of viewState -- the Knowledge menu has to
   // work from the title screen too, before viewState (or gameState) exists
-  // at all. "units" | "conditions" | null; knowledgeSelectedUnitId only
-  // matters for the "units" page. See setupKnowledgeBase/renderKnowledgeOverlay.
+  // at all. "units" | "conditions" | "stats" | null; knowledgeSelectedUnitId/
+  // knowledgeSelectedConditionKey/knowledgeSelectedStatKey each only matter
+  // for their own page. See setupKnowledgeBase/renderKnowledgeOverlay.
   let knowledgeView = null;
   let knowledgeSelectedUnitId = null;
   let knowledgeSelectedConditionKey = null;
-  // Set when a unit profile's condition cross-link is clicked (2026-08-16,
-  // user-directed) -- remembers which unit to return to so the Conditions
-  // page's "Back" button can jump straight back to it. null whenever the
-  // Conditions page was opened directly from the menu instead.
+  let knowledgeSelectedStatKey = null;
+  // Set when a unit profile's condition OR stat cross-link is clicked
+  // (2026-08-16, user-directed; generalized to stats 2026-08-17) --
+  // remembers which unit to return to so the Conditions/Stats page's "Back"
+  // button can jump straight back to it. null whenever that page was opened
+  // directly from the menu instead.
   let knowledgeBackTarget = null;
   let humanCivId = null;
   let spectatorMode = false;
@@ -716,20 +719,31 @@
     overlay.classList.toggle("knowledge-overlay-ingame", inGame);
 
     const content = $("knowledge-content");
-    if (knowledgeView === "conditions") {
+    if (knowledgeView === "conditions" || knowledgeView === "stats") {
       // "Units" is the only page a cross-link can currently arrive from,
       // so the back label is hardcoded here rather than threaded through
-      // knowledgeBackTarget -- see jumpToCondition/goBackFromCondition.
-      content.innerHTML = window.UI.knowledgebase.renderConditions(
-        knowledgeSelectedConditionKey, knowledgeBackTarget ? "Units" : null);
-      for (const btn of content.querySelectorAll(".kb-list-btn[data-condition-id]")) {
-        btn.onclick = () => {
-          knowledgeSelectedConditionKey = btn.dataset.conditionId;
-          renderKnowledgeOverlay();
-        };
+      // knowledgeBackTarget -- see jumpToCondition/jumpToStat/goBackToUnits.
+      const backLabel = knowledgeBackTarget ? "Units" : null;
+      if (knowledgeView === "conditions") {
+        content.innerHTML = window.UI.knowledgebase.renderConditions(knowledgeSelectedConditionKey, backLabel);
+        for (const btn of content.querySelectorAll(".kb-list-btn[data-condition-id]")) {
+          btn.onclick = () => {
+            knowledgeSelectedConditionKey = btn.dataset.conditionId;
+            renderKnowledgeOverlay();
+          };
+        }
+      } else {
+        content.innerHTML = window.UI.knowledgebase.renderStats(knowledgeSelectedStatKey, backLabel);
+        window.UI.knowledgebase.wireCombatSimulator(content);
+        for (const btn of content.querySelectorAll(".kb-list-btn[data-stat-id]")) {
+          btn.onclick = () => {
+            knowledgeSelectedStatKey = btn.dataset.statId;
+            renderKnowledgeOverlay();
+          };
+        }
       }
       const backBtn = $("kb-back-btn");
-      if (backBtn) backBtn.onclick = goBackFromCondition;
+      if (backBtn) backBtn.onclick = goBackToUnits;
     } else {
       content.innerHTML = window.UI.knowledgebase.renderUnits(knowledgeSelectedUnitId);
       const canvas = content.querySelector(".kb-unit-portrait");
@@ -745,6 +759,9 @@
       for (const link of content.querySelectorAll(".kb-condition-link[data-condition-link]")) {
         link.onclick = () => jumpToCondition(link.dataset.conditionLink);
       }
+      for (const link of content.querySelectorAll(".kb-stat-link[data-stat-link]")) {
+        link.onclick = () => jumpToStat(link.dataset.statLink);
+      }
     }
     overlay.style.display = "flex";
   }
@@ -753,6 +770,7 @@
     knowledgeView = view;
     knowledgeSelectedUnitId = null;
     knowledgeSelectedConditionKey = null;
+    knowledgeSelectedStatKey = null;
     knowledgeBackTarget = null;
     renderKnowledgeOverlay();
   }
@@ -770,7 +788,15 @@
     knowledgeSelectedConditionKey = conditionKey;
     renderKnowledgeOverlay();
   }
-  function goBackFromCondition() {
+  /** A unit profile's stat cross-link (e.g. "Attack") -- jumps to that
+   *  stat's own page, remembering the unit so "Back" can return to it. */
+  function jumpToStat(statKey) {
+    knowledgeBackTarget = { unitId: knowledgeSelectedUnitId };
+    knowledgeView = "stats";
+    knowledgeSelectedStatKey = statKey;
+    renderKnowledgeOverlay();
+  }
+  function goBackToUnits() {
     if (!knowledgeBackTarget) return;
     knowledgeView = "units";
     knowledgeSelectedUnitId = knowledgeBackTarget.unitId;
@@ -778,10 +804,10 @@
     renderKnowledgeOverlay();
   }
 
-  /** Wires the "Knowledge" menu's Units/Conditions buttons on BOTH menu bars
-   *  (title screen and in-game -- same "one shared overlay, two triggers"
-   *  convention as setupKeyboardShortcutsOverlay just above) plus the
-   *  overlay's own close button/backdrop-click/Escape. */
+  /** Wires the "Knowledge" menu's Units/Conditions/Stats buttons on BOTH
+   *  menu bars (title screen and in-game -- same "one shared overlay, two
+   *  triggers" convention as setupKeyboardShortcutsOverlay just above) plus
+   *  the overlay's own close button/backdrop-click/Escape. */
   function setupKnowledgeBase() {
     const overlay = $("knowledge-overlay");
     if (!overlay) return;
@@ -789,10 +815,14 @@
     if (unitsBtn) unitsBtn.addEventListener("click", () => openKnowledge("units"));
     const conditionsBtn = $("kb-conditions-btn");
     if (conditionsBtn) conditionsBtn.addEventListener("click", () => openKnowledge("conditions"));
+    const statsBtn = $("kb-stats-btn");
+    if (statsBtn) statsBtn.addEventListener("click", () => openKnowledge("stats"));
     const titleUnitsBtn = $("title-kb-units-btn");
     if (titleUnitsBtn) titleUnitsBtn.addEventListener("click", () => openKnowledge("units"));
     const titleConditionsBtn = $("title-kb-conditions-btn");
     if (titleConditionsBtn) titleConditionsBtn.addEventListener("click", () => openKnowledge("conditions"));
+    const titleStatsBtn = $("title-kb-stats-btn");
+    if (titleStatsBtn) titleStatsBtn.addEventListener("click", () => openKnowledge("stats"));
     $("knowledge-close-btn").addEventListener("click", closeKnowledge);
     overlay.addEventListener("mousedown", (e) => { if (e.target === overlay) closeKnowledge(); });
     document.addEventListener("keydown", (e) => {

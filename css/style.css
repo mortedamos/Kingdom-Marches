@@ -1171,8 +1171,12 @@ html, body {
   background: var(--bg-panel);
   border: 1px solid var(--border);
   border-radius: 6px;
-  width: min(1400px, 94%);
-  height: 88vh;
+  /* ~10% smaller (2026-08-17, user-directed) than every other
+     .techtree-overlay-based modal's own 1240px/88vh -- both the pixel cap
+     AND the percentage cap scaled down together so this stays proportionally
+     smaller on both large and small viewports, not just large ones. */
+  width: min(1260px, 85%);
+  height: 79vh;
   padding: 20px 24px;
   display: flex;
   flex-direction: column;
@@ -1319,7 +1323,52 @@ html, body {
   border-radius: 6px;
   background: var(--bg-panel-raised);
 }
-.kb-condition-profile-desc { color: var(--text-dim); font-size: 13px; line-height: 1.5; }
+/* white-space:pre-line (2026-08-17) -- the Defense stat's own writeup uses
+   a literal blank line to separate the formula from its surrounding prose
+   (see knowledgebase.js's STAT_DESCRIPTIONS); this is the shared class both
+   Conditions and Stats profile descriptions use, so it renders there too. */
+.kb-condition-profile-desc { color: var(--text-dim); font-size: 13px; line-height: 1.5; white-space: pre-line; }
+/* A unit profile's stat-row label, cross-linking to that stat's own KMKB
+   entry (2026-08-17, user-directed) -- underlined-dotted rather than a
+   bordered pill like .kb-condition-link, since this sits inline inside an
+   existing .stat-row rather than being its own full-width row. */
+.kb-stat-link {
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--text-dim);
+  font-size: 13px;
+  text-decoration: underline dotted;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+.kb-stat-link:hover { color: var(--accent); }
+/* Live Attack-vs-Defense simulator (2026-08-17, user-directed) -- embedded
+   on the Attack/Defense stat pages, see knowledgebase.js's
+   COMBAT_SIM_HTML/wireCombatSimulator. */
+.kb-sim {
+  margin-top: 14px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-panel-raised);
+}
+.kb-sim-row { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+.kb-sim-label { flex: 0 0 70px; color: var(--text-dim); font-size: 13px; }
+.kb-sim-btn {
+  width: 26px;
+  height: 26px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg-panel);
+  color: var(--text-main);
+  font-size: 15px;
+  line-height: 1;
+  cursor: pointer;
+}
+.kb-sim-btn:hover { border-color: var(--accent); color: var(--accent); }
+.kb-sim-value { flex: 0 0 32px; text-align: center; font-weight: bold; color: var(--text-main); }
+.kb-sim-result { margin-top: 10px; border-top: 1px solid var(--border); padding-top: 8px; }
 
 .reports-subtitle {
   font-size: 12px;

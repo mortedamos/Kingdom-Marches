@@ -95,6 +95,116 @@ window.UI = window.UI || {};
     keepingWatch: "Posted as a lookout (Halfellow's Keep an Eye Out) -- holds position with +3 Vision.",
   };
 
+  // Every stat shown on a unit's profile, cross-linked to its own KMKB
+  // entry (2026-08-17, user-directed). `key` matches STAT_DESCRIPTIONS
+  // below; `unitField`/`derive` say how renderUnitProfileHtml pulls this
+  // stat's VALUE off a real unit -- most read a plain units.js field
+  // directly, maxHp is derived (see units.js's own unitMaxHP).
+  const STAT_INFO = [
+    { key: "attack", label: "Attack" },
+    { key: "defense", label: "Defense" },
+    { key: "maxHp", label: "Max HP" },
+    { key: "movement", label: "Movement" },
+    { key: "visionRadius", label: "Vision" },
+    { key: "range", label: "Range" },
+    { key: "siegePct", label: "Siege Bonus" },
+    { key: "firstStrikePct", label: "First Strike" },
+    { key: "doubleStrikePct", label: "Double Strike" },
+  ];
+  const STAT_LABEL_BY_KEY = Object.fromEntries(STAT_INFO.map((s) => [s.key, s.label]));
+
+  // Hand-written explanations of what each stat actually DOES mechanically,
+  // including the real combat formula where one applies (2026-08-17, user-
+  // directed) -- same "can't be derived from data alone" reasoning as
+  // CONDITION_DESCRIPTIONS above. Verified against the actual engine code
+  // (combat.js's damageRoll/mitigatedDamage/resolveRound, units.js's own
+  // unitMaxHP) as of 2026-08-17 -- re-check here if any of those change.
+  // attack/defense additionally render the live simulator (see
+  // COMBAT_SIM_HTML/wireCombatSimulator) right under their prose.
+  const STAT_DESCRIPTIONS = {
+    attack: "This unit's base combat power. Each hit's raw damage starts as this value, randomly varied by roughly ±3-18% (a 3d6 roll used as a percentage, bell-curved around ±10-11%, rolled fresh every hit), THEN reduced by the target's Defense -- see Defense's own entry for the exact mitigation formula. The same Attack value is also what this unit swings back with on a counterattack.",
+    defense: "Reduces incoming damage using a self-scaling RATIO, not a flat subtraction:\n\ndamage = round( randomized_attack_roll × Attack / (Attack + Defense) ), floored at a minimum of 1.\n\nEqual Attack and Defense lets roughly half the roll through; doubling Defense relative to Attack cuts it to about a third. Defense can never fully block a hit -- every attack deals at least 1 damage.",
+    maxHp: "How much damage this unit can take before dying. Not set directly on the unit -- always round(Attack + Defense + this unit's own tech-tree depth), so a unit whose kit sits deeper in its race's tech tree is innately tougher, on top of whatever Attack/Defense it has.",
+    movement: "How many tiles this unit can move in a single turn, before terrain movement costs and any movement-affecting conditions (Frozen, Webbed, Hidden's own movement penalty, ...) are applied.",
+    visionRadius: "How far (in tiles) this unit can see, feeding the fog of war -- a tile within Vision range of any of a kingdom's units or cities is visible that turn.",
+    range: "How far away (in tiles, measured diagonally-inclusive) this unit can attack from. 1 means melee-only (adjacent targets only). A Ranged attack (greater than 1) needs a clear line to its target -- Mountains block it, nothing else does -- gets NO counterattack back (the defender isn't adjacent, so it can't reach the attacker), and gets no Siege bonus against a structure/city unless this unit ALSO has the separate \"even at range\" Siege property (e.g. Catapult, Trebuchet).",
+    siegePct: "An extra attack multiplier applied only when attacking a structure, wall, or city (or a unit that's itself treated as a structure for incoming damage, like Dwarf's Runeforged Titan) -- irrelevant in an ordinary unit-vs-unit fight. A Ranged unit only keeps this bonus at range if it also carries the separate \"even at range\" Siege property.",
+    firstStrikePct: "Two separate effects from this one percentage: (1) in an adjacent fight, whichever side has the STRICTLY HIGHER First Strike value simply acts first -- a direct comparison, not a roll -- and if that first hit is lethal, the loser never gets to swing back at all; (2) independently, the ATTACKER's own First Strike chance is rolled fresh every single exchange as a flat chance to deny the defender's counterattack entirely, whether or not the forward hit was lethal.",
+    doubleStrikePct: "A flat chance, rolled once per exchange, that this unit immediately attacks a second time. The follow-up hit provokes no counterattack, works at any range (a Ranged unit's second shot still comes from distance), and only happens if both sides are still standing after the first exchange.",
+  };
+
+  /** Mirrors combat.js's real damageRoll()+mitigatedDamage() exactly (see
+   *  that file for the authoritative version) -- `pctVariance` stands in
+   *  for the signed 3d6-as-a-percent roll (-18..+18 in the real engine,
+   *  mean 0), so callers can compute the worst hit (-18), average hit (0,
+   *  since the roll is symmetric around 0), and best hit (+18) for a given
+   *  Attack/Defense pair without duplicating combat.js's own RNG. Powers
+   *  both the Attack/Defense pages' live simulator and could be reused
+   *  anywhere else a "what would this fight look like" preview is useful. */
+  function simDamage(atk, def, pctVariance) {
+    const raw = atk * (1 + pctVariance / 100);
+    const mitigated = raw * (atk / (atk + def || 1));
+    return Math.max(1, Math.round(mitigated));
+  }
+
+  // Live Attack-vs-Defense simulator (2026-08-17, user-directed), embedded
+  // on both the Attack and Defense stat pages since the formula genuinely
+  // involves both. Deliberately NOT wired through the normal
+  // knowledgeSelectedXxx/renderKnowledgeOverlay redraw cycle -- its own
+  // atk/def state is trivial, purely local to this one widget, and doesn't
+  // need to survive navigating away, so wireCombatSimulator (below,
+  // exported) just closures over it directly the same way a small
+  // standalone UI component would, without adding new global KB state for
+  // something this self-contained.
+  const COMBAT_SIM_HTML = `
+    <div class="kb-sim">
+      <div class="kb-sim-row">
+        <span class="kb-sim-label">Attack</span>
+        <button class="kb-sim-btn" data-sim-adjust="atk:-1">−</button>
+        <span class="kb-sim-value" data-sim-value="atk"></span>
+        <button class="kb-sim-btn" data-sim-adjust="atk:1">+</button>
+      </div>
+      <div class="kb-sim-row">
+        <span class="kb-sim-label">Defense</span>
+        <button class="kb-sim-btn" data-sim-adjust="def:-1">−</button>
+        <span class="kb-sim-value" data-sim-value="def"></span>
+        <button class="kb-sim-btn" data-sim-adjust="def:1">+</button>
+      </div>
+      <div class="kb-sim-result">
+        <div class="stat-row"><span>Average Damage per Hit</span><span data-sim-result="avg"></span></div>
+        <div class="stat-row"><span>Possible Range</span><span data-sim-result="range"></span></div>
+      </div>
+    </div>`;
+
+  /** Wires up COMBAT_SIM_HTML's +/- buttons within `root` (a freshly-
+   *  inserted DOM subtree containing it) -- no-ops if this page doesn't
+   *  have the simulator. Exported so main.js can call it once per redraw,
+   *  same "pure render module, caller wires interactivity" split as
+   *  drawUnitPortrait. */
+  function wireCombatSimulator(root) {
+    const sim = root.querySelector(".kb-sim");
+    if (!sim) return;
+    let atk = 5, def = 5;
+    const MIN_STAT = 1, MAX_STAT = 30;
+    function update() {
+      sim.querySelector('[data-sim-value="atk"]').textContent = atk;
+      sim.querySelector('[data-sim-value="def"]').textContent = def;
+      sim.querySelector('[data-sim-result="avg"]').textContent = simDamage(atk, def, 0);
+      const min = simDamage(atk, def, -18), max = simDamage(atk, def, 18);
+      sim.querySelector('[data-sim-result="range"]').textContent = min === max ? `${min}` : `${min} – ${max}`;
+    }
+    for (const btn of sim.querySelectorAll("[data-sim-adjust]")) {
+      btn.onclick = () => {
+        const [key, deltaStr] = btn.dataset.simAdjust.split(":");
+        const delta = parseInt(deltaStr, 10);
+        if (key === "atk") atk = Math.max(MIN_STAT, Math.min(MAX_STAT, atk + delta));
+        else def = Math.max(0, Math.min(MAX_STAT, def + delta));
+        update();
+      };
+    }
+    update();
+  }
+
   function escapeHtml(s) {
     return String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
   }
@@ -309,13 +419,19 @@ window.UI = window.UI || {};
     const maxHp = window.GameData.unitMaxHP(unit.attack, unit.defense, unitId);
     const portraitRaceId = portraitRaceFor(unit);
 
-    const statRows = [["Attack", unit.attack], ["Defense", unit.defense], ["Max HP", maxHp],
-      ["Movement", unit.movement], ["Vision", unit.visionRadius]];
-    if ((unit.range || 1) > 1) statRows.push(["Range", unit.range]);
-    if (unit.siegePct) statRows.push(["Siege Bonus", pctLabel(unit.siegePct) + (unit.siegeAtRange ? " (even at range)" : "")]);
-    if (unit.firstStrikePct) statRows.push(["First Strike", pctLabel(unit.firstStrikePct)]);
-    if (unit.doubleStrikePct) statRows.push(["Double Strike", pctLabel(unit.doubleStrikePct)]);
-    const statsHtml = statRows.map(([k, v]) => `<div class="stat-row"><span>${escapeHtml(k)}</span><span>${escapeHtml(String(v))}</span></div>`).join("");
+    // Each row's label cross-links to that stat's own KMKB entry
+    // (2026-08-17, user-directed) -- data-stat-link keys match STAT_INFO,
+    // wired in main.js's renderKnowledgeOverlay (same jumpToStat/
+    // knowledgeBackTarget pattern the Conditions cross-links already use).
+    const statRows = [["attack", unit.attack], ["defense", unit.defense], ["maxHp", maxHp],
+      ["movement", unit.movement], ["visionRadius", unit.visionRadius]];
+    if ((unit.range || 1) > 1) statRows.push(["range", unit.range]);
+    if (unit.siegePct) statRows.push(["siegePct", pctLabel(unit.siegePct) + (unit.siegeAtRange ? " (even at range)" : "")]);
+    if (unit.firstStrikePct) statRows.push(["firstStrikePct", pctLabel(unit.firstStrikePct)]);
+    if (unit.doubleStrikePct) statRows.push(["doubleStrikePct", pctLabel(unit.doubleStrikePct)]);
+    const statsHtml = statRows.map(([key, v]) => `<div class="stat-row">`
+      + `<button class="kb-stat-link" data-stat-link="${escapeHtml(key)}">${escapeHtml(STAT_LABEL_BY_KEY[key])}</button>`
+      + `<span>${escapeHtml(String(v))}</span></div>`).join("");
 
     const flagChips = [];
     if (unit.canCarryUnit) flagChips.push("Carries a Unit");
@@ -392,7 +508,11 @@ window.UI = window.UI || {};
    *  natural "kingdom" to group by the way units do). */
   function renderConditionListHtml(selectedKey) {
     const icons = (window.UI.overlays && window.UI.overlays.CONDITION_ICONS) || {};
-    return `<div class="kb-list-group">${Object.keys(icons).map((key) => {
+    // Alphabetical by display name (2026-08-17, user-directed) -- CONDITION_ICONS
+    // itself stays in overlays.js's own declaration order (grouped loosely by
+    // theme there), this is purely a display-order sort for this list.
+    const sortedKeys = Object.keys(icons).sort((a, b) => titleCase(a).localeCompare(titleCase(b)));
+    return `<div class="kb-list-group">${sortedKeys.map((key) => {
       const selected = key === selectedKey ? " kb-list-btn-selected" : "";
       return `<button class="kb-list-btn${selected}" data-condition-id="${escapeHtml(key)}">
         <span class="kb-list-btn-symbol">${icons[key]}</span>
@@ -439,5 +559,58 @@ window.UI = window.UI || {};
       </div>`;
   }
 
-  window.UI.knowledgebase = { renderUnits, renderConditions, drawUnitPortrait };
+  /** Full HTML for the left-hand stat list, alphabetical by display label
+   *  (2026-08-17, user-directed, matching Conditions' own alphabetical
+   *  order) -- one flat list, same reasoning as Conditions (no natural
+   *  "kingdom" grouping). */
+  function renderStatListHtml(selectedKey) {
+    const sorted = [...STAT_INFO].sort((a, b) => a.label.localeCompare(b.label));
+    return `<div class="kb-list-group">${sorted.map((s) => {
+      const selected = s.key === selectedKey ? " kb-list-btn-selected" : "";
+      return `<button class="kb-list-btn${selected}" data-stat-id="${escapeHtml(s.key)}">
+        <span>${escapeHtml(s.label)}</span>
+      </button>`;
+    }).join("")}</div>`;
+  }
+
+  /** Full HTML for the right-hand stat profile pane. Attack/Defense also
+   *  get the live simulator (COMBAT_SIM_HTML) appended below their prose --
+   *  wireCombatSimulator (exported) makes it interactive once this HTML is
+   *  actually in the DOM, same "render then wire" split as
+   *  drawUnitPortrait. `backLabel` -- see renderConditionProfileHtml's own
+   *  doc comment, identical convention. */
+  function renderStatProfileHtml(statKey, backLabel) {
+    const backHtml = backLabel
+      ? `<button class="kb-back-btn" id="kb-back-btn">← Back to ${escapeHtml(backLabel)}</button>` : "";
+    const label = STAT_LABEL_BY_KEY[statKey];
+    if (!label) {
+      return `${backHtml}<div class="kb-profile-empty">Select a stat on the left to view its description.</div>`;
+    }
+    const desc = STAT_DESCRIPTIONS[statKey] || "No description written up yet.";
+    const simHtml = (statKey === "attack" || statKey === "defense") ? COMBAT_SIM_HTML : "";
+    return `
+      ${backHtml}
+      <div class="kb-profile-header">
+        <div>
+          <h2>${escapeHtml(label)}</h2>
+        </div>
+      </div>
+      <div class="kb-condition-profile-desc">${escapeHtml(desc)}</div>
+      ${simHtml}
+    `;
+  }
+
+  /** Full HTML for the Stats page -- same list+profile layout as Units and
+   *  Conditions (2026-08-17, user-directed). `backLabel` threads through to
+   *  renderStatProfileHtml. */
+  function renderStats(selectedKey, backLabel) {
+    return `
+      <div class="kb-header"><h2>Stats</h2></div>
+      <div class="kb-body">
+        <div class="kb-list-pane">${renderStatListHtml(selectedKey)}</div>
+        <div class="kb-profile-pane">${renderStatProfileHtml(selectedKey, backLabel)}</div>
+      </div>`;
+  }
+
+  window.UI.knowledgebase = { renderUnits, renderConditions, renderStats, drawUnitPortrait, wireCombatSimulator };
 })();
