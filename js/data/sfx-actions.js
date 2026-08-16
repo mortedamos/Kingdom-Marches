@@ -69,8 +69,14 @@ window.GameData.sfxActionsForUnit = function (unitId) {
 };
 
 /** Every race that can field a given unit type: just that unit's raceOnly
- *  race, or every race for a universal (raceOnly-less) unit. */
+ *  race, or every race for a universal (raceOnly-less) unit -- except the
+ *  Wandering Monster roster, which is fielded ONLY by the "monster" pseudo-
+ *  civ (see ai.js's ensureMonsterCiv, which sets civ.raceId to
+ *  GameData.MONSTER_RACE.id) and would otherwise wrongly get a full
+ *  human/elf/dwarf/orc/halfelven combo set that civ.raceId never actually
+ *  requests at playAction() time. */
 window.GameData.sfxRacesForUnit = function (unitId) {
+  if (window.GameData.MONSTER_UNIT_IDS.has(unitId)) return [window.GameData.MONSTER_RACE.id];
   const unit = window.GameData.getUnit(unitId);
   return unit.raceOnly ? [unit.raceOnly] : window.GameData.RACE_LIST;
 };
