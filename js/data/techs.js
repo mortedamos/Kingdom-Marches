@@ -144,6 +144,20 @@ window.GameData.TECHS = {
     description: "Pioneers and Trackers can farm Fertile Soil tiles for bonus Harvest.",
     effects: [{ type: "unlock_mechanic", mechanic: "farm_soil" }],
   },
+  // Ruin Delving (2026-08-14, user-directed; see doc/world_encounters_design.md):
+  // retired from being a Human-only, Wizard-gated L3 civic tech
+  // ("dungeon_delve", removed below) and promoted to Level 0 shared
+  // infrastructure, same tier as Pioneer/Scout/Galley/Hunt Game/Farm Soil --
+  // every civ starts with it, no race restriction, and any unit (not just a
+  // Wizard) can Delve. Grants the SAME mechanic id, "dungeon_delve" --
+  // nothing downstream (orders.js/ai.js/turns.js) needed to change, only
+  // this tech's own id/gate/description did.
+  ruin_delving: {
+    id: "ruin_delving", label: "Ruin Delving", category: "civic", layer: 0, cost: 10,
+    prereqs: [],
+    description: "Any unit standing on a Ruin may start Delving it: a full-turn action that continues automatically (no move/attack) until cancelled, gradually claiming the 1-tile radius around itself just like a city fills in its own tiles, and yielding pooled coin and lore per turn. Instantly loses everything it was claiming/generating if cancelled, the unit moves off the Ruin, or it dies.",
+    effects: [{ type: "unlock_mechanic", mechanic: "dungeon_delve" }],
+  },
 
   // --- Shared civic trunk: fallback for races not yet promoted to their own
   // civic column (currently only Undead -- Dwarf, Elf both got their own
@@ -363,13 +377,13 @@ window.GameData.TECHS = {
   },
 
   // --- Layer 4 ---
-  dungeon_delve: {
-    id: "dungeon_delve", label: "Dungeon Delve", category: "civic", layer: 3, cost: 40,
-    prereqs: ["wizardry"], raceOnly: "human",
-    description: "A Wizard on a Ruin may start Delving it: a full-turn action that continues automatically (no move/attack) until cancelled, gradually claiming the 1-tile radius around itself just like a city fills in its own tiles (counts toward territorial victory like any owned tile), and yielding +3 lore/+3 coin per turn. Instantly loses everything it was claiming/generating if cancelled, the Wizard moves off the Ruin, or it dies.",
-    costBreakdown: { lore: 26, coin: 14 },
-    effects: [{ type: "unlock_mechanic", mechanic: "dungeon_delve" }],
-  },
+  // dungeon_delve (Human-only, Wizard-gated) retired 2026-08-14, user-
+  // directed -- see doc/world_encounters_design.md. Delving a Ruin is now
+  // universal, shared Level 0 infrastructure (see ruin_delving above,
+  // alongside pioneer_infrastructure/hunt_game/farm_soil): the mechanic id
+  // "dungeon_delve" itself is UNCHANGED and still what orders.js/ai.js/
+  // turns.js check via civ.unlockedMechanics.has("dungeon_delve") -- only
+  // the tech that grants it, and which units/races can use it, changed.
   mage_college_tech: {
     id: "mage_college_tech", label: "Mage College", category: "building", layer: 4, cost: 50,
     prereqs: ["wizardry"], raceOnly: "human",

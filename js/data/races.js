@@ -254,8 +254,25 @@ window.GameData.RACES = {
 
 window.GameData.RACE_LIST = Object.keys(window.GameData.RACES);
 
+// Wandering Monsters (see doc/world_encounters_design.md): a minimal race
+// record for the "MONSTERS" pseudo-civ, deliberately NOT inside RACES above
+// -- RACE_LIST (and anything building the new-game race-picker off it) must
+// never see this as a pickable kingdom. Personality traits are present only
+// as a defensive fallback for any shared code path that happens to call
+// getRace on it (monster units are driven by their own dedicated AI in
+// ai.js, never the generic per-race decision-making that actually reads
+// these) -- neutral 0.5 default, matching every trait's own `?? 0.5`
+// fallback convention elsewhere (e.g. tech.js/ai.js's `race.curiosity ?? 0.5`).
+window.GameData.MONSTER_RACE = {
+  id: "monster", label: "Wandering Monsters", identity: "Untamed Wildlife",
+  color: "#5c5544", citySymbol: "",
+  aggressiveness: 0.5, militarism: 0.5, expansionism: 0, curiosity: 0.5, industriousness: 0,
+  startingTech: null, uniqueUnits: [], uniqueBuildings: [],
+};
+
 /** Helper: get race data by id, throws loudly if unknown (fail fast, not silently undefined) */
 window.GameData.getRace = function (raceId) {
+  if (raceId === window.GameData.MONSTER_RACE.id) return window.GameData.MONSTER_RACE;
   const race = window.GameData.RACES[raceId];
   if (!race) {
     throw new Error(`[GameData] Unknown race id: "${raceId}"`);

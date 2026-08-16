@@ -96,6 +96,17 @@ window.GameData.RESOURCES = {
   gold:    { id: "gold",    label: "Gold Vein",      validTerrain: ["hills", "mountains", "desert"],bonus: { coin: 1 },     iconScale: 0.5 },
   fertile: { id: "fertile", label: "Fertile Soil",   validTerrain: ["plains", "swamp"],             bonus: { harvest: 1 }, iconScale: 0.75 },
   fish:    { id: "fish",    label: "Fish Shoal",     validTerrain: ["coast"],                       bonus: { harvest: 1 }, iconScale: 1.0 },
+  // Treasure Chest (see doc/world_encounters_design.md): unlike every
+  // resource above, `bonus: {}` is deliberate, not an oversight -- a chest
+  // isn't a worked tile yielding a passive per-turn amount, it's a one-shot
+  // "Open Chest" ring-menu action (see ai.js's openTreasureChest) that
+  // consumes itself and reschedules elsewhere the instant it's opened.
+  // cities.js's computeWorkedTileYield reads `bonus` generically for every
+  // tile.resource, so an empty object there is what keeps a placed-but-
+  // unopened chest from silently generating yield just by sitting owned
+  // inside a city's radius. validTerrain covers every non-water terrain,
+  // deliberately -- "any non-water terrain" was the explicit design call.
+  chest:   { id: "chest",   label: "Treasure Chest", validTerrain: ["plains", "forest", "hills", "mountains", "desert", "swamp", "tundra"], bonus: {}, iconScale: 0.55 },
 };
 window.GameData.RESOURCE_LIST = Object.keys(window.GameData.RESOURCES);
 

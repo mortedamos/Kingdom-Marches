@@ -58,6 +58,8 @@ window.UI = window.UI || {};
     zombie: "💀",
     befuddled: "🌀",
     resting: "⛺",
+    webbed: "🕸️",
+    poisoned: "🤢",
   };
   const CARRYING_ICON = "🫴";
 
@@ -579,6 +581,8 @@ window.UI = window.UI || {};
   const BURNING_TINT_COLOR = "255,87,34"; // orange-red
   const FROZEN_TINT_COLOR = "129,212,250"; // icy blue
   const ZOMBIE_TINT_COLOR = "120,120,120"; // washed-out grey
+  const WEB_TINT_COLOR = "233,230,210"; // pale webbing off-white
+  const POISON_TINT_COLOR = "124,179,66"; // sickly venom green
 
   /** Stable per-unit random phase so multiple burning/frozen units on
    *  screen at once don't flicker in perfect unison. */
@@ -640,7 +644,7 @@ window.UI = window.UI || {};
 
   function drawConditionVisualEffects(ctx, unit, unitSprite, boxX, boxY, boxSize, now) {
     if (!unit.conditions) return;
-    const hasEffect = unit.conditions.zombie || unit.conditions.burning || unit.conditions.frozen;
+    const hasEffect = unit.conditions.zombie || unit.conditions.burning || unit.conditions.frozen || unit.conditions.webbed || unit.conditions.poisoned;
     if (!hasEffect) return;
     const phase = conditionEffectPhase(unit);
     const frame = unitSprite ? window.UI.sprites.currentFrame(unitSprite.manifest, "idle", unit) : null;
@@ -655,6 +659,20 @@ window.UI = window.UI || {};
     if (unit.conditions.frozen) {
       const flicker = 0.30 + 0.20 * Math.sin(now / 140 + phase * 1.3);
       tintSprite(ctx, image, frame, boxX, boxY, boxSize, FROZEN_TINT_COLOR, Math.max(0.15, Math.min(0.55, flicker)));
+    }
+    if (unit.conditions.webbed) {
+      // Slow, low-amplitude breathing rather than burning/frozen's shimmer --
+      // a web is a physical binding, not an elemental effect, so it should
+      // read as "stuck" rather than "flickering."
+      const pulse = 0.30 + 0.08 * Math.sin(now / 260 + phase);
+      tintSprite(ctx, image, frame, boxX, boxY, boxSize, WEB_TINT_COLOR, Math.max(0.22, Math.min(0.38, pulse)));
+    }
+    if (unit.conditions.poisoned) {
+      // A queasy, uneven throb -- distinct from Web's slow steady pulse and
+      // from Burning's fast flicker -- reads as "sickened," not "on fire"
+      // or "bound."
+      const throb = 0.30 + 0.14 * Math.sin(now / 170 + phase) + 0.06 * Math.sin(now / 63 + phase * 2.1);
+      tintSprite(ctx, image, frame, boxX, boxY, boxSize, POISON_TINT_COLOR, Math.max(0.18, Math.min(0.5, throb)));
     }
   }
 

@@ -574,7 +574,94 @@ window.GameData.UNITS = {
     coinCost: 55, biggerPct: 1.0, attackChars: ["🔥"], rare: true,
     nameSpecial: true, // a beast, not a person -- see unit-names.js
   },
+
+  // =========================================================================
+  // WANDERING MONSTERS (see doc/world_encounters_design.md, 2026-08-14)
+  // -------------------------------------------------------------------------
+  // Belong to no real race -- owned by the "MONSTERS" pseudo-civ (see ai.js's
+  // ensureMonsterCiv), never buildable by any real civ (cityBuildable: false,
+  // same convention as Raptor/Shadowsteed/Wisp), no upkeep (no economy to
+  // draw from). No raceOnly, deliberately -- they aren't any of the 6
+  // playable races' content. restrictedToTerrain locks a ground monster to
+  // its home terrain (same mechanism Wisp already uses for Swamp) so it
+  // never wanders off the terrain it's themed around; Highland Griffin is
+  // the one exception (flying, unrestricted) since its whole point is
+  // covering both Hills and Mountains despite Mountains being impassable to
+  // every other ground unit. Stats target a roughly equal power budget
+  // across all six (attack+defense+movement+visionRadius, the core terms of
+  // GameData.unitPower) -- Griffin runs a bit higher than the rest because
+  // flying/movement/vision are already weighted heavily in that formula,
+  // consistent with how every other flying unit in the game prices out, not
+  // a deliberate imbalance. Each one's own status-effect chance
+  // (webChancePct/firstStrikePct/poisonChancePct/frozenChancePct) is flavor
+  // on top of that core budget, not counted toward it -- see the design
+  // doc's own "equal power, different shape" framing. Marsh Adder's venom
+  // (Poisoned) and Dire Spider's Web are both genuinely new conditions,
+  // functionally identical to Burning/Frozen (same damage-per-turn/
+  // movement-lock shape) but with their own condition key and visual so a
+  // venomous snake or a web don't read as fire/ice -- see ai.js's
+  // applyPoisoned/applyWebbed and overlays.js's "poisoned"/"webbed" visuals.
+  boar_sounder: {
+    id: "boar_sounder", label: "Boar Sounder", symbol: "ᛒ", category: "military",
+    attack: 4, defense: 3, movement: 3, visionRadius: 2, restrictedToTerrain: "plains",
+    coinCost: 12, attackChars: ["🐗"],
+    cityBuildable: false, noUpkeep: true, nameSpecial: true, neverExplores: true,
+  },
+  dire_spider: {
+    id: "dire_spider", label: "Dire Spider", symbol: "🕷", category: "military",
+    attack: 3, defense: 4, movement: 2, visionRadius: 2, restrictedToTerrain: "forest",
+    webChancePct: 0.35,
+    coinCost: 12, attackChars: ["🕸️"],
+    cityBuildable: false, noUpkeep: true, nameSpecial: true, neverExplores: true,
+  },
+  highland_griffin: {
+    id: "highland_griffin", label: "Highland Griffin", symbol: "🦅", category: "military",
+    attack: 4, defense: 2, movement: 5, visionRadius: 4, flying: true,
+    coinCost: 16, attackChars: ["🦅"],
+    cityBuildable: false, noUpkeep: true, nameSpecial: true, neverExplores: true,
+  },
+  basilisk: {
+    id: "basilisk", label: "Basilisk", symbol: "🦎", category: "military",
+    attack: 5, defense: 3, movement: 2, visionRadius: 2, restrictedToTerrain: "desert",
+    firstStrikePct: 0.15,
+    coinCost: 14, attackChars: ["🦎"],
+    cityBuildable: false, noUpkeep: true, nameSpecial: true, neverExplores: true,
+  },
+  marsh_adder: {
+    id: "marsh_adder", label: "Marsh Adder", symbol: "🐍", category: "military",
+    attack: 3, defense: 3, movement: 2, visionRadius: 3, restrictedToTerrain: "swamp",
+    // Poisoned (2026-08-14, user-directed): functionally identical to
+    // Burning (1 damage/turn, ai.js's tickPoisonedDamage mirrors
+    // tickBurningDamage exactly) but its own condition key/visual, since a
+    // venomous snake inflicting fire damage reads wrong -- see ai.js's
+    // applyPoisoned and overlays.js's "poisoned" visual.
+    poisonChancePct: 0.30,
+    coinCost: 12, attackChars: ["🐍"],
+    cityBuildable: false, noUpkeep: true, nameSpecial: true, neverExplores: true,
+  },
+  frost_lynx: {
+    id: "frost_lynx", label: "Frost Lynx", symbol: "🐆", category: "military",
+    attack: 4, defense: 3, movement: 4, visionRadius: 3, restrictedToTerrain: "tundra",
+    frozenChancePct: 0.30,
+    coinCost: 14, attackChars: ["🐆"],
+    cityBuildable: false, noUpkeep: true, nameSpecial: true, neverExplores: true,
+  },
 };
+
+// Terrain -> monster type id (see ai.js's maybeSpawnMonster). Hills and
+// Mountains share Highland Griffin -- see the roster's own doc comment
+// above for why. No water entries -- no-water-spawns is a deliberate,
+// explicit design call, not an oversight.
+window.GameData.MONSTER_TERRAIN = {
+  plains: "boar_sounder",
+  forest: "dire_spider",
+  hills: "highland_griffin",
+  mountains: "highland_griffin",
+  desert: "basilisk",
+  swamp: "marsh_adder",
+  tundra: "frost_lynx",
+};
+window.GameData.MONSTER_UNIT_IDS = new Set(Object.values(window.GameData.MONSTER_TERRAIN));
 
 window.GameData.UNIT_LIST = Object.keys(window.GameData.UNITS);
 

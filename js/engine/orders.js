@@ -633,7 +633,10 @@ window.GameEngine = window.GameEngine || {};
         const onFertile = tile.resource === "fertile";
         if (civ.raceId === "dwarf" && civ.unlockedMechanics && civ.unlockedMechanics.has("prospectors_claim") && onVein) {
           options.push({ kind: "startChannel:prospecting", label: "Start Prospecting" });
-        } else if (unit.typeId === "wizard" && civ.unlockedMechanics && civ.unlockedMechanics.has("dungeon_delve") && tile.isRuin) {
+        } else if (civ.unlockedMechanics && civ.unlockedMechanics.has("dungeon_delve") && tile.isRuin) {
+          // Universal since 2026-08-14 (see doc/world_encounters_design.md)
+          // -- was unit.typeId === "wizard"-only; any unit can Delve now,
+          // granted free to every race via the Level 0 "ruin_delving" tech.
           options.push({ kind: "startChannel:delving", label: "Start Delving" });
         } else if (unit.typeId === "galley" && !unit.carries && tile.resource === "fish") {
           options.push({ kind: "startChannel:fishing", label: "Start Fishing" });
@@ -653,6 +656,16 @@ window.GameEngine = window.GameEngine || {};
           // farm_soil do for game/fertile.
           options.push({ kind: "startChannel:mining", label: "Mine Vein" });
         }
+      }
+
+      // Open Treasure Chest (see doc/world_encounters_design.md) -- a
+      // universal one-shot action, NOT a channel: any unit standing on a
+      // "chest" resource tile can spend its turn to open it. Deliberately
+      // sits outside the unit.channeling block above -- opening resolves
+      // instantly (ai.js's openTreasureChest), there's nothing to
+      // accumulate or cash out.
+      if (!unit.usedThisTurn && !unit.channeling && tile.resource === "chest") {
+        options.push({ kind: "openChest", label: "Open Chest" });
       }
 
       // Cast Fly on an ally (2026-08-06, user-directed bug fix; range

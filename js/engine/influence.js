@@ -169,7 +169,8 @@ window.GameEngine = window.GameEngine || {};
       if (civ.eliminated) continue;
       if (!civ.unlockedMechanics || !civ.unlockedMechanics.has("dungeon_delve")) continue;
       for (const unit of civ.units) {
-        if (unit.typeId !== "wizard") continue;
+        // Any unit type can hold a delve claim since 2026-08-14 (see
+        // doc/world_encounters_design.md) -- was unit.typeId === "wizard"-only.
         // Kept in sync with turns.js's own payout gate (2026-07-30,
         // user-directed fix: was < 2, wasting a full turn of an already-
         // filled offset sitting inert before it started projecting).

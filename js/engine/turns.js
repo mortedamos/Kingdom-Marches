@@ -159,8 +159,88 @@ window.GameEngine = window.GameEngine || {};
     }
   }
 
+  /** Treasure Chest "Map Fragment" reward (2026-08-14, user-directed; see
+   *  doc/world_encounters_design.md): reveals a random still-unexplored
+   *  area of the map to `civ`, live, for the rest of the CURRENT turn only.
+   *  Picks a random tile this civ hasn't explored yet as the center, and a
+   *  random radius (3-8 inclusive, Chebyshev -- a square, same "radius"
+   *  convention every vision-radius computation in refreshVisibility above
+   *  already uses). Every revealed tile is added to BOTH
+   *  gameState.explored[civ.id] (permanent -- the terrain stays known
+   *  forever after, same as normally exploring it) and this round's
+   *  already-computed gameState.visibility[civ.id] (live visibility, but
+   *  only for what's left of THIS round -- refreshVisibility fully
+   *  REPLACES the visibility set from scratch every round, so the live peek
+   *  automatically expires next round with no extra cleanup needed here).
+   *  Also writes gameState.tileMemory[civ.id] for each newly-revealed tile
+   *  so it still renders correctly once live visibility lapses -- builds
+   *  its own cityAt/structureAt lookup rather than sharing
+   *  refreshVisibility's (a few extra lines, but zero risk of touching that
+   *  function's own well-exercised per-round pass). Returns {x, y, radius}
+   *  of what was revealed, or null if this civ has already explored the
+   *  entire map (nothing left to find). */
+  function revealMapFragment(civ, gameState) {
+    const { map } = gameState;
+    const explored = gameState.explored[civ.id] || new Set();
+    const unexploredIdx = [];
+    for (let i = 0; i < map.tiles.length; i++) {
+      if (!explored.has(i)) unexploredIdx.push(i);
+    }
+    if (!unexploredIdx.length) return null;
+
+    const centerIdx = unexploredIdx[Math.floor(Math.random() * unexploredIdx.length)];
+    const cx = centerIdx % map.width, cy = Math.floor(centerIdx / map.width);
+    const radius = 3 + Math.floor(Math.random() * 6); // 3-8 inclusive
+
+    const cityAt = new Map();
+    const structureAt = new Map();
+    for (const c of Object.values(gameState.civs)) {
+      for (const city of c.cities) {
+        cityAt.set(city.y * map.width + city.x, {
+          raceId: c.raceId, population: Math.floor(city.population), isPort: !!city.isPort,
+        });
+        for (const s of city.structures) {
+          structureAt.set(s.y * map.width + s.x, { id: s.id, raceId: c.raceId });
+        }
+      }
+    }
+
+    const visible = gameState.visibility[civ.id] || new Set();
+    const memory = gameState.tileMemory[civ.id] || {};
+    for (let dy = -radius; dy <= radius; dy++) {
+      for (let dx = -radius; dx <= radius; dx++) {
+        const x = cx + dx, y = cy + dy;
+        if (x < 0 || x >= map.width || y < 0 || y >= map.height) continue;
+        const idx = y * map.width + x;
+        explored.add(idx);
+        visible.add(idx);
+        const tile = map.tiles[idx];
+        const rawCityScore = window.GameEngine.ai.computeTileCityScore(civ, gameState, x, y);
+        memory[idx] = {
+          terrain: tile.terrain,
+          tallMountainEligible: !!tile.tallMountainEligible,
+          hasRoad: !!tile.hasRoad,
+          hasRiver: {
+            n: !!tile.hasRiver?.n, s: !!tile.hasRiver?.s,
+            e: !!tile.hasRiver?.e, w: !!tile.hasRiver?.w,
+          },
+          resource: tile.resource || null,
+          isRuin: !!tile.isRuin,
+          city: cityAt.get(idx) || null,
+          structure: structureAt.get(idx) || null,
+          cityScore: Number.isFinite(rawCityScore) ? Math.round(rawCityScore * 10) / 10 : null,
+          turnNumber: gameState.turnNumber || 0,
+        };
+      }
+    }
+    gameState.explored[civ.id] = explored;
+    gameState.visibility[civ.id] = visible;
+    gameState.tileMemory[civ.id] = memory;
+    return { x: cx, y: cy, radius };
+  }
+
   /**
-   * Dungeon Delve (Human Wizard): instantly reverts every tile in `unit`'s
+   * Dungeon Delve: instantly reverts every tile in `unit`'s
    * filled-offset set (relative to (centerX, centerY), its last-known delve
    * position) back to neutral if this civ still owns it -- mirrors
    * destroyCity's/eliminateCiv's immediate tile reset elsewhere in this file,
@@ -224,9 +304,13 @@ window.GameEngine = window.GameEngine || {};
    * --------------------------------------------
    * A depleted resource (Game, Fish, Iron, Gold, Fertile Soil) reappears
    * somewhere else on the map within the next 3 turns, so the world doesn't
-   * strictly drain toward zero over a long game. Ruins are deliberately
-   * EXCLUDED -- they're one-shot map features, not a renewable resource
-   * (see the isDelveWizard branch in beginRound, which doesn't call this).
+   * strictly drain toward zero over a long game. Ruins do NOT go through
+   * this system -- they're a tile FEATURE (tile.isRuin), not a RESOURCES
+   * entry, so they need their own respawn placement logic; see
+   * scheduleRuinRespawn/processRuinRespawns just below, which mirror this
+   * pair's shape exactly. (Ruins respawning at all is a 2026-08-14,
+   * user-directed reversal of this system's original "Ruins are one-shot
+   * map features, not renewable" call -- see doc/world_encounters_design.md.)
    *
    * Queued rather than placed immediately: gameState.pendingResourceRespawns
    * is a list of { resourceId, dueTurn } processed once per round by
@@ -278,6 +362,49 @@ window.GameEngine = window.GameEngine || {};
     }
 
     gameState.pendingResourceRespawns = stillPending;
+  }
+
+  /**
+   * RUIN RESPAWN (2026-08-14, user-directed -- see doc/world_encounters_design.md)
+   * -----------------------------------------------------------------------
+   * Same queue-then-place shape as scheduleResourceRespawn/
+   * processResourceRespawns above, kept as its own pair rather than folded
+   * into that one: Ruins are a tile FEATURE (tile.isRuin), not a
+   * `window.GameData.RESOURCES` entry, so there's no `validTerrain`/
+   * resourceId to key off. A respawned Ruin can land on any LAND tile that
+   * isn't already a Ruin and doesn't already hold a resource -- deliberately
+   * not reusing worldgen.js's placeRuins density/spacing rules, which exist
+   * to shape the WHOLE map's initial Ruin count, not a single one-off
+   * replacement.
+   */
+  const RUIN_RESPAWN_MIN_DELAY = window.GameConfig.worldEncounters.ruin.respawnMinDelay;
+  const RUIN_RESPAWN_MAX_DELAY = window.GameConfig.worldEncounters.ruin.respawnMaxDelay;
+
+  function scheduleRuinRespawn(gameState) {
+    const delay = RUIN_RESPAWN_MIN_DELAY + Math.floor(Math.random() * (RUIN_RESPAWN_MAX_DELAY - RUIN_RESPAWN_MIN_DELAY + 1));
+    gameState.pendingRuinRespawns = gameState.pendingRuinRespawns || [];
+    gameState.pendingRuinRespawns.push({ dueTurn: (gameState.turnNumber || 0) + delay });
+  }
+
+  /** Places every due Ruin respawn on a random eligible land tile. Dropped
+   *  (not retried forever) if nothing legal is left, same reasoning as
+   *  processResourceRespawns above. */
+  function processRuinRespawns(gameState) {
+    const pending = gameState.pendingRuinRespawns;
+    if (!pending || !pending.length) return;
+    const turnNumber = gameState.turnNumber || 0;
+    const { map } = gameState;
+    const stillPending = [];
+
+    for (const entry of pending) {
+      if (entry.dueTurn > turnNumber) { stillPending.push(entry); continue; }
+      const candidates = map.tiles.filter((t) =>
+        !t.isRuin && !t.resource && window.GameEngine.worldgen.isLand(t));
+      if (!candidates.length) continue; // nowhere legal left -- see doc comment
+      candidates[Math.floor(Math.random() * candidates.length)].isRuin = true;
+    }
+
+    gameState.pendingRuinRespawns = stillPending;
   }
 
   /**
@@ -343,6 +470,14 @@ window.GameEngine = window.GameEngine || {};
     // Resource respawn (2026-08-06, user-directed): places anything queued
     // by a depletion 1-3 turns ago -- see scheduleResourceRespawn.
     processResourceRespawns(gameState);
+    // Ruin respawn (2026-08-14, user-directed) -- same idea, separate queue,
+    // see scheduleRuinRespawn/processRuinRespawns's own doc comment for why.
+    processRuinRespawns(gameState);
+
+    // Wandering Monsters (2026-08-14, see doc/world_encounters_design.md):
+    // at most one spawn roll per round. Lazily creates the "MONSTERS"
+    // pseudo-civ the first time this runs -- see ai.js's ensureMonsterCiv.
+    window.GameEngine.ai.maybeSpawnMonster(gameState);
 
     // Dark Ritual (Undead) / Dungeon Delve (Human Wizard) / Prospector's Claim
     // (Dwarf, any unit, gold veins): track consecutive turns a qualifying
@@ -359,14 +494,14 @@ window.GameEngine = window.GameEngine || {};
       // Dungeon Delve / Prospector's Claim: catch a unit that died (in combat,
       // disbanded, starved -- any cause) since last round, not just one that
       // moved. It's already gone from civ.units by now, so the loop below
-      // would never visit it again to clean up. civ._trackedDelveWizards/
+      // would never visit it again to clean up. civ._trackedDelvingUnits/
       // _trackedClaimUnits hold onto the object REFERENCE specifically so its
       // last-known position/filled-offsets are still readable here even after
       // removal from the civ's live unit list (removing an object from an
       // array doesn't erase the object itself, as long as something else
       // still points to it).
-      if (hasDungeonDelve && civ._trackedDelveWizards) {
-        civ._trackedDelveWizards = civ._trackedDelveWizards.filter((u) => {
+      if (hasDungeonDelve && civ._trackedDelvingUnits) {
+        civ._trackedDelvingUnits = civ._trackedDelvingUnits.filter((u) => {
           if (civ.units.includes(u)) return true;
           clearDelveOwnership(u, civ, map, u._lastRitualX, u._lastRitualY);
           return false;
@@ -381,16 +516,19 @@ window.GameEngine = window.GameEngine || {};
       }
 
       for (const unit of civ.units) {
-        // Dark Ritual applies to any unit; Dungeon Delve is Wizard-specific;
-        // Prospector's Claim applies to any Dwarf unit (its own tech text:
-        // "Any dwarven unit stationed...").
-        const isDelveWizard = hasDungeonDelve && unit.typeId === "wizard";
+        // Dark Ritual and Dungeon Delve both apply to any unit (Delve was
+        // Wizard-specific before 2026-08-14 -- see
+        // doc/world_encounters_design.md -- `isDelvingUnit` renamed to
+        // `isDelvingUnit` throughout this block accordingly); Prospector's
+        // Claim applies to any Dwarf unit (its own tech text: "Any dwarven
+        // unit stationed...").
+        const isDelvingUnit = hasDungeonDelve;
         const isClaimUnit = hasProspectorsClaim;
-        const qualifies = hasDarkRitual || isDelveWizard || isClaimUnit;
+        const qualifies = hasDarkRitual || isDelvingUnit || isClaimUnit;
         const oldX = unit._lastRitualX, oldY = unit._lastRitualY;
-        if (isDelveWizard) {
-          civ._trackedDelveWizards = civ._trackedDelveWizards || [];
-          if (!civ._trackedDelveWizards.includes(unit)) civ._trackedDelveWizards.push(unit);
+        if (isDelvingUnit) {
+          civ._trackedDelvingUnits = civ._trackedDelvingUnits || [];
+          if (!civ._trackedDelvingUnits.includes(unit)) civ._trackedDelvingUnits.push(unit);
         }
         if (isClaimUnit) {
           civ._trackedClaimUnits = civ._trackedClaimUnits || [];
@@ -403,7 +541,7 @@ window.GameEngine = window.GameEngine || {};
           // clearDelveOwnership/clearClaimOwnership and computeInfluenceMap's
           // use of _delveFilledOffsets/_claimFilledOffsets (unlike a city's
           // filledOffsets, which is permanent once earned).
-          if (isDelveWizard) {
+          if (isDelvingUnit) {
             clearDelveOwnership(unit, civ, map, oldX, oldY);
             delete unit._delveFilledOffsets;
             unit._delveFillProgress = 0;
@@ -436,7 +574,7 @@ window.GameEngine = window.GameEngine || {};
         // RESOURCE_EXHAUSTION_CHANCE's own scope above.
         let onAnchor;
         if (isClaimUnit) onAnchor = (onGoldVein || onIronVein) && unit.channeling === "prospecting";
-        else if (isDelveWizard) onAnchor = onRuin && unit.channeling === "delving";
+        else if (isDelvingUnit) onAnchor = onRuin && unit.channeling === "delving";
         else onAnchor = onRuin;
 
         // Resource exhaustion (see RESOURCE_EXHAUSTION_CHANCE above):
@@ -444,19 +582,22 @@ window.GameEngine = window.GameEngine || {};
         // ownership/_ritualTurns bookkeeping below, makes exhaustion fall
         // through the exact same "no longer on anchor" cleanup path as
         // moving away or dying -- no separate cleanup logic needed.
-        if ((isDelveWizard || isClaimUnit) && onAnchor && Math.random() < resourceExhaustionChanceFor(civ)) {
-          if (isDelveWizard) {
+        if ((isDelvingUnit || isClaimUnit) && onAnchor && Math.random() < resourceExhaustionChanceFor(civ)) {
+          if (isDelvingUnit) {
+            // Respawn (2026-08-14, user-directed reversal of the original
+            // "a Ruin never respawns" call -- see
+            // scheduleRuinRespawn/processRuinRespawns's own doc comment).
+            scheduleRuinRespawn(gameState);
             tile.isRuin = false;
           } else {
-            // Respawn (2026-08-06, user-directed) -- a Ruin never respawns
-            // (explicitly out of scope), but a depleted Gold/Iron Vein
-            // reappears elsewhere within a few turns. See
+            // Respawn (2026-08-06, user-directed) -- a depleted Gold/Iron
+            // Vein reappears elsewhere within a few turns. See
             // scheduleResourceRespawn/processResourceRespawns.
             scheduleResourceRespawn(gameState, tile.resource);
             tile.resource = null;
           }
           window.GameEngine.floatingText.spawnFloatingText(
-            unit, isDelveWizard ? "Ruin Exhausted!" : "Vein Exhausted!", "warning");
+            unit, isDelvingUnit ? "Ruin Exhausted!" : "Vein Exhausted!", "warning");
           onAnchor = false;
           unit.channeling = null;
           // Natural end -- bank whatever accumulated before exhaustion hit,
@@ -467,7 +608,7 @@ window.GameEngine = window.GameEngine || {};
         const stayedPut = unit.x === oldX && unit.y === oldY;
         const continuingRitual = onAnchor && stayedPut;
         unit._ritualTurns = onAnchor ? (stayedPut ? (unit._ritualTurns || 0) + 1 : 1) : 0;
-        if (isDelveWizard && !continuingRitual) {
+        if (isDelvingUnit && !continuingRitual) {
           clearDelveOwnership(unit, civ, map, oldX, oldY);
           delete unit._delveFilledOffsets;
           unit._delveFillProgress = 0;
@@ -564,6 +705,33 @@ window.GameEngine = window.GameEngine || {};
   }
 
   /**
+   * Poisoned (2026-08-14, user-directed; see doc/world_encounters_design.md
+   * -- Marsh Adder's venom): direct mirror of tickBurningDamage just above,
+   * unit-only (Poisoned currently only ever comes from a Wandering
+   * Monster's bite, and monsters never target structures/cities -- see
+   * ai.js's runMonsterUnitTurn). Same 1 damage/turn shape, same water/river
+   * exemption reuse (isBurningExempt is generic despite its name -- just a
+   * "this tile washes off a damage-over-time condition" check), same
+   * `poisoned` condition key so it gets its own icon/tint (overlays.js)
+   * instead of showing the fire badge. Ticked here for the same reason
+   * Burning is -- uniformly for every civ, human or AI, not just
+   * AI-controlled ones.
+   */
+  function tickPoisonedDamage(gameState, civ) {
+    const { map } = gameState;
+    const turnNumber = gameState.turnNumber || 0;
+    for (const unit of civ.units) {
+      const poison = unit.conditions && unit.conditions.poisoned;
+      if (!poison) continue;
+      if (turnNumber > poison.expiresAtTurn) { delete unit.conditions.poisoned; continue; }
+      if (isBurningExempt(map, unit.x, unit.y)) continue;
+      unit.hp = Math.max(0, unit.hp - 1);
+      window.GameEngine.floatingText.spawnFloatingText(unit, "-1 (Poisoned)", "warning");
+    }
+    civ.units = civ.units.filter((u) => u.hp > 0);
+  }
+
+  /**
    * Once-per-civ-turn setup: city tick, resource/stockpile accounting,
    * starvation check, research tick, then everything in an AI civ's turn
    * that happens BEFORE any individual unit acts (see ai.js's beginAITurn --
@@ -590,6 +758,7 @@ window.GameEngine = window.GameEngine || {};
     civ.turnsSinceCombat = (civ.turnsSinceCombat || 0) + 1;
 
     tickBurningDamage(gameState, civ);
+    tickPoisonedDamage(gameState, civ);
     window.GameEngine.ai.tickTreetopSnipers(gameState, civ);
 
     for (const city of civ.cities) {
@@ -606,15 +775,16 @@ window.GameEngine = window.GameEngine || {};
       return acc;
     }, { harvest: 0, coin: 0, lore: 0 });
 
-    // Dungeon Delve (Human): a qualifying Wizard (channeling for 1+ turns,
-    // i.e. every turn after the turn spent explicitly starting the channel
-    // -- 2026-07-30, user-directed fix: previously required 2+ turns of
-    // _ritualTurns, silently wasting the unit's first full turn of
-    // channeling with no payout) pays out +3 lore, +3 coin per turn on top
-    // of normal city income -- that flat
+    // Dungeon Delve: a qualifying unit (any race/type since 2026-08-14, see
+    // doc/world_encounters_design.md -- was Human Wizard-only; channeling
+    // for 1+ turns, i.e. every turn after the turn spent explicitly
+    // starting the channel -- 2026-07-30, user-directed fix: previously
+    // required 2+ turns of _ritualTurns, silently wasting the unit's first
+    // full turn of channeling with no payout) pays out +3 lore, +3 coin per
+    // turn on top of normal city income -- that flat
     // bonus is the tech's ENTIRE resource effect (2026-07-19, user-directed:
     // no per-tile harvest, unlike Dwarf's Prospector's Claim below). The
-    // Wizard still gradually claims the 1-tile radius around itself (see
+    // unit still gradually claims the 1-tile radius around itself (see
     // _delveFilledOffsets -- gradual, exactly like a city's own filled-in
     // mechanic, NOT instant), and that filled-in influence still counts
     // toward the 33% territorial victory condition through the normal
@@ -625,10 +795,46 @@ window.GameEngine = window.GameEngine || {};
       const industriousness = race.industriousness ?? 0.5;
       const cities = window.GameEngine.cities;
       for (const unit of civ.units) {
-        if (unit.typeId !== "wizard" || (unit._ritualTurns || 0) < 1) continue;
+        if ((unit._ritualTurns || 0) < 1) continue;
+        // Anchor check re-added 2026-08-14 (see doc/world_encounters_design.md):
+        // _ritualTurns is shared across Dark Ritual/Dungeon Delve/
+        // Prospector's Claim, and Delve is no longer Wizard-exclusive, so a
+        // Dwarf civ now has BOTH Delve and Prospector's Claim unlocked at
+        // once -- without this, a unit prospecting a Gold Vein (which also
+        // sets _ritualTurns >= 1) would incorrectly ALSO collect this Ruin
+        // payout. Must actually be standing on a Ruin AND have explicitly
+        // started Delving specifically (not just Dark Ritual, which also
+        // anchors on a Ruin but -- per its own comment elsewhere in this
+        // file -- never sets unit.channeling at all, so this excludes it
+        // automatically once Undead ships and could otherwise unlock both
+        // mechanics on the same civ the same way Dwarf now can).
+        const tile = map.tiles[unit.y * map.width + unit.x];
+        if (!tile || !tile.isRuin || unit.channeling !== "delving") continue;
         // Accumulates instead of paying out directly -- see
         // accumulateChannelStash's doc comment above.
         accumulateChannelStash(unit, { coin: 3, lore: 3 });
+
+        // Ruin encounters (2026-08-15 addition -- config.js's
+        // worldEncounters.ruin.monsterEncounterChance/treasureFindChance
+        // were defined back when Ruins were reworked but never actually
+        // wired up until now). Each can fire AT MOST ONCE per Ruin, ever --
+        // tracked on the TILE itself (not the unit), so it survives a
+        // different unit later taking over the same claim, and never
+        // carries over to whatever new Ruin eventually respawns elsewhere
+        // (a fresh tile object with no flags set). Independent rolls, not
+        // mutually exclusive -- both could in principle fire the same turn.
+        const ruinCfg = window.GameConfig.worldEncounters.ruin;
+        const ruinLog = [];
+        if (!tile._delveMonsterRolled && Math.random() < ruinCfg.monsterEncounterChance) {
+          tile._delveMonsterRolled = true;
+          window.GameEngine.ai.triggerRuinMonsterEncounter(civ, unit, gameState, ruinLog);
+        }
+        if (!tile._delveTreasureRolled && Math.random() < ruinCfg.treasureFindChance) {
+          tile._delveTreasureRolled = true;
+          ruinLog.push(`Ruin: ${civ.id}'s ${unit.name || unit.typeId} finds treasure while delving at (${unit.x},${unit.y})`);
+          window.GameEngine.ai.grantMonsterKillReward(civ, unit, gameState);
+        }
+        if (ruinLog.length) window.GameEngine.ai.appendAIActionLog(gameState, civ.id, ruinLog);
 
         const filled = unit._delveFilledOffsets || new Set();
 
@@ -682,10 +888,19 @@ window.GameEngine = window.GameEngine || {};
       const cities = window.GameEngine.cities;
       for (const unit of civ.units) {
         if ((unit._ritualTurns || 0) < 1) continue;
+        // Anchor check added 2026-08-14 (see doc/world_encounters_design.md):
+        // _ritualTurns is shared across Dark Ritual/Dungeon Delve/
+        // Prospector's Claim, and Delve is no longer Wizard-exclusive, so a
+        // Dwarf civ now has BOTH Delve and Prospector's Claim unlocked at
+        // once -- without this, a unit Delving a Ruin (which also sets
+        // _ritualTurns >= 1) would incorrectly ALSO collect this vein
+        // payout. Must actually be standing on a Gold or Iron Vein.
+        const onIron = map.tiles[unit.y * map.width + unit.x].resource === "iron";
+        const onGold = map.tiles[unit.y * map.width + unit.x].resource === "gold";
+        if (!onIron && !onGold) continue;
         // Accumulates instead of paying out directly -- see
         // accumulateChannelStash's doc comment above.
         const deepened = hasDeepMines && (unit._ritualTurns || 0) >= 5;
-        const onIron = map.tiles[unit.y * map.width + unit.x].resource === "iron";
         // Rebalanced 2026-07-18 (user-directed): both tiers dropped their
         // harvest component entirely on Gold Veins -- Prospector's Claim
         // +1 harvest/+5 coin/+2 lore -> +3 coin/+1 lore; The Deep Mines
@@ -1428,7 +1643,11 @@ window.GameEngine = window.GameEngine || {};
   function recordHistory(gameState) {
     gameState.history = gameState.history || { turns: [], civs: {} };
     const { counts } = window.GameEngine.influence.countTerritory(gameState);
+    const monsterCivId = window.GameConfig.worldEncounters.monsters.civId;
     for (const civId of Object.keys(gameState.civs)) {
+      // The "MONSTERS" pseudo-civ isn't a kingdom -- excluded so it doesn't
+      // show up as a stray line on the Report menu's per-civ graphs.
+      if (civId === monsterCivId) continue;
       const civ = gameState.civs[civId];
       const rec = gameState.history.civs[civId] = gameState.history.civs[civId] || { influence: [], power: [] };
       rec.influence.push(civ.eliminated ? 0 : (counts[civId] || 0));
@@ -1562,8 +1781,16 @@ window.GameEngine = window.GameEngine || {};
     //     all civs, traced down to this exact check).
     //  2. Never founded a city AND has no units left either -- a total wipe
     //     before ever getting off the ground.
+    // The "MONSTERS" pseudo-civ (see doc/world_encounters_design.md) is
+    // explicitly excluded: it permanently has zero cities and, between
+    // spawns, often zero units too -- rule 2 above would otherwise
+    // eliminate it almost immediately, after which beginCivTurn's own
+    // `if (civ.eliminated) return null;` would silently stop its units from
+    // ever taking a turn again, even ones spawned in later. It's never a
+    // real kingdom, so it's never a real elimination.
+    const monsterCivId = window.GameConfig.worldEncounters.monsters.civId;
     for (const civ of Object.values(gameState.civs)) {
-      if (civ.eliminated) continue;
+      if (civ.eliminated || civ.id === monsterCivId) continue;
       const lostAllCitiesEverFounded = civ.hasFoundedCity && civ.cities.length === 0;
       const wipedBeforeFounding = civ.cities.length === 0 && civ.units.length === 0;
       if (lostAllCitiesEverFounded || wipedBeforeFounding) {
@@ -1575,8 +1802,14 @@ window.GameEngine = window.GameEngine || {};
   function checkVictory(gameState) {
     // Elimination victory: last civ standing wins immediately, regardless of
     // influence share -- no point requiring a territory threshold once every
-    // rival has been wiped out entirely.
-    const allCivs = Object.values(gameState.civs);
+    // rival has been wiped out entirely. The "MONSTERS" pseudo-civ (see
+    // doc/world_encounters_design.md) is excluded from both allCivs and
+    // survivors here -- it's permanently non-eliminated (see
+    // checkElimination's own comment above), so without this exclusion
+    // there would always be at least 2 "survivors" (the last real civ plus
+    // Monsters) and elimination victory could never trigger at all.
+    const monsterCivId = window.GameConfig.worldEncounters.monsters.civId;
+    const allCivs = Object.values(gameState.civs).filter((civ) => civ.id !== monsterCivId);
     const survivors = allCivs.filter((civ) => !civ.eliminated);
     if (allCivs.length > 1 && survivors.length === 1) {
       return { winner: survivors[0].id, type: "elimination" };
@@ -1620,5 +1853,7 @@ window.GameEngine = window.GameEngine || {};
     VICTORY_SHARE_THRESHOLD,
     VICTORY_SUSTAIN_TURNS,
     bankChannelStash,
+    scheduleResourceRespawn,
+    revealMapFragment,
   };
 })();

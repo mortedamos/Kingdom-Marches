@@ -3851,6 +3851,34 @@
       case "deactivateAura":
         unit.auraActive = false;
         break;
+      case "openChest": {
+        // See doc/world_encounters_design.md -- ai.js's openTreasureChest
+        // does the actual resolution (trap vs. reward) and returns a result
+        // object with no UI dependency of its own; this is the one place
+        // that turns it into a modal, same "message" dialog shape as the
+        // "Can't Found a City Here" popup above.
+        const civ = gameState.civs[humanCivId];
+        if (civ) {
+          const result = window.GameEngine.ai.openTreasureChest(civ, unit, gameState);
+          if (result) {
+            const unitLabel = unit.name || window.GameData.getUnit(unit.typeId).label;
+            let title, text;
+            if (result.trapped) {
+              title = "It's a Trap!";
+              text = `${unitLabel} springs a ${result.kind} trap: -${result.damage} HP and ${result.kind === "fire" ? "Burning" : "Frozen"}.`;
+            } else if (result.rewardType === "mapFragment") {
+              title = "Map Fragment!";
+              text = `${unitLabel} finds a Map Fragment -- a swath of unexplored land around (${result.revealed.x},${result.revealed.y}) is revealed for the rest of this turn.`;
+            } else {
+              title = "Treasure Found!";
+              text = `${unitLabel} finds +${result.amount} ${result.rewardType === "xp" ? "XP" : result.rewardType}!`;
+            }
+            viewState.dialog = { kind: "message", title, text };
+            redraw();
+          }
+        }
+        break;
+      }
       default:
         // "startChannel:<kind>" (2026-08-06, user-directed full-list mirror)
         // -- one case per channel type would just repeat this same call

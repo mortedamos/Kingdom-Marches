@@ -2156,6 +2156,13 @@ window.GameEngine = window.GameEngine || {};
     // function), it just can't close distance or reposition.
     if (unit.conditions?.frozen) movement = 0;
 
+    // Dire Spider's Web (see doc/world_encounters_design.md): same 0-movement
+    // shape as Frozen just above, deliberately WITHOUT Frozen's attack
+    // penalty -- a webbed unit can still fight back at full strength if
+    // something is already adjacent, it just can't move to or away from a
+    // fight. See ai.js's applyWebbed and overlays.js's "webbed" visual.
+    if (unit.conditions?.webbed) movement = 0;
+
     // Hidden: moving carefully to stay unseen costs 66% of movement, floored
     // at 1 so a Hidden unit is slow, never fully immobile. Elf "Quick as a
     // Shadow" (2026-07-22, previously unimplemented despite the tech's own
@@ -4212,6 +4219,18 @@ window.GameEngine = window.GameEngine || {};
 
   function runUnitTurn(civ, unit, gameState, weights, difficulty, log) {
     if (unit.usedThisTurn) return;
+    // Wandering Monsters (see doc/world_encounters_design.md): a completely
+    // separate, much simpler dispatch -- the "MONSTERS" pseudo-civ has no
+    // real race/tech/economy identity for the rest of this cascade to run
+    // against. Checked by unit type id (MONSTER_UNIT_IDS), not civ.id, so
+    // this stays correct even if a future "tame a monster" ability (see the
+    // design doc's own forward-compatibility note) ever transfers ownership
+    // of one of these unit types to a real civ -- a tamed monster should
+    // still use this dispatch, not suddenly try to run the cascade below.
+    if (window.GameData.MONSTER_UNIT_IDS.has(unit.typeId)) {
+      runMonsterUnitTurn(civ, unit, gameState, log);
+      return;
+    }
     const militarism = effectiveMilitarism(civ);
     const race = window.GameData.getRace(civ.raceId);
     const industriousness = race.industriousness ?? 0.5;
@@ -4577,6 +4596,18 @@ window.GameEngine = window.GameEngine || {};
       // priorities above have already passed on this unit.
       if (civ.unlockedMechanics && civ.unlockedMechanics.has("prospectors_claim")
           && maybeProspectorsClaimPlay(civ, unit, gameState, log)) continue;
+
+      // Universal Ruin Delve (see doc/world_encounters_design.md, 2026-08-14
+      // -- moved out of maybeHumanWizardPlay, no longer Wizard/Human-only).
+      // Granted free to every race via the Level 0 "ruin_delving" tech, same
+      // priority tier as Prospector's Claim just above.
+      if (civ.unlockedMechanics && civ.unlockedMechanics.has("dungeon_delve")
+          && maybeDungeonDelvePlay(civ, unit, gameState, log)) continue;
+
+      // Treasure Chest: opportunistic open for an otherwise-idle unit that
+      // happens to already be standing on one. Race-agnostic, tech-free --
+      // see openTreasureChest above.
+      if (maybeOpenChestPlay(civ, unit, gameState, log)) continue;
 
       // Orc Dragon Riders: pick up or drop off a passenger when otherwise idle.
       // canCarryUnit is a formal PROPERTY (see combat.js getUnitProperty) --
@@ -5417,9 +5448,11 @@ window.GameEngine = window.GameEngine || {};
     const { map } = gameState;
     const SEARCH_RADIUS = 20;
     const memory = (gameState.tileMemory && gameState.tileMemory[civ.id]) || {};
+    // Any unit type can hold a delve claim since 2026-08-14 (see
+    // doc/world_encounters_design.md) -- was u.typeId === "wizard"-only.
     const claimedByOther = new Set(
       civ.units
-        .filter((u) => u !== unit && u.typeId === "wizard" && (u._ritualTurns || 0) >= 1)
+        .filter((u) => u !== unit && (u._ritualTurns || 0) >= 1)
         .map((u) => `${u.x},${u.y}`)
     );
     const unitTile = map.tiles[unit.y * map.width + unit.x];
@@ -5957,21 +5990,25 @@ window.GameEngine = window.GameEngine || {};
   }
 
   /**
-   * Human "Dungeon Delve" pursuit/protection. Two cases:
+   * "Dungeon Delve" pursuit/protection -- any race/unit type since 2026-08-14
+   * (see doc/world_encounters_design.md; was Human Wizard-only before). Two
+   * cases:
    *
    *   ALREADY DELVING (standing on a Ruin, _ritualTurns >= 1): protect the
    *   investment -- moving away or dying wipes out everything it's claimed
-   *   INSTANTLY (see turns.js), so an idle delving Wizard must never be
+   *   INSTANTLY (see turns.js), so an idle delving unit must never be
    *   allowed to wander off via the generic explore/patrol tail of the
    *   dispatch cascade. An adjacent enemy is left to the normal attack
    *   dispatch instead of intervening here -- attacking doesn't move the
-   *   Wizard, so the Delve position is safe either way, win or lose. A
-   *   NEARBY (not yet adjacent) threat triggers Invisibility pre-emptively
-   *   if available; otherwise it just Rests in place.
+   *   unit, so the Delve position is safe either way, win or lose. A NEARBY
+   *   (not yet adjacent) threat triggers Invisibility pre-emptively if
+   *   available (Human-only in practice, since only Human currently unlocks
+   *   that mechanic -- harmlessly never true for anyone else); otherwise it
+   *   just Rests in place.
    *
    *   NOT YET DELVING: curiosity-weighted pursuit of the nearest known Ruin
    *   (see findNearbyUnclaimedRuin), gated on being reasonably healthy first
-   *   -- never send a hurt Wizard off to go sit in the open.
+   *   -- never send a hurt unit off to go sit in the open.
    *
    * Returns true if it consumed the turn.
    */
@@ -6001,7 +6038,7 @@ window.GameEngine = window.GameEngine || {};
         window.GameEngine.combat.enterHidden(unit, currentTurnNumber);
         unit.usedThisTurn = true;
         unit.currentMission = "Vanishing to protect an active Dungeon Delve";
-        log.push(`Dungeon Delve: ${civ.id}'s Wizard goes hidden to protect its claim at (${unit.x},${unit.y})`);
+        log.push(`Dungeon Delve: ${civ.id}'s ${describeUnit(unit)} goes hidden to protect its claim at (${unit.x},${unit.y})`);
         return true;
       }
       unit.resting = true;
@@ -6038,13 +6075,13 @@ window.GameEngine = window.GameEngine || {};
       }
       unit.usedThisTurn = true;
       unit.currentMission = `Marching to a Ruin to start a Dungeon Delve at (${ruinSpot.x},${ruinSpot.y})`;
-      log.push(`Dungeon Delve: ${civ.id}'s Wizard heading to Ruin at (${ruinSpot.x},${ruinSpot.y})`);
+      log.push(`Dungeon Delve: ${civ.id}'s ${describeUnit(unit)} heading to Ruin at (${ruinSpot.x},${ruinSpot.y})`);
       return true;
     }
 
     // Nothing reachable by land -- look further afield (any landmass) and
     // try to get there by sea instead of walking, which would just strand
-    // the Wizard at the shore forever. See seekOverseasResource.
+    // the unit at the shore forever. See seekOverseasResource.
     const overseasRuin = findNearbyUnclaimedRuin(civ, unit, gameState);
     if (overseasRuin) return seekOverseasResource(civ, unit, gameState, log, overseasRuin, "Ruin");
     return false;
@@ -6078,8 +6115,10 @@ window.GameEngine = window.GameEngine || {};
     if (civ.unlockedMechanics.has("flight_grant")
         && maybeGrantFlight(civ, unit, gameState, log)) return true;
 
-    if (civ.unlockedMechanics.has("dungeon_delve")
-        && maybeDungeonDelvePlay(civ, unit, gameState, log)) return true;
+    // Dungeon Delve moved out of here 2026-08-14 (see
+    // doc/world_encounters_design.md) -- no longer Wizard-specific, now
+    // checked in the generic runUnitTurn cascade alongside Prospector's
+    // Claim so any race/unit type can pursue it.
 
     if (civ.unlockedMechanics.has("teleportation") && !unit.conditions?.exhausted
         && maybeTeleportStrike(civ, unit, gameState, log)) return true;
@@ -7306,6 +7345,396 @@ window.GameEngine = window.GameEngine || {};
       return true;
     }
     return false;
+  }
+
+  /** Treasure Chest open action (see doc/world_encounters_design.md) -- a
+   *  universal one-shot ring-menu action any unit standing on a "chest"
+   *  resource tile can take, consuming its turn. Removes the chest (same
+   *  scheduleResourceRespawn pattern every other resource uses on
+   *  exhaustion -- a chest is spent the instant it's opened, not via the
+   *  per-turn RESOURCE_EXHAUSTION_CHANCE roll every worked-channel resource
+   *  uses), then resolves either a trap (reusing the exact same Frozen/
+   *  Burning + flat damage support as Halfellow's Set the Trap -- see
+   *  checkTrapSpring/TRAP_DAMAGE/FROZEN_DURATION/applyBurning above) or a
+   *  reward (coin/lore banked to civ.stockpile, or XP granted straight to
+   *  the opening unit via applyComputedXP -- same path real combat XP
+   *  takes, so any pending level-up queues normally). Returns a result
+   *  object; the caller (main.js's handleContextMenuAction) is responsible
+   *  for showing a modal with it -- this file has no UI dependency
+   *  anywhere else and shouldn't gain one here. Returns null if `unit`
+   *  isn't actually standing on a chest (stale ring-menu click, e.g. the
+   *  tile's chest was claimed by someone else the same turn). */
+  function openTreasureChest(civ, unit, gameState) {
+    const { map } = gameState;
+    const tile = map.tiles[unit.y * map.width + unit.x];
+    if (!tile || tile.resource !== "chest") return null;
+    const cfg = window.GameConfig.worldEncounters.treasureChest;
+
+    tile.resource = null;
+    window.GameEngine.turns.scheduleResourceRespawn(gameState, "chest");
+    unit.usedThisTurn = true;
+
+    if (Math.random() < cfg.trapChance) {
+      const isFire = Math.random() < 0.5;
+      unit.hp = Math.max(0, unit.hp - cfg.trapDamage);
+      window.GameEngine.floatingText.spawnFloatingText(unit, `-${cfg.trapDamage} (Trapped!)`, "warning");
+      if (isFire) {
+        applyBurning(unit, "unit", gameState);
+      } else {
+        window.GameEngine.combat.setCondition(unit, "frozen", { attackMult: 0.75, expiresAtTurn: (gameState.turnNumber || 0) + FROZEN_DURATION });
+      }
+      civ.units = civ.units.filter((u) => u.hp > 0);
+      return { trapped: true, kind: isFire ? "fire" : "frost", damage: cfg.trapDamage };
+    }
+
+    const rewardType = cfg.rewardTypes[Math.floor(Math.random() * cfg.rewardTypes.length)];
+    if (rewardType === "xp") {
+      applyComputedXP(unit, civ, cfg.rewardAmount);
+      return { trapped: false, rewardType, amount: cfg.rewardAmount };
+    }
+    if (rewardType === "mapFragment") {
+      // See turns.js's revealMapFragment. Falls back to a coin payout if
+      // this civ has already explored the entire map -- a reward that does
+      // nothing would be a worse outcome than the trap.
+      const revealed = window.GameEngine.turns.revealMapFragment(civ, gameState);
+      if (!revealed) {
+        civ.stockpile.coin = (civ.stockpile.coin || 0) + cfg.rewardAmount;
+        window.GameEngine.floatingText.spawnFloatingText(unit, `+${cfg.rewardAmount} coin`, "resource");
+        return { trapped: false, rewardType: "coin", amount: cfg.rewardAmount };
+      }
+      window.GameEngine.floatingText.spawnFloatingText(unit, "Map Fragment!", "resource");
+      return { trapped: false, rewardType: "mapFragment", revealed };
+    }
+    civ.stockpile[rewardType] = (civ.stockpile[rewardType] || 0) + cfg.rewardAmount;
+    window.GameEngine.floatingText.spawnFloatingText(unit, `+${cfg.rewardAmount} ${rewardType}`, "resource");
+    return { trapped: false, rewardType, amount: cfg.rewardAmount };
+  }
+
+  /** Treasure Chest: opportunistic open for an otherwise-idle unit that
+   *  happens to already be standing on one. Doesn't path toward a known
+   *  chest elsewhere on the map -- this only ever fires for a unit that's
+   *  already there, same "take the easy win, don't go out of your way yet"
+   *  scope as this feature's first pass; a proper seek-a-chest play can
+   *  follow later the same way findNearbyUnclaimedGoldVein does for
+   *  Prospector's Claim. */
+  function maybeOpenChestPlay(civ, unit, gameState, log) {
+    if (unit.usedThisTurn || unit.channeling) return false;
+    const { map } = gameState;
+    const tile = map.tiles[unit.y * map.width + unit.x];
+    if (!tile || tile.resource !== "chest") return false;
+    const result = openTreasureChest(civ, unit, gameState);
+    if (!result) return false;
+    unit.currentMission = result.trapped ? "Opened a chest -- it was trapped!" : `Opened a chest -- found ${result.rewardType}`;
+    // mapFragment has no `.amount` (see openTreasureChest) -- was logging
+    // "finds undefined mapFragment" before this special case, confirmed live
+    // via a headless playtest.
+    let outcome;
+    if (result.trapped) outcome = " and springs a trap";
+    else if (result.rewardType === "mapFragment") outcome = " and finds a Map Fragment";
+    else outcome = ` and finds ${result.amount} ${result.rewardType}`;
+    log.push(`Treasure Chest: ${civ.id}'s ${describeUnit(unit)} opens a chest at (${unit.x},${unit.y})${outcome}`);
+    return true;
+  }
+
+  // =========================================================================
+  // WANDERING MONSTERS (see doc/world_encounters_design.md, 2026-08-14)
+  // -------------------------------------------------------------------------
+  // A pseudo-civ ("MONSTERS"), not a 7th playable race -- confirmed as the
+  // lower-risk path over a fully separate ownerless-unit system, since
+  // render.js/turns.js/combat.js all assume `civ.units` is the complete
+  // roster of units that exist anywhere. Its units never flow through the
+  // normal runUnitTurn cascade (see the dispatch added at that function's
+  // own top) -- they get a small, fully separate wander/seek/attack loop
+  // here instead, since that cascade is built entirely around a civ having
+  // a real race/tech/economy identity monsters don't have.
+  // =========================================================================
+  const MONSTER_CIV_ID = window.GameConfig.worldEncounters.monsters.civId;
+  const WEB_DURATION = 1; // short, deliberately much shorter than Frozen's 3 -- a snare, not a lockdown
+  const POISON_DURATION = 3; // same duration as Burning -- see applyPoisoned
+
+  /** Lazily creates the Monsters pseudo-civ the first time it's needed --
+   *  works identically for a brand-new game and a save from before this
+   *  feature existed (no migration step required). Every field a normal
+   *  civ has that any generic per-civ loop might read is present with an
+   *  inert/empty value; `eliminated: false` is deliberate (see
+   *  checkVictory/checkElimination in turns.js, both of which explicitly
+   *  skip MONSTER_CIV_ID instead -- marking it "eliminated" here would have
+   *  been simpler but silently breaks every existing "for (const oc of
+   *  civs) if (oc.eliminated) continue" threat-scan across this file,
+   *  making monsters invisible to every civ's own defensive AI). */
+  function ensureMonsterCiv(gameState) {
+    let civ = gameState.civs[MONSTER_CIV_ID];
+    if (civ) return civ;
+    civ = {
+      id: MONSTER_CIV_ID, raceId: window.GameData.MONSTER_RACE.id,
+      cities: [], units: [], eliminated: false, isHuman: false,
+      completedTechs: new Set(), currentResearch: null, doctrine: null,
+      unlockedUnits: new Set(), unlockedBuildings: new Set(), unlockedMechanics: new Set(),
+      civicInfluenceBonus: 0, radiusBonus: 0, usedCityNames: [],
+      stockpile: { harvest: 0, coin: 0, lore: 0 }, resources: { harvest: 0, coin: 0, lore: 0 },
+    };
+    gameState.civs[MONSTER_CIV_ID] = civ;
+    return civ;
+  }
+
+  /** Reward for killing a Wandering Monster -- reuses Treasure Chest's own
+   *  reward table (see openTreasureChest above) rather than a separate loot
+   *  table, per the design doc. No trap possibility here -- that's a
+   *  chest-opening risk, not a combat one. */
+  function grantMonsterKillReward(civ, unit, gameState) {
+    const cfg = window.GameConfig.worldEncounters.treasureChest;
+    const rewardType = cfg.rewardTypes[Math.floor(Math.random() * cfg.rewardTypes.length)];
+    if (rewardType === "xp") {
+      applyComputedXP(unit, civ, cfg.rewardAmount);
+      return;
+    }
+    if (rewardType === "mapFragment") {
+      const revealed = window.GameEngine.turns.revealMapFragment(civ, gameState);
+      if (!revealed) {
+        civ.stockpile.coin = (civ.stockpile.coin || 0) + cfg.rewardAmount;
+        window.GameEngine.floatingText.spawnFloatingText(unit, `+${cfg.rewardAmount} coin`, "resource");
+        return;
+      }
+      window.GameEngine.floatingText.spawnFloatingText(unit, "Map Fragment!", "resource");
+      return;
+    }
+    civ.stockpile[rewardType] = (civ.stockpile[rewardType] || 0) + cfg.rewardAmount;
+    window.GameEngine.floatingText.spawnFloatingText(unit, `+${cfg.rewardAmount} ${rewardType}`, "resource");
+  }
+
+  /** Dire Spider's Web -- same shape as applyBurning above (a tiny wrapper
+   *  around combat.js's generic setCondition), kept as its own named
+   *  function for the same reason: every future caller reads its intent
+   *  from the name, not from re-deriving what "webbed" means. See
+   *  ai.js's computeMovementBudget (0 movement while active, no attack
+   *  penalty -- unlike Frozen) and overlays.js's existing "webbed" visual. */
+  function applyWebbed(target, gameState) {
+    window.GameEngine.combat.setCondition(target, "webbed", { expiresAtTurn: (gameState.turnNumber || 0) + WEB_DURATION });
+  }
+
+  /** Marsh Adder's venom (2026-08-14, user-directed) -- functionally
+   *  identical to Burning (1 damage/turn for POISON_DURATION turns, see
+   *  turns.js's tickPoisonedDamage, a direct mirror of tickBurningDamage),
+   *  but its own condition key so it gets its own visual (overlays.js) and
+   *  reads right for a venomous bite rather than fire. `poisonChancePct` is
+   *  a per-unit data field read generically off whichever unit has it (same
+   *  convention as burnChancePct/frozenChancePct/webChancePct -- see
+   *  units.js's roster doc comment) -- Marsh Adder is just the first
+   *  consumer, not a hardcoded special case; any future tech/unit that
+   *  wants a poison bite can grant this same property. */
+  function applyPoisoned(target, gameState) {
+    window.GameEngine.combat.setCondition(target, "poisoned", { expiresAtTurn: (gameState.turnNumber || 0) + POISON_DURATION });
+  }
+
+  /** Wandering Monster attack. Monsters never reach the generic
+   *  considerAttackOrGarrison dispatcher (see runMonsterUnitTurn below), so
+   *  this is a self-contained mirror of that function's own attack
+   *  resolution -- same resolveRound call, same sfx/combat-event/death
+   *  handling -- trimmed to what a monster actually needs: no garrison
+   *  bonus (monsters never garrison) and none of the real races' own
+   *  on-hit mechanics as the ATTACKER (Elf Frost/Orc curse etc. only ever
+   *  belong to a real race, and Monsters' own race record grants none). A
+   *  real civ's mechanics still apply normally when IT attacks a monster,
+   *  through the ordinary attack path elsewhere in this file -- monsters
+   *  are valid `civs` entries like any other, so that path already treats
+   *  them as an ordinary enemy with no changes needed there at all. Handles
+   *  death in BOTH directions (the monster dying to the target's counter,
+   *  or the target dying to the forward hit), since only this function ever
+   *  resolves a monster-initiated attack. */
+  function resolveMonsterAttack(monsterCiv, monster, target, gameState, log) {
+    const { map, civs } = gameState;
+    const targetCiv = civs[target.civId];
+    const combatContext = {
+      attackerGarrisoned: false,
+      defenderGarrisoned: isGarrisoned(target, targetCiv),
+      attackerOnHills: map.tiles[monster.y * map.width + monster.x].terrain === "hills",
+      defenderOnHills: map.tiles[target.y * map.width + target.x].terrain === "hills",
+      attackerInForest: map.tiles[monster.y * map.width + monster.x].terrain === "forest",
+      defenderInForest: map.tiles[target.y * map.width + target.x].terrain === "forest",
+    };
+    window.SfxSystem.playAction(monsterCiv.raceId, monster.typeId, "attack", monster.x, monster.y);
+    const result = window.GameEngine.combat.resolveRound(monster, target, civs, combatContext);
+    window.GameEngine.combat.recordCombatEvent({
+      ax: monster.x, ay: monster.y, atkUnit: monster, dx: target.x, dy: target.y, defUnit: target,
+    });
+
+    // Each monster's own signature on-hit effect -- only relevant ones read
+    // a non-zero value off their own unit data (see units.js's roster doc
+    // comment), the rest are simply 0/undefined and skip silently.
+    // firstStrikePct (Basilisk) and flying (Griffin) need no special
+    // handling at all -- resolveRound/computeMovementBudget already read
+    // those generically for every unit in the game.
+    const baseMonster = window.GameData.getUnit(monster.typeId);
+    if (target.hp > 0) {
+      if (Math.random() < (baseMonster.webChancePct || 0)) {
+        applyWebbed(target, gameState);
+        log.push(`Web: ${describeUnit(monster)} webs ${targetCiv.id}'s ${describeUnit(target)} at (${target.x},${target.y})`);
+      }
+      if (Math.random() < (baseMonster.frozenChancePct || 0)) {
+        window.GameEngine.combat.setCondition(target, "frozen", { attackMult: 0.75, expiresAtTurn: (gameState.turnNumber || 0) + FROZEN_DURATION });
+      }
+      if (Math.random() < (baseMonster.poisonChancePct || 0)) {
+        applyPoisoned(target, gameState);
+      }
+    }
+
+    if (target.hp <= 0) {
+      otherCivRemoveDeadUnit(civs, target);
+    } else {
+      grantXPAndAutoLevel(target, targetCiv, window.GameEngine.combat.xpForCombatAction(
+        { damage: result.counterDamage, killedUnitTypeId: monster.hp <= 0 ? monster.typeId : null }));
+    }
+    if (monster.hp <= 0) {
+      otherCivRemoveDeadUnit(civs, monster);
+      grantMonsterKillReward(targetCiv, target, gameState);
+    }
+    log.push(`Wandering Monster: ${describeUnit(monster)} attacks ${targetCiv.id}'s ${describeUnit(target)} at (${target.x},${target.y})`);
+  }
+
+  /** Wandering Monster per-unit turn (see runUnitTurn's own top-level
+   *  dispatch for how a monster unit reaches this instead of the normal
+   *  cascade). Wander by default; switch to seek-and-attack the CLOSEST
+   *  real civ unit within its own vision radius, ignoring fog of war
+   *  entirely -- same "always knows where the nearest enemy is" precedent
+   *  Orc's Dire Wolf already establishes for a hunting creature (see
+   *  maybeDireWolfHunt). Field units only -- never targets cities, walls,
+   *  or other structures. Confirmed, permanent design decision, not a
+   *  placeholder. */
+  function runMonsterUnitTurn(civ, unit, gameState, log) {
+    if (unit.hp <= 0 || unit.usedThisTurn) return;
+    const { civs, map } = gameState;
+    const baseUnit = window.GameData.getUnit(unit.typeId);
+    const visionRadius = baseUnit.visionRadius || 3;
+
+    let target = null, targetDist = Infinity;
+    for (const oc of Object.values(civs)) {
+      if (oc.id === civ.id || oc.eliminated) continue;
+      for (const ou of oc.units) {
+        if (ou.carriedBy || ou.conditions?.hidden) continue;
+        const d = window.GameEngine.influence.chebyshev(unit.x, unit.y, ou.x, ou.y);
+        if (d <= visionRadius && d < targetDist) { target = ou; targetDist = d; }
+      }
+    }
+
+    if (target && targetDist <= 1) {
+      resolveMonsterAttack(civ, unit, target, gameState, log);
+      unit.usedThisTurn = true;
+      return;
+    }
+
+    if (target) {
+      moveUnitToward(unit, target.x, target.y, map, civs);
+      unit.usedThisTurn = true;
+      unit.currentMission = `Hunting ${describeUnit(target)} at (${target.x},${target.y})`;
+      // Reached adjacency with movement to spare this same turn -- attack
+      // immediately rather than waiting a full extra turn, same "settle in
+      // the same turn if the budget reaches it" convention Delve/
+      // Prospecting use for starting a channel.
+      if (window.GameEngine.influence.chebyshev(unit.x, unit.y, target.x, target.y) <= 1) {
+        resolveMonsterAttack(civ, unit, target, gameState, log);
+      }
+      return;
+    }
+
+    // Nothing in sight -- wander toward a random nearby point. Reuses
+    // moveUnitToward's own pathing/movement-cost logic (which already
+    // respects restrictedToTerrain -- same mechanism Wisp's Swamp lock
+    // relies on) rather than hand-rolling single-step tile validation here.
+    const WANDER_RADIUS = 4;
+    const tx = Math.max(0, Math.min(map.width - 1, unit.x + Math.floor(Math.random() * (WANDER_RADIUS * 2 + 1)) - WANDER_RADIUS));
+    const ty = Math.max(0, Math.min(map.height - 1, unit.y + Math.floor(Math.random() * (WANDER_RADIUS * 2 + 1)) - WANDER_RADIUS));
+    moveUnitToward(unit, tx, ty, map, civs);
+    unit.usedThisTurn = true;
+    unit.currentMission = "Wandering";
+  }
+
+  /** Monster spawning (see doc/world_encounters_design.md) -- called once
+   *  per round from turns.js's beginRound. Spawns at most one monster per
+   *  round: rolls BASE_SPAWN_CHANCE * (1 - exploredFraction) once the
+   *  population cap allows room, where exploredFraction is the share of
+   *  LAND tiles explored by ANY real civ (union, Monsters' own explored set
+   *  deliberately excluded from that union -- see the comment below). On
+   *  success, places one monster on a uniformly random LAND tile that no
+   *  real civ has explored yet, matching that tile's terrain via
+   *  GameData.MONSTER_TERRAIN. No water spawns (MONSTER_TERRAIN simply has
+   *  no ocean/coast entries, so those tiles never become candidates). */
+  function maybeSpawnMonster(gameState) {
+    const cfg = window.GameConfig.worldEncounters.monsters;
+    const civ = ensureMonsterCiv(gameState);
+    const { civs, map, explored } = gameState;
+
+    const activeKingdoms = Object.values(civs).filter((c) => c.id !== MONSTER_CIV_ID && !c.eliminated).length;
+    const cap = cfg.perKingdomCap * activeKingdoms;
+    if (civ.units.length >= cap) return;
+
+    // Single pass: tallies totalLand/exploredLand for the spawn-chance
+    // fraction AND collects this round's spawn candidates (unexplored land
+    // tiles with a monster type and no monster already standing there) at
+    // the same time. Monsters' own explored set is deliberately excluded
+    // from `realCivIds` -- "uncovered" means unexplored by any REAL civ;
+    // whether the Monsters pseudo-civ itself has "seen" a tile isn't part
+    // of what makes ground count as the untamed frontier.
+    const realCivIds = Object.keys(civs).filter((cId) => cId !== MONSTER_CIV_ID);
+    let totalLand = 0, exploredLand = 0;
+    const uncoveredCandidates = [];
+    for (let i = 0; i < map.tiles.length; i++) {
+      const tile = map.tiles[i];
+      if (!window.GameEngine.worldgen.isLand(tile)) continue;
+      totalLand++;
+      const seenByAny = realCivIds.some((cId) => explored[cId] && explored[cId].has(i));
+      if (seenByAny) { exploredLand++; continue; }
+      if (!window.GameData.MONSTER_TERRAIN[tile.terrain]) continue;
+      const x = i % map.width, y = Math.floor(i / map.width);
+      if (civ.units.some((u) => u.x === x && u.y === y)) continue; // already a monster here
+      uncoveredCandidates.push(i);
+    }
+
+    const exploredFraction = totalLand > 0 ? exploredLand / totalLand : 0;
+    const spawnChance = cfg.baseSpawnChance * (1 - exploredFraction);
+    if (Math.random() >= spawnChance) return;
+    if (!uncoveredCandidates.length) return;
+
+    const idx = uncoveredCandidates[Math.floor(Math.random() * uncoveredCandidates.length)];
+    const x = idx % map.width, y = Math.floor(idx / map.width);
+    const typeId = window.GameData.MONSTER_TERRAIN[map.tiles[idx].terrain];
+    const newUnit = { typeId, civId: MONSTER_CIV_ID, x, y, isCivilian: false };
+    window.GameEngine.combat.initUnitHP(newUnit, civ);
+    civ.units.push(newUnit);
+  }
+
+  /** Ruin monster encounter (see doc/world_encounters_design.md) -- called
+   *  from turns.js's Dungeon Delve payout loop, at most once per Ruin ever
+   *  (the caller tracks that on the tile itself). Spawns one terrain-
+   *  appropriate monster (via GameData.MONSTER_TERRAIN, keyed off the
+   *  RUIN's own tile terrain) on an unoccupied tile adjacent to the
+   *  delving unit, then has it immediately attack -- a Ruin doesn't just
+   *  quietly hand over a threat, it ambushes whoever's digging. Silently
+   *  does nothing if no adjacent tile is free (a crowded Ruin just gets
+   *  lucky that round) or if the Ruin's terrain has no monster mapping
+   *  (shouldn't happen for any land tile). */
+  function triggerRuinMonsterEncounter(civ, unit, gameState, log) {
+    const { map, civs } = gameState;
+    const tile = map.tiles[unit.y * map.width + unit.x];
+    const monsterTypeId = window.GameData.MONSTER_TERRAIN[tile.terrain];
+    if (!monsterTypeId) return;
+
+    const dirs = [[-1,-1],[0,-1],[1,-1],[-1,0],[1,0],[-1,1],[0,1],[1,1]];
+    const openTiles = [];
+    for (const [dx, dy] of dirs) {
+      const x = unit.x + dx, y = unit.y + dy;
+      if (x < 0 || x >= map.width || y < 0 || y >= map.height) continue;
+      const occupied = Object.values(civs).some((c) => c.units.some((u) => u.x === x && u.y === y));
+      if (!occupied) openTiles.push({ x, y });
+    }
+    if (!openTiles.length) return;
+
+    const spot = openTiles[Math.floor(Math.random() * openTiles.length)];
+    const monsterCiv = ensureMonsterCiv(gameState);
+    const monster = { typeId: monsterTypeId, civId: MONSTER_CIV_ID, x: spot.x, y: spot.y, isCivilian: false };
+    window.GameEngine.combat.initUnitHP(monster, monsterCiv);
+    monsterCiv.units.push(monster);
+    log.push(`Ruin: ${civ.id}'s ${describeUnit(unit)} disturbs a ${describeUnit(monster)} while delving at (${unit.x},${unit.y})`);
+    resolveMonsterAttack(monsterCiv, monster, unit, gameState, log);
   }
 
   /**
@@ -11664,6 +12093,14 @@ window.GameEngine = window.GameEngine || {};
     findNearbyUnclaimedRuin,
     maybeProspectorsClaimPlay,
     maybeDungeonDelvePlay,
+    openTreasureChest,
+    maybeOpenChestPlay,
+    ensureMonsterCiv,
+    maybeSpawnMonster,
+    runMonsterUnitTurn,
+    resolveMonsterAttack,
+    triggerRuinMonsterEncounter,
+    grantMonsterKillReward,
     seekOverseasResource,
     seekOverseasInvasion,
     tryDeepGateOverseas,

@@ -192,6 +192,31 @@ window.GameData.UNIT_TYPE_PROPER_NAMES = {
     "Marshlight", "Foxfire", "The Drowned Flame", "Bogglow", "Willowisp",
     "The Peat Ember", "Mireflicker", "Fenspark", "The Sunken Candle",
   ],
+  // Wandering Monsters (see doc/world_encounters_design.md) -- required,
+  // not decorative: getRandomUnitName below throws for any raceId with no
+  // UNIT_FIRST_NAMES/UNIT_EPITHETS entry (the "monster" race has neither,
+  // deliberately -- see races.js's MONSTER_RACE), and a proper-noun pool
+  // here is the ONLY thing that lets it return before ever touching
+  // race-keyed data. `nameSpecial: true` alone (units.js) is NOT enough on
+  // its own -- it only controls gender, not which naming path is taken.
+  boar_sounder: [
+    "Tusker", "The Charging Sounder", "Mudback", "Old Gorer", "The Bristling Herd",
+  ],
+  dire_spider: [
+    "The Weaver", "Eightfang", "Shadowsilk", "The Canopy Lurker", "Widowspin",
+  ],
+  highland_griffin: [
+    "Stormwing", "The Crag Talon", "Skyhunter", "The High Watcher", "Windrazor",
+  ],
+  basilisk: [
+    "The Sand Coil", "Duneback", "Old Scaleback", "The Buried Fang", "Sunbasker",
+  ],
+  marsh_adder: [
+    "The Sunken Coil", "Bogvenom", "The Still Water", "Mireslither", "Rootfang",
+  ],
+  frost_lynx: [
+    "Rimefang", "The White Stalker", "Frostpaw", "The Silent Drift", "Icewhisker",
+  ],
 };
 
 /**

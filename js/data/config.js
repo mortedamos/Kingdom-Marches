@@ -66,14 +66,14 @@ window.GameConfig = {
   // stamp, and the only cost of forgetting is being told the wrong thing.
   build: {
     /** Local date this build was cut, YYYY-MM-DD. */
-    date: "2026-08-13",
+    date: "2026-08-15",
     /** Local time this build was cut, 24-hour HH:MM. */
-    time: "20:09",
+    time: "22:39",
     /** Monotonic build counter. Continues the numbering the old GitHub-
      *  derived stamp used (it showed the repo's total commit count), so
      *  builds from before and after this change still sort against each
      *  other. Increment it; don't recompute it. */
-    number: 98,
+    number: 99,
   },
 
   // =========================================================================
@@ -461,6 +461,63 @@ window.GameConfig = {
     /** Same, for a civ with Elf's "Tending to the Earth" tech researched --
      *  see turns.js's resourceExhaustionChanceFor. */
     resourceExhaustionChanceTendingToTheEarth: 0.02,
+  },
+
+  // =========================================================================
+  // WORLD ENCOUNTERS  (see doc/world_encounters_design.md)
+  // Treasure Chests, the universal Ruin Delve, and Wandering Monsters.
+  // Every numeric value below is a first-pass placeholder -- tune through
+  // the same playtesting/headless-batch process the rest of this file's
+  // constants get tuned through, not by reasoning from first principles.
+  // =========================================================================
+  worldEncounters: {
+    treasureChest: {
+      /** Chance an opened chest is trapped instead of paying out. */
+      trapChance: 0.20,
+      /** Flat damage a sprung trap deals, on top of its Frozen/Burning
+       *  status -- same shape as Halfellow's Set the Trap (see
+       *  checkTrapSpring in ai.js). */
+      trapDamage: 4,
+      /** A non-trapped chest pays out one reward, picked with equal weight
+       *  from this list. "mapFragment" ignores `rewardAmount` entirely --
+       *  see turns.js's revealMapFragment -- everything else banks
+       *  `rewardAmount` of that resource (or grants it as XP). Equal
+       *  weighting is a placeholder same as everything else here -- a
+       *  temporary map reveal and a flat resource payout aren't obviously
+       *  worth the same amount, that's a balancing-pass question. */
+      rewardTypes: ["coin", "lore", "xp", "mapFragment"],
+      rewardAmount: 15,
+    },
+    ruin: {
+      /** Delay range (turns) before an exhausted Ruin reappears elsewhere --
+       *  same shape as RESPAWN_MIN_DELAY/RESPAWN_MAX_DELAY in turns.js,
+       *  which this deliberately does not reuse (Ruins are a tile FEATURE,
+       *  not a RESOURCES entry, so they need their own respawn scheduler --
+       *  see doc/world_encounters_design.md's Section 1 finding). */
+      respawnMinDelay: 1,
+      respawnMaxDelay: 3,
+      /** Per-turn chance, while a unit channels Delve on a Ruin, of
+       *  triggering that Ruin's monster encounter or treasure find. Each of
+       *  the two can only ever fire once per Ruin, ever. */
+      monsterEncounterChance: 0.08,
+      treasureFindChance: 0.08,
+    },
+    monsters: {
+      /** Id of the pseudo-civ every Wandering Monster unit belongs to (see
+       *  ai.js's ensureMonsterCiv) -- a real entry in gameState.civs so
+       *  rendering/combat/turns.js's per-civ loops handle it for free, but
+       *  explicitly excluded from checkVictory/checkElimination in turns.js
+       *  and never treated as a real kingdom anywhere in the UI. */
+      civId: "MONSTERS",
+      /** Each turn, if under the population cap, spawn chance = this *
+       *  (1 - exploredFraction), where exploredFraction is the share of
+       *  LAND tiles explored by any civ. Linear falloff (user-confirmed
+       *  over the steeper squared alternative). */
+      baseSpawnChance: 0.06,
+      /** Population cap = this * number of civs still alive (not
+       *  eliminated). Shrinks as civs are eliminated. */
+      perKingdomCap: 2,
+    },
   },
 
   // =========================================================================
