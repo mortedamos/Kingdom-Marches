@@ -373,9 +373,9 @@
       <div class="launch-section" id="single-player-section">
         <div class="launch-section-label">Single Player</div>
         <label class="launch-row">
-          <span>Your Race</span>
+          <span>Select Your Kingdom</span>
           <select id="human-race-select">
-            ${RACE_LIST.map((r) => `<option value="${r}">${window.GameData.getRace(r).label} — ${window.GameData.getRace(r).identity}</option>`).join("")}
+            ${RACE_LIST.map((r) => `<option value="${r}">${window.GameData.getRace(r).label}</option>`).join("")}
           </select>
         </label>
         <label class="launch-row">

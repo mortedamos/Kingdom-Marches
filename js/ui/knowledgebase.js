@@ -142,15 +142,24 @@ window.UI = window.UI || {};
   }
 
   /** Draws a static idle-frame portrait of `unitId` (as `raceId` would
-   *  render it) onto `canvas`, or a large fallback glyph (the unit's own
-   *  `symbol`) if that race's art isn't loaded in this context -- e.g. the
-   *  title screen, where no game has started and nothing has been
-   *  preloaded yet, or a race that isn't part of the current game. Same
-   *  "missing PNG -> symbol fallback" convention sprites.js already
-   *  documents for every other consumer; deliberately doesn't force-load
-   *  anything extra just to browse a reference page. Exported so main.js
-   *  can call it once per redraw after inserting the profile's HTML (a
-   *  canvas has to already be in the DOM before you can draw to it). */
+   *  render it) onto `canvas`. If that art isn't already loaded (2026-08-17,
+   *  user-reported: this used to just fall back to the unit's `symbol`
+   *  glyph permanently in this case -- e.g. the title screen, where nothing
+   *  has been preloaded yet, or ANY race not in the current game, which
+   *  includes every universal unit whenever this module's own default
+   *  preview race isn't in play) the glyph is drawn immediately so the
+   *  canvas is never blank, but a real, targeted load for just this one
+   *  (unitId, raceId) pair is also kicked off (sprites.js's
+   *  ensureUnitLoaded) -- the KMKB browses every unit in the game
+   *  regardless of what's actually in the current game, unlike normal
+   *  play, so it can't rely on preloadAll's own in-play-races scoping the
+   *  way the rest of the renderer does. Redraws itself once that resolves,
+   *  guarded against a stale canvas (the player already navigated
+   *  elsewhere by the time the load finishes) by re-checking the canvas is
+   *  still attached AND still showing this exact unit/race pair. Exported
+   *  so main.js can call it once per redraw after inserting the profile's
+   *  HTML (a canvas has to already be in the DOM before you can draw to
+   *  it). */
   function drawUnitPortrait(canvas, unitId, raceId) {
     if (!canvas) return;
     const ctx = canvas.getContext("2d");
@@ -160,14 +169,22 @@ window.UI = window.UI || {};
     if (sprite) {
       const f = window.UI.sprites.currentFrame(sprite.manifest, "idle", null);
       ctx.drawImage(sprite.image, f.sx, f.sy, f.sw, f.sh, 0, 0, canvas.width, canvas.height);
-    } else {
-      ctx.fillStyle = "rgba(255,255,255,0.06)";
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
-      ctx.font = `${Math.round(canvas.width * 0.55)}px sans-serif`;
-      ctx.textAlign = "center";
-      ctx.textBaseline = "middle";
-      ctx.fillStyle = "#c9a857";
-      ctx.fillText(unit.symbol || "?", canvas.width / 2, canvas.height / 2 + canvas.width * 0.04);
+      return;
+    }
+    ctx.fillStyle = "rgba(255,255,255,0.06)";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.font = `${Math.round(canvas.width * 0.55)}px sans-serif`;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillStyle = "#c9a857";
+    ctx.fillText(unit.symbol || "?", canvas.width / 2, canvas.height / 2 + canvas.width * 0.04);
+
+    if (window.UI.sprites.ensureUnitLoaded) {
+      window.UI.sprites.ensureUnitLoaded(unitId, raceId).then(() => {
+        if (canvas.isConnected && canvas.dataset.portraitUnitId === unitId && canvas.dataset.portraitRaceId === raceId) {
+          drawUnitPortrait(canvas, unitId, raceId);
+        }
+      });
     }
   }
 

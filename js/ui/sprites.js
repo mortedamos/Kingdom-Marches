@@ -575,5 +575,36 @@ window.UI = window.UI || {};
     return runTiered(critical, background, onProgress);
   }
 
-  window.UI.sprites = { pick, pickDeterministic, pickUnit, pickBuilding, pickWallSegment, pickCityTier, currentFrame, preloadAll };
+  /** On-demand load for exactly one unit's art (2026-08-17, user-reported:
+   *  the Knowledge Base's unit portraits stayed on their symbol fallback
+   *  for anything preloadAll() hadn't already covered for the CURRENT
+   *  game's races -- a universal unit (Pioneer/Scout/Galley) previews with
+   *  a hardcoded default race that may not even be in play, and any
+   *  out-of-play race's own units were never loaded at all, including from
+   *  the title screen where nothing has been preloaded yet). Same key/path
+   *  convention preloadAll() itself uses for each unit shape -- race-locked
+   *  and Wandering Monster units (raceId is meaningless for either: a
+   *  monster's art was only ever registered unqualified) load the shared
+   *  `unit/<id>` art; a true universal unit loads race-qualified
+   *  `unit/<id>/<raceId>` art for whichever raceId the caller wants
+   *  previewed. loadVariants is idempotent (no-ops if already registered),
+   *  so calling this repeatedly for the same pair is cheap. Resolves either
+   *  way -- a genuinely missing file just leaves the fallback glyph in
+   *  place, same as everywhere else in this module; the caller decides
+   *  what "still missing" looks like. */
+  async function ensureUnitLoaded(unitId, raceId) {
+    const unit = window.GameData.UNITS[unitId];
+    if (!unit) return;
+    const isTrueUniversal = !unit.raceOnly && !(window.GameData.MONSTER_UNIT_IDS && window.GameData.MONSTER_UNIT_IDS.has(unitId));
+    if (isTrueUniversal) {
+      await loadVariants(`unit/${unitId}/${raceId}`, `assets/units/${raceId}_${unitId}`);
+    } else {
+      await loadVariants(`unit/${unitId}`, `assets/units/${unitId}`);
+    }
+  }
+
+  window.UI.sprites = {
+    pick, pickDeterministic, pickUnit, pickBuilding, pickWallSegment, pickCityTier, currentFrame, preloadAll,
+    ensureUnitLoaded,
+  };
 })();

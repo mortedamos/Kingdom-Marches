@@ -792,6 +792,7 @@ html, body {
   z-index: 100;
 }
 .techtree-modal {
+  position: relative; /* anchors the .techtree-close-btn X to this modal's own corner, see that rule */
   background: var(--bg-panel);
   border: 1px solid var(--border);
   border-radius: 6px;
@@ -807,30 +808,38 @@ html, body {
   margin: 0 0 4px 0;
   color: var(--accent);
 }
+/* Red-X close button (2026-08-17, user-directed), shared by every
+   .techtree-overlay-based modal (Tech Tree, Reports, Keyboard Shortcuts,
+   Knowledge Base, Launch Options) plus Credits (its own .credits-close-btn
+   position override below still applies -- Credits has no modal box to
+   anchor to, just a full-bleed overlay). Pinned to the modal's own top-right
+   corner via the .techtree-modal > .techtree-close-btn rule below, which
+   ALSO replaces the old sticky-while-scrolling fix the Tech Tree close
+   button used to need on its own: absolute positioning against the modal's
+   padding box is unaffected by that same element's internal scroll offset,
+   so every modal gets "stays visible while scrolling" for free now, not
+   just Tech Tree. */
 .techtree-close-btn {
-  float: right;
-  background: var(--bg-panel-raised);
-  border: 1px solid var(--border);
-  color: var(--text-main);
-  padding: 4px 12px;
-  border-radius: 4px;
+  background: transparent;
+  border: none;
+  color: #d9534f;
+  font-size: 22px;
+  line-height: 1;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
   cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
-.techtree-close-btn:hover { border-color: var(--accent); }
-/* Tech tree header pin (2026-08-13, user-directed): the close button and
-   window title should stay visible while scrolling a long tree, instead of
-   scrolling away with the rest of .techtree-modal's content (its own
-   scroll container -- see that rule's overflow-y: auto). Scoped to the
-   techtree overlay specifically (#techtree-close-btn / #techtree-content),
-   not the shared .techtree-modal/.techtree-close-btn classes every other
-   overlay (Reports, Shortcuts, Launch Options) also reuses -- those don't
-   share this problem and shouldn't share the fix. Both stick independently
-   to the top of the same scroll container; the background on the title
-   keeps scrolled rows from showing through underneath it as they pass by. */
-#techtree-close-btn {
-  position: sticky;
-  top: 0;
-  z-index: 2;
+.techtree-close-btn:hover { background: rgba(217, 83, 79, 0.18); color: #ff6b64; }
+.techtree-modal > .techtree-close-btn,
+.knowledge-modal > .techtree-close-btn {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 5;
 }
 #techtree-content h2 {
   position: sticky;
@@ -1158,6 +1167,7 @@ html, body {
   right: 280px; /* matches .sidebar's own width -- never overlaps it */
 }
 .knowledge-modal {
+  position: relative; /* anchors the .techtree-close-btn X to this modal's own corner */
   background: var(--bg-panel);
   border: 1px solid var(--border);
   border-radius: 6px;
@@ -1168,6 +1178,14 @@ html, body {
   flex-direction: column;
   overflow: hidden; /* .kb-list-pane/.kb-profile-pane scroll themselves */
 }
+/* #knowledge-content is .knowledge-modal's actual flex child (the close
+   button is the only sibling) -- WITHOUT this rule it renders as a plain
+   block sized to its own full unclipped content, so .kb-body's `flex: 1;
+   min-height: 0;` below has no constrained parent to size against and
+   .kb-list-pane/.kb-profile-pane's overflow-y: auto never has anything to
+   actually clip (2026-08-17, user-reported: KMKB windows didn't scroll).
+   Mirrors .knowledge-modal's own flex-column shape one level down. */
+#knowledge-content { flex: 1; min-height: 0; display: flex; flex-direction: column; }
 .kb-header { flex: 0 0 auto; margin-bottom: 8px; }
 .kb-header h2 { margin: 0; }
 /* Shared by both KMKB pages (2026-08-16, user-directed: Conditions reuses
