@@ -159,7 +159,7 @@ window.GameData.TECHS = {
   // buildings.js's buildingBuildCost, which reads whichever tech's
   // unlock_building effect names a given building).
   walls: {
-    id: "walls", label: "Walls", category: "civic", layer: 0, cost: 10,
+    id: "walls", label: "Walls", category: "building", layer: 0, cost: 10,
     prereqs: [],
     description: "Unlocks the Wall Section, a defensive structure cities can build to protect themselves.",
     costBreakdown: { harvest: 2, coin: 3 },

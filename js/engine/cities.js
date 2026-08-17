@@ -697,7 +697,7 @@ window.GameEngine = window.GameEngine || {};
 
   /**
    * True when `city` has nothing queued and isn't spending this turn's
-   * production on resources or research either
+   * production on resources, research, or culture either
    * -- the single shared predicate for "should this read as idle to the
    * player", pulled out of main.js's collectUnresolvedTurnWork (which used
    * to compute this inline, duplicated the moment a second consumer needed
@@ -710,6 +710,7 @@ window.GameEngine = window.GameEngine || {};
     if (!civ || !city || city.buildQueue) return false;
     if (isProducingResources(city, gameState)) return false;
     if (isBoostingResearch(city, gameState)) return false;
+    if (isSpreadingCulture(city, gameState)) return false;
     return window.GameEngine.ai.availableBuilds(civ, city, gameState).some((o) => o.affordable);
   }
 
@@ -744,12 +745,12 @@ window.GameEngine = window.GameEngine || {};
   /**
    * SPREAD CULTURE (city ring action)
    * ----------------------------------
-   * A paid, one-turn boost to a city's influence spread -- unlike Resource
-   * Production/Research above, this does NOT consume the city's turn (no
-   * buildQueue/isProducingResources/isBoostingResearch gate): it's paid for
-   * out of the civ's stockpile instead, so a city can spread culture AND
-   * still build/gather/research the same turn. Purely a turn-stamped
-   * transient field (cultureSpreadTurn), same idiom as
+   * A paid, one-turn boost to a city's influence spread -- paid out of the
+   * civ's stockpile rather than the city's own production, so queueing a
+   * build/resource-production/research-boost the same turn is still
+   * unaffected and independent. Counts as this city's action for the turn
+   * regardless (see isCityIdle), the same as those other three. Purely a
+   * turn-stamped transient field (cultureSpreadTurn), same idiom as
    * resourceProductionTurn/researchBoostTurn -- influence.js's
    * computeInfluenceMap reads it directly and applies
    * CULTURE_SPREAD_INFLUENCE_MULT to this city's influence strength for
