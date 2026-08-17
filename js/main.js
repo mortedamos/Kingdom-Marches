@@ -383,7 +383,6 @@
 
       <div class="launch-actions">
         <button id="start-game-btn" class="launch-start-btn">Start Game</button>
-        <button id="view-credits-btn" class="launch-credits-btn">View Credits</button>
       </div>`;
   }
 
@@ -776,11 +775,14 @@
   // Continuously re-scheduled while the credits overlay is open -- see startCreditsCrawl/closeCredits.
   let creditsAnimId = null;
 
-  /** "View Credits" in the Game Options modal: closes that modal and fetches/parses credits.txt
-   *  (root folder) fresh every time it's opened, so editing the file needs
-   *  no rebuild -- see js/ui/credits.js for the tiny format it understands. */
+  /** "View Credits", lower-left of the base title screen: fetches/parses
+   *  credits.txt (root folder) fresh every time it's opened, so editing the
+   *  file needs no rebuild -- see js/ui/credits.js for the tiny format it
+   *  understands. No longer needs to close the Game Options modal first
+   *  (2026-08-17, moved out of that modal) -- the button now lives outside
+   *  it, and that modal's full-screen overlay physically covers this button
+   *  while open, so there's no path to reach here with it still up. */
   function openCredits() {
-    $("launch-options-overlay").style.display = "none";
     fetch("credits.txt")
       .then((r) => r.text())
       .then((text) => {
@@ -822,7 +824,7 @@
    *  convention as setupLaunchOptionsOverlay (button, backdrop, Escape). */
   function setupCreditsOverlay() {
     const overlay = $("credits-overlay");
-    $("view-credits-btn").addEventListener("click", openCredits);
+    $("title-credits-btn").addEventListener("click", openCredits);
     $("credits-close-btn").addEventListener("click", closeCredits);
     overlay.addEventListener("mousedown", (e) => { if (e.target === overlay) closeCredits(); });
     document.addEventListener("keydown", (e) => {
@@ -3858,6 +3860,9 @@
       case "city:spreadCulture":
         handleSpreadCulture(city);
         break;
+      case "city:toggleAutomate":
+        handleToggleAutomateCity(city);
+        break;
       case "city:buildUnit":
       case "city:buildStructure":
         // Opens the real build list as a ring sub-page (see
@@ -4551,6 +4556,34 @@
     const civ = humanCivId && gameState.civs[humanCivId];
     if (!civ || !city || city.civId !== humanCivId) return;
     if (!window.GameEngine.cities.applyCultureSpread(city, civ, gameState)) return;
+    redraw();
+  }
+
+  /** Toggles city automation
+   *  -- the city-side counterpart of toggleAutomateUnit below. See cities.js's
+   *  runCityAutomation for what an automated city actually does each turn
+   *  (culture / gather / research, never a build) and turns.js's beginCivTurn
+   *  for where it's driven from.
+   *
+   *  Fires one automated action IMMEDIATELY on switch-on rather than waiting
+   *  for the next turn to roll around: beginCivTurn already ran for this turn
+   *  before the player could click anything, so without this the city would
+   *  visibly sit idle for the rest of the turn it was just automated on,
+   *  which reads as the toggle not having worked. Turning automation OFF
+   *  can't un-spend an action that already fired, so that direction just
+   *  clears the flag. */
+  function handleToggleAutomateCity(city) {
+    const civ = humanCivId && gameState.civs[humanCivId];
+    if (!civ || !city || city.civId !== humanCivId) return;
+    city.automated = !city.automated;
+    // A research boost that completes a tech raises the "research complete"
+    // dialog through civ.lastCompletedTech, which runCityAutomation already
+    // sets and finishRoundBookkeeping reads and clears at the end of the
+    // round -- exactly the same indirection handleCityResearch relies on for
+    // a manual boost. Deliberately NOT calling finishRoundBookkeeping here:
+    // it also resolves victory/defeat and music state against
+    // pendingPreUnitCounts, none of which is valid mid-turn.
+    if (city.automated) window.GameEngine.cities.runCityAutomation(civ, city, gameState);
     redraw();
   }
 

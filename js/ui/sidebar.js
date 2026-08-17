@@ -106,11 +106,56 @@ window.UI = window.UI || {};
       }
     }
 
+    // Territorial-victory progress: the win
+    // condition is a share of the map's claimable land (turns.js's
+    // checkVictory), but the only place that number appeared was the
+    // Kingdom panel's Territory row -- which vanishes the moment anything
+    // else is selected -- and the Reports overlay's influence graph, two
+    // clicks away. So the actual goal was invisible turn-to-turn, which is
+    // a large part of why the mid-game read as aimless: nothing on screen
+    // told the player whether they were getting closer to winning.
+    //
+    // Rendered here in the always-visible footer, next to the turn counter,
+    // for the same reason the research button was hoisted out of the
+    // Kingdom panel (see its own comment above). Reuses the identical
+    // countTerritory + VICTORY_SHARE_THRESHOLD math checkVictory and
+    // reports.js already share, so all three can't drift.
+    let territoryHtml = "";
+    if (viewState.humanCivId && window.GameEngine.influence) {
+      const civ = civs[viewState.humanCivId];
+      if (civ) {
+        const { counts, totalClaimable } = window.GameEngine.influence.countTerritory(gameState);
+        const threshold = window.GameEngine.turns.VICTORY_SHARE_THRESHOLD;
+        const myShare = totalClaimable > 0 ? (counts[civ.id] || 0) / totalClaimable : 0;
+        // Bar fill is progress toward the THRESHOLD (not toward 100% of the
+        // map) -- at 15% of a 30% threshold the player is genuinely halfway
+        // to winning, and a bar showing 15% full would badly understate it.
+        const progressPct = threshold > 0 ? Math.min(100, (myShare / threshold) * 100) : 0;
+        // Leader callout: only when someone else is actually ahead, so this
+        // stays quiet in the common case rather than adding a permanent row.
+        let leadId = null, leadShare = 0;
+        for (const [cid, count] of Object.entries(counts)) {
+          const share = totalClaimable > 0 ? count / totalClaimable : 0;
+          if (share > leadShare) { leadShare = share; leadId = cid; }
+        }
+        const leaderTag = (leadId && leadId !== civ.id)
+          ? ` <span class="territory-leader">${escapeHtml(window.GameData.getRace(civs[leadId].raceId).label)} ${(leadShare * 100).toFixed(1)}%</span>`
+          : "";
+        territoryHtml = `<div class="territory-progress" title="Territorial victory needs ${Math.round(threshold * 100)}% of the map's claimable land, held for ${window.GameEngine.turns.VICTORY_SUSTAIN_TURNS} consecutive turns.">
+          <div class="territory-progress-label">
+            <span>Territory ${(myShare * 100).toFixed(1)}% / ${Math.round(threshold * 100)}%</span>${leaderTag}
+          </div>
+          <div class="territory-progress-track"><div class="territory-progress-fill" style="width:${progressPct.toFixed(1)}%"></div></div>
+        </div>`;
+      }
+    }
+
     // Turn counter moved below End Turn.
     html += `<div class="sidebar-footer">
       ${researchHtml}
       ${idleCityHtml}
       ${cyclerHtml}
+      ${territoryHtml}
       <button id="end-turn-btn" class="end-turn-btn">End Turn</button>
       <div class="turn-counter">Turn ${turnNumber}</div>
     </div>`;
@@ -154,7 +199,11 @@ window.UI = window.UI || {};
     const wallTag = wallCount
       ? ` <em>(+${wallCount * window.GameConfig.combat.cityDefensePerWall} from ${wallCount} wall${wallCount === 1 ? "" : "s"})</em>` : '';
     const atCap = pop >= maxPop;
-    const growthThreshold = pop * pop * (window.GameEngine.cities.GROWTH_THRESHOLD_PER_POP || 400.0);
+    // One shared formula with the engine -- see cities.js's growthThresholdFor.
+    // This used to be an inline `pop * pop * (... || 400.0)` duplicate, which
+    // silently disagreed with tickCity the moment the growth exponent stopped
+    // being a hardcoded 2.
+    const growthThreshold = window.GameEngine.cities.growthThresholdFor(pop);
     const growthPct = atCap ? 100 : Math.min(100, Math.floor(100 * city.harvestSurplus / growthThreshold));
     const portTag = city.isPort ? ' <em>(Port)</em>' : '';
     const radiusTileCount = (2 * city.influenceRadius + 1) ** 2;
@@ -231,6 +280,21 @@ window.UI = window.UI || {};
     const isOwnCity = viewState && viewState.humanCivId && city.civId === viewState.humanCivId;
     const hint = isOwnCity ? actionHintHtml("the city") : "";
 
+    // Automation banner: shown above
+    // everything else so an automated city reads as automated at a glance,
+    // whatever it happens to be doing this turn. The city still shows its
+    // real per-turn receipt below (resource/research), since automation
+    // routes through the exact same apply* calls a manual action does.
+    let autoHtml = "";
+    if (isOwnCity && city.automated) {
+      const next = window.GameEngine.cities.cityAutomationChoice(civ, city, gameState);
+      const nextLabel = next === "culture" ? "Spreading culture"
+        : next === "resources" ? "Gathering resources"
+        : next === "research" ? "Boosting research"
+        : "Nothing to do this turn";
+      autoHtml = `<div class="stat-row city-automated-row"><span>Automated</span><span>${escapeHtml(nextLabel)}</span></div>`;
+    }
+
     if (city.buildQueue) {
       const item = city.buildQueue;
       const label = item.kind === "building"
@@ -244,6 +308,7 @@ window.UI = window.UI || {};
         ? `${item.turnsRemaining} turn${item.turnsRemaining === 1 ? "" : "s"} left`
         : `${buildQueuePct(item)}%`;
       return `<h3>Building</h3>
+        ${autoHtml}
         <div class="stat-row"><span>${escapeHtml(label)}${placeTag}</span><span>${escapeHtml(turnsTag)}</span></div>
         <div class="build-progress"><div class="build-progress-fill" style="width:${buildQueuePct(item)}%"></div></div>
         ${hint}`;
@@ -262,6 +327,7 @@ window.UI = window.UI || {};
         made.lore >= 0.5 ? `+${Math.round(made.lore)} Lore` : null,
       ].filter(Boolean).join(", ");
       return `<h3>Building</h3>
+        ${autoHtml}
         <div class="stat-row"><span>Resource Production</span><span>${escapeHtml(amounts)}</span></div>
         <div class="stat-row"><em>This turn's production went to resources</em></div>`;
     }
@@ -276,11 +342,13 @@ window.UI = window.UI || {};
         ? (made.completed ? `Completed: ${made.techLabel}` : `-${made.amount} turn${made.amount === 1 ? "" : "s"} (${made.techLabel})`)
         : "";
       return `<h3>Building</h3>
+        ${autoHtml}
         <div class="stat-row"><span>Research</span><span>${escapeHtml(summary)}</span></div>
         <div class="stat-row"><em>This turn's production went to research</em></div>`;
     }
 
     return `<h3>Building</h3>
+      ${autoHtml}
       <div class="stat-row"><em>Nothing queued</em></div>
       ${hint}`;
   }

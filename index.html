@@ -80,6 +80,14 @@
            comment for why it's a hand-maintained config value, not a live
            network lookup. -->
       <div id="title-build-stamp" class="title-build-stamp"></div>
+
+      <!-- "View Credits" -- moved here from the Game Options modal's
+           launch-actions row (2026-08-17, user-directed), same "pin to the
+           base title screen's own corner" treatment title-build-stamp got
+           in the move above it. Wired by main.js's setupCreditsOverlay
+           (openCredits/closeCredits are unchanged -- only where the trigger
+           button lives moved). -->
+      <button id="title-credits-btn" class="title-credits-btn">View Credits</button>
     </div>
 
     <!-- Launch options: every pre-game choice, plus the Start Game button.

@@ -1198,6 +1198,26 @@ window.GameEngine = window.GameEngine || {};
       } catch (err) {
         console.error(`Build-queue error for ${civ.id}:`, err);
       }
+
+      // City automation: a city the player
+      // flagged `automated` runs one of the three non-production city
+      // actions for itself (culture / gather / research -- never a build,
+      // see cities.js's runCityAutomation). Runs here, in the same
+      // "production is a rule of the game" slot as the build queues just
+      // above, and specifically AFTER them so a city with a build already
+      // queued is correctly seen as having its production spoken for.
+      //
+      // Wrapped in its own try so an error in one city's automation can't
+      // take down the rest of the human civ's turn setup -- same
+      // containment the build-queue tick above already gets.
+      try {
+        for (const city of civ.cities) {
+          if (!city.automated) continue;
+          window.GameEngine.cities.runCityAutomation(civ, city, gameState);
+        }
+      } catch (err) {
+        console.error(`City-automation error for ${civ.id}:`, err);
+      }
     }
 
     // humanCivId threaded onto the returned turnCtx purely so finishCivTurn

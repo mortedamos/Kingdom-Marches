@@ -7491,14 +7491,32 @@ window.GameEngine = window.GameEngine || {};
 
   /** Monster spawning (see doc/world_encounters_design.md) -- called once
    *  per round from turns.js's beginRound. Spawns at most one monster per
-   *  round: rolls BASE_SPAWN_CHANCE * (1 - exploredFraction) once the
-   *  population cap allows room, where exploredFraction is the share of
-   *  LAND tiles explored by ANY real civ (union, Monsters' own explored set
-   *  deliberately excluded from that union -- see the comment below). On
-   *  success, places one monster on a uniformly random LAND tile that no
-   *  real civ has explored yet, matching that tile's terrain via
-   *  GameData.MONSTER_TERRAIN. No water spawns (MONSTER_TERRAIN simply has
-   *  no ocean/coast entries, so those tiles never become candidates). */
+   *  round: rolls max(MIN_SPAWN_CHANCE, BASE_SPAWN_CHANCE * (1 -
+   *  exploredFraction)) once the population cap allows room, where
+   *  exploredFraction is the share of LAND tiles explored by ANY real civ
+   *  (union, Monsters' own explored set deliberately excluded from that
+   *  union -- see the comment below). On success, places one monster on a
+   *  uniformly random LAND tile that no real civ can currently SEE, matching
+   *  that tile's terrain via GameData.MONSTER_TERRAIN. No water spawns
+   *  (MONSTER_TERRAIN simply has no ocean/coast entries, so those tiles
+   *  never become candidates).
+   *
+   *  2026-08-17, two changes, both aimed at the world going completely
+   *  silent by mid-game:
+   *
+   *  1. Candidates are now tiles not CURRENTLY VISIBLE (gameState.visibility,
+   *     refreshed every round by turns.js's refreshVisibility) rather than
+   *     tiles never EXPLORED. Explored-ness is permanent and monotonic, so
+   *     the old rule meant that once the map had been walked over, there was
+   *     literally nowhere left a monster could ever spawn again -- a hard
+   *     zero independent of the roll below. Visibility is transient, so the
+   *     unwatched backcountry becomes spawnable again the moment a civ's
+   *     units move on, which is both the intended "wilderness reclaims what
+   *     you don't hold" flavor and a supply of candidates that never dries
+   *     up. Nothing spawns in view of a real civ, so a monster still never
+   *     materializes in front of a watching player.
+   *  2. The spawn chance is floored (see config.js's minSpawnChance) instead
+   *     of decaying linearly to exactly 0 as exploredFraction -> 1. */
   function maybeSpawnMonster(gameState) {
     const cfg = window.GameConfig.worldEncounters.monsters;
     const civ = ensureMonsterCiv(gameState);
@@ -7515,21 +7533,33 @@ window.GameEngine = window.GameEngine || {};
     if (civ.units.length >= cap) return;
 
     // Single pass: tallies totalLand/exploredLand for the spawn-chance
-    // fraction AND collects this round's spawn candidates (unexplored land
-    // tiles with a monster type and no monster already standing there) at
-    // the same time. Monsters' own explored set is deliberately excluded
-    // from `realCivIds` -- "uncovered" means unexplored by any REAL civ;
-    // whether the Monsters pseudo-civ itself has "seen" a tile isn't part
-    // of what makes ground count as the untamed frontier.
+    // fraction AND collects this round's spawn candidates (land tiles with a
+    // monster type, not currently visible to any real civ, and with no
+    // monster already standing there) at the same time. Monsters' own
+    // explored/visibility sets are deliberately excluded from `realCivIds` --
+    // "unwatched" means unseen by any REAL civ; whether the Monsters
+    // pseudo-civ itself can see a tile isn't part of what makes ground count
+    // as the untamed frontier.
+    //
+    // Note the two sets serve DIFFERENT jobs and are deliberately not
+    // merged: `explored` (permanent, monotonic) still drives the
+    // exploredFraction falloff below, because "how much of the world has
+    // been tamed" is genuinely a cumulative question; `visibility`
+    // (transient, recomputed every round) drives candidacy, because "is
+    // anyone watching this spot right now" is genuinely a momentary one.
     const realCivIds = Object.keys(civs).filter((cId) => cId !== MONSTER_CIV_ID);
+    const visibility = gameState.visibility || {};
     let totalLand = 0, exploredLand = 0;
     const uncoveredCandidates = [];
     for (let i = 0; i < map.tiles.length; i++) {
       const tile = map.tiles[i];
       if (!window.GameEngine.worldgen.isLand(tile)) continue;
       totalLand++;
-      const seenByAny = realCivIds.some((cId) => explored[cId] && explored[cId].has(i));
-      if (seenByAny) { exploredLand++; continue; }
+      if (realCivIds.some((cId) => explored[cId] && explored[cId].has(i))) exploredLand++;
+      // Candidacy is visibility-based, and is checked independently of the
+      // explored tally above -- an explored-but-no-longer-watched tile is a
+      // perfectly good spawn site, which is the entire point of the change.
+      if (realCivIds.some((cId) => visibility[cId] && visibility[cId].has(i))) continue;
       if (!window.GameData.MONSTER_TERRAIN[tile.terrain]) continue;
       const x = i % map.width, y = Math.floor(i / map.width);
       if (civ.units.some((u) => u.x === x && u.y === y)) continue; // already a monster here
@@ -7537,7 +7567,7 @@ window.GameEngine = window.GameEngine || {};
     }
 
     const exploredFraction = totalLand > 0 ? exploredLand / totalLand : 0;
-    const spawnChance = cfg.baseSpawnChance * (1 - exploredFraction);
+    const spawnChance = Math.max(cfg.minSpawnChance || 0, cfg.baseSpawnChance * (1 - exploredFraction));
     if (Math.random() >= spawnChance) return;
     if (!uncoveredCandidates.length) return;
 

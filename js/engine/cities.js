@@ -18,15 +18,27 @@ window.GameEngine = window.GameEngine || {};
   // one stay attached to the code that actually uses them.
   const CFG = window.GameConfig.city;
 
-  // Quadratic, not linear: threshold = population^2 * GROWTH_THRESHOLD_PER_POP
-  // (see tickCity). This deliberately mirrors the geometry of the merged
-  // radius/yield system -- a city's worked-tile AREA already grows quadratically
-  // with radius/population ((2r+1)^2 tiles), so a linear threshold meant each
+  // Super-linear, not linear: threshold =
+  // population^GROWTH_THRESHOLD_EXPONENT * GROWTH_THRESHOLD_PER_POP (see
+  // tickCity). This mirrors the geometry of the merged radius/yield system --
+  // a city's worked-tile AREA already grows quadratically with
+  // radius/population ((2r+1)^2 tiles), so a linear threshold meant each
   // successive population level was effectively CHEAPER relative to the
   // resources available to reach it, causing growth to visibly accelerate
-  // late-game. Matching the threshold's growth rate to the area's growth rate
-  // keeps the pace roughly constant across levels instead of snowballing.
+  // late-game.
+  //
+  // The exponent was a hardcoded 2.0 (exactly matching that area growth)
+  // until 2026-08-17. Full quadratic assumed growth was the ONLY brake on
+  // the area feedback loop -- but advanceCityFill below is a second,
+  // independent, and much harder brake on the same loop (an unfilled tile
+  // pays no yield at all, so the quadratic area this was sized against is
+  // never actually realized). Braking twice made every pop level take
+  // strictly longer than the last and was a primary cause of mid-game drag.
+  // Now config-driven and lowered to 1.6 -- still rising, no longer
+  // compounding. See config.js's own doc comment, and FILL_RATE_RADIUS_SCALE
+  // below, which was tuned in the same pass and should be tuned with it.
   const GROWTH_THRESHOLD_PER_POP = CFG.growthThresholdPerPop;
+  const GROWTH_THRESHOLD_EXPONENT = CFG.growthThresholdExponent;
   // Cap on a city's NATURAL (population-driven) growth and radius. This is
   // not a hard ceiling on city.influenceRadius itself -- tech/building radius
   // bonuses (extraRadiusBonus/structureRadiusBonus) still add on top, uncapped
@@ -89,6 +101,18 @@ window.GameEngine = window.GameEngine || {};
   // partway back up from the doubled rate's 2.5/1.4, but still faster than
   // the original 5.0/2.9. Placeholder values pending playtesting, same as
   // GROWTH_THRESHOLD_PER_POP above.
+  //
+  // Radius scaling (2026-08-17): the two rates above are flat, but a
+  // radius-R city's outermost ring holds 8R tiles -- so an unscaled rate
+  // means every successive ring takes strictly LONGER than the one before,
+  // and a city's borders grind to a halt exactly as it gets big enough to
+  // matter. Since an unfilled tile projects no influence (the victory
+  // metric) and pays no yield (growth), that made fill-in the dominant
+  // mid-game brake AND one that tightened over time. This multiplier
+  // compensates by scaling the rate with the city's current radius -- see
+  // config.js's fillRateRadiusScale for the full derivation and the
+  // 0/0.5/1.0 tuning points.
+  const FILL_RATE_RADIUS_SCALE = CFG.fillRateRadiusScale;
 
   // Universal garrison rule (2026-07-12) -- see advanceCityFill below for
   // the full reasoning. 0.5 means a max-industriousness civ (Halfellow,
@@ -501,6 +525,20 @@ window.GameEngine = window.GameEngine || {};
     return { ok: true };
   }
 
+  /**
+   * Harvest surplus a city must bank to reach its NEXT population level from
+   * `population`. The single shared copy of this formula: tickCity spends
+   * against it, and sidebar.js's city panel draws the growth progress bar
+   * from it. sidebar.js used to keep its own inline `pop * pop * (...|| 400)`
+   * duplicate, which silently disagreed with the engine the moment the
+   * exponent stopped being 2 -- exactly the kind of second copy config.js's
+   * "there is no second copy of any of these anywhere else" note exists to
+   * prevent.
+   */
+  function growthThresholdFor(population) {
+    return Math.pow(population, GROWTH_THRESHOLD_EXPONENT) * GROWTH_THRESHOLD_PER_POP;
+  }
+
   /** Per-turn city tick: growth, upkeep, intrinsic output. Mutates city. */
   function tickCity(city, civ, map) {
     const race = window.GameData.getRace(civ.raceId);
@@ -534,7 +572,7 @@ window.GameEngine = window.GameEngine || {};
     const attacked = !!city.attackedThisTurn;
     city.attackedThisTurn = false;
     if (city.population < MAX_CITY_POPULATION && !attacked) {
-      const threshold = city.population * city.population * GROWTH_THRESHOLD_PER_POP;
+      const threshold = growthThresholdFor(city.population);
       if (city.harvestSurplus >= threshold) {
         city.harvestSurplus -= threshold;
         city.population += 1.0;
@@ -705,9 +743,16 @@ window.GameEngine = window.GameEngine || {};
    * all agree on the same answer. `availableBuilds` is the expensive part
    * (iterates every unlocked unit/building) and only runs once the cheap
    * checks above have already ruled the city in.
+   *
+   * An AUTOMATED city is never idle: the
+   * player has explicitly delegated this city's per-turn decision, so
+   * nagging them to come make it anyway defeats the entire point of the
+   * toggle. Checked first, ahead of even the buildQueue test, since it
+   * short-circuits regardless of what the city happens to be doing.
    */
   function isCityIdle(civ, city, gameState) {
-    if (!civ || !city || city.buildQueue) return false;
+    if (!civ || !city || city.automated) return false;
+    if (city.buildQueue) return false;
     if (isProducingResources(city, gameState)) return false;
     if (isBoostingResearch(city, gameState)) return false;
     if (isSpreadingCulture(city, gameState)) return false;
@@ -797,6 +842,149 @@ window.GameEngine = window.GameEngine || {};
 
     window.GameEngine.floatingText.spawnFloatingText(city, "Culture Spreading", "resource");
     return cost;
+  }
+
+  /**
+   * CITY AUTOMATION (2026-08-17, user-directed)
+   * -------------------------------------------
+   * A city the player has flagged `city.automated` picks and runs ONE of the
+   * three non-production city actions for itself every turn, forever, until
+   * the player turns it off. The unit-side counterpart of `unit.automated`
+   * (see main.js's toggleAutomateUnit and ai.js's runAutomatedUnitTurn), and
+   * deliberately the same plain-boolean-on-the-object shape, so savegame.js's
+   * whole-object JSON round-trip persists it with no serializer changes.
+   *
+   * Deliberately NEVER produces units or buildings. That's the entire point
+   * of the separation: what to BUILD is the interesting decision a player
+   * actually wants to keep making, while "should this city gather, research,
+   * or push culture this turn" is the repetitive bookkeeping that makes a
+   * large empire tedious. An automated city that queued builds on its own
+   * would be taking over the fun part.
+   *
+   * Priority, per the requested design:
+   *   1. Spread Culture, whenever the civ can afford it.
+   *   2. Gather Resources, when the stockpile can't currently cover the most
+   *      expensive unit this city has unlocked -- i.e. automation banks
+   *      toward being ABLE to build the civ's best unit, without ever
+   *      building one itself.
+   *   3. Research, as the fallback once neither of the above applies.
+   *
+   * NOTE on (1): Spread Culture is paid from the stockpile and does NOT
+   * consume the city's production for the turn (see applyCultureSpread's own
+   * doc comment), unlike Gather/Research which do. Since a solvent civ can
+   * usually afford culture every turn, an automated city will in practice
+   * spend most turns on culture alone and leave its production slot idle.
+   * That follows the requested "choose from ... cultural influence if
+   * affordable" ordering exactly, and is called out here rather than
+   * silently "improved" -- see runCityAutomation's own note for the one-line
+   * change that would let culture and a production action both fire.
+   */
+
+  /** The most expensive single unit `city` could currently build, by total
+   *  resource cost, or null if this city has no buildable unit at all.
+   *  Naval units are excluded for a landlocked city by availableBuilds
+   *  itself, so this never targets something unbuildable here. */
+  function mostExpensiveUnlockedUnitCost(civ, city, gameState) {
+    const builds = window.GameEngine.ai.availableBuilds(civ, city, gameState);
+    let best = null, bestTotal = -1;
+    for (const opt of builds) {
+      if (opt.kind !== "unit" || !opt.cost) continue;
+      const total = (opt.cost.harvest || 0) + (opt.cost.coin || 0) + (opt.cost.lore || 0);
+      if (total > bestTotal) { bestTotal = total; best = opt.cost; }
+    }
+    return best;
+  }
+
+  /** Which automated action `city` should take this turn, or null if none is
+   *  currently possible. Pure -- the ring menu and sidebar call this to label
+   *  the toggle, so it must not mutate anything. */
+  function cityAutomationChoice(civ, city, gameState) {
+    if (!civ || !city) return null;
+
+    // 1. Culture, whenever affordable. Checked against the turn stamp
+    //    applyCultureSpread would actually WRITE (see runCityAutomation's
+    //    targetTurn note) rather than the current turn, so a city that
+    //    already has this turn's boost banked doesn't re-pick it and then
+    //    silently no-op.
+    const cultureTurn = (gameState.turnNumber || 0) + 1;
+    if (city.cultureSpreadTurn !== cultureTurn) {
+      const cost = spreadCultureCost(city);
+      const stock = civ.stockpile || {};
+      if (Object.entries(cost).every(([k, v]) => (stock[k] || 0) >= v)) return "culture";
+    }
+
+    // 2. Gather, while the stockpile can't cover this city's best unit.
+    //    Skipped outright if the city's production is already spoken for
+    //    this turn (a queued build, or an action already taken), since
+    //    applyResourceProduction would refuse anyway.
+    const productionFree = !city.buildQueue
+      && !isProducingResources(city, gameState) && !isBoostingResearch(city, gameState);
+    if (productionFree) {
+      const target = mostExpensiveUnlockedUnitCost(civ, city, gameState);
+      const stock = civ.stockpile || {};
+      const shortOnUnit = target && Object.entries(target).some(([k, v]) => (stock[k] || 0) < v);
+      if (shortOnUnit) {
+        // resourceProductionPreview is 0 for a city founded this turn (no
+        // lastYield yet); applyResourceProduction rejects that case, so don't
+        // pick it either -- fall through to research instead.
+        const gain = resourceProductionPreview(city);
+        if (gain.harvest || gain.coin || gain.lore) return "resources";
+      }
+
+      // 3. Research fallback -- only meaningful while something is actually
+      //    in progress to accelerate.
+      if (civ.currentResearch) return "research";
+
+      // Nothing to research: gathering is still strictly better than idling,
+      // even with the unit target already affordable.
+      const gain = resourceProductionPreview(city);
+      if (gain.harvest || gain.coin || gain.lore) return "resources";
+    }
+
+    return null;
+  }
+
+  /**
+   * Runs one automated turn for `city`. Called once per city per turn from
+   * turns.js's beginCivTurn (human branch), right after the build queues
+   * tick -- city production is a rule of the game, not an AI behavior, and
+   * this is the same reasoning that puts progressBuildQueues there.
+   *
+   * Returns the action string actually performed, or null if nothing was.
+   *
+   * `targetTurn` on the culture branch: beginCivTurn fires AFTER this
+   * round's computeInfluenceMap has already resolved, so stamping the
+   * CURRENT turn number would land the boost on a round that's already been
+   * scored and silently do nothing. Passing turnNumber + 1 lands it on the
+   * next resolution instead -- the identical adjustment ai.js already makes
+   * for the same reason (see applyCultureSpread's doc comment).
+   *
+   * To let culture AND a production action both fire in one turn (see the
+   * NOTE in the section header above), this would become two sequential
+   * checks rather than one switch -- culture first, then re-ask
+   * cityAutomationChoice for the production half.
+   */
+  function runCityAutomation(civ, city, gameState) {
+    if (!civ || !city || !city.automated) return null;
+    const choice = cityAutomationChoice(civ, city, gameState);
+    if (!choice) return null;
+
+    if (choice === "culture") {
+      return applyCultureSpread(city, civ, gameState, (gameState.turnNumber || 0) + 1) ? "culture" : null;
+    }
+    if (choice === "resources") {
+      return applyResourceProduction(city, civ, gameState) ? "resources" : null;
+    }
+    if (choice === "research") {
+      const result = applyResearchBoost(city, civ, gameState);
+      // Same completion bookkeeping main.js's handleCityResearch does for a
+      // manual boost -- finishing a tech this way must still raise the
+      // "research complete" dialog via civ.lastCompletedTech, which
+      // finishRoundBookkeeping reads and clears each round.
+      if (result && result.completed) civ.lastCompletedTech = result.techId;
+      return result ? "research" : null;
+    }
+    return null;
   }
 
   /**
@@ -900,8 +1088,18 @@ window.GameEngine = window.GameEngine || {};
     // a Halfellow city with BOTH Community Fellowship AND a garrison compounds
     // both bonuses, reinforcing "garrison your cities" as a real strategy for
     // exactly the civ whose whole identity is influence-by-economy.
+    // Radius scaling: compensates for the outermost ring holding 8R tiles,
+    // so time-per-RING stays roughly flat instead of climbing with every
+    // ring the city adds -- see FILL_RATE_RADIUS_SCALE's own comment above
+    // and config.js's fillRateRadiusScale. Uses the same `radius` the
+    // candidate scan above already read from city.influenceRadius, so the
+    // multiplier always matches the ring set actually being filled. Floored
+    // at radius 1 by (radius - 1), i.e. a pop-1 city fills at exactly the
+    // unscaled base rate, unchanged from before this existed.
+    const radiusMult = 1 + Math.max(0, radius - 1) * FILL_RATE_RADIUS_SCALE;
     city.fillProgress = (city.fillProgress || 0)
-      + (FILL_RATE_BASE + industriousness * FILL_RATE_PER_INDUSTRIOUSNESS) * garrisonMult * (civ.fillRateMult || 1);
+      + (FILL_RATE_BASE + industriousness * FILL_RATE_PER_INDUSTRIOUSNESS)
+        * radiusMult * garrisonMult * (civ.fillRateMult || 1);
 
     while (city.fillProgress >= FILL_THRESHOLD && candidates.length > 0) {
       city.fillProgress -= FILL_THRESHOLD;
@@ -1215,6 +1413,8 @@ window.GameEngine = window.GameEngine || {};
     spreadCultureCost,
     isSpreadingCulture,
     applyCultureSpread,
+    cityAutomationChoice,
+    runCityAutomation,
     isCityIdle,
     computeWorkedTileYield,
     computeTileActualYield,
@@ -1237,9 +1437,12 @@ window.GameEngine = window.GameEngine || {};
     MIN_CITY_SPACING,
     EMERGENCY_CITY_SPACING,
     GROWTH_THRESHOLD_PER_POP,
+    GROWTH_THRESHOLD_EXPONENT,
+    growthThresholdFor,
     MAX_CITY_POPULATION,
     FILL_THRESHOLD,
     FILL_RATE_BASE,
     FILL_RATE_PER_INDUSTRIOUSNESS,
+    FILL_RATE_RADIUS_SCALE,
   };
 })();

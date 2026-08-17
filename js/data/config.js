@@ -65,9 +65,9 @@ window.GameConfig = {
     /** Local date this build was cut, YYYY-MM-DD. */
     date: "2026-08-17",
     /** Local time this build was cut, 24-hour HH:MM. */
-    time: "18:49",
+    time: "19:42",
     /** Monotonic build counter -- increment it, don't recompute it. */
-    number: 119,
+    number: 120,
   },
 
   // =========================================================================
@@ -128,11 +128,30 @@ window.GameConfig = {
   // Growth pace, yields, and how quickly a city's radius fills in.
   // =========================================================================
   city: {
-    /** Growth is quadratic: harvest needed for the next pop level is
-     *  population^2 * this. Quadratic deliberately mirrors the worked-tile
-     *  AREA also growing quadratically with radius, which is what stops
-     *  growth from accelerating away late-game. */
+    /** Harvest needed for the next pop level is
+     *  population^growthThresholdExponent * growthThresholdPerPop.
+     *
+     *  The exponent used to be a hardcoded 2.0 (pure quadratic), on the
+     *  reasoning that it "mirrors the worked-tile AREA also growing
+     *  quadratically with radius, which is what stops growth from
+     *  accelerating away late-game." That reasoning treats growth as the
+     *  only brake on the area feedback loop -- but the FILL-IN system below
+     *  is already a second, independent brake on the exact same loop, and a
+     *  much harder one: an unfilled tile pays no yield at all, so the
+     *  quadratic area a quadratic threshold was sized against is never
+     *  actually realized in the first place. The two together made each
+     *  successive pop level take strictly longer than the last (at ~25-30
+     *  harvest/turn: pop 3->4 ~32 turns, 4->5 ~46, 5->6 ~56), which is what
+     *  made the mid-game drag.
+     *
+     *  Lowered to 1.6 (2026-08-17) so the curve still rises -- bigger cities
+     *  still cost more to grow -- without compounding against fill-in's own
+     *  deceleration. At 1.6 the thresholds run 100/303/580/919/1313 instead
+     *  of 100/400/900/1600/2500, roughly a 40% cut to the total harvest
+     *  needed to reach max population. Paired deliberately with
+     *  fillRateRadiusScale below; tune the two together, not separately. */
     growthThresholdPerPop: 100.0,
+    growthThresholdExponent: 1.6,
 
     /** Cap on NATURAL (population-driven) growth and radius. Tech/building
      *  radius bonuses still stack on top of this, uncapped. */
@@ -199,6 +218,27 @@ window.GameConfig = {
     fillThreshold: 3,
     fillRateBase: 0.75,
     fillRatePerIndustriousness: 0.9,
+
+    /** How much the fill rate above scales with the city's CURRENT radius:
+     *  the per-turn rate is multiplied by (1 + (influenceRadius - 1) * this).
+     *
+     *  Why this exists (2026-08-17): the base rate is flat, but the number of
+     *  tiles in a radius-R city's outermost ring is 8R -- so with no scaling
+     *  at all, each successive ring takes strictly longer to fill than the
+     *  one before it, and a city's borders visibly grind to a halt exactly as
+     *  it gets big enough to matter. Since an unfilled tile projects NO
+     *  influence (the victory metric) and pays NO yield (growth), that made
+     *  fill-in the single dominant brake on the whole mid-game, and one that
+     *  tightened over time rather than easing.
+     *
+     *  At 1.0 the rate scales exactly with radius, making time-per-RING
+     *  constant (the fully-compensated case). 0.5 is the deliberate middle:
+     *  it roughly halves the deceleration without removing the brake
+     *  entirely -- a Human (industriousness 0.7) city reaches a full radius 4
+     *  in ~94 turns instead of ~178, with per-ring times of ~17/23/26/28
+     *  turns instead of ~17/35/52/70. Set to 0 to restore the old flat
+     *  behavior exactly. */
+    fillRateRadiusScale: 0.5,
 
     /** Garrisoning a city speeds its fill-in by (industriousness * this).
      *  0.5 means a max-industriousness civ gets +50%, a low one only +15%. */
@@ -449,12 +489,21 @@ window.GameConfig = {
        *  explicitly excluded from checkVictory/checkElimination in turns.js
        *  and never treated as a real kingdom anywhere in the UI. */
       civId: "MONSTERS",
-      /** Each turn, if under the population cap, spawn chance = this *
-       *  (1 - exploredFraction), where exploredFraction is the share of
-       *  LAND tiles explored by any civ. Linear falloff. Tuned so a fresh
-       *  game doesn't have a high chance of showing zero monsters through
-       *  its first few turns. */
+      /** Each turn, if under the population cap, spawn chance =
+       *  max(minSpawnChance, this * (1 - exploredFraction)), where
+       *  exploredFraction is the share of LAND tiles explored by any civ.
+       *  Linear falloff. Tuned so a fresh game doesn't have a high chance of
+       *  showing zero monsters through its first few turns. */
       baseSpawnChance: 0.15,
+      /** Floor under the falloff above (2026-08-17). Without it the spawn
+       *  chance decays to literally zero as the map gets explored, so the
+       *  wilderness threat was hard-wired to be an exploration-phase
+       *  mechanic that dissolved completely the moment exploration ended --
+       *  the world went quiet exactly when the mid-game began. This keeps a
+       *  steady trickle refilling the population cap (perKingdomCap below)
+       *  for the rest of the game. Set to 0 to restore the old
+       *  decays-to-nothing behavior. */
+      minSpawnChance: 0.04,
       /** Population cap = this * number of civs still alive (not
        *  eliminated). Shrinks as civs are eliminated. */
       perKingdomCap: 2,

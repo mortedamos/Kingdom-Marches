@@ -1115,6 +1115,23 @@ window.GameEngine = window.GameEngine || {};
       }
     }
 
+    // "Automate City": hands this city's
+    // turn-by-turn culture/gather/research decision to the engine until the
+    // player turns it back off -- see cities.js's runCityAutomation. Never
+    // builds anything, so it's offered unconditionally, including while a
+    // build is queued (the automation itself defers to a queued build; see
+    // cityAutomationChoice's productionFree check). Same wording convention
+    // as the unit-side "Automate Actions"/"Stop Automating" pair.
+    if (city.automated) {
+      const doing = cities.cityAutomationChoice(civ, city, gameState);
+      const doingLabel = doing === "culture" ? "Culture"
+        : doing === "resources" ? "Gathering"
+        : doing === "research" ? "Research" : "Idle";
+      options.push({ kind: "city:toggleAutomate", label: `Stop Automating (${doingLabel})` });
+    } else {
+      options.push({ kind: "city:toggleAutomate", label: "Automate City" });
+    }
+
     // "Next city needing production" -- same criteria main.js's
     // collectUnresolvedTurnWork nags about at End Turn. The target rides in
     // the kind string, the convention startChannel:<kind> already set.

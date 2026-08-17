@@ -494,6 +494,48 @@ html, body {
   font-size: 12px;
   margin-bottom: 8px;
 }
+/* Territorial-victory progress, in the always-visible sidebar footer -- see
+   sidebar.js's territoryHtml. Sits directly above End Turn so the win
+   condition is legible every turn instead of only from the Kingdom panel or
+   the Reports overlay. The fill measures progress toward the THRESHOLD, not
+   toward 100% of the map. */
+.territory-progress {
+  margin-bottom: 8px;
+}
+.territory-progress-label {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--text-dim);
+  margin-bottom: 4px;
+}
+/* Only rendered when another civ is actually ahead, so it reads as a warning
+   rather than a permanent fixture. */
+.territory-leader {
+  color: var(--text-dim);
+  opacity: 0.75;
+  white-space: nowrap;
+}
+.territory-progress-track {
+  height: 6px;
+  border-radius: 3px;
+  background: var(--bg-dark, rgba(0, 0, 0, 0.35));
+  border: 1px solid var(--border);
+  overflow: hidden;
+}
+.territory-progress-fill {
+  height: 100%;
+  background: var(--accent);
+  transition: width 200ms ease-out;
+}
+/* "Automated" banner row in the city panel's Building section -- see
+   sidebar.js's renderBuildSection. Accent-tinted so a delegated city is
+   distinguishable at a glance from one the player is still driving. */
+.city-automated-row {
+  color: var(--accent);
+}
 .end-turn-btn {
   width: 100%;
   padding: 12px;
@@ -1714,21 +1756,6 @@ html, body {
   cursor: pointer;
 }
 .launch-start-btn:hover { background: var(--accent-hover); }
-.launch-credits-btn {
-  width: 100%;
-  margin-top: 8px;
-  padding: 9px;
-  background: transparent;
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  color: var(--text-dim);
-  font-family: "Cinzel", Georgia, serif;
-  font-size: 13px;
-  letter-spacing: 0.08em;
-  cursor: pointer;
-  transition: border-color 0.2s, color 0.2s;
-}
-.launch-credits-btn:hover { border-color: var(--accent); color: var(--accent); }
 /* Build stamp -- date/time/build number under the Start Game button
    (2026-08-03, user-directed). Purely informational. */
 /* Build stamp -- lower-right corner of the base title screen (2026-08-07,
@@ -1745,6 +1772,33 @@ html, body {
   color: var(--text-dim);
   text-shadow: 0 1px 3px rgba(0, 0, 0, 0.7);
 }
+/* "View Credits" -- lower-left corner of the base title screen (2026-08-17,
+   user-directed: moved out of the Game Options modal's launch-actions row,
+   where .launch-credits-btn styled it as a full-width row under Start
+   Game). Mirrors title-build-stamp's own corner-pin treatment on the
+   opposite side, but this is a real, clickable control sitting directly on
+   the artwork rather than a passive label -- kept as a bordered button
+   (same subtle-until-hovered shape .launch-credits-btn had) with a text
+   shadow for legibility over the background image, matching
+   title-build-stamp's own shadow. */
+.title-credits-btn {
+  position: absolute;
+  left: 14px;
+  bottom: 10px;
+  z-index: 1;
+  padding: 6px 14px;
+  background: rgba(14, 16, 20, 0.35);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text-dim);
+  font-family: "Cinzel", Georgia, serif;
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  cursor: pointer;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.7);
+  transition: border-color 0.2s, color 0.2s;
+}
+.title-credits-btn:hover { border-color: var(--accent); color: var(--accent); }
 
 /* --- Credits crawl (2026-08-07, user-directed) --- */
 .credits-overlay {
