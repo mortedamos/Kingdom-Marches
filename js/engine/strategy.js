@@ -132,7 +132,31 @@ window.GameEngine = window.GameEngine || {};
    *  redirects that same energy into `consolidate` instead -- "stop
    *  expanding, hold what's left" is the actually-correct response to a
    *  losing streak, not "try to expand again." A civ that's flat or
-   *  growing (cityDelta >= 0) sees no change at all. */
+   *  growing (cityDelta >= 0) sees no change at all.
+   *
+   *  `runawayLeaderPressure` (2026-08-17): an additional, steeper conquest
+   *  pull for every civ that ISN'T leading, scaling with how close the
+   *  actual leader sits to VICTORY_SHARE_THRESHOLD (game_config.js
+   *  victory.shareThreshold) -- not just the raw gap to this one civ.
+   *  `trailingBonus` above caps at a flat 0.4 once the gap passes 20 points
+   *  and never scales further, so a leader closing in on outright victory
+   *  (e.g. 28% land share against a 30% threshold) pulled exactly as hard on
+   *  every trailing civ as one merely 20 points ahead of them -- nobody's
+   *  response actually escalated as the game-ending threat got more real,
+   *  which is how a single strong civ could snowball past every AI
+   *  opponent's military uncontested. Ramps from 0 once the leader clears
+   *  60% of the way to the threshold, up to a hard +1.5 as they reach it.
+   *
+   *  Deliberately gated to `cityGateShortfall === 0`: `cityGateBonus`'s
+   *  documented invariant above (see comment on `cityGateBonus` -- its
+   *  minimum of 1.5 is sized specifically to always beat conquest's OTHER
+   *  maximum of 1.4, `warlikeness + trailingBonus*warlikeness`) would break
+   *  if this new term could also push that same conquest score past 1.4 while
+   *  a real tech-driven city need was active. Restricting it to the
+   *  shortfall===0 case (where cityGateBonus is itself always 0, so there's
+   *  no competition to protect) keeps that guarantee exactly as tight as
+   *  before, rather than needing to re-derive a new, larger cityGateBonus
+   *  floor to compensate. */
   function macroGoalScores(civ, race, standing, cityGateShortfall = 0, cityDelta = 0) {
     const militarism = window.GameEngine.ai.effectiveMilitarism(civ);
     const expansionism = race.expansionism ?? 0.5;
@@ -147,8 +171,15 @@ window.GameEngine = window.GameEngine || {};
     const cityLossTaper = cityDelta < 0 ? Math.max(0, 1 + cityDelta * 0.25) : 1;
     const cityGateBonus = (cityGateShortfall > 0 ? 1.5 + (cityGateShortfall - 1) * 0.5 : 0) * cityLossTaper;
     const consolidateLossBonus = cityDelta < 0 ? Math.min(2, -cityDelta * 0.5) : 0;
+    // See this function's doc comment above for the full rationale and the
+    // cityGateShortfall===0 gating -- only active when cityGateBonus itself
+    // is guaranteed 0, so the two never compete.
+    const victoryThreshold = window.GameConfig.victory.shareThreshold;
+    const runawayLeaderPressure = (!isLeading && cityGateShortfall === 0)
+      ? Math.max(0, Math.min(1.5, (leadingShare / victoryThreshold - 0.6) * 3.75))
+      : 0;
     return {
-      conquest: warlikeness + trailingBonus * warlikeness,
+      conquest: warlikeness + (trailingBonus + runawayLeaderPressure) * warlikeness,
       expand: expansionism + trailingBonus * (1 - warlikeness) + cityGateBonus,
       consolidate: (industriousness + curiosity) / 2 + leadingBonus + consolidateLossBonus,
     };

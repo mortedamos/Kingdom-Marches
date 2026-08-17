@@ -398,10 +398,23 @@ window.GameEngine = window.GameEngine || {};
   // the roll below only ever fires for a unit already standing on its own
   // city tile, so Dwarf and Halfellow especially need a push here despite
   // already leaning on industriousness above. A flat multiplier on top of
-  // garrisonDesire, capped at 1.0, checked well after combat/vanguard/
-  // rush-to-defend priorities above.
-  const GARRISON_DESIRE_BOOST = 1.3;
-  const GARRISON_DESIRE_BOOST_DWARF_HALFELLOW = 1.6;
+  // garrisonDesire, checked well after combat/vanguard/rush-to-defend
+  // priorities above.
+  //
+  // 2026-08-17 rebalance: these used to be 1.3/1.6 with the result clamped
+  // at Math.min(1, ...) below -- max(militarism, industriousness*0.75) *
+  // boost cleared 1.0 outright for Elf, Dwarf, Orc, and Undead, so the clamp
+  // silently flattened 4 of the game's 6 races to an identical ~100%
+  // garrison-rest roll every single idle-on-city turn. That's a large chunk
+  // of why AI armies were observed sitting at home indefinitely instead of
+  // marching: militarism had stopped differentiating anything once boosted.
+  // Lowered so the clamp (now GARRISON_DESIRE_CEILING, not a hard 1.0) only
+  // engages at the extreme top of the scale, restoring a real spread --
+  // Orc ~0.9, Elf/Undead ~0.8, Dwarf ~0.81, Human ~0.6, Halfellow ~0.69 --
+  // instead of every high-militarism race reading identically.
+  const GARRISON_DESIRE_BOOST = 1.0;
+  const GARRISON_DESIRE_BOOST_DWARF_HALFELLOW = 1.15;
+  const GARRISON_DESIRE_CEILING = 0.95;
 
   /** Summed combat power of `civ`'s other military units within `radius` of
    *  (x,y), excluding `excludeUnit`. Used to size up allied backup on either
@@ -459,6 +472,19 @@ window.GameEngine = window.GameEngine || {};
       }
     }
 
+    // Known-territory pull (2026-08-17): how many enemy cities this civ has
+    // EVER seen (see beginAITurn's civ.lastKnownEnemyCities upkeep, already
+    // populated before chooseStrategy runs each civ-turn). scores.aggression
+    // below used to be driven ENTIRELY by nearbyEnemies -- hard zero whenever
+    // nothing enemy happened to be visible this instant -- which meant a
+    // "conquest" macroGoal doctrine (see engine/strategy.js) had nothing to
+    // multiply on any turn the AI couldn't currently see an opponent, so a
+    // civ whose whole doctrine was "go make war" would sit there scoring
+    // aggression=0 turn after turn once the front lines went quiet. Capped
+    // at 5 known cities so a huge, long-explored map doesn't produce an
+    // unbounded baseline.
+    const knownEnemyCityCount = civ.lastKnownEnemyCities ? Object.keys(civ.lastKnownEnemyCities).length : 0;
+
     // Score each focus — driven directly by personality traits so the
     // strategic focus reflects who this race actually is, not just situation.
     const militarism      = effectiveMilitarism(civ);
@@ -484,7 +510,11 @@ window.GameEngine = window.GameEngine || {};
       settle:     (cityCount < 3 || cityGateShortfall > 0 ? 15 : 5) * expansionism * 2 + (hasSettler ? 8 : 0),
       tech:       (!hasResearch ? 10 : 2) * curiosity * 2,
       military:   (militaryCount < militaryCap ? 12 : 4) * militarism * 2,
-      aggression: nearbyEnemies * 6 * agg,
+      // Currently-visible contact still dominates (6/enemy) when there IS
+      // any -- the known-territory term only fills in a modest baseline
+      // (1.5/known city, capped at 5) for when there isn't, so this never
+      // outweighs a real, immediate sighting.
+      aggression: (nearbyEnemies * 6 + Math.min(knownEnemyCityCount, 5) * 1.5) * agg,
     };
 
     // Sustained grand-strategy bias (see engine/strategy.js): a mild, multi-turn
@@ -530,7 +560,9 @@ window.GameEngine = window.GameEngine || {};
         : `expanding to ${cityCount + 1} cities`) + losingCitiesNote,
       tech:       hasResearch ? `advancing ${civ.currentResearch}` : `no research active`,
       military:   `${militaryCount} soldiers vs ${cityCount * 2} target`,
-      aggression: `${nearbyEnemies} enemies visible`,
+      aggression: nearbyEnemies > 0
+        ? `${nearbyEnemies} enemies visible`
+        : `${knownEnemyCityCount} known enemy cit${knownEnemyCityCount === 1 ? 'y' : 'ies'}, none visible right now`,
     };
 
     return { focus, reason: reasons[focus] };
@@ -3254,6 +3286,10 @@ window.GameEngine = window.GameEngine || {};
     };
     const militaryCount = civ.units.filter((u) => isMilitaryLand(u.typeId)).length
       + countQueuedUnits(civ, isMilitaryLand);
+    // Also hoisted (was local to the unlockedMilitary.length>0 block below) so
+    // the building-score floor further down can read it even when this civ
+    // has no unlocked military unit yet -- see that gate's own doc comment.
+    const hasAnyDefenderHere = civ.units.some((u) => u.x === city.x && u.y === city.y && isMilitaryLand(u.typeId));
 
     if (unlockedMilitary.length > 0) {
       // Army cap now scales with total population, not city count -- a civ
@@ -3535,11 +3571,25 @@ window.GameEngine = window.GameEngine || {};
       // could otherwise never clear the score needed to win the build slot
       // even once. Same "guarantee a floor" shape as the wall-gate and
       // utility-unit-taper precedents in this function.
-      const hasAnyDefenderHere = civ.units.some((u) => u.x === city.x && u.y === city.y && isMilitaryLand(u.typeId));
+      // (hasAnyDefenderHere itself is now hoisted above the
+      // `unlockedMilitary.length > 0` block -- see that hoist's own comment.)
       if (!hasBestDefenderHere && militaryCount < militaryCap) {
-        // Garrison score: weighted by militarism; threat raises it; scaled by economic sustainability
+        // Garrison score: weighted by militarism; threat raises it; scaled by
+        // economic sustainability and by this turn's doctrine/focus weight
+        // (weights.garrison -- see racialWeights and beginAITurn's `boosted`
+        // copy). Previously unread here despite chooseStrategy explicitly
+        // doubling it on a "military" focus turn -- the same class of dead
+        // wiring settleWeight's own doc comment (just below in this
+        // function, on the pioneer option) already called out and fixed for
+        // settling; garrison/offense had never gotten the equivalent fix.
+        // The UNDEFENDED floor stays intentionally unscaled by the weight --
+        // it's a correctness guarantee (a brand-new city must get SOME
+        // defender), not a personality preference, so an "explore" or
+        // "settle" focus turn that happens to depress weights.garrison must
+        // not be allowed to leave a zero-defender city unprotected.
+        const garrisonWeight = weights.garrison || 1.0;
         const UNDEFENDED_GARRISON_FLOOR_MILITARISM = 0.5;
-        const baseGarrisonScore = (militarism * 8 + (underThreat ? agg * 4 : 0)) * militaryEconMult;
+        const baseGarrisonScore = (militarism * 8 + (underThreat ? agg * 4 : 0)) * militaryEconMult * garrisonWeight;
         const garrisonScore = hasAnyDefenderHere ? baseGarrisonScore
           : Math.max(baseGarrisonScore, (UNDEFENDED_GARRISON_FLOOR_MILITARISM * 8 + agg * 4) * militaryEconMult);
         const opt = tryWithMiscreantFallback(bestDef, garrisonScore);
@@ -3548,16 +3598,28 @@ window.GameEngine = window.GameEngine || {};
 
       if (militaryCount < militaryCap) {
         const bestAtk = bestByValue(false);
-        // Offense score: low in peacetime, escalates under threat; scaled by economic sustainability.
+        // Offense score: low in peacetime, escalates under threat; scaled by
+        // economic sustainability and by weights.raid (aggressiveness*1.8 --
+        // see racialWeights -- previously computed every turn and never
+        // read anywhere, same dead-wiring class as garrisonWeight above).
         // Tech-gate awareness: don't keep growing an already-large peacetime
         // army while a tech is blocked purely on city count -- that's exactly
         // the mechanism that starves a militaristic race's economy of room
         // for the pioneer it needs (see pioneerTechGateBypass above). A real
         // threat still gets a full response; this only discounts the "build
         // more just because militarism is high" peacetime term.
+        // Floored at 0.6 (not just `|| 1.0`): racialWeights' raid = agg*1.8
+        // has no floor of its own and goes as low as ~0.18 for a
+        // low-aggressiveness race like Halfellow (agg 0.1) -- fine as a
+        // differentiator, but applied directly to a peacetime-vs-threat
+        // BUILD score it would gut even the underThreat response ("a real
+        // threat still gets a full response," per the comment above) down
+        // to near nothing. The floor keeps this a genuine 0.6x-1.62x dial,
+        // not a near-total kill switch for peaceful races under attack.
+        const raidWeight = Math.max(0.6, weights.raid || 1.0);
         const offenseScore = (underThreat
           ? militarism * 6 + agg * 6
-          : militarism * 5 * (cityGateShortfall > 0 ? 0.3 : 1.0)) * militaryEconMult;
+          : militarism * 5 * (cityGateShortfall > 0 ? 0.3 : 1.0)) * militaryEconMult * raidWeight;
         const opt = tryWithMiscreantFallback(bestAtk, offenseScore);
         if (opt) options.push(opt);
       }
@@ -3684,6 +3746,28 @@ window.GameEngine = window.GameEngine || {};
     }
 
     // Buildings (structures) — only this race's 4, placed on any tile adjacent to the city.
+    //
+    // Military floor (2026-08-17): the flat "+10" baseline below used to
+    // apply unconditionally, which structurally outscored the garrison/
+    // offense options above for any moderately industrious race regardless
+    // of militarism -- Orc's own offense score (militarism*5 = 4.5
+    // peacetime) could never win a build slot against a building with zero
+    // influenceValue at all (9*0.3 industriousness + flat 10 = 12.7), the
+    // same "walls always won" saturation the wall-vs-army gate further below
+    // was already written to fix, just never extended to ordinary buildings.
+    // Tapers the flat baseline down (not to zero -- an economy still needs
+    // SOME building path) while this city has no defender at all, scaled by
+    // militarism so a peaceful race (Halfellow) is barely affected and a
+    // militaristic one (Orc) sees buildings drop well behind its own
+    // garrison/offense scores until it's actually fielded a defender here.
+    // Reverts to the full flat baseline the instant hasAnyDefenderHere is
+    // true, so buildings compete normally again right after -- same
+    // "guarantee a floor, then get out of the way" shape as the undefended-
+    // garrison floor and utility-unit gate just above.
+    const BUILDING_READINESS_BASELINE = 10;
+    const buildingReadinessFloor = hasAnyDefenderHere
+      ? BUILDING_READINESS_BASELINE
+      : BUILDING_READINESS_BASELINE * (1 - militarism * 0.7);
     if (civ.unlockedBuildings) {
       for (const bId of civ.unlockedBuildings) {
         const building = window.GameData.getBuilding(bId);
@@ -3710,7 +3794,7 @@ window.GameEngine = window.GameEngine || {};
         // time regardless of current balance).
         const option = buildingOption(civ, bId);
         if (option.cost && !canAffordBuildCost(civ, option.cost)) continue;
-        options.push({ ...option, score: industriousness * 9 + 10 + influenceValue + deepGateBonus });
+        options.push({ ...option, score: industriousness * 9 + buildingReadinessFloor + influenceValue + deepGateBonus });
       }
     }
 
@@ -4592,7 +4676,7 @@ window.GameEngine = window.GameEngine || {};
       // militarism already dominates the max. See [[project_halfellow_tactics]].
       const garrisonDesireBoost = (civ.raceId === "dwarf" || civ.raceId === "halfellow")
         ? GARRISON_DESIRE_BOOST_DWARF_HALFELLOW : GARRISON_DESIRE_BOOST;
-      const garrisonDesire = Math.min(1,
+      const garrisonDesire = Math.min(GARRISON_DESIRE_CEILING,
         Math.max(militarism, industriousness * INDUSTRIOUSNESS_GARRISON_WEIGHT) * garrisonDesireBoost);
       const onOwnCity = civ.cities.some((c) => c.x === unit.x && c.y === unit.y);
       // Elf Raptor/Shadowsteed: never garrison.
@@ -4650,7 +4734,13 @@ window.GameEngine = window.GameEngine || {};
       const offenseRatio = militaryPostureFor(civ);
       const raidHealthFloor = unit.maxHp * 0.5;
       if (Math.random() < offenseRatio) {
-        if (unit.hp >= raidHealthFloor && huntEnemyInfrastructure(civ, unit, gameState)) continue;
+        if (unit.hp >= raidHealthFloor) {
+          // Muster check first (see maybeMusterBeforeOffensive's doc comment):
+          // a unit with no meaningful backup nearby rallies with allies
+          // instead of marching on the target alone.
+          if (maybeMusterBeforeOffensive(civ, unit, gameState, log)) continue;
+          if (huntEnemyInfrastructure(civ, unit, gameState)) continue;
+        }
       } else {
         // Dwarf "Deep Roads Rite": a unit already sitting on a Deep Gate
         // checks the network before falling back to an ordinary march.
@@ -8579,6 +8669,74 @@ window.GameEngine = window.GameEngine || {};
   }
 
   /**
+   * Muster before marching solo (2026-08-17): checked immediately before an
+   * offense-postured unit commits to huntEnemyInfrastructure's solo march on
+   * an enemy city. Idle military used to trickle toward the nearest target
+   * one unit at a time, entirely independently -- each arrived (and, for a
+   * numerically superior human player, died) alone rather than the AI ever
+   * fielding a real concentrated strike force. This gives a unit with no
+   * meaningful backup nearby a chance to walk toward its own strongest
+   * nearby ally cluster first and consolidate, instead of always marching
+   * straight at the target regardless of how alone it is.
+   *
+   * Not applied to Orc: "always looking for a fight" (see maybeOrcSwarm,
+   * checked much earlier in the per-unit cascade) already gives Orc its own
+   * civ-wide convergence signal every turn, and layering this on top would
+   * just fight it for the same turn's decision.
+   *
+   * Turn-capped per unit (MUSTER_HOLD_LIMIT), same shape as
+   * maybeHoldPillagePosition's own break-off counter just above: a unit that
+   * can never find anyone worth rallying with (the last survivor of its
+   * army, or one that keeps outrunning slower allies) commits to the
+   * ordinary solo march once the cap is hit rather than stalling forever.
+   */
+  const MUSTER_RADIUS = 6; // "already has backup" radius -- wider than SUPPORT_RADIUS's tactical 2
+  const MUSTER_SEARCH_RADIUS = 12; // how far afield to look for a stronger cluster to join
+  const MUSTER_HOLD_LIMIT = 4;
+  /** Backup needed before a unit is satisfied, as a multiple of its own
+   *  combat power. Scaled by aggressiveness: an aggressive race is content
+   *  with a smaller mob before committing (closer to Orc's own no-wait
+   *  posture); a measured race holds out for a bigger one. */
+  function musterThresholdFor(civ, ownPower) {
+    const agg = aggressivenessFor(civ);
+    return ownPower * (1.5 + (1 - agg) * 2.5);
+  }
+  function maybeMusterBeforeOffensive(civ, unit, gameState, log) {
+    if (civ.raceId === "orc") return false; // maybeOrcSwarm already owns this convergence
+    const ownPower = unitCombatPower(unit, civ);
+    if (ownPower <= 0) return false;
+    const nearbyPower = nearbyMilitaryPower(civ, unit.x, unit.y, MUSTER_RADIUS, unit);
+    if (nearbyPower >= musterThresholdFor(civ, ownPower)) {
+      unit._musterHoldTurns = 0;
+      return false; // already has enough backup -- proceed straight to the march
+    }
+    unit._musterHoldTurns = (unit._musterHoldTurns || 0) + 1;
+    if (unit._musterHoldTurns > MUSTER_HOLD_LIMIT) return false; // cap reached -- commit solo
+
+    // The single ally (beyond our own MUSTER_RADIUS huddle, so this doesn't
+    // just re-select the group we're already standing in) with the strongest
+    // local backup of its own is the real rally point.
+    const { map, civs } = gameState;
+    let best = null, bestPower = 0;
+    for (const u of civ.units) {
+      if (u === unit || u.carriedBy || u.carries || u.hp <= 0) continue;
+      const ud = window.GameData.getUnit(u.typeId);
+      if (ud.category !== "military" || ud.isNaval) continue;
+      const dist = window.GameEngine.influence.chebyshev(unit.x, unit.y, u.x, u.y);
+      if (dist <= MUSTER_RADIUS || dist > MUSTER_SEARCH_RADIUS) continue;
+      const clusterPower = nearbyMilitaryPower(civ, u.x, u.y, MUSTER_RADIUS, null);
+      if (clusterPower > bestPower) { bestPower = clusterPower; best = u; }
+    }
+    if (!best) return false; // nobody worth rallying with -- fall through to the ordinary march
+
+    moveUnitToward(unit, best.x, best.y, map, civs);
+    unit.usedThisTurn = true;
+    unit.currentMission = `Massing with allies near (${best.x},${best.y}) before advancing`;
+    log.push(`Muster: ${civ.id}'s ${describeUnit(unit)} holds back to mass with allies before advancing`);
+    return true;
+  }
+
+  /**
    * Seek-and-destroy: moves a unit toward the nearest visible enemy CITY (own
    * landmass only), so idle offense-postured units actively march on enemy
    * infrastructure instead of waiting for one to wander close. Getting
@@ -11944,6 +12102,7 @@ window.GameEngine = window.GameEngine || {};
     effectiveMilitarism,
     maybeCrusadeVanguard,
     moveTowardWithStandoff,
+    maybeMusterBeforeOffensive,
     chooseBuildAction,
     isNearActiveCombat,
     explorePostureFor,

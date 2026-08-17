@@ -653,6 +653,14 @@ window.UI = window.UI || {};
     return unit._effectPhase;
   }
 
+  /** Same idiom as conditionEffectPhase, keyed on a map TILE instead of a
+   *  unit -- lets a per-tile ambient animation (e.g. drawChestSparkle) pick
+   *  a stable random phase without every tile of the same kind syncing up. */
+  function tileEffectPhase(tile) {
+    if (tile._effectPhase == null) tile._effectPhase = Math.random() * Math.PI * 2;
+    return tile._effectPhase;
+  }
+
   /** Tints whatever's already drawn within (boxX,boxY,boxSize) using
    *  source-atop compositing directly on the given canvas -- only correct
    *  when nothing else opaque sits under that box. */
@@ -796,6 +804,29 @@ window.UI = window.UI || {};
     ctx.closePath();
     ctx.fill();
     ctx.restore();
+  }
+
+  const CHEST_SPARKLE_CYCLE_MS = 4200; // how often the glint catches the eye
+  const CHEST_SPARKLE_BURST_MS = 550; // how long each catch lasts
+
+  /** Treasure Chest: an occasional, subtle glint rather than a constant
+   *  glow -- most of the cycle draws nothing at all, unlike Level Up's
+   *  continuously-orbiting sparkles above, so it reads as "something
+   *  catching the light now and then" without competing for attention.
+   *  One point of light per burst, phase-shifted per tile (tileEffectPhase)
+   *  so a screen full of chests doesn't glint in unison. `boxX/boxY/sz` are
+   *  the exact box the chest icon itself was already drawn into (see
+   *  render.js's tileIconBox call) so the glint always lands on the icon
+   *  regardless of which of its 3 horizontal slots it's in, positioned
+   *  toward its upper-right corner the way a glint catches one edge of an
+   *  object rather than its center. */
+  function drawChestSparkle(ctx, tile, boxX, boxY, sz, now) {
+    const phase = tileEffectPhase(tile);
+    const t = (now + phase * 1000) % CHEST_SPARKLE_CYCLE_MS;
+    if (t > CHEST_SPARKLE_BURST_MS) return;
+    const burstT = t / CHEST_SPARKLE_BURST_MS;
+    const alpha = (burstT < 0.3 ? burstT / 0.3 : Math.max(0, 1 - (burstT - 0.3) / 0.7)) * 0.8;
+    drawSparkleMark(ctx, boxX + sz * 0.78, boxY + sz * 0.22, sz * 0.22 * alpha, alpha);
   }
 
   /** A handful of small gold sparkles orbiting the unit's box, each
@@ -1054,7 +1085,7 @@ window.UI = window.UI || {};
     drawQuipBubble, drawFloatingTexts, drawDeathEffects, drawDeathEffectAt,
     hasActiveQuip, hasActiveFloatingText, getActiveCombatAnims, getActiveAreaEffects, getActiveDeathEffects,
     getUnitShakeOffset, drawConditionVisualEffects, drawConditionBadges, drawChannelStashLabel, drawIdleCityBadge,
-    drawLevelUpGlowBehind, drawLevelUpSparkles,
+    drawLevelUpGlowBehind, drawLevelUpSparkles, drawChestSparkle,
     hexToRgba, drawHatch, drawConstructionSite, auraInfoForUnit, drawTileScoreOverlay,
     ATTACK_ANIM_MS, SLASH_ANIM_MS, AREA_EFFECT_ANIM_MS, AREA_EFFECT_COLORS, DEATH_EFFECT_ANIM_MS,
     // Exported so the Knowledge Base's Conditions page can read the same

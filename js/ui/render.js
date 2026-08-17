@@ -376,6 +376,11 @@ window.UI = window.UI || {};
             const sz = ts * iconScale;
             const { boxX, boxY } = tileIconBox(screenX, screenY, ts, sz, x, y);
             deferredIcons.push(() => ctx.drawImage(resSprite.image, f.sx, f.sy, f.sw, f.sh, boxX, boxY, sz, sz));
+            // Treasure Chest: an occasional glint on top of the icon --
+            // see overlays.js's drawChestSparkle.
+            if (tile.resource === "chest") {
+              deferredIcons.push(() => overlays.drawChestSparkle(ctx, tile, boxX, boxY, sz, performance.now()));
+            }
           } else {
             deferredIcons.push(() => {
               ctx.fillStyle = "#f0d060";
