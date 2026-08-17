@@ -77,7 +77,7 @@ window.UI = window.UI || {};
   }
 
   /** Every tile currently under `civ`'s influence within reach of `city`'s
-   *  own fill-in progress (2026-08-12, user-directed) -- built from
+   *  own fill-in progress -- built from
    *  city.filledOffsets (cities.js's gradual per-tile claim tracker, the
    *  same set influence.js's own territory math reads) rather than scanning
    *  the whole map, then filtered to tiles that are STILL actually owned by

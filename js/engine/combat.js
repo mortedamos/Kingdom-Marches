@@ -64,13 +64,12 @@ window.GameEngine = window.GameEngine || {};
   }
 
   /** Same pull-based queue pattern as pendingCombatEvents above, for a
-   *  momentary "this tile radius was just affected" highlight (2026-07-22,
-   *  user-directed) -- Blade Dancer's Whirlwind Strike/Blade Storm sweep and
-   *  Human Wizard's Fireball splash both cover an AREA rather than a single
-   *  attacker/defender pair, so the usual attack-slash animation alone
-   *  doesn't show a player which tiles were actually caught in it. `kind`
-   *  picks the highlight's color in render.js, same convention as
-   *  floatingtext.js's `kind`. */
+   *  momentary "this tile radius was just affected" highlight -- Blade
+   *  Dancer's Whirlwind Strike/Blade Storm sweep and Human Wizard's Fireball
+   *  splash both cover an AREA rather than a single attacker/defender pair,
+   *  so the usual attack-slash animation alone doesn't show a player which
+   *  tiles were actually caught in it. `kind` picks the highlight's color in
+   *  render.js, same convention as floatingtext.js's `kind`. */
   let pendingAreaEffectEvents = [];
 
   function spawnAreaEffect(x, y, radius, kind = "default") {
@@ -163,8 +162,8 @@ window.GameEngine = window.GameEngine || {};
     // (unless its own base is higher, per the tech's own wording "keeping
     // its own first strike if higher" -- the one stat where the Shadowsteed
     // doesn't fully defer to its passenger), plus a flat +2% on top while
-    // carrying (2026-07-21, user-directed, same "gains X while carrying a
-    // unit" shape as the attack/defense bonuses above).
+    // carrying (same "gains X while carrying a unit" shape as the
+    // attack/defense bonuses above).
     const mount = shadowsteedMount(unit);
     if (mount) {
       const ownBase = window.GameData.getUnit("shadowsteed").firstStrikePct || 0;
@@ -216,7 +215,7 @@ window.GameEngine = window.GameEngine || {};
   }
 
   /**
-   * DOUBLE STRIKE (2026-08-03, user-directed) -- a flat per-attack chance to
+   * DOUBLE STRIKE -- a flat per-attack chance to
    * immediately swing a SECOND time at the same target. The follow-up hit
    * provokes no counterattack of its own (the defender already answered the
    * first hit, if it was going to), and unlike Siege it works at any range:
@@ -247,8 +246,7 @@ window.GameEngine = window.GameEngine || {};
     // Orc "Violent Momentum": same temporary bump as First Strike above,
     // same source condition -- see ai.js's applyOrcCombatMechanics.
     pct += unit.conditions?.killMomentum?.doubleStrikePctBonus || 0;
-    // Veteran leveling -- see LEVELING section below (2026-08-03,
-    // user-directed: added as a 5th upgrade path).
+    // Veteran leveling -- see LEVELING section below.
     pct += unit.levelBonuses?.doubleStrikePct || 0;
     // A reanimated or befuddled unit can't manage a second swing, for the
     // same reason it loses First Strike -- overrides every source above.
@@ -289,22 +287,19 @@ window.GameEngine = window.GameEngine || {};
   const XP_LEVEL_THRESHOLDS = LVL_CFG.xpThresholds;
 
   // Per-level stat bonus for each of the 7 player/AI-chosen upgrade paths.
-  // Attack/Defense/visionRadius/movement are flat adds (visionRadius/
-  // movement joined 2026-08-07, user-directed, on the same flat convention
-  // -- see turns.js's visibility sum and ai.js's computeMovementBudget for
-  // where each is actually read) matching every other flat stat bonus in
+  // Attack/Defense/visionRadius/movement are flat adds (see turns.js's
+  // visibility sum and ai.js's computeMovementBudget for where visionRadius/
+  // movement are actually read) matching every other flat stat bonus in
   // the game (ov.attack, crusadeAura.attackBonus, etc). Siege/First Strike/
   // Double Strike are percentage-point bonuses (all already stored as 0-1
   // fractions everywhere else in the codebase) kept deliberately smaller
   // per-level than Attack/Defense's proportional impact: siegePct only ever
   // applies against structures, firstStrikePct compounds every round of a
-  // fight (see project_first_strike_redesign memory for why those values are
-  // already ~10x smaller than they used to be) -- a Paladin's base 6% would
-  // nearly triple by level 5 at +2%/level, so this is capped at +1%/level
-  // instead -- and doubleStrikePct is a whole extra swing's worth of value
-  // per point, so 7%/level (2026-08-07, user-directed -- raised from 3%)
-  // was picked to land in the same rough per-level weight class as the
-  // other two, not scaled to Attack/Defense's flat-point convention.
+  // fight, so a Paladin's base 6% would nearly triple by level 5 at
+  // +2%/level -- this is capped at +1%/level instead -- and doubleStrikePct
+  // is a whole extra swing's worth of value per point, so 7%/level was
+  // picked to land in the same rough per-level weight class as the other
+  // two, not scaled to Attack/Defense's flat-point convention.
   const LEVEL_BONUS_VALUES = LVL_CFG.bonusValues;
   const LEVEL_UP_STATS = Object.keys(LEVEL_BONUS_VALUES);
 
@@ -521,7 +516,7 @@ window.GameEngine = window.GameEngine || {};
    *  "Sneaking Around" (any unit) or Human's "Invisibility" (Wizard only).
    *  Either way: no existing Hidden/forcedVisible condition, and nothing
    *  enemy -- a unit, a city, or a structure (wall/building) -- on an
-   *  adjacent tile. The city/structure half (2026-07-22, user-directed) is
+   *  adjacent tile. The city/structure half is
    *  what a siege actually looks like: an attacker sits adjacent to the
    *  same wall or city tile turn after turn, and without this it could
    *  vanish and re-ambush between hits mid-siege the same way it could
@@ -529,7 +524,7 @@ window.GameEngine = window.GameEngine || {};
    *  isn't just "next to an enemy unit." */
   function canGoHidden(unit, civ, civs) {
     const mechanics = civ.unlockedMechanics;
-    // Halfellow "Sneaking Around" (2026-07-20, user-directed): narrowed to
+    // Halfellow "Sneaking Around": narrowed to
     // the Wanderer only, unlike Elf's own unlock of the identical shared
     // "sneaking_around" flag (elf_shadowed_hush_unseen), which stays
     // race-wide -- keyed off raceId here rather than splitting the mechanic
@@ -538,17 +533,17 @@ window.GameEngine = window.GameEngine || {};
     const hasSneak = !!(mechanics && mechanics.has("sneaking_around")
       && (civ.raceId !== "halfellow" || unit.typeId === "wanderer"));
     const hasInvisibility = !!(mechanics && mechanics.has("invisibility") && unit.typeId === "wizard");
-    // Halfellow "Making Trouble" (2026-07-24, user-directed): the Trouble
+    // Halfellow "Making Trouble": the Trouble
     // Maker's own innate stealth, same unit-restricted shape as Invisibility
     // above -- doesn't need Sneaking Around researched separately.
     const hasTroubleStealth = !!(mechanics && mechanics.has("making_trouble") && unit.typeId === "trouble_maker");
     // Halfellow "Keep an Eye Out": civ-wide, ANY Halfellow unit -- same
     // unrestricted shape as Elf's own sneaking_around unlock.
     const hasKeepWatch = !!(mechanics && mechanics.has("keep_an_eye_out") && civ.raceId === "halfellow");
-    // Orc "Bog Spirit" (2026-08-10, user-directed: "the wisp can hide"):
-    // the Wisp's own innate stealth, same unit-restricted shape as
-    // Invisibility/Trouble Maker above -- doesn't need Sneaking Around
-    // researched separately, just the summon tech that lets Wisps exist at all.
+    // Orc "Bog Spirit": the Wisp's own innate stealth, same unit-restricted
+    // shape as Invisibility/Trouble Maker above -- doesn't need Sneaking
+    // Around researched separately, just the summon tech that lets Wisps
+    // exist at all.
     const hasWispStealth = !!(mechanics && mechanics.has("wisp_summon") && unit.typeId === "wisp");
     if (!hasSneak && !hasInvisibility && !hasTroubleStealth && !hasKeepWatch && !hasWispStealth) return false;
     if (hasCondition(unit, "hidden") || hasCondition(unit, "forcedVisible")) return false;
@@ -602,9 +597,8 @@ window.GameEngine = window.GameEngine || {};
   /** Computes a unit's current attack stat with race + tech-override modifiers */
   function effectiveAttack(unit, civ, context = {}) {
     // Elf "Shadowsteed": mounted, it fights with its RIDER's attack, +3 flat
-    // on top of that (its own "gains 3 attack while carrying a unit",
-    // raised 2026-07-21, user-directed) -- see the tech's wording and
-    // shadowsteedMount's doc comment above.
+    // on top of that (its own "gains 3 attack while carrying a unit" -- see
+    // the tech's wording and shadowsteedMount's doc comment above).
     const mount = shadowsteedMount(unit);
     if (mount) return effectiveAttack(mount, civ, context) + 3;
 
@@ -692,8 +686,7 @@ window.GameEngine = window.GameEngine || {};
 
   function effectiveDefense(unit, civ, context = {}) {
     // Elf "Shadowsteed": mounted, it fights with its RIDER's defense, +2 flat
-    // on top of that (its own "gains ... 2 defense while carrying a unit",
-    // raised 2026-07-21, user-directed).
+    // on top of that (its own "gains ... 2 defense while carrying a unit").
     const mount = shadowsteedMount(unit);
     if (mount) return effectiveDefense(mount, civ, context) + 2;
 
@@ -713,7 +706,7 @@ window.GameEngine = window.GameEngine || {};
     // Hidden: staying concealed means fighting from cover/surprise -- +50% defense.
     if (unit.conditions?.hidden) def *= 1.5;
 
-    // "Defend" (2026-07-20, user-directed): a universal normal action, any
+    // "Defend": a universal normal action, any
     // race/unit -- braces in place for x2 defense until the start of this
     // unit's own next turn (see ai.js's performDefend, which sets the
     // condition with an expiresAtTurn ticked by tickConditions). Stacks
@@ -1000,7 +993,7 @@ window.GameEngine = window.GameEngine || {};
         return { damage: 0, negated: true, missed: false };
       }
       let damage = mitigatedDamage(atkStat, defStat);
-      // Elf "Whirlwind Strike"/"Blade Storm" (2026-07-20, user-directed):
+      // Elf "Whirlwind Strike"/"Blade Storm":
       // an AoE normal action that deals a FRACTION of a normal hit's
       // damage to every target in range -- scaled here, post-mitigation
       // (a straightforward "% of normal damage" reading), rather than by
@@ -1171,7 +1164,7 @@ window.GameEngine = window.GameEngine || {};
     if (race.noHealing) {
       // Undead only heal when standing on a ruin tile
       if (race.ruinHeal && tile && tile.isRuin) {
-        // Minimum 1 HP (2026-08-03, user-directed): a percentage-of-maxHp
+        // Minimum 1 HP: a percentage-of-maxHp
         // roll can round to 0 on a small unit/low roll, which reads as
         // "healing did nothing" -- every heal that actually triggers should
         // visibly do SOMETHING.
@@ -1201,7 +1194,7 @@ window.GameEngine = window.GameEngine || {};
     // only caller that passes a non-default extraMult).
     multiplier *= extraMult;
     const pct = multiplier * roll3d6();
-    // Minimum 1 HP (2026-08-03, user-directed) -- a low roll on a small unit
+    // Minimum 1 HP -- a low roll on a small unit
     // (e.g. a 3-maxHP Scout resting at the 2x field rate) could round this to
     // 0, which reads as Rest having silently done nothing at all.
     const healAmount = Math.max(1, Math.round((unit.maxHp * pct) / 100));
@@ -1214,23 +1207,18 @@ window.GameEngine = window.GameEngine || {};
   /**
    * Halfellow "Rouse the People": once researched, a defended city/wall/
    * building fights back. Gains an attack stat (at least the Militia's,
-   * never less than whatever it already had) -- the former +150% multiplier
-   * on top of that has been removed. No First-Strike discount (2026-07-19,
-   * user-directed removal -- this used to shave 25% off a First-Strike
-   * attacker's incoming counter damage; Human's Ramparts still has its own
-   * separate copy of that discount in wallCounterattack below, untouched). A
-   * deliberate, confirmed exception to "structures never counterattack"
-   * everywhere else in the game.
+   * never less than whatever it already had). No First-Strike discount --
+   * Human's Ramparts has its own separate copy of that discount in
+   * wallCounterattack below. A deliberate, confirmed exception to
+   * "structures never counterattack" everywhere else in the game.
    *
    * Reach: derived from the Militia's own range (same convention as Human's
    * wallCounterattack deriving its reach from the Archer's range below) --
    * Militia has no `range` property, so this is melee-only (1 tile). An
    * attacker striking from further away (a Ranged unit standing off at
    * distance) is simply out of the structure's retaliatory reach and takes
-   * no counter damage at all -- this was previously missing entirely, so
-   * every Ranged attack against a Rouse the People-defended structure took
-   * a counter-hit it should never have taken. Mutates attackerUnit.hp;
-   * returns the raw counter damage dealt (0 if out of reach).
+   * no counter damage at all. Mutates attackerUnit.hp; returns the raw
+   * counter damage dealt (0 if out of reach).
    */
   function structureCounterattack(structureRecord, defenderCiv, attackerUnit, attackerCiv) {
     const militia = window.GameData.getUnit("militia");
@@ -1286,7 +1274,7 @@ window.GameEngine = window.GameEngine || {};
     return dmg;
   }
 
-  /** Orc "Spikes!"/"Bigger Spikes!" (2026-07-20, user-directed): the higher
+  /** Orc "Spikes!"/"Bigger Spikes!": the higher
    *  tech (if known) always wins rather than stacking with the lower one --
    *  same "upgrade tech" convention as e.g. Sudden Doom replacing Strike
    *  from the Shadows. 0 if the civ has neither. Ratings 2/4 (2026-08-17,
@@ -1360,7 +1348,7 @@ window.GameEngine = window.GameEngine || {};
     return replacement;
   }
 
-  /** Halfellow "Undaunted" (2026-07-20, user-directed): 25% chance a
+  /** Halfellow "Undaunted": 25% chance a
    *  Wanderer spawns on a dead Pony Patrol's own tile -- same shape as Orc's
    *  Hound and Hunter above (spawns on the dead unit's own now-vacated
    *  tile), just a single replacement type instead of a 50/50 pick. Only
@@ -1376,7 +1364,7 @@ window.GameEngine = window.GameEngine || {};
     return replacement;
   }
 
-  /** Halfellow "Unlock the Gate" (2026-07-24, user-directed): a Trouble
+  /** Halfellow "Unlock the Gate": a Trouble
    *  Maker can disable a targeted wall (and every wall adjacent to it) for
    *  3 rounds -- zeroes its defense stat AND suppresses every special wall
    *  defense (Rouse the People, Ramparts, Spikes/Bigger Spikes, Treetop
@@ -1440,7 +1428,7 @@ window.GameEngine = window.GameEngine || {};
     } else if (building.isWall && defenderCiv && defenderCiv.unlockedMechanics && defenderCiv.unlockedMechanics.has("ramparts")) {
       counterDamage = wallCounterattack(structureRecord, defenderCiv, unit, attackerCiv, gameState);
     } else if (defenderCiv && spikesAttackRating(defenderCiv) > 0) {
-      // Orc "Spikes!"/"Bigger Spikes!" (2026-08-17, user-directed): scope
+      // Orc "Spikes!"/"Bigger Spikes!": scope
       // widened from walls-only to any structure (walls, buildings, and
       // cities via attackCity below) -- same "any structure" scope Rouse
       // the People already uses just above, no isWall gate anymore.
@@ -1477,7 +1465,7 @@ window.GameEngine = window.GameEngine || {};
    *  garrison bonus of its own (that's the job of an actual defending unit;
    *  this value only matters once the city has none).
    *
-   *  Walls count TWICE (2026-08-06, user-directed): once via the generic
+   *  Walls count TWICE: once via the generic
    *  CITY_DEFENSE_PER_STRUCTURE every structure already contributes just for
    *  existing, and again via CITY_DEFENSE_PER_WALL specifically for being a
    *  wall -- the premium a wall is actually FOR. Only alive walls count
@@ -1540,7 +1528,7 @@ window.GameEngine = window.GameEngine || {};
     const dmg = mitigatedDamage(atk, def);
     if (city.hp == null) city.hp = cityMaxHp(city); // defensive -- a city from an older save may predate this field
     city.hp -= dmg;
-    // Growth pause (2026-08-06, user-directed): a city attacked this round
+    // Growth pause: a city attacked this round
     // earns no growth toward its next population level on its own next
     // tick -- see cities.js's tickCity, which checks and clears this flag.
     city.attackedThisTurn = true;
@@ -1594,7 +1582,7 @@ window.GameEngine = window.GameEngine || {};
             revealHidden(splashUnit, gameState.turnNumber || 0);
             // `unit` (a direct object reference, not just its coordinates)
             // lets a caller apply a follow-on unit-specific effect -- e.g.
-            // ai.js's Burning (2026-07-22, user-directed) -- without a
+            // ai.js's Burning -- without a
             // second lookup pass.
             hits.push({ kind: "unit", x, y, damage: dmg, civId: otherCiv.id, typeId: splashUnit.typeId, unit: splashUnit });
           }

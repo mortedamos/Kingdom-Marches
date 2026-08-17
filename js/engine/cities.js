@@ -137,7 +137,7 @@ window.GameEngine = window.GameEngine || {};
     return {
       x, y, civId, name, isPort,
       population: 1.0,
-      // City HP (2026-08-04, user-directed): CITY_HP_PER_LEVEL at level 1 --
+      // City HP: CITY_HP_PER_LEVEL at level 1 --
       // see combat.js's cityMaxHp for the general (population-derived)
       // formula this stays in sync with as population changes later.
       hp: window.GameConfig.combat.cityHpPerLevel,
@@ -321,7 +321,7 @@ window.GameEngine = window.GameEngine || {};
    * EVERY tile this building could legally be placed on, not just the first
    * one findStructureSlot happens to pick.
    *
-   * Added for the player UI (2026-08-01, user-directed): a human player picks
+   * Added for the player UI: a human player picks
    * the tile at queue time -- walls in particular are positional, and
    * auto-placing them wherever the loop landed is exactly the decision a
    * player wants to make themselves. Deliberately mirrors findStructureSlot's
@@ -526,7 +526,7 @@ window.GameEngine = window.GameEngine || {};
     const netHarvest = Math.max(0, totalHarvest * (race.growthMult || 1.0) - upkeep);
     city.harvestSurplus += netHarvest;
 
-    // Growth pause (2026-08-06, user-directed): a city attacked since its
+    // Growth pause: a city attacked since its
     // last tick earns no growth this tick -- harvestSurplus still
     // accumulates normally (just not converted into a population level),
     // so the growth isn't lost, only deferred to the following tick. See
@@ -583,7 +583,7 @@ window.GameEngine = window.GameEngine || {};
     if (civ.unlockedMechanics && civ.unlockedMechanics.has("hedge_walls")) {
       for (const s of city.structures) {
         const b = window.GameData.getBuilding(s.id);
-        // Math.round + minimum 1 HP (2026-08-03, user-directed) -- this used
+        // Math.round + minimum 1 HP -- this used
         // to add the raw fractional 5% directly (no rounding at all), which
         // both left structure HP as a non-integer and could add less than 1
         // on a low-maxHp wall.
@@ -595,7 +595,7 @@ window.GameEngine = window.GameEngine || {};
   }
 
   /**
-   * RESOURCE PRODUCTION (2026-08-06, user-directed)
+   * RESOURCE PRODUCTION
    * ----------------------------------------------
    * A city's turn goes into ONE thing: a unit, a building, or -- via this --
    * straight into resources. Picking it (sidebar.js's renderBuildSection,
@@ -697,7 +697,7 @@ window.GameEngine = window.GameEngine || {};
 
   /**
    * True when `city` has nothing queued and isn't spending this turn's
-   * production on resources or research either (2026-08-07, user-directed)
+   * production on resources or research either
    * -- the single shared predicate for "should this read as idle to the
    * player", pulled out of main.js's collectUnresolvedTurnWork (which used
    * to compute this inline, duplicated the moment a second consumer needed
@@ -972,7 +972,7 @@ window.GameEngine = window.GameEngine || {};
       }
     }
 
-    // Distance falloff (2026-07-21, user-directed): a city's baseline
+    // Distance falloff: a city's baseline
     // harvest/coin territorial yield (raw terrain, plus race-default
     // tile/feature/road bonuses) tapers off 0.2/ring past ring 2 --
     // ring 3 = 80%, ring 4 = 60%, etc. Deliberately does NOT touch lore
@@ -1127,7 +1127,7 @@ window.GameEngine = window.GameEngine || {};
     // not eliminated by the 0-cities check in turns.js) from "founded one and
     // then lost it" (which IS eliminated once cities.length hits 0 again).
     civ.hasFoundedCity = true;
-    // Founded/razed event log (2026-07-23, user-directed): feeds ai.js's
+    // Founded/razed event log: feeds ai.js's
     // recentCityDelta, which strategy.js and ai.js's chooseBuildAction/
     // chooseStrategy use to taper "keep expanding" bonuses once a civ is
     // net losing cities faster than founding them -- see destroyCity below
@@ -1135,7 +1135,7 @@ window.GameEngine = window.GameEngine || {};
     // memory for why this mattered.
     civ.cityEvents = civ.cityEvents || [];
     civ.cityEvents.push({ turn: gameState.turnNumber || 0, type: "founded" });
-    // Free first-city tech (2026-08-05, user-directed): the moment a civ's
+    // Free first-city tech: the moment a civ's
     // FIRST city exists, it picks one Layer-1 tech for free -- a jumpstart
     // so early strategy isn't purely "whatever's cheapest to research."
     // Human civs get an interactive choice instead of this auto-pick -- see
@@ -1180,7 +1180,7 @@ window.GameEngine = window.GameEngine || {};
     tile.ownerCivId = null;
     tile.status = "neutral";
     tile.contestedTurns = 0;
-    // A razed city leaves a Ruin behind (2026-07-20, user-directed) -- a
+    // A razed city leaves a Ruin behind -- a
     // plain isRuin flag, identical to a worldgen-placed one (see
     // worldgen.js's mapgen pass), so it's claimable via Dungeon Delve,
     // heals Undead, factors into settle-site scoring, etc. exactly like any

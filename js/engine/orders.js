@@ -995,7 +995,7 @@ window.GameEngine = window.GameEngine || {};
       if (builds.some((o) => o.kind === "unit")) options.push({ kind: "city:buildUnit", label: "Build Unit" });
       const buildingOptions = builds.filter((o) => o.kind === "building");
       if (buildingOptions.length) {
-        // Count excludes walls (2026-08-10, user-directed) -- a city can
+        // Count excludes walls -- a city can
         // only ever have one wall per edge tile (see cities.js's isWall
         // cap), so "N available" is only meaningful for the actual
         // structure roster, not the wall count.
@@ -1013,13 +1013,13 @@ window.GameEngine = window.GameEngine || {};
       ].filter(Boolean).join(" ");
       // "Gather More Resources" (2026-08-06, user-directed rename -- was
       // "Resources", which read as a status label rather than a verb).
-      // Label no longer shows the amount (2026-08-07, user-directed) --
+      // Label no longer shows the amount --
       // `amounts` is still computed and still gates whether this pill is
       // offered at all (a freshly founded city with nothing to take a share
       // of yet still gets no pill), just not printed into the label text.
       if (amounts) options.push({ kind: "city:resourceProduction", label: "Gather More Resources" });
 
-      // "Research" (2026-08-06, user-directed): the fourth thing this city's
+      // "Research": the fourth thing this city's
       // production can go into, alongside a unit/building/resources -- see
       // cities.js's applyResearchBoost. Only offered when there's actually
       // something in progress to accelerate.
@@ -1029,7 +1029,7 @@ window.GameEngine = window.GameEngine || {};
       }
     }
 
-    // "Spread Culture" (2026-08-13, user-directed): a paid, one-turn boost
+    // "Spread Culture": a paid, one-turn boost
     // to this city's influence spread -- see cities.js's applyCultureSpread.
     // Deliberately OUTSIDE the buildQueue/isProducingResources gate above:
     // unlike Resource Production/Research, this doesn't consume the city's

@@ -47,7 +47,7 @@ window.UI = window.UI || {};
 (function () {
   // Default unit-data properties that correspond 1:1 with an entry on the
   // Conditions page -- shown together on a unit's profile, each cross-
-  // linking to that condition's own writeup (2026-08-16, user-directed).
+  // linking to that condition's own writeup.
   // Hand-maintained, same "small table, extended when a new mechanic ships"
   // convention as overlays.js's own CONDITION_ICONS or sfx-actions.js's
   // SFX_SPECIAL_ACTIONS -- a unit that already carries one of these fields
@@ -94,11 +94,11 @@ window.UI = window.UI || {};
   };
 
   // Every stat shown on a unit's profile, cross-linked to its own KMKB
-  // entry (2026-08-17, user-directed). `key` matches STAT_DESCRIPTIONS
+  // entry. `key` matches STAT_DESCRIPTIONS
   // below; `unitField`/`derive` say how renderUnitProfileHtml pulls this
   // stat's VALUE off a real unit -- most read a plain units.js field
   // directly, maxHp is derived (see units.js's own unitMaxHP). `icon`
-  // (2026-08-17, user-directed) -- same "small icon before the name"
+  // -- same "small icon before the name"
   // treatment the unit list (symbol) and Conditions list (CONDITION_ICONS)
   // already get, shown in the stat list, that stat's own profile header,
   // AND next to its cross-link label on a unit's profile.
@@ -150,7 +150,7 @@ window.UI = window.UI || {};
     return Math.max(1, Math.round(mitigated));
   }
 
-  // Live Attack-vs-Defense simulator (2026-08-17, user-directed), embedded
+  // Live Attack-vs-Defense simulator, embedded
   // on both the Attack and Defense stat pages since the formula genuinely
   // involves both. Deliberately NOT wired through the normal
   // knowledgeSelectedXxx/renderKnowledgeOverlay redraw cycle -- its own
@@ -423,7 +423,7 @@ window.UI = window.UI || {};
     const portraitRaceId = portraitRaceFor(unit);
 
     // Each row's label cross-links to that stat's own KMKB entry
-    // (2026-08-17, user-directed) -- data-stat-link keys match STAT_INFO,
+    // -- data-stat-link keys match STAT_INFO,
     // wired in main.js's renderKnowledgeOverlay (same jumpToStat/
     // knowledgeBackTarget pattern the Conditions cross-links already use).
     const statRows = [["attack", unit.attack], ["defense", unit.defense], ["maxHp", maxHp],
@@ -511,7 +511,7 @@ window.UI = window.UI || {};
    *  natural "kingdom" to group by the way units do). */
   function renderConditionListHtml(selectedKey) {
     const icons = (window.UI.overlays && window.UI.overlays.CONDITION_ICONS) || {};
-    // Alphabetical by display name (2026-08-17, user-directed) -- CONDITION_ICONS
+    // Alphabetical by display name -- CONDITION_ICONS
     // itself stays in overlays.js's own declaration order (grouped loosely by
     // theme there), this is purely a display-order sort for this list.
     const sortedKeys = Object.keys(icons).sort((a, b) => titleCase(a).localeCompare(titleCase(b)));
@@ -551,7 +551,7 @@ window.UI = window.UI || {};
   }
 
   /** Full HTML for the Conditions page -- same list+profile layout as
-   *  Units (2026-08-16, user-directed), for visual consistency between the
+   *  Units, for visual consistency between the
    *  two pages. `backLabel` threads through to renderConditionProfileHtml. */
   function renderConditions(selectedKey, backLabel) {
     return `
@@ -606,7 +606,7 @@ window.UI = window.UI || {};
   }
 
   /** Full HTML for the Stats page -- same list+profile layout as Units and
-   *  Conditions (2026-08-17, user-directed). `backLabel` threads through to
+   *  Conditions. `backLabel` threads through to
    *  renderStatProfileHtml. */
   function renderStats(selectedKey, backLabel) {
     return `

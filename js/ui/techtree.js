@@ -24,7 +24,7 @@
 window.UI = window.UI || {};
 
 (function () {
-  // "Mystic" (2026-08-10, user-directed): a 4th column for spellcaster/
+  // "Mystic": a 4th column for spellcaster/
   // utility units and their own abilities -- Wizard, Druid, Metal Singer,
   // Bog Witch, Trouble Maker -- split out of Military, which was carrying
   // both straight combat techs and every caster's whole kit. Not every race
@@ -182,7 +182,7 @@ window.UI = window.UI || {};
         <h2>${escapeHtml(race.label)} — Tech Tree</h2>
         <div class="stat-row"><span>Cities</span><span>${civ.cities.length}</span></div>
         ${isPlayerCiv ? (() => {
-          // Multi-resource stockpile readout (2026-08-05, user-directed):
+          // Multi-resource stockpile readout:
           // tech cost used to be pure Lore, so this was a single number --
           // now every tech's cost draws on harvest/coin/lore (see
           // GameData.effectiveTechCostBreakdown), same H/C/L convention
@@ -197,7 +197,7 @@ window.UI = window.UI || {};
       </div>`;
   }
 
-  /** Live stat line for a unit a tech unlocks (2026-08-10, user-directed):
+  /** Live stat line for a unit a tech unlocks:
    *  computed from units.js/combat.js at RENDER time -- via getUnitProperty,
    *  which already folds in any unit_stat_upgrade this CIV has researched
    *  for it -- rather than baked into the tech's static description text,
@@ -212,7 +212,7 @@ window.UI = window.UI || {};
    *  base stats. Returns null if unitId doesn't resolve to a real unit.
    *  Shared by the tech tree's unlocked-unit callout (unitStatsHtml below)
    *  and the city build list's per-row preview (buildlist.js) -- pulled out
-   *  on its own (2026-08-11, user-directed) so both render their own HTML
+   *  on its own so both render their own HTML
    *  around the same numbers instead of one duplicating the other. */
   function unitStatParts(civ, unitId) {
     const combat = window.GameEngine.combat;
@@ -311,7 +311,7 @@ window.UI = window.UI || {};
     const selectable = isPlayerCiv && !completed && !researching && !locked && affordable;
     if (selectable) tag = "Click to research";
 
-    // Per-resource cost tokens (2026-08-05, user-directed), same "10H 15C"
+    // Per-resource cost tokens, same "10H 15C"
     // convention and green/red-vs-stockpile coloring as sidebar.js's build
     // picker -- zero-cost components are omitted rather than shown as a
     // bare "0X".
@@ -333,7 +333,7 @@ window.UI = window.UI || {};
       turnsTag = ` (${turns} turn${turns === 1 ? "" : "s"})`;
     }
 
-    // Live unit stat block (2026-08-10, user-directed): one per unit this
+    // Live unit stat block: one per unit this
     // tech's effects actually unlock or replace-in (almost always zero or
     // one, never baked into the description text itself -- see
     // unitStatsHtml). replace_unit counts too -- Knighthood/Longbow/etc.
@@ -364,12 +364,12 @@ window.UI = window.UI || {};
       if (citiesAway >= 2) extraFadeClass = " techtree-node-far";
     }
 
-    // data-tech-id is on BOTH branches (2026-08-10, user-directed) so the
+    // data-tech-id is on BOTH branches so the
     // research-complete modal's "jump to this tech" links can locate and
     // scroll to any node, not just clickable ones -- and now so the hover-
     // relation feature can attach mouseenter/mouseleave to every node too.
     const focusClass = isFocused ? " techtree-node-focused" : "";
-    // Hover relation highlighting (2026-08-10, user-directed): "self" is the
+    // Hover relation highlighting: "self" is the
     // hovered node itself; ancestor/descendant are its prereq chain both
     // ways, indirect ones a notch dimmer than direct so the eye reads
     // "closer" vs "further" at a glance. Nodes with NO relation are left

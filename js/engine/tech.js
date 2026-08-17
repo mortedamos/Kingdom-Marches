@@ -83,13 +83,13 @@ window.GameEngine = window.GameEngine || {};
   // GameConfig.pacing.slowness with ai.js's BUILD_SLOWNESS now (2026-08-04,
   // user-directed) -- one universal pacing knob for every timed queue in
   // the game, not a separate rate per subsystem. researchPaceFactor
-  // (2026-08-06, user-directed) is a RATIO on top of that shared slowness,
+  // is a RATIO on top of that shared slowness,
   // same treatment as ai.js's unitPaceFactor/buildingPaceFactor -- see
   // config.js's own doc comment for why (research had grown into the same
   // "takes too long" problem buildings did, especially at high tiers for a
   // low-industriousness race).
   //
-  // RESEARCH_TURNS_EXPONENT (2026-08-06, user-directed): turns no longer
+  // RESEARCH_TURNS_EXPONENT: turns no longer
   // scale LINEARLY with cost -- cost itself is exponential in layer
   // (effectiveTechCost = baseCost * tierGrowth^layer, a flat 16x between
   // Layer 1 and Layer 5), so a linear turns formula forces that exact same
@@ -137,7 +137,7 @@ window.GameEngine = window.GameEngine || {};
     return null;
   }
 
-  /** "Research" city ring action (2026-08-06, user-directed): cuts `amount`
+  /** "Research" city ring action: cuts `amount`
    *  turns off the civ's in-progress research outright, called from
    *  cities.js's applyResearchBoost (which decides WHETHER a city may spend
    *  its turn this way; this just does the civ-level countdown). Completes
@@ -240,7 +240,7 @@ window.GameEngine = window.GameEngine || {};
           }
           break;
         // terrain_movement_discount/unit_terrain_movement_discount
-        // (2026-08-06, user-directed): the replacement for the two cases
+        //: the replacement for the two cases
         // just above on every tech that used to grant a movement BONUS --
         // see techs.js's own effect-type doc comment for why (a bonus only
         // ever applied once, to whichever tile the unit happened to START
@@ -342,12 +342,12 @@ window.GameEngine = window.GameEngine || {};
   }
 
   /** Sets a civ's research target -- gated on affordability now, not just
-   *  city/prereq gates (2026-08-04, user-directed): the tech's full cost is
+   *  city/prereq gates: the tech's full cost is
    *  paid up front from civ.stockpile the moment this succeeds, same as
    *  queueBuild pays a unit/building's cost up front. Returns false (no-op,
    *  nothing charged) if the civ can't afford it yet.
    *
-   *  Multi-resource (2026-08-05, user-directed): a tech's cost used to be
+   *  Multi-resource: a tech's cost used to be
    *  pure Lore; now split across harvest/coin/lore by category (see
    *  GameData.effectiveTechCostBreakdown) -- ALL THREE must be affordable,
    *  not just Lore, same all-or-nothing convention chooseResearch's

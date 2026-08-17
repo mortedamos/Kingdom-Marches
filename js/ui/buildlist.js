@@ -1,5 +1,5 @@
 /**
- * CITY BUILD LIST (2026-08-06, user-directed)
+ * CITY BUILD LIST
  * -------------------------------------------
  * The rows of a city's production picker -- what it can build, what each
  * costs, and whether the civ can currently afford it. Lifted out of
@@ -63,12 +63,12 @@ window.UI = window.UI || {};
       const priceHtml = o.cost
         ? Object.entries(o.cost).map(([k, v]) => costTokenHtml(k, v)).join(" ")
         : costTokenHtml("coin", o.coinCost || 0);
-      // Spelled out, not "Nt" (2026-08-04, user-reported): a bare "2t" sat
+      // Spelled out, not "Nt": a bare "2t" sat
       // directly next to the H/C/L-style resource tokens and read as a
       // fourth resource abbreviation rather than a turn count.
       const time = o.turns ? `${o.turns} turn${o.turns === 1 ? "" : "s"}` : "";
       const needsPlacement = o.kind === "building";
-      // Stat line (2026-08-11, user-directed): "the sub-menu allowing you to
+      // Stat line: "the sub-menu allowing you to
       // select from available units should also show their attack, defense,
       // movement etc." -- reuses techtree.js's own unlocked-unit stat
       // summary (unitStatParts, shared rather than duplicated) so a

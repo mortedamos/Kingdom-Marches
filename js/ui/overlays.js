@@ -33,7 +33,7 @@ window.UI = window.UI || {};
   const DEATH_EFFECT_ANIM_MS = 1300; // puff-of-smoke-resolving-into-a-skull, total lifetime
   const DEATH_SMOKE_COUNT = 6; // number of drifting smoke puffs per death
 
-  // Condition badges (2026-07-22, user-directed): a small icon per active
+  // Condition badges: a small icon per active
   // entry in unit.conditions (see combat.js's setCondition/tickConditions),
   // drawn stacked in the tile's upper-right corner, above the unit sprite.
   // Keyed by the exact condition key each mechanic sets -- anything not
@@ -500,7 +500,7 @@ window.UI = window.UI || {};
   }
 
   /**
-   * Puff-of-smoke-resolving-into-a-skull (2026-08-07, user-directed), drawn
+   * Puff-of-smoke-resolving-into-a-skull, drawn
    * at an already-projected screen point -- same "shared point-based draw,
    * each renderer supplies its own projection" split as drawCombatSlashAt:
    * 2D projects via its single affine grid (drawDeathEffects below), 3D
@@ -757,7 +757,7 @@ window.UI = window.UI || {};
   function drawConditionBadges(ctx, unit, boxX, boxY, boxSize, ts) {
     const icons = [];
     if (unit.carries) icons.push(CARRYING_ICON);
-    // Rest and Defend (2026-08-07, user-directed) sets BOTH unit.resting and
+    // Rest and Defend sets BOTH unit.resting and
     // conditions.defending together -- only one badge should show for that
     // single action, so the resting icon is skipped whenever defending is
     // also active (defending's own icon is picked up by the loop below).
@@ -788,7 +788,7 @@ window.UI = window.UI || {};
   }
 
   /**
-   * Idle-city badge (2026-08-07, user-directed): a small corner marker on
+   * Idle-city badge: a small corner marker on
    * the player's own city tiles that have nothing queued and aren't
    * spending this turn's production on resources/research either -- see
    * cities.js's isCityIdle, the single shared predicate this also backs the
@@ -862,7 +862,7 @@ window.UI = window.UI || {};
   const CONSTRUCTION_COLOR = "#e0a030"; // amber -- reads as "in progress", distinct from the influence overlay's civ colors
 
   /**
-   * Under-construction placeholder (2026-08-07, user-directed): a queued
+   * Under-construction placeholder: a queued
    * building/wall's final tile is already locked in at queue time
    * (city.buildQueue.placeAt, set by main.js's handleChooseBuild placement
    * flow -- see orders.js's queueBuild), but the actual structure record

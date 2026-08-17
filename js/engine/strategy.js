@@ -39,7 +39,7 @@ window.GameEngine = window.GameEngine || {};
   const STAGNATION_CYCLES = 3; // recompute cycles to judge a choice as stalled (~24 turns)
   const MIN_PROGRESS = 0.02; // minimum land-share gain over that window to count as "working"
   const DEMOTION_COOLDOWN_CYCLES = 2; // cycles a stalled choice is excluded before it's eligible again
-  // "mystic" (2026-08-10, user-directed): a 4th spine for the caster/utility
+  // "mystic": a 4th spine for the caster/utility
   // techs (Wizard, Druid, Metal Singer, Bog Witch, Trouble Maker) split out
   // of Military -- see techs.js's category reassignment. Added here too, not
   // just in techtree.js's column list: without it, every mystic tech would
@@ -250,7 +250,7 @@ window.GameEngine = window.GameEngine || {};
     // stale demotion "expand" is still serving out from an earlier, unrelated
     // stagnation cycle, so the strong macroGoalScores bonus above can
     // actually take effect immediately instead of waiting out a cooldown.
-    // Gated on cityDelta >= 0 (2026-07-23, user-directed): a civ that's net
+    // Gated on cityDelta >= 0: a civ that's net
     // LOSING cities lately is NOT "in the middle of doing the right thing"
     // -- expand isn't working for it right now, so it should stay eligible
     // for the ordinary stagnation-fallback demotion instead of this

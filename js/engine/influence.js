@@ -23,7 +23,7 @@ window.GameEngine = window.GameEngine || {};
   const CONTESTED_GRACE_TURNS = CFG.contestedGraceTurns;
   const LOW_VALUE_TERRAIN_WEIGHT = CFG.lowValueTerrainWeight; // water (ocean+coast) and tundra
 
-  // Structure own-tile claim (2026-08-12, user-directed): "building a wall or
+  // Structure own-tile claim: "building a wall or
   // building automatically puts that tile under the kingdom's influence."
   // Deliberately a flat value large enough to swamp any realistic rival
   // influence on that same tile (baseCityInfluence tops out at population *
@@ -200,7 +200,7 @@ window.GameEngine = window.GameEngine || {};
     // the entry rather than subtracting a fixed amount means overlapping Orc
     // units produce exactly the same result as one -- the effect does not stack.
     //
-    // Merged (2026-07-14, user-directed) from the former standalone
+    // Merged from the former standalone
     // "Campaign of Terror" tech into Pillage and Loot -- see that tech's
     // comment in techs.js. Radius raised 1->2 and a resolveOwnership bug
     // fixed (see its own comment) in the same pass that made this mechanic

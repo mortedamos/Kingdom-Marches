@@ -45,7 +45,7 @@ window.UI = window.UI || {};
     // hunting for the ones that haven't moved is the single most tedious part
     // of a turn. Only shown when there's actually something to jump to.
     let cyclerHtml = "";
-    // Research (2026-08-03, user-reported): the only way in used to be a
+    // Research: the only way in used to be a
     // "View Tech Tree" button buried inside the Kingdom panel, which
     // disappears the instant anything else is selected -- e.g. the moment a
     // player clicks their own starting Pioneer, which is the natural first
@@ -80,7 +80,7 @@ window.UI = window.UI || {};
       researchHtml = `<button id="open-research-btn" class="research-btn">${escapeHtml(researchLabel)}</button>`;
     }
 
-    // "Next Idle City" (2026-08-07, user-directed) -- same shared predicate
+    // "Next Idle City" -- same shared predicate
     // (cities.js's isCityIdle) already backing the per-city Idle tag in
     // renderKingdomPanel's own city list, the map's idle badge, and the End
     // Turn nag. Only rendered when there's actually one to jump to, same
@@ -95,7 +95,7 @@ window.UI = window.UI || {};
       }
     }
 
-    // Turn counter moved below End Turn (2026-08-07, user-directed).
+    // Turn counter moved below End Turn.
     html += `<div class="sidebar-footer">
       ${researchHtml}
       ${idleCityHtml}
@@ -124,14 +124,14 @@ window.UI = window.UI || {};
     const y = city.lastYield || { harvest: 0, coin: 0, lore: 0 };
     const pop = Math.floor(city.population);
     const maxPop = window.GameEngine.cities.MAX_CITY_POPULATION || 6;
-    // City HP (2026-08-04, user-directed): a real damage-accumulating pool
+    // City HP: a real damage-accumulating pool
     // now -- see combat.js's attackCity/cityMaxHp -- population-per-level,
     // refilled on growth, clamped on starvation, reset to the new (smaller)
     // max when a hit empties it and knocks off a level. cityHp falls back
     // to a full pool for a city from an older save that predates this field.
     const cityMaxHp = window.GameEngine.combat.cityMaxHp(city);
     const cityHp = city.hp != null ? Math.max(0, city.hp) : cityMaxHp;
-    // Defense (2026-08-06, user-directed): combat.js's cityDefenseValue was
+    // Defense: combat.js's cityDefenseValue was
     // already the real number an attack is resolved against -- base + per
     // population level + per structure, and now + a wall-specific premium on
     // top of that (see its own doc comment) -- it just had no row here to
@@ -149,7 +149,7 @@ window.UI = window.UI || {};
     const radiusTileCount = (2 * city.influenceRadius + 1) ** 2;
     const filledTileCount = city.filledOffsets ? city.filledOffsets.size : 0;
 
-    // Garrison (2026-08-01, user-directed): units standing on the city tile.
+    // Garrison: units standing on the city tile.
     // This is the case that motivated the whole tabbed inspector -- clicking
     // a defended city used to show the city and silently swallow its
     // defenders. Each entry jumps to that unit's own tab; the tab indices
@@ -206,7 +206,7 @@ window.UI = window.UI || {};
   }
 
   /**
-   * What this city is producing. Read-only (2026-08-06, user-directed): the
+   * What this city is producing. Read-only: the
    * picker, Resource Production, Cancel Build and "next city" all moved to
    * the radial map menu -- right-click the city (see orders.js's
    * cityRingOptions and js/ui/buildlist.js, which is this file's former
@@ -274,7 +274,7 @@ window.UI = window.UI || {};
       ${hint}`;
   }
 
-  /** "Right-click for actions" (2026-08-06, user-directed). Once every verb
+  /** "Right-click for actions". Once every verb
    *  moved to the radial map menu, this became the ONLY signpost to the whole
    *  action set -- so it's a real styled row rather than the 70%-opacity
    *  aside it started as. Shown by both the unit and city panels. */
@@ -288,7 +288,7 @@ window.UI = window.UI || {};
    *  renderUnitPanel); still exported since main.js's ring popover
    *  (buildRingPage) is the only remaining caller.
    *
-   *  visionRadius/movement (2026-08-07, user-directed) joined the original
+   *  visionRadius/movement joined the original
    *  five paths -- their "current value" needs `gameState` (vision reads
    *  civ.unitOverrides/conditions the same way turns.js's visibility sum
    *  does; movement goes through ai.js's computeMovementBudget, which is
@@ -346,14 +346,14 @@ window.UI = window.UI || {};
     const moveCostDisplay = moveCost === window.GameData.IMPASSABLE ? "Impassable" : moveCost;
 
     // Everything sitting on top of the base terrain, in one list under one
-    // heading (2026-08-03, user-reported): a Ruin used to be a bare stat-row
+    // heading: a Ruin used to be a bare stat-row
     // with a hand-written "+2 Lore" while a Resource got its own "Resource"
     // heading and a bonus string derived from the data -- two presentations
     // for the same kind of thing. All four now share the label/bonus shape,
     // and every bonus string is derived (see terrain.js's RESOURCES,
     // RIVER_YIELD_BONUS and RUIN_YIELD_BONUS) so the panel can't claim a
     // number the yield code doesn't actually pay.
-    // Actual Yield (2026-08-12, user-directed): the base row above is raw
+    // Actual Yield: the base row above is raw
     // terrain, unaffected by anything the player has actually built or
     // researched -- this shows what the tile really pays right now, with
     // kingdom (race/tech) and city (Barrow, distance falloff, road-bonus
@@ -454,7 +454,7 @@ window.UI = window.UI || {};
     const baseUnit = window.GameData.getUnit(unit.typeId);
     const isHumanUnit = viewState && unit.civId === viewState.humanCivId;
 
-    // INFORMATION ONLY, FROM HERE DOWN (2026-08-06, user-directed)
+    // INFORMATION ONLY, FROM HERE DOWN
     // -------------------------------------------------------------
     // Every unit VERB moved to the radial map menu (right-click the unit --
     // see js/ui/ringmenu.js and orders.js's contextMenuOptions). This panel
@@ -494,7 +494,7 @@ window.UI = window.UI || {};
       if (rows) pioneerActions = `<h3>Status</h3>${rows}`;
     }
 
-    // Channeled actions (2026-07-21, user-directed): Prospector's Claim,
+    // Channeled actions: Prospector's Claim,
     // Dungeon Delve, and Galley Fishing are all explicitly-started,
     // explicitly-cancelled channels now (see turns.js's onAnchor gate on
     // unit.channeling) rather than something that "just happens" from
@@ -592,7 +592,7 @@ window.UI = window.UI || {};
     if (heavyMetalAura) properties.push(`Heavy Metal Aura (+${heavyMetalAura.defenseBonus} defense, +${Math.round(heavyMetalAura.siegePctBonus * 100)}% siege, 5% heal/turn)`);
     const powerMetalAura = unit.conditions?.powerMetalAura;
     if (powerMetalAura) properties.push(`Power Metal Aura (+${powerMetalAura.attackBonus} attack, +${Math.round(powerMetalAura.firstStrikePctBonus * 100)}% first strike)`);
-    // Garrison (2026-08-06, user-directed) reads the label differently even
+    // Garrison reads the label differently even
     // though it's the SAME "defending" condition underneath -- Garrison's
     // whole point is that it does NOT lapse "until next turn" the way a
     // plain Defend click does.
@@ -621,7 +621,7 @@ window.UI = window.UI || {};
       ? `${unitLevel} (max)`
       : `${unitLevel} (${Math.floor(unit.xp || 0)} / ${nextXpThreshold} XP)`;
 
-    // Turn status (2026-08-01, user-directed): the action economy is movement
+    // Turn status: the action economy is movement
     // points PLUS one action (see orders.js), and until now the sidebar showed
     // neither. Without this the player has no way to know why a unit won't
     // move, or that it still has an attack available after moving.
@@ -652,7 +652,7 @@ window.UI = window.UI || {};
     // Coordinates inside the mission text become clickable jumps to that
     // tile -- see linkifyCoords for why this is done on the rendered string
     // rather than by restructuring ai.js's mission strings.
-    // "Order" row (2026-08-06, user-directed): a human unit can now ALSO be
+    // "Order" row: a human unit can now ALSO be
     // mid-way through a multi-turn goto order (move/build-road-to -- see
     // orders.js's advanceGotoOrder, which sets currentMission every turn
     // it advances) that keeps executing automatically with no further
@@ -663,7 +663,7 @@ window.UI = window.UI || {};
     // all (unlike Spectator's permanent "Awaiting orders" fallback --
     // there's no ambiguity to resolve for a player-directed unit that's
     // simply idle).
-    // "Intent" row (2026-08-06, user-directed): an automated human unit's
+    // "Intent" row: an automated human unit's
     // equivalent of Spectator's "Mission" row above -- shows what the real
     // AI logic decided this unit should do, or (if it just staged a
     // pendingIntent awaiting confirmation -- see ai.js's unit.automated
@@ -715,7 +715,7 @@ window.UI = window.UI || {};
    * the selected tile, and the default no-selection panel (always the human's
    * own civ there).
    *
-   * INTEL REDACTION (2026-08-01, user-directed): clicking an enemy city would
+   * INTEL REDACTION: clicking an enemy city would
    * otherwise hand the player that civ's stockpile, research, and net income
    * for free. Anything a player could plausibly infer from the map itself
    * (city/unit counts, territory share) stays visible; the economic and
@@ -791,7 +791,7 @@ window.UI = window.UI || {};
         <div class="stat-row">${isOwn ? researchHtml : UNKNOWN}</div>
         ${isOwn ? `<h3>Cities</h3>
         ${civ.cities.map((c) => {
-          // Idle tag (2026-08-07, user-directed): same shared predicate the
+          // Idle tag: same shared predicate the
           // End Turn nag and the map badge use -- see cities.js's
           // isCityIdle. An FYI, not an error, so it's styled with the
           // accent color rather than a danger red.
@@ -820,7 +820,7 @@ window.UI = window.UI || {};
   }
 
   /**
-   * TILE LINKS (2026-08-03, user-directed)
+   * TILE LINKS
    * --------------------------------------
    * Any place the sidebar names a specific tile can make it clickable:
    * clicking recenters the map there, selects the tile, and (optionally)
@@ -861,7 +861,7 @@ window.UI = window.UI || {};
       .join(", ");
   }
 
-  /** Renders a small HP-style meter (2026-08-04, user-reported): color
+  /** Renders a small HP-style meter: color
    *  shifts green -> yellow -> red as the remaining fraction drops, same
    *  traffic-light convention most strategy games use for "how much is left
    *  before this is gone." `cur` is clamped at 0 for the fraction (a

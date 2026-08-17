@@ -1704,27 +1704,14 @@ window.GameEngine = window.GameEngine || {};
     return true;
   }
 
-  // A road tile discounts the cost to LEAVE it by 0.5, on top of whatever
-  // terrain/tech discounts already applied (2026-08-07, user-directed --
-  // replaced the previous flat-cost-1 override, which capped a road's
-  // benefit at "as cheap as the best natural terrain" and gave cheap
-  // terrain, e.g. Plains, no benefit from a road at all). Combined with the
-  // shared 0.5 floor every discount source in this file respects (see
-  // landCostForTerrain's own doc comment, and getMoveCost's re-application
-  // of it below once the road discount is folded in), a road can never
-  // drive a step's cost to zero -- see moveUnitToward's separate +1
-  // movement bonus for a unit that STARTS its turn on a road, a different
-  // mechanic that stacks with this.
-  //
-  // WHOSE road (2026-08-03, user-directed): the discount applies when
-  // LEAVING a road tile, not when arriving at one -- see getMoveCost's own
-  // doc comment for why the whole cost model reads from the origin tile now.
-  // Concretely: walking a chain of connected road tiles still costs the
-  // same discounted amount per hop the entire way (every tile you leave
-  // along the chain has a road under it), but stepping OFF rough terrain
-  // onto a road no longer gets an immediate discount -- you pay what
-  // leaving the rough terrain costs; the road only pays off starting with
-  // your NEXT step.
+  // A road tile discounts the cost to LEAVE it by 0.5, stacking with any
+  // terrain/tech discount. Floored at 0.5 like every other discount here, so
+  // a road can never drive a step to zero cost (see moveUnitToward's
+  // separate +1 movement bonus for starting a turn on a road, which stacks
+  // with this). Applies when LEAVING a road tile, not arriving: walking a
+  // chain of road tiles is discounted the whole way, but stepping off rough
+  // terrain onto a road doesn't discount that step -- the road pays off
+  // starting with the NEXT step.
   const ROAD_MOVE_DISCOUNT = 0.5;
 
   /**
@@ -1736,7 +1723,7 @@ window.GameEngine = window.GameEngine || {};
    * and destination (passability) evaluations below, so tunneling/override
    * behave identically regardless of which side of a step they're read from.
    *
-   * `hasRiver`/`unitTypeId` (2026-08-06, user-directed) feed the discount
+   * `hasRiver`/`unitTypeId` feed the discount
    * half only -- terrainDiscount/unitTerrainDiscount, see civMoveMods --
    * which is why they're optional and only the ORIGIN call site in
    * getMoveCost below ever passes them. Discounting the DESTINATION side
@@ -1778,36 +1765,23 @@ window.GameEngine = window.GameEngine || {};
 
   /**
    * Movement cost (in points) to take ONE step from a tile described by
-   * `originTerrain`/`originHasRoad` onto a tile described by `destTerrain`,
-   * or IMPASSABLE if the destination can't be entered at all.
+   * `originTerrain`/`originTile` onto a tile described by `destTerrain`, or
+   * IMPASSABLE if the destination can't be entered at all.
    *
-   * COST vs. PASSABILITY are answered from DIFFERENT tiles, on purpose
-   * (2026-08-03, user-directed -- this replaced a model where both were
-   * destination-based):
-   *
+   * COST and PASSABILITY are answered from DIFFERENT tiles:
    *   - PASSABILITY ("can I physically be on this tile?") is about the
-   *     DESTINATION. A land unit can't walk onto deep ocean no matter how
-   *     easy the tile it's leaving is -- that can never depend on approach
-   *     direction, so this half is unchanged from before.
+   *     DESTINATION -- a land unit can't walk onto deep ocean regardless of
+   *     the tile it's leaving.
+   *   - COST ("how much movement does this step use?") is charged for
+   *     LEAVING the ORIGIN tile -- moving out of Forest costs 2 no matter
+   *     what you're stepping onto; the road discount (ROAD_MOVE_DISCOUNT)
+   *     works the same way.
    *
-   *   - COST ("how much of my movement does this step use?") is charged for
-   *     LEAVING the ORIGIN tile. Moving out of a Forest costs 2 no matter how
-   *     open the tile you're stepping onto is; moving out of Plains costs 1
-   *     even into a Forest. The discount for a unit standing on a road is
-   *     likewise about the tile you're leaving -- see ROAD_MOVE_DISCOUNT's
-   *     own comment.
-   *
-   * Callers (buildMoveRules' costFn, pioneerRoadStep, findFleeTile) all
-   * derive originTerrain/originTile from whichever tile the unit is ACTUALLY
-   * stepping off of for that hop -- see pathfinding.js's `fromIdx`, which is
-   * what makes that tile available mid-search rather than just at the unit's
-   * turn-start position.
-   *
-   * `originTile` (2026-08-06, user-directed -- was a bare `originHasRoad`
-   * boolean) is now the whole raw tile object: still read for `.hasRoad`,
-   * and ALSO for `.hasRiver`, which landCostForTerrain's discount half needs
-   * to apply a river-keyed tech (e.g. Rivercraft) regardless of the terrain
-   * underneath the river.
+   * Callers derive originTerrain/originTile from whichever tile the unit is
+   * actually stepping off of for that hop (see pathfinding.js's `fromIdx`).
+   * `originTile` is the whole raw tile object, read for `.hasRoad` and
+   * `.hasRiver` (river-keyed discounts like Rivercraft apply regardless of
+   * the terrain underneath the river).
    */
   function getMoveCost(originTerrain, destTerrain, unitData, unit, originTile) {
     // restrictedToTerrain (e.g. the Orc Wisp, swamp-only) overrides everything
@@ -1977,7 +1951,7 @@ window.GameEngine = window.GameEngine || {};
     return occ;
   }
 
-  // Turn-action-economy foundation (2026-07-20, user-directed) -- see
+  // Turn-action-economy foundation -- see
   // project_turn_action_economy memory. Every unit's turn is either a
   // NORMAL action (move 0-to-full budget, then optionally act -- attack,
   // cast, garrison, build a road, start a channel) or a FULL-TURN action
@@ -2011,7 +1985,7 @@ window.GameEngine = window.GameEngine || {};
       terrainOverride: civ.terrainMoveOverride || {}, // { terrainId: cappedCost } -- hard cap (ignore_terrain_penalty)
       terrainBonus: civ.terrainMoveBonus || {}, // { terrainId: extraMovement } -- adds to the turn's starting budget
       unitTerrainBonus: civ.unitTerrainMoveBonus || {}, // { unitTypeId: { terrainId: extraMovement } }
-      // terrainDiscount/unitTerrainDiscount (2026-08-06, user-directed):
+      // terrainDiscount/unitTerrainDiscount:
       // the REPLACEMENT for terrain_movement_bonus/unit_terrain_movement_
       // bonus on every tech that used to grant one -- see landCostForTerrain,
       // which is where these actually apply (a per-step cost reduction on
@@ -2046,7 +2020,7 @@ window.GameEngine = window.GameEngine || {};
     const baseUnit = window.GameData.getUnit(unit.typeId);
     // civ.unitOverrides movement delta (e.g. Orc's Swift Hunters: +1 Wolf Rider movement)
     const overrideMovement = unit._moveMods?.unitOverrides?.[unit.typeId]?.movement || 0;
-    // Level-up "+0.5 Movement" pick (2026-08-07, user-directed) -- same
+    // Level-up "+0.5 Movement" pick -- same
     // flat-add convention as attack/defense, see combat.js's LEVEL_BONUS_VALUES.
     const levelMovement = unit.levelBonuses?.movement || 0;
     let movement = baseUnit.movement + overrideMovement + levelMovement;
@@ -2075,7 +2049,7 @@ window.GameEngine = window.GameEngine || {};
     if (terrainBonus) movement += terrainBonus;
 
     // Roads: +1 movement for a unit starting its turn on a road tile
-    // (2026-07-17, user-directed) -- universal and tech-independent, unlike
+    // -- universal and tech-independent, unlike
     // the tiered terrain bonuses above, so it stacks on top of them rather
     // than competing in the same "best of" comparison. Pairs with
     // getMoveCost's ROAD_MOVE_DISCOUNT (roads also discounting the cost to
@@ -2187,10 +2161,7 @@ window.GameEngine = window.GameEngine || {};
       // allied-structure freebie just below, so a friendly city/wall built on
       // the wrong terrain can't be used as a loophole to leave it.
       if (baseUnit.restrictedToTerrain && tile.terrain !== baseUnit.restrictedToTerrain) return window.GameData.IMPASSABLE;
-      // Free movement over an allied wall/building/city (2026-08-10,
-      // user-directed) -- terrain under your own civ's own structure or
-      // city no longer costs anything to cross, regardless of what the
-      // terrain itself would otherwise charge.
+      // Terrain under your own civ's structure or city costs nothing to cross.
       if (tile.structure && tile.structure.civId === unit.civId) return 0;
       if ((civs[unit.civId]?.cities || []).some((c) => c.x === nx && c.y === ny)) return 0;
       const destTerrain = window.GameData.TERRAIN[tile.terrain];
@@ -2216,7 +2187,7 @@ window.GameEngine = window.GameEngine || {};
 
   function spendMovement(unit, targetX, targetY, map, civs) {
     // Where this unit is headed, remembered past the end of the move
-    // (2026-08-06, user-directed). An AI-decided move -- including an
+    //. An AI-decided move -- including an
     // automated human unit's, which reuses this same code -- has no persisted
     // order to read a destination back out of the way unit.gotoTarget is, so
     // the destination is captured here, at the one place every move goes
@@ -2317,16 +2288,13 @@ window.GameEngine = window.GameEngine || {};
       for (let i = 1; i < frontier.length; i++) if (frontier[i].cost < frontier[bi].cost) bi = i;
       const cur = frontier.splice(bi, 1)[0];
       if (cur.cost > (bestCost.get(`${cur.x},${cur.y}`) ?? Infinity)) continue;
-      // "Always able to move at least one more tile" (2026-08-03,
-      // user-directed): a unit with ANY movement left (cur.cost < budget,
-      // i.e. arriving at `cur` didn't already exhaust it) may always
-      // complete one more hop even if THAT hop's own cost overshoots what's
-      // left -- see the uncapped `total` below, and spendMovement's matching
-      // per-step loop, which has always allowed movesRemaining to go
-      // negative on exactly one hop. What stops that from chaining into a
-      // SECOND overshoot hop is this check right here: a node whose cost
-      // already reached/exceeded budget cannot be expanded further, exactly
-      // mirroring spendMovement's own `movesRemaining <= 0` guard.
+      // A unit with any movement left (cur.cost < budget) may always
+      // complete one more hop even if that hop's cost overshoots what's
+      // left -- see the uncapped `total` below and spendMovement's matching
+      // per-step loop, which allows movesRemaining to go negative on exactly
+      // one hop. This check stops that from chaining into a second overshoot
+      // hop: a node whose cost already reached/exceeded budget can't expand
+      // further, mirroring spendMovement's own `movesRemaining <= 0` guard.
       if (cur.cost >= budget) continue;
 
       const fromIdx = cur.y * map.width + cur.x;
@@ -2648,7 +2616,7 @@ window.GameEngine = window.GameEngine || {};
     return 1 + excessRatio * strainRate;
   }
 
-  // Universal pacing knob (2026-08-04, user-directed) -- GameConfig.pacing.
+  // Universal pacing knob -- GameConfig.pacing.
   // slowness is now shared with tech.js's researchTurns instead of this file
   // keeping its own separate rate (was 0.24 here vs 0.12 for research, a 2x
   // mismatch with no real justification). Raise it to slow the whole game's
@@ -2686,7 +2654,7 @@ window.GameEngine = window.GameEngine || {};
    *  -- a build always takes at least one turn, however cheap). See
    *  GameData.unitPower for what "power" means (base stats only, no tech
    *  bonuses) and buildUnitOption for where this timer starts counting down.
-   *  `unit.minBuildTurns` (2026-08-06, user-directed), currently only
+   *  `unit.minBuildTurns`, currently only
    *  Pioneer/Scout/Galley, is honored as a hard floor the same way
    *  buildingBuildTurns already honors wall_section's -- a Level 0 unit's
    *  low base stats put it right at unitPower's floor for EVERY race
@@ -2697,7 +2665,7 @@ window.GameEngine = window.GameEngine || {};
     const baseUnit = window.GameData.getUnit(unitId);
     const power = window.GameData.unitPower(unitId);
     const rate = raceUnitBuildRate(civ);
-    // unitPaceFactor (2026-08-06, user-directed): a per-category RATIO on
+    // unitPaceFactor: a per-category RATIO on
     // top of BUILD_SLOWNESS, not a second independent rate -- see its own
     // doc comment in config.js for why units/buildings needed different
     // multipliers of the SAME shared slowness knob rather than each
@@ -2810,7 +2778,7 @@ window.GameEngine = window.GameEngine || {};
   // big enough to reliably outcompete a garrison/offense pick (typically
   // 3-13, see chooseBuildAction) when the civ has zero live Dire Wolves.
   const DIRE_WOLF_SHORTAGE_BONUS = 20;
-  // Orc "Dire Wolf" combat-drought response (2026-07-22, user-directed): if
+  // Orc "Dire Wolf" combat-drought response: if
   // it's been this many turns since any Orc unit last saw real combat, a
   // city force-builds a Dire Wolf to go stir one up -- scored far above any
   // other candidate so it always wins the build slot once triggered (this
@@ -2966,7 +2934,7 @@ window.GameEngine = window.GameEngine || {};
   /** True if the landmass containing (x,y) currently has 2+ open (no city,
    *  no structure -- any civ's) land tiles -- i.e. this civ can still place
    *  one more structure there and leave at least one tile open afterward.
-   *  AI-only restriction (2026-07-20, user-directed): a fully walled/built
+   *  AI-only restriction: a fully walled/built
    *  small island left invaders nowhere to ever land, producing an
    *  unbreakable stalemate -- this guarantees the AI's own building logic
    *  always leaves at least one landing tile. Deliberately NOT enforced in
@@ -3057,7 +3025,7 @@ window.GameEngine = window.GameEngine || {};
     // Buildings: this race's roster, minus what this city already has, minus
     // anything with nowhere legal to stand.
     //
-    // BUG FIX (2026-08-03, user-reported): this used to gate on `b.techId`,
+    // BUG FIX: this used to gate on `b.techId`,
     // a field that is never actually set on any entry in buildings.js -- the
     // check was permanently a no-op, so every one of a race's 4 buildings was
     // offered to the player regardless of research. The real record of what's
@@ -3203,7 +3171,7 @@ window.GameEngine = window.GameEngine || {};
     const totalPioneers = civ.units.filter((u) => u.typeId === "pioneer").length
       + countQueuedUnits(civ, (id) => id === "pioneer");
     const needsMorePioneers = cityGateShortfall > totalPioneers;
-    // Settle-need roll (2026-07-30, user-directed): island-locked/no-coastal-
+    // Settle-need roll: island-locked/no-coastal-
     // city/galley-waiting/tech-gate-desperation are near-mandatory
     // correctness needs, not a personality preference, so they bypass the
     // roll entirely -- see rollsForSettleNeed's doc comment. The ordinary
@@ -3221,7 +3189,7 @@ window.GameEngine = window.GameEngine || {};
       // worth more (and a low-industriousness race, like Orc, slightly less),
       // rather than this being a Halfellow-only special case.
       const settleInfluenceBonus = (window.GameEngine.cities.industriousnessInfluenceMult(race) - 1.0) * 30;
-      // Net-city-loss taper (2026-07-23, user-directed): same fix as
+      // Net-city-loss taper: same fix as
       // chooseStrategy's and strategy.js's macroGoalScores' cityGateBonus --
       // don't keep sweetening the pioneer build score on tech-gate pressure
       // alone while this civ is net losing cities faster than founding them
@@ -3241,7 +3209,7 @@ window.GameEngine = window.GameEngine || {};
       if (opt) options.push(opt);
     }
 
-    // "Radius fully filled" auto-settler (2026-07-22, user-directed): once
+    // "Radius fully filled" auto-settler: once
     // THIS city has nothing left to claim in its own radius, it should
     // SOMETIMES spin off an extra pioneer regardless of the normal viable-
     // site heuristics just above -- flagged (closestSpot) to skip tile-
@@ -3263,7 +3231,7 @@ window.GameEngine = window.GameEngine || {};
     // Titan is stalled waiting for a target -- see civNeedsTitanScouting --
     // since the only way to find an overseas enemy is to go looking by sea.
     const wantsTitanScouting = !civHasGalley && civNeedsTitanScouting(civ);
-    // Settle-need roll (2026-07-30, user-directed): island-locked/a-pioneer-
+    // Settle-need roll: island-locked/a-pioneer-
     // already-waiting-to-board/Titan-scouting are urgent, near-mandatory
     // needs and bypass the roll; the ordinary naval-expansion/fleet-growth
     // desire gates on it -- see rollsForSettleNeed's doc comment.
@@ -3402,7 +3370,7 @@ window.GameEngine = window.GameEngine || {};
       // to get a dedicated raw-stat credit here (TROUBADOUR_AURA_CREDIT) so
       // it could compete with FoeHammer/Musketeer on militaryValue despite
       // deliberately weak own stats (support unit, atk 2/def 3). Removed
-      // (2026-07-30, user-directed): the Troubadour now has its own
+      //: the Troubadour now has its own
       // dedicated `support` slot in RACE_UNIT_RATIO/RACE_UNIT_LINEAGES below,
       // which guarantees it gets built at its target share directly --
       // no raw-stat credit needed since a ratio-governed slot with a single
@@ -3546,7 +3514,7 @@ window.GameEngine = window.GameEngine || {};
       // existing weakest-first trim (strength = attack+defense) cleans up
       // the outdated unit rather than the new one -- no explicit swap
       // needed here.
-      // Orc "Miscreant" fallback (2026-07-14, user-directed): when the real
+      // Orc "Miscreant" fallback: when the real
       // best garrison/offense pick isn't affordable right now, substitute
       // the cheap gap-filler (see units.js goblin_miscreant) at the SAME
       // score the real pick would have gotten -- it genuinely competes for
@@ -3568,7 +3536,7 @@ window.GameEngine = window.GameEngine || {};
 
       const bestDef = bestByValue(true);
       const hasBestDefenderHere = civ.units.some((u) => u.x === city.x && u.y === city.y && u.typeId === bestDef);
-      // Undefended-city floor (2026-07-23, user-directed): distinct from
+      // Undefended-city floor: distinct from
       // hasBestDefenderHere above -- that's true for BOTH "zero defenders"
       // and "has A defender, just not the ideal one," and scores them
       // identically. The zero case is the real emergency (this is exactly
@@ -3635,7 +3603,7 @@ window.GameEngine = window.GameEngine || {};
       // additional one increasingly has to compete fairly with garrison/
       // offense instead of automatically dominating them.
       //
-      // Undefended-city gate (2026-07-23, user-directed): that taper alone
+      // Undefended-city gate: that taper alone
       // wasn't enough -- a first-copy Wizard's score (relevantMechanics.length
       // * 7, e.g. 49 for Human's 7 mechanics) still dwarfs even the new
       // undefended-garrison floor just above, so a brand-new, zero-defender
@@ -3656,7 +3624,7 @@ window.GameEngine = window.GameEngine || {};
           const wanted = Math.max(1, Math.min(5, Math.ceil(civ.cities.length / 2)));
           if (owned >= wanted || !canAffordUnitUpkeep(civ, unitId, race)) continue;
           let utilityScore = relevantMechanics.length * 7 * Math.pow(0.6, owned);
-          // Elf "one Shadowsteed per Druid" (2026-07-18, user-directed): a
+          // Elf "one Shadowsteed per Druid": a
           // civ that wants more combat strength but has no spare Druid
           // summon capacity left (every existing Druid already has, or is
           // making, its one Shadowsteed -- see druidHasLiveSummon) needs
@@ -3695,7 +3663,7 @@ window.GameEngine = window.GameEngine || {};
       }
     }
 
-    // Orc "Dire Wolf" combat-drought response (2026-07-22, user-directed):
+    // Orc "Dire Wolf" combat-drought response:
     // no Orc unit has fought in DIRE_WOLF_DROUGHT_TURNS turns -- force-build
     // a Dire Wolf (which then hunts for combat on its own via
     // maybeDireWolfHunt) regardless of the ordinary shortage check above.
@@ -3812,7 +3780,7 @@ window.GameEngine = window.GameEngine || {};
       const wallMechanicBonus = ["ramparts", "rouse_the_people", "hedge_walls"]
         .filter((m) => civ.unlockedMechanics && civ.unlockedMechanics.has(m)).length;
       const wallMult = 1 + wallMechanicBonus;
-      // Modern up-front-payment cost (2026-08-06, user-directed) -- routes
+      // Modern up-front-payment cost -- routes
       // through the same buildingOption every other building option in
       // this function already uses, rather than hardcoding the legacy
       // coinCost shape directly. Gated on affordability here, same
@@ -3826,7 +3794,7 @@ window.GameEngine = window.GameEngine || {};
     }
 
     // "Cultural Influence" tech and this whole build option REMOVED
-    // (2026-08-17, user-directed) -- cityHasUnclaimedInfluenceTile itself
+    // -- cityHasUnclaimedInfluenceTile itself
     // stays (still used by the "radius fully filled" auto-settler check
     // above, unrelated to this).
 
@@ -3890,7 +3858,7 @@ window.GameEngine = window.GameEngine || {};
     const newUnit = { typeId: unitId, civId: civ.id, x: spawnX, y: spawnY, isCivilian: ["pioneer", "scout"].includes(unitId), homeCityName: city.name, ...extra };
     window.GameEngine.combat.initUnitHP(newUnit, civ);
     civ.units.push(newUnit);
-    // Orc "Goblin Miscreant" (2026-07-15, user-directed): building one
+    // Orc "Goblin Miscreant": building one
     // actually produces two -- the second spawns on the closest open
     // adjacent tile to the city (not naval, and not stacked onto the same
     // tile as the first -- recomputed fresh AFTER newUnit above was already
@@ -3913,7 +3881,7 @@ window.GameEngine = window.GameEngine || {};
     // double-speed build bonus (see buildUnitOption) turns off for good.
     if (!civ._firstMilitaryBuilt && unitData.category === "military") civ._firstMilitaryBuilt = true;
     // Returns the spawned unit itself, not just a bare success flag
-    // (2026-08-06, user-directed) -- progressBuildQueue's two call sites use
+    // -- progressBuildQueue's two call sites use
     // it to queue a "Unit Built" notice for the human player (see
     // civ.pendingUnitBuiltNotices). Every existing caller only ever checked
     // truthiness (`if (!spawnUnitInCity(...))`), so returning the unit
@@ -3922,7 +3890,7 @@ window.GameEngine = window.GameEngine || {};
   }
 
   /** Queues a "Unit Built" notice for main.js's finishRoundBookkeeping to
-   *  show the human player (2026-08-06, user-directed) -- an ARRAY, not a
+   *  show the human player -- an ARRAY, not a
    *  single `civ.lastBuiltUnit` field, because unlike tech (a civ can only
    *  ever research one thing at a time) a civ can easily have several
    *  cities each finish a unit in the SAME round; an array lets every one
@@ -4007,7 +3975,7 @@ window.GameEngine = window.GameEngine || {};
    * back in elsewhere.
    */
 
-  // "Defend" (2026-07-20, user-directed): a universal normal action -- any
+  // "Defend": a universal normal action -- any
   // race, any unit type. Braces in place, doubling this unit's own defense
   // (see combat.js's effectiveDefense) until the start of its own next
   // turn. No movement here -- callers may move first (a normal action
@@ -4022,7 +3990,7 @@ window.GameEngine = window.GameEngine || {};
 
   /** Whether ANY other unit of this civ (not carried -- it isn't really
    *  "there" independently) is within SUPPORT_RADIUS -- used by the
-   *  cornered-defend fallback below (2026-07-21, user-directed): allies
+   *  cornered-defend fallback below: allies
    *  nearby mean this unit isn't truly alone, so bracing isn't its only
    *  option. Mirrors isNearActiveCombat's own SUPPORT_RADIUS use. */
   function hasNearbyAlly(civ, unit, gameState) {
@@ -4079,7 +4047,7 @@ window.GameEngine = window.GameEngine || {};
   }
 
   /** Cornered-combat fallback, replacing the old unconditional brace
-   *  (2026-07-21, user-directed): an idle unit already in a fight (see
+   *: an idle unit already in a fight (see
    *  nearActiveCombat at this function's call site) only braces
    *  (performDefend) when it's BOTH unable to retreat AND has no ally
    *  nearby to back it up. Otherwise it flees (a retreat tile exists,
@@ -4194,7 +4162,7 @@ window.GameEngine = window.GameEngine || {};
       // do this turn (see the final exploreWith fallback) keeps this default.
       unit.currentMission = "Idle";
 
-      // Damage-since-last-turn tracking (2026-07-30, user-directed): a unit
+      // Damage-since-last-turn tracking: a unit
       // that was hit by anything (combat, a city/structure counter, Burning,
       // ...) since the last time IT acted can't choose to Rest this turn --
       // a snapshot comparison rather than instrumenting every damage call
@@ -4204,7 +4172,7 @@ window.GameEngine = window.GameEngine || {};
       const recentlyDamaged = unit._hpAtTurnStart != null && unit.hp < unit._hpAtTurnStart;
       unit._hpAtTurnStart = unit.hp;
 
-      // Teleportation exhaustion removed (2026-08-17, user-directed) --
+      // Teleportation exhaustion removed --
       // Teleportation/Roots of the World no longer leave the caster
       // exhausted, so nothing in the game sets the "exhausted" condition
       // anymore.
@@ -4252,7 +4220,7 @@ window.GameEngine = window.GameEngine || {};
         }
       }
 
-      // Elf "Shadowsteed" (2026-07-18, user-directed): carrying a rider is
+      // Elf "Shadowsteed": carrying a rider is
       // ALWAYS this unit's first priority, checked here -- before ANY
       // combat consideration further down the cascade -- and it must NEVER
       // attack while riderless (Atk1/Def1 alone; see combat.js's
@@ -4300,7 +4268,7 @@ window.GameEngine = window.GameEngine || {};
       }
 
       // Elf "Roots of the World" overseas invasion ferry/ambush-staging
-      // system removed (2026-08-17, user-directed): Roots of the World is
+      // system removed: Roots of the World is
       // now a forest-tile-only teleport (see performDruidTeleport), which
       // the ferry's staging-tile logic could no longer reliably satisfy near
       // an arbitrary overseas enemy target.
@@ -4340,7 +4308,7 @@ window.GameEngine = window.GameEngine || {};
       // Gate/Riddle -- see maybeTroubleMakerPlay's doc comment.
       if (maybeTroubleMakerPlay(civ, unit, gameState, log)) continue;
 
-      // Elf "Shadowsteed" + Druid (2026-07-22, user-directed): a mounted
+      // Elf "Shadowsteed" + Druid: a mounted
       // Shadowsteed carrying a Druid rider can also cast Nature's Grace
       // itself, at the same range the Druid would have (effectiveRange
       // already defers to the rider for a mounted Shadowsteed -- see
@@ -4399,7 +4367,7 @@ window.GameEngine = window.GameEngine || {};
       // who's fighting" definition the explore veto further down reuses.
       const nearActiveCombat = isNearActiveCombat(civ, unit, gameState);
 
-      // Dwarf/Halfellow "rush to defend" (2026-07-30, user-directed): a city
+      // Dwarf/Halfellow "rush to defend": a city
       // under attack right now gets first claim on any unit that isn't
       // already fighting its own battle -- see maybeDefendCityUnderAttack's
       // doc comment. Checked immediately after nearActiveCombat (its own
@@ -4517,7 +4485,7 @@ window.GameEngine = window.GameEngine || {};
 
       // Halfellow "Devoted Companions": an injured ally a carrier is already
       // en route to fetch holds position and waits instead of wandering off
-      // mid-rescue (2026-07-22, user-directed) -- see
+      // mid-rescue -- see
       // maybeWaitForCompanionCarry. Checked before the carrier-side plays
       // below since it's the PATIENT's own turn deciding this, not the
       // carrier's.
@@ -4535,7 +4503,7 @@ window.GameEngine = window.GameEngine || {};
       // roll so grouping up wins out over a lone unit's curiosity.
       if (civ.raceId === "halfellow" && maybeHalfellowRegroup(civ, unit, gameState, log)) continue;
 
-      // Elf "Shadowsteed" mount, reverse half (2026-07-21, user-directed): a
+      // Elf "Shadowsteed" mount, reverse half: a
       // riderless Ranger with a nearby riderless Shadowsteed goes to mount it
       // -- outranks regrouping with fellow Rangers below, since mounting up
       // is the bigger combat upgrade. See maybeSeekRiderlessShadowsteed.
@@ -4549,7 +4517,7 @@ window.GameEngine = window.GameEngine || {};
       // solo when it could be forming up with siblings first.
       if (unit.typeId === "ranger" && maybeRangerRegroup(civ, unit, gameState, log)) continue;
 
-      // Elf "hunting party" (2026-07-30, user-directed): non-Ranger military
+      // Elf "hunting party": non-Ranger military
       // units mass into stealthed packs of 3+ the same way -- see
       // maybeElfHuntingPartyRegroup's doc comment. Checked right after the
       // Ranger pack above (same cascade position, same rationale: forming up
@@ -4558,7 +4526,7 @@ window.GameEngine = window.GameEngine || {};
       // distance rather than vanishing solo first.
       if (civ.raceId === "elf" && maybeElfHuntingPartyRegroup(civ, unit, gameState, log)) continue;
 
-      // Orc "always looking for a fight" (2026-07-19, user-directed):
+      // Orc "always looking for a fight":
       // unconditional, not gated by an aggressiveness roll like the generic
       // hunt further below -- the whole warband converges on shared contact
       // the instant any part of the civ spots an enemy. Checked BEFORE the
@@ -4643,7 +4611,7 @@ window.GameEngine = window.GameEngine || {};
       const garrisonDesire = Math.min(1,
         Math.max(militarism, industriousness * INDUSTRIOUSNESS_GARRISON_WEIGHT) * garrisonDesireBoost);
       const onOwnCity = civ.cities.some((c) => c.x === unit.x && c.y === unit.y);
-      // Elf Raptor/Shadowsteed (2026-07-18, user-directed): never garrison.
+      // Elf Raptor/Shadowsteed: never garrison.
       // Both are Druid-summoned support units built for a specific job
       // (scouting/exploring, or fighting once mounted -- see combat.js's
       // shadowsteedMount) -- neither should ever settle into passive city
@@ -4669,7 +4637,7 @@ window.GameEngine = window.GameEngine || {};
       // Wall, Crusade, Titan, Prospector's Claim, garrison, ...) still gets
       // first refusal, unaffected -- this only intercepts the generic tail.
       // 2026-07-20, user-directed. The reaction itself is no longer an
-      // unconditional brace (2026-07-21, user-directed): see
+      // unconditional brace: see
       // handleCorneredCombat -- flee if there's an open retreat tile, just
       // hold the line if allies are close enough to help, and only brace
       // (performDefend) when truly cornered AND alone.
@@ -4941,7 +4909,7 @@ window.GameEngine = window.GameEngine || {};
     return true;
   }
 
-  /** Direct player-invoked Wizard teleport (2026-08-11, user-directed):
+  /** Direct player-invoked Wizard teleport:
    *  promotes performWizardTeleport above -- previously AI-only, fired only
    *  by attemptWizardTeleport's defensive flee trigger or
    *  maybeTeleportStrike's offensive ally-repositioning play -- to a real
@@ -4993,7 +4961,7 @@ window.GameEngine = window.GameEngine || {};
     return true;
   }
 
-  /** Direct player-invoked Fireball (2026-08-17, user-directed): same
+  /** Direct player-invoked Fireball: same
    *  "always confirmed, bypasses any automated/pendingIntent gate entirely"
    *  shape as performPlayerWizardTeleport -- a manual ring click + tile pick
    *  already IS the confirmation. */
@@ -5059,7 +5027,7 @@ window.GameEngine = window.GameEngine || {};
 
   const FROZEN_DURATION = 3;
 
-  // Burning (2026-07-22, user-directed): 1 point of damage at the start of
+  // Burning: 1 point of damage at the start of
   // the affected target's turn for this many turns, unless it's currently
   // on Coast, Ocean, or a river tile -- see turns.js's tickBurningDamage
   // for where the actual per-turn damage/exemption/expiry lives (ticked
@@ -5077,7 +5045,7 @@ window.GameEngine = window.GameEngine || {};
    *  (so it gets the same fire badge as every other condition -- see
    *  render.js's CONDITION_ICONS); a structure (no `.conditions` container
    *  of its own) keeps a plain `.burning` field directly. Never applied to
-   *  cities themselves (2026-07-22, user-directed). */
+   *  cities themselves. */
   function applyBurning(target, kind, gameState) {
     const expiresAtTurn = (gameState.turnNumber || 0) + BURN_DURATION;
     if (kind === "unit") {
@@ -5112,7 +5080,7 @@ window.GameEngine = window.GameEngine || {};
   }
 
   /**
-   * PLAYER-TRIGGERED Grant Flight (2026-08-06, user-directed bug fix). Every
+   * PLAYER-TRIGGERED Grant Flight. Every
    * caster-and-ally-target action in this file -- this one included -- was
    * reachable ONLY through the AI's own decision loop (maybeGrantFlight
    * above, called from runUnitTurn, which only ever runs for an AI civ or a
@@ -5187,7 +5155,7 @@ window.GameEngine = window.GameEngine || {};
    */
   function maybeGrantFlight(civ, unit, gameState, log) {
     const { map, civs } = gameState;
-    // Grant Flight is a normal action (2026-07-20, user-directed): the
+    // Grant Flight is a normal action: the
     // Wizard may walk to an ally's side and still cast the same turn, so
     // candidates are gathered out to adjacency PLUS however far it can
     // still walk this turn -- see maybeFreezingTouch/project_turn_action_
@@ -5514,7 +5482,7 @@ window.GameEngine = window.GameEngine || {};
   }
 
   /**
-   * Halfellow "Resource Heist" (2026-07-24, user-directed): built into
+   * Halfellow "Resource Heist": built into
    * Trouble Maker, no separate tech. Adjacent to an enemy unit that's
    * actively channeling (Prospector's Claim/Dungeon Delve/Fishing) with a
    * non-empty stash, steals the WHOLE stash straight into this civ's own
@@ -5567,7 +5535,7 @@ window.GameEngine = window.GameEngine || {};
     return performResourceHeist(civ, unit, target, gameState, log);
   }
 
-  /** Direct player-invoked Resource Heist (2026-08-11, user-directed):
+  /** Direct player-invoked Resource Heist:
    *  promotes performResourceHeist above to a real ring action. `target`
    *  must already be adjacent -- the "Resource Heist: [target]" ring
    *  option only ever offers adjacent candidates, same as this ability's
@@ -5604,7 +5572,7 @@ window.GameEngine = window.GameEngine || {};
   }
 
   /**
-   * Halfellow "Unlock the Gate" (2026-07-24, user-directed): built into
+   * Halfellow "Unlock the Gate": built into
    * Trouble Maker, no separate tech. Adjacent to a targeted enemy wall,
    * disables it AND every wall adjacent to it (chebyshev <= 1 from the
    * target, same city) for 3 rounds -- see combat.js's
@@ -5650,7 +5618,7 @@ window.GameEngine = window.GameEngine || {};
     return performUnlockTheGate(civ, unit, target, gameState, log);
   }
 
-  /** Direct player-invoked Unlock the Gate (2026-08-11, user-directed):
+  /** Direct player-invoked Unlock the Gate:
    *  promotes performUnlockTheGate above to a real ring action. `target`
    *  must already be the `{ structure, city, civId }` shape
    *  findUnlockTheGateTarget/the ring option itself builds, already
@@ -5722,7 +5690,7 @@ window.GameEngine = window.GameEngine || {};
     unit.currentMission = resisted ? `Riddle resisted by ${describeUnit(target)}` : `Befuddled ${describeUnit(target)} with a riddle`;
     log.push(`Riddle: ${civ.id}'s ${describeUnit(unit)} poses a riddle to ${targetCiv.id}'s ${describeUnit(target)} -> ` +
       (resisted ? "resisted" : "befuddled"));
-    // Speech-bubble flavor (2026-07-24, user-directed): the caster poses
+    // Speech-bubble flavor: the caster poses
     // the actual riddle, the target replies with the answer if it
     // resisted or a stumped non-answer if it got Befuddled -- reuses the
     // exact same word-bubble system quips.js/render.js already draw for
@@ -5751,7 +5719,7 @@ window.GameEngine = window.GameEngine || {};
     return performRiddle(civ, unit, target, gameState, log);
   }
 
-  /** Direct player-invoked Riddle (2026-08-11, user-directed): promotes
+  /** Direct player-invoked Riddle: promotes
    *  performRiddle above to a real ring action -- same "always confirmed"
    *  shape as every other performPlayer* wrapper in this file. `target`
    *  must already be within this unit's effectiveRange -- callers (the
@@ -5835,7 +5803,7 @@ window.GameEngine = window.GameEngine || {};
     if (veinSpot) {
       const spotResource = map.tiles[veinSpot.y * map.width + veinSpot.x]?.resource;
       const veinLabel = spotResource === "iron" ? "Iron Vein" : "Gold Vein";
-      // Starting a claim is a normal action (2026-07-20, user-directed): if
+      // Starting a claim is a normal action: if
       // this turn's movement budget reaches the vein, settle in the SAME
       // turn instead of always burning a separate arrival turn -- see
       // project_turn_action_economy memory.
@@ -5872,7 +5840,7 @@ window.GameEngine = window.GameEngine || {};
   }
 
   /**
-   * Galley "Fishing" (2026-07-21, user-directed): a universal channeled
+   * Galley "Fishing": a universal channeled
    * action for ANY Galley (any race, gated on the Level 0 "Fishing" tech,
    * 2026-08-17, user-directed) -- see turns.js's
    * beginCivTurn for the actual +5 harvest/+2 coin per-turn payout and
@@ -5994,7 +5962,7 @@ window.GameEngine = window.GameEngine || {};
 
     const ruinSpot = findNearbyUnclaimedRuin(civ, unit, gameState, { sameLandmassOnly: true });
     if (ruinSpot) {
-      // Starting a delve is a normal action (2026-07-20, user-directed): if
+      // Starting a delve is a normal action: if
       // this turn's movement budget reaches the ruin, settle in the SAME
       // turn instead of always burning a separate arrival turn -- see
       // project_turn_action_economy memory.
@@ -6073,7 +6041,7 @@ window.GameEngine = window.GameEngine || {};
   // order of magnitude as Halfellow's HALFELLOW_STEALTH_RANGE.
   const ELF_STEALTH_RANGE = 2;
 
-  /** Elf ambush follow-through (2026-07-22, user-directed): true while
+  /** Elf ambush follow-through: true while
    *  `unit` is still mid-fight with the specific target it last sprang a
    *  hidden ambush on (see the considerAttackOrGarrison call site that
    *  stamps unit._meleeAmbushVictim) -- checked at the top of maybeElfStealthPlay
@@ -6137,7 +6105,7 @@ window.GameEngine = window.GameEngine || {};
       }
     }
     if (!nearest) {
-      // Elf "Quick as a Shadow" (2026-07-22, user-directed): once known,
+      // Elf "Quick as a Shadow": once known,
       // hiding stops being purely reactive to a nearby threat -- an Elf
       // unit prefers to be Hidden as its default resting state, going
       // hidden proactively even with no enemy anywhere in sight. Safe to
@@ -6208,7 +6176,7 @@ window.GameEngine = window.GameEngine || {};
     return false;
   }
 
-  // Elf "Whirlwind Strike"/"Blade Storm" (2026-07-20, user-directed): both
+  // Elf "Whirlwind Strike"/"Blade Storm": both
   // are a normal action (move, then optionally act -- same category as an
   // ordinary Attack, see project_turn_action_economy memory) that hits
   // every enemy unit within a radius in one go, each hit scaled down
@@ -6270,17 +6238,17 @@ window.GameEngine = window.GameEngine || {};
 
     window.GameEngine.quips.maybeQuip(unit, civ, "attack", gameState);
     window.SfxSystem.playAction(civ.raceId, unit.typeId, "attack", unit.x, unit.y);
-    // "Ambush!" floating text (2026-07-22, user-directed): checked BEFORE
+    // "Ambush!" floating text: checked BEFORE
     // revealHidden clears the condition, same convention as every other
     // "was it hidden at the moment it attacked" check in this file.
     const wasHiddenForSweep = !!unit.conditions?.hidden;
     window.GameEngine.combat.revealHidden(unit, currentTurnNumber);
     if (wasHiddenForSweep) window.GameEngine.floatingText.spawnFloatingText(unit, "Ambush!", "warning");
-    // Names which sweep this is (2026-07-22, user-directed) -- "label" is
+    // Names which sweep this is -- "label" is
     // already "Whirlwind Strike" or "Blade Storm" (see maybeBladeDancerSweep's
     // two call sites below), reused as-is for both the log line and here.
     window.GameEngine.floatingText.spawnFloatingText(unit, label, "aura");
-    // Highlights the swept radius for a moment (2026-07-22, user-directed) --
+    // Highlights the swept radius for a moment --
     // see combat.js's spawnAreaEffect/render.js's drawAreaEffects.
     window.GameEngine.combat.spawnAreaEffect(unit.x, unit.y, radius, "blade_sweep");
     let hitCount = 0, killCount = 0;
@@ -6454,7 +6422,7 @@ window.GameEngine = window.GameEngine || {};
     return true;
   }
 
-  /** Player-facing "Roots of the World" (2026-08-10, user-directed): same
+  /** Player-facing "Roots of the World": same
    *  currentTurnNumber/currentGameStateRef + log-capture wrapper shape as
    *  castFlightOnAlly above, promoting performDruidTeleport (previously only
    *  ever called from the AI's own attemptDruidTeleport/maybeRootsExpansion)
@@ -6605,7 +6573,7 @@ window.GameEngine = window.GameEngine || {};
     return null;
   }
 
-  /** Elf "one Raptor, one Shadowsteed per Druid" (2026-07-18, user-directed):
+  /** Elf "one Raptor, one Shadowsteed per Druid":
    *  true if `druid` already has a LIVE `unitId` it summoned (tagged via
    *  `_summonedByDruid`, see spawnUnitAdjacentToUnit). Self-cleaning -- if a
    *  previously-summoned unit died, it's no longer in civ.units, so this
@@ -6783,7 +6751,7 @@ window.GameEngine = window.GameEngine || {};
     return true;
   }
 
-  /** Direct player-invoked Wisp summon (2026-08-10, user-directed): the
+  /** Direct player-invoked Wisp summon: the
    *  ring-menu "Summon Wisp" action hands off to main.js's tile-placement
    *  mode (viewState.placement), and picking a slot calls straight into
    *  this -- same "always confirmed, bypasses the automated/pendingIntent
@@ -6845,7 +6813,7 @@ window.GameEngine = window.GameEngine || {};
     return startBogWitchWispSummon(civ, unit, pick.x, pick.y, gameState, log);
   }
 
-  /** Orc Wisp "lurk and watch" (2026-08-10, user-directed): a Wisp never
+  /** Orc Wisp "lurk and watch": a Wisp never
    *  moves, explores, or attacks -- see its exclusive dispatch branch in
    *  runUnitTurn, checked ahead of every other consideration including the
    *  attack-first check. It always tries to sit Hidden right where it was
@@ -6892,7 +6860,7 @@ window.GameEngine = window.GameEngine || {};
     unit.currentMission = "Watching (exposed)";
   }
 
-  // Halfellow "Set the Trap" (2026-08-11, user-directed): see units.js's
+  // Halfellow "Set the Trap": see units.js's
   // "trap_frost"/"trap_fire" for the unit shape.
   const TRAP_PLACEMENT_RANGE = 2; // matches the Trouble Maker's own `range` stat
   const TRAP_DAMAGE = 4;
@@ -7018,7 +6986,7 @@ window.GameEngine = window.GameEngine || {};
     return startTroubleMakerTrapSet(civ, unit, trapKind, pick.x, pick.y, gameState, log);
   }
 
-  /** Halfellow "Set the Trap" spring check (2026-08-11, user-directed):
+  /** Halfellow "Set the Trap" spring check:
    *  called from spendMovement right after a moving unit lands on each step
    *  of its path. Finds any live trap_frost/trap_fire belonging to a
    *  DIFFERENT civ within 1 tile (adjacent OR the same tile -- a mover can
@@ -7090,7 +7058,7 @@ window.GameEngine = window.GameEngine || {};
     unit.usedThisTurn = true;
 
     if (Math.random() < cfg.trapChance) {
-      // Halfellow "Making Trouble" (2026-08-17, user-directed): a Trouble
+      // Halfellow "Making Trouble": a Trouble
       // Maker disarms the trap instead of springing it -- no damage, no
       // condition, and the caller shows a "found a trap, but disarmed it"
       // message rather than the ordinary trap notice.
@@ -7246,7 +7214,7 @@ window.GameEngine = window.GameEngine || {};
   }
 
   /** Queues a Ruin Delve treasure-find modal for main.js's
-   *  offerNextTreasureNotice to drain (2026-08-17, user-directed) -- same
+   *  offerNextTreasureNotice to drain -- same
    *  "set unconditionally for every civ, only the human-civ check in
    *  main.js ever reads it" convention as queueUnitBuiltNotice above. */
   function queueTreasureNotice(civ, unitLabel, result) {
@@ -7264,7 +7232,7 @@ window.GameEngine = window.GameEngine || {};
     window.GameEngine.combat.setCondition(target, "webbed", { expiresAtTurn: (gameState.turnNumber || 0) + WEB_DURATION });
   }
 
-  /** Marsh Adder's venom (2026-08-14, user-directed) -- functionally
+  /** Marsh Adder's venom -- functionally
    *  identical to Burning (1 damage/turn for POISON_DURATION turns, see
    *  turns.js's tickPoisonedDamage, a direct mirror of tickBurningDamage),
    *  but its own condition key so it gets its own visual (overlays.js) and
@@ -7416,7 +7384,7 @@ window.GameEngine = window.GameEngine || {};
     const { civs, map, explored } = gameState;
 
     const activeKingdoms = Object.values(civs).filter((c) => c.id !== MONSTER_CIV_ID && !c.eliminated).length;
-    // gameState.monsterCapPerKingdom (2026-08-16, user-directed): the Game
+    // gameState.monsterCapPerKingdom: the Game
     // Options "Max Monsters" slider overrides config.js's default per game
     // -- ?? not || so an explicit 0 (disable monsters entirely) isn't
     // mistaken for "unset." Falls back to the config default for any
@@ -7582,7 +7550,7 @@ window.GameEngine = window.GameEngine || {};
    *      usable. See maybeNaturesGrace.
    *   2. Start a Raptor summon, if THIS Druid doesn't already have a live
    *      one (or one mid-summon) -- see druidHasLiveSummon/startDruidSummon.
-   *      One per Druid, not a civ-wide cap (2026-07-18, user-directed).
+   *      One per Druid, not a civ-wide cap.
    *   3. Start a Shadowsteed summon, same one-per-Druid shape.
    *   4. Roots of the World expansion play -- see maybeRootsExpansion.
    * All are gated on the relevant tech actually being researched. (The
@@ -7617,7 +7585,7 @@ window.GameEngine = window.GameEngine || {};
     return false;
   }
 
-  // Elf "Shadowsteed" mount eligibility (2026-07-18, user-directed): a
+  // Elf "Shadowsteed" mount eligibility: a
   // CLOSED allow-list, not a deny-list -- Ranger, Druid, and Blade Dancer
   // are the ONLY unit types a Shadowsteed will ever carry. Ranger is
   // strongly preferred; Druid/Blade Dancer are only the fallback when no
@@ -8110,7 +8078,7 @@ window.GameEngine = window.GameEngine || {};
   }
 
   /**
-   * Elf Ranger "hidden groups" (2026-07-18, user-directed): mirrors
+   * Elf Ranger "hidden groups": mirrors
    * maybeHalfellowRegroup exactly, but scoped to OTHER Rangers only (not
    * every military unit) -- Rangers specifically are meant to move as a
    * pack and strike together (see RANGER_VOLLEY_BONUS in
@@ -8137,7 +8105,7 @@ window.GameEngine = window.GameEngine || {};
     return true;
   }
 
-  // Elf "hunting party" (2026-07-30, user-directed): non-Ranger, non-support
+  // Elf "hunting party": non-Ranger, non-support
   // Elf military units travel together in stealthed packs of 3+ instead of
   // operating solo, similarly to Orc's civ-wide swarm signal (see
   // computeOrcSwarmSignal/maybeOrcSwarm) but scoped to actual local clusters
@@ -8248,7 +8216,7 @@ window.GameEngine = window.GameEngine || {};
    * here" precision the rest of this file's movement targeting already
    * uses -- findPath still routes around actual obstacles to reach it.
    */
-  // standoffRange (2026-07-20, user-directed): optional override of the
+  // standoffRange: optional override of the
   // stop distance, defaulting to the unit's own combat range -- lets a
   // non-combat "move into range then act" play (e.g. maybeFreezingTouch's
   // spell range, maybeGrantFlight's adjacency) reuse this same standoff-walk
@@ -8269,7 +8237,7 @@ window.GameEngine = window.GameEngine || {};
   // before it's willing to call it a dead end -- see maybeOrcSwarm.
   const ORC_SWARM_PUSH_DISTANCE = 3;
 
-  /** Orc "always looking for a fight" (2026-07-19, user-directed): the ONE
+  /** Orc "always looking for a fight": the ONE
    *  shared contact point the whole warband converges on this turn, or null
    *  if nothing's currently visible -- distinct from huntNearestEnemy, which
    *  is each unit independently chasing whatever IT personally judges
@@ -8407,7 +8375,7 @@ window.GameEngine = window.GameEngine || {};
       }
     }
     if (!nearest) return false;
-    // +2 movement while hunting (2026-08-10, user-directed): granted
+    // +2 movement while hunting: granted
     // straight onto this turn's already-lazily-initialized movesRemaining
     // (see computeMovementBudget/spendMovement's own lazy-init) rather than
     // a cross-turn condition like Violent Momentum's killMomentum -- this
@@ -8544,7 +8512,7 @@ window.GameEngine = window.GameEngine || {};
    * unit still falls through to its normal self-preservation behavior
    * instead of stubbornly camping into more danger.
    *
-   * Turn cap (2026-07-19, user-directed): a unit doesn't hold the SAME spot
+   * Turn cap: a unit doesn't hold the SAME spot
    * forever -- after PILLAGE_HOLD_LIMIT consecutive turns it breaks off and
    * presses the attack on the nearest enemy city instead (see
    * huntEnemyInfrastructure), rather than camping indefinitely once the
@@ -8841,7 +8809,7 @@ window.GameEngine = window.GameEngine || {};
     return true;
   }
 
-  // Dwarf/Halfellow "rush to defend" (2026-07-30, user-directed): how close
+  // Dwarf/Halfellow "rush to defend": how close
   // an enemy unit has to be to one of this civ's own cities to count as
   // "under attack right now" -- covers both an adjacent melee siege and a
   // ranged/siege attacker sitting one tile back (matches the common
@@ -8882,7 +8850,7 @@ window.GameEngine = window.GameEngine || {};
     return best;
   }
 
-  /** Dwarf/Halfellow "rush to defend" (2026-07-30, user-directed): a unit
+  /** Dwarf/Halfellow "rush to defend": a unit
    *  not currently embroiled in its OWN fight (see nearActiveCombat, the
    *  same "currently engaged in combat" exemption the caller already
    *  computed) immediately beelines for the nearest of its civ's cities
@@ -10431,7 +10399,7 @@ window.GameEngine = window.GameEngine || {};
    * Returns true if it consumed the unit's turn (it went Hidden this turn).
    */
   /**
-   * Halfellow "Keep an Eye Out" (2026-07-24, user-directed): civ-wide (any
+   * Halfellow "Keep an Eye Out": civ-wide (any
    * unit, not just Trouble Maker) lookout post -- go Hidden and hold
    * position for +3 vision radius (see combat.js's canGoHidden and
    * turns.js's visionRadius computation). Deliberately checked only as a
@@ -10489,7 +10457,7 @@ window.GameEngine = window.GameEngine || {};
   }
 
   /**
-   * Halfellow "Envoy" (2026-07-24, user-directed): Pioneer or Wanderer may
+   * Halfellow "Envoy": Pioneer or Wanderer may
    * channel for a flat 2 turns on an already-in-radius, unclaimed tile to
    * claim it outright (city.filledOffsets.add, same underlying claim
    * mechanism organic growth uses) -- independent of the normal gradual
@@ -10619,7 +10587,7 @@ window.GameEngine = window.GameEngine || {};
   // 0-20-ish base score range).
   const RANGER_VOLLEY_BONUS = 6;
 
-  // Elf "hunting party" (2026-07-30, user-directed): flat, not per-ally-
+  // Elf "hunting party": flat, not per-ally-
   // scaled like RANGER_VOLLEY_BONUS above -- the party's shared target
   // should win out over almost any other candidate for a member that can
   // reach it, not just get a nudge proportional to how many siblings are
@@ -10747,7 +10715,7 @@ window.GameEngine = window.GameEngine || {};
         if (unit.typeId === "galley" && !unit.carries && enemyUnit.typeId === "galley") {
           score += GALLEY_VS_GALLEY_BONUS;
         }
-        // Elf Ranger volley (2026-07-18, user-directed): prefer a target
+        // Elf Ranger volley: prefer a target
         // multiple OTHER Ranger allies can ALSO currently reach right now.
         // Every Ranger scores candidates with this exact same bonus, so
         // (without any explicit multi-unit coordination) they tend to
@@ -10758,7 +10726,7 @@ window.GameEngine = window.GameEngine || {};
         if (unit.typeId === "ranger") {
           score += countAlliedRangersInRange(civ, unit, enemyUnit, gameState) * RANGER_VOLLEY_BONUS;
         }
-        // Elf "hunting party" (2026-07-30, user-directed): the whole party's
+        // Elf "hunting party": the whole party's
         // shared target (see computeElfPartyTarget) dominates target
         // selection for every member that can currently reach it -- similar
         // shape to Ranger volley above, but civ-wide/party-wide rather than
@@ -10787,7 +10755,7 @@ window.GameEngine = window.GameEngine || {};
     if (opts.forcedTarget && bestTarget === opts.forcedTarget) bestScore = Infinity;
 
     if (bestTarget && bestScore > 5) {
-      // Automate Actions (2026-08-06, user-directed): an automated unit's
+      // Automate Actions: an automated unit's
       // own decision process never fires the attack itself -- it stages
       // what it WOULD do (unit.pendingIntent) and waits for the player to
       // confirm via main.js's offerNextPendingIntent, which re-invokes this
@@ -10795,7 +10763,7 @@ window.GameEngine = window.GameEngine || {};
       // orders.js's attack()) -- that's what the `!opts.forcedTarget` guard
       // lets through unchanged.
       //
-      // Pre-attack notice (2026-08-10, user-directed): the SAME stage-
+      // Pre-attack notice: the SAME stage-
       // don't-resolve mechanism now also fires whenever the DEFENDER is the
       // human civ, regardless of whether the attacker is "automated" -- this
       // is what lets an enemy AI civ's own decision to attack the player
@@ -10851,7 +10819,7 @@ window.GameEngine = window.GameEngine || {};
         });
         window.SfxSystem.playAction(civ.raceId, unit.typeId, "attack", unit.x, unit.y, DOUBLE_STRIKE_SFX_DELAY_MS);
       }
-      // First Strike (2026-08-12, user-directed): narrated the same way as
+      // First Strike: narrated the same way as
       // Double Strike above -- only when the ORDER effect actually decided
       // who swung first this round (forwardFirst/returnFirst, see combat.js's
       // resolveRound), or the attacker's own First Strike denied the
@@ -10867,13 +10835,13 @@ window.GameEngine = window.GameEngine || {};
       markCombatEngaged(civ);
       markCombatEngaged(defenderCiv);
       // Hidden: attacking reveals the attacker, regardless of target type.
-      // "Ambush!" floating text (2026-07-22, user-directed): checked before
+      // "Ambush!" floating text: checked before
       // the reveal clears the condition.
       const wasHiddenForAttack = !!unit.conditions?.hidden;
       window.GameEngine.combat.revealHidden(unit, currentTurnNumber);
       if (wasHiddenForAttack) {
         window.GameEngine.floatingText.spawnFloatingText(unit, "Ambush!", "warning");
-        // Elf ambush follow-through (2026-07-22, user-directed): don't let
+        // Elf ambush follow-through: don't let
         // maybeElfStealthPlay re-hide this unit until the target it just
         // sprang the ambush on is actually dead -- see stillEngagedInAmbush,
         // checked at the top of that function. Only meaningful while the
@@ -10899,7 +10867,7 @@ window.GameEngine = window.GameEngine || {};
       // Orc "Burn It All Down": a Scout or Dragon's RANGED hit (dist > 1 --
       // adjacent melee doesn't count, per the tech's own wording) sets the
       // target ablaze. Goblin Miscreant is a deliberate exception
-      // (2026-07-22, user-directed): its MELEE attacks also ignite the
+      //: its MELEE attacks also ignite the
       // target, adjacent or not -- it has no ranged option at all, so the
       // ranged-only restriction would otherwise just exclude it entirely.
       // Same landed-hit guard First Frost of Autumn uses just below --
@@ -10907,7 +10875,7 @@ window.GameEngine = window.GameEngine || {};
       const isRangedFirebrand = (unit.typeId === "scout" || unit.typeId === "dragon")
         && window.GameEngine.influence.chebyshev(unit.x, unit.y, bestTarget.x, bestTarget.y) > 1;
       const isMeleeGoblinFirebrand = unit.typeId === "goblin_miscreant";
-      // burnChancePct (2026-08-10, user-directed): chance to ignite is now
+      // burnChancePct: chance to ignite is now
       // per-unit data, same convention as siegePct/doubleStrikePct -- see
       // orc_burn_it_all_down's unit_stat_upgrade effects -- rather than
       // always igniting on every qualifying hit.
@@ -10964,7 +10932,7 @@ window.GameEngine = window.GameEngine || {};
             const replacement = window.GameEngine.combat.maybeSpawnHoundAndHunter(defenderCiv, bestTarget.x, bestTarget.y, map);
             if (replacement) log.push(`Hound and Hunter: ${defenderCiv.id}'s fallen Wolf Rider is replaced by a ${describeUnit(replacement)} at (${replacement.x},${replacement.y})`);
           }
-          // Halfellow "Undaunted" (2026-07-20, user-directed): same shape as
+          // Halfellow "Undaunted": same shape as
           // Hound and Hunter above, this time for a defending Pony Patrol's death.
           if (bestTarget.typeId === "pony_patrol" && defenderCiv.unlockedMechanics
               && defenderCiv.unlockedMechanics.has("undaunted")) {
@@ -11169,7 +11137,7 @@ window.GameEngine = window.GameEngine || {};
       });
       markCombatEngaged(civ); // attacker only -- no defending unit is engaged here
       // Hidden: attacking reveals the attacker, regardless of target type.
-      // "Ambush!" floating text (2026-07-22, user-directed): checked before
+      // "Ambush!" floating text: checked before
       // the reveal clears the condition.
       const wasHiddenForCityAttack = !!unit.conditions?.hidden;
       window.GameEngine.combat.revealHidden(unit, currentTurnNumber);
@@ -11260,7 +11228,7 @@ window.GameEngine = window.GameEngine || {};
         ax: unit.x, ay: unit.y, atkUnit: unit,
         dx: bestStruct.x, dy: bestStruct.y, defUnit: null,
       });
-      // Double Strike (2026-08-12, user-directed): same follow-up narration
+      // Double Strike: same follow-up narration
       // as the unit-vs-unit branch above (see combat.js's attackStructure).
       if (res.doubleStruck) {
         window.GameEngine.floatingText.spawnFloatingText(unit, "Double Strike!", "strike");
@@ -11272,7 +11240,7 @@ window.GameEngine = window.GameEngine || {};
       }
       markCombatEngaged(civ); // attacker only -- no defending unit is engaged here
       // Hidden: attacking reveals the attacker, regardless of target type.
-      // "Ambush!" floating text (2026-07-22, user-directed): checked before
+      // "Ambush!" floating text: checked before
       // the reveal clears the condition.
       const wasHiddenForStructAttack = !!unit.conditions?.hidden;
       window.GameEngine.combat.revealHidden(unit, currentTurnNumber);
@@ -11442,7 +11410,7 @@ window.GameEngine = window.GameEngine || {};
     if (!wasMaxed && xpAmount > 0) {
       window.GameEngine.floatingText.spawnFloatingText(unit, `+${Math.round(xpAmount)} XP`, "xp");
     }
-    // Human player's own unit (2026-08-04, user-reported): chooseLevelUpStat
+    // Human player's own unit: chooseLevelUpStat
     // is an AI heuristic, and it was being applied to the human player's
     // units too with no say in the matter. Leave the level-up PENDING
     // (combat.pendingLevelUps(unit) stays > 0, same XP-vs-threshold math
@@ -11480,7 +11448,7 @@ window.GameEngine = window.GameEngine || {};
       xpAmount *= (1 + bonus);
     }
     applyComputedXP(unit, civ, xpAmount);
-    // Elf "Shadowsteed" + rider (2026-07-22, user-directed): a carried
+    // Elf "Shadowsteed" + rider: a carried
     // passenger earns the exact same XP the Shadowsteed itself just did --
     // literally the same already-bonus-adjusted amount (the user's own
     // wording is "the same amount"), not independently recomputed through
@@ -11495,7 +11463,7 @@ window.GameEngine = window.GameEngine || {};
   // shared wall_section building data (js/data/buildings.js), since every
   // race's wall uses that same universal definition but only an Elf civ
   // with this tech can ever make one actually fire.
-  // Wall Defense (2026-08-17, user-directed): generalizes Elf's original
+  // Wall Defense: generalizes Elf's original
   // Treetop Snipers into a shared "walls take potshots" mechanic every race
   // can unlock its own tier of, via a dedicated mechanic id per tier. A civ
   // that has unlocked more than one tier (e.g. Elf's Treetop Snipers AND
@@ -11582,7 +11550,7 @@ window.GameEngine = window.GameEngine || {};
   // meant to read as one fast flurry. See the resolveRound call site.
   const DOUBLE_STRIKE_SFX_DELAY_MS = 220;
 
-  // Death-spot Treasure Chest (2026-08-17, user-directed): every unit that
+  // Death-spot Treasure Chest: every unit that
   // dies via otherCivRemoveDeadUnit is by definition dying to something
   // hostile to it -- there's no alliance system in this game, every civ
   // (and Wandering Monsters) is always hostile to every other, so nothing
@@ -11626,7 +11594,7 @@ window.GameEngine = window.GameEngine || {};
   }
 
   /** Suppresses the move-glide animation for a unit that just "popped" into
-   *  view at (x, y) instead of walking there (2026-07-19, user-directed) --
+   *  view at (x, y) instead of walking there --
    *  a carried passenger is invisible in transit (see render.js's Units
    *  pass, which skips drawing any unit with carriedBy set), so on
    *  disembark/drop it should appear instantly at its new spot rather than
@@ -11740,7 +11708,7 @@ window.GameEngine = window.GameEngine || {};
   }
 
   /**
-   * Anti-Titan learning (2026-07-15, user-directed): the first time a civ
+   * Anti-Titan learning: the first time a civ
    * loses a unit or structure TO a Runeforged Titan specifically (either
    * direction -- the Titan killed them outright, or their own unit died
    * attacking one and taking its counter), it gets one chance to "learn"
@@ -11824,7 +11792,7 @@ window.GameEngine = window.GameEngine || {};
   }
 
   /**
-   * Automate Actions (2026-08-06, user-directed): lightweight per-unit
+   * Automate Actions: lightweight per-unit
    * priming for a single human-owned unit flagged unit.automated. Deliberately
    * does NOT run the full beginAITurn (civ-wide strategy/doctrine/invasion
    * targeting, etc.) -- this is one player-owned unit acting on its own, not

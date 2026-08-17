@@ -152,7 +152,7 @@ window.GameData.TECHS = {
     description: "Any unit standing on a Ruin may start Delving it: a full-turn action that continues automatically (no move/attack) until cancelled, gradually claiming the 1-tile radius around itself just like a city fills in its own tiles, and yielding pooled coin and lore per turn. Instantly loses everything it was claiming/generating if cancelled, the unit moves off the Ruin, or it dies.",
     effects: [{ type: "unlock_mechanic", mechanic: "dungeon_delve" }],
   },
-  // Fishing/Mining/Walls (2026-08-17, user-directed): each mechanic already
+  // Fishing/Mining/Walls: each mechanic already
   // existed and was already unconditionally usable -- these three Level 0
   // techs don't change any behavior, they just make what was already true
   // ("any Galley can fish", "any Pioneer/Tracker can mine", "walls are
@@ -225,7 +225,7 @@ window.GameData.TECHS = {
     costBreakdown: { lore: 11, coin: 4 },
     effects: [{ type: "unlock_unit", unit: "spearguard" }],
   },
-  // Moved L2 -> L1 (2026-08-06, user-directed): a second Layer 1 military
+  // Moved L2 -> L1: a second Layer 1 military
   // choice alongside Spears Raised, per the file header's own "Military may
   // fork into two choices at a layer" rule. No prereq-chain risk -- archery
   // has no prereqs of its own, and every tech that depends on it (longbow/
@@ -277,7 +277,7 @@ window.GameData.TECHS = {
     costBreakdown: { coin: 12, lore: 6 },
     effects: [{ type: "unlock_mechanic", mechanic: "defend_the_walls_human" }],
   },
-  // Absorbed "Longspear" (2026-08-07, user-directed): that tech's own
+  // Absorbed "Longspear": that tech's own
   // effect (Spearguard +2 attack/+1 defense) is folded into this one's
   // effects array below, and the "longspear" tech id no longer exists --
   // nothing else in the codebase referenced it by id (no unit unlocks, no
@@ -313,7 +313,7 @@ window.GameData.TECHS = {
     costBreakdown: { coin: 14, lore: 8 },
     effects: [{ type: "unit_stat_upgrade", unit: "galley", changes: { movement: 2, visionRadius: 1 } }],
   },
-  // Moved L3 -> L2 (2026-08-06, user-directed), following archery down a
+  // Moved L3 -> L2, following archery down a
   // layer. Its own prereq (archery) is now L1, so the ordering stays sound.
   catapult_engineering: {
     id: "catapult_engineering", label: "Catapult Engineering", category: "military", layer: 2, cost: 40,
@@ -322,10 +322,10 @@ window.GameData.TECHS = {
     costBreakdown: { lore: 28, coin: 12 },
     effects: [{ type: "unlock_unit", unit: "catapult" }],
   },
-  // Moved L3 -> L2 (2026-08-06, user-directed), for the same reason as
+  // Moved L3 -> L2, for the same reason as
   // catapult_engineering just above -- prereq (archery) is now L1.
   ramparts: {
-    // category "building" (2026-07-20, user-directed) despite unlocking no
+    // category "building" despite unlocking no
     // building of its own -- filed there anyway per the user's explicit call.
     id: "ramparts", label: "Ramparts", category: "building", layer: 2, cost: 40,
     prereqs: ["archery"], raceOnly: "human",
@@ -357,7 +357,7 @@ window.GameData.TECHS = {
     effects: [{ type: "replace_unit", from: "archer", to: "longbowman" }],
   },
   wizardry: {
-    // Moved L3 -> L2 (2026-07-17, user-directed). No prereq-chain risk: this
+    // Moved L3 -> L2. No prereq-chain risk: this
     // tech has no prereqs of its own, and every tech that depends on IT
     // (freezing_touch/flight at L3, dungeon_delve/mage_college_tech/
     // teleportation at L4) stays strictly later, so the chain is still
@@ -372,7 +372,7 @@ window.GameData.TECHS = {
     costBreakdown: { lore: 32, coin: 13 },
     effects: [{ type: "unlock_unit", unit: "wizard" }],
   },
-  // Moved L3 -> L2 (2026-08-17, user-directed) and reworked from an active
+  // Moved L3 -> L2 and reworked from an active
   // targeted cast into a passive on-hit chance -- see
   // ai.js's considerAttackOrGarrison (Human "Freezing Touch" block, right
   // next to Fireball's burnChancePct trigger).
@@ -390,7 +390,7 @@ window.GameData.TECHS = {
     costBreakdown: { lore: 55 },
     effects: [{ type: "lore_per_city", value: 3 }],
   },
-  // New tech (2026-08-06, user-directed): the user's own request left this
+  // New tech: the user's own request left this
   // tech unnamed ("HUMAN - CIVIC - L3: \"\""); "Sea Charts" was picked here
   // as a placeholder that fits the file's naming register and Make Way's own
   // travel/cartography flavor -- rename freely.
@@ -429,7 +429,7 @@ window.GameData.TECHS = {
     costBreakdown: { lore: 35, coin: 15 },
     effects: [{ type: "unlock_building", building: "mage_college" }],
   },
-  // Moved L4 -> L3 (2026-08-06, user-directed), following catapult_engineering
+  // Moved L4 -> L3, following catapult_engineering
   // down a layer. Its prereq is now L2, so the ordering stays sound.
   trebuchet_engineering: {
     id: "trebuchet_engineering", label: "Trebuchet Engineering", category: "military", layer: 3, cost: 55,
@@ -474,7 +474,7 @@ window.GameData.TECHS = {
     costBreakdown: { lore: 60, coin: 25, harvest: 15 },
     effects: [{ type: "radius_bonus", value: 1 }],
   },
-  // Moved L5 -> L4 (2026-08-17, user-directed). Its prereq (sovereign_power)
+  // Moved L5 -> L4. Its prereq (sovereign_power)
   // stays at L5 -- a one-layer inversion, left as-is since the user only
   // asked to move this tech, not its prereq; Palace Charter is simply
   // cheaper now (L4 pricing) while still gated behind actually finishing
@@ -486,7 +486,7 @@ window.GameData.TECHS = {
     costBreakdown: { harvest: 25, lore: 20, coin: 15 },
     effects: [{ type: "unlock_building", building: "palace" }],
   },
-  // Moved L5 -> L3 (2026-08-17, user-directed) and reworked from automatic
+  // Moved L5 -> L3 and reworked from automatic
   // splash-on-attack into a standalone targeted action -- see ai.js's
   // performWizardFireball/maybeFireballStrike. Ignite chance is now a fixed
   // 50% (FIREBALL_IGNITE_CHANCE in ai.js), not the Wizard's own
@@ -510,8 +510,8 @@ window.GameData.TECHS = {
     costBreakdown: { lore: 60, coin: 30 },
     effects: [{ type: "unlock_mechanic", mechanic: "invulnerability_chance", value: 0.33 }],
   },
-  // Moved L5 -> L2 (2026-08-17, user-directed). Prereq battle_mage removed
-  // (2026-08-18, user-directed) -- no longer gated behind it now that
+  // Moved L5 -> L2. Prereq battle_mage removed
+  // -- no longer gated behind it now that
   // Invisibility sits well below Battle Mage's own L4.
   invisibility: {
     id: "invisibility", label: "Invisibility", category: "mystic", layer: 2, cost: 60,
@@ -645,7 +645,7 @@ window.GameData.TECHS = {
     costBreakdown: { coin: 12, lore: 8 },
     effects: [{ type: "unlock_building", building: "treetop_watch" }],
   },
-  // Moved L2 -> L1 (2026-08-17, user-directed); attack 1 -> 2. Prereq
+  // Moved L2 -> L1; attack 1 -> 2. Prereq
   // elf_hunters_soul (L2) stays put -- one-layer inversion, same "move the
   // layer only" policy as Human's Palace Charter/Invisibility/Fireball.
   elf_treetop_snipers: {
@@ -662,7 +662,7 @@ window.GameData.TECHS = {
     costBreakdown: { coin: 27, lore: 18 },
     effects: [{ type: "unlock_mechanic", mechanic: "long_range_snipers" }],
   },
-  // Moved L3 -> L2 (2026-08-17, user-directed). Prereq elf_gems_of_starlight
+  // Moved L3 -> L2. Prereq elf_gems_of_starlight
   // (L3) stays put -- one-layer inversion, same policy as above.
   elf_silverleaf_atelier: {
     id: "elf_silverleaf_atelier", label: "Silverleaf Atelier", category: "building", layer: 2, cost: 35,
@@ -719,7 +719,7 @@ window.GameData.TECHS = {
     costBreakdown: { lore: 30, coin: 15 },
     effects: [{ type: "unlock_mechanic", mechanic: "whirlwind_strike" }],
   },
-  // Does NOT replace Whirlwind Strike (2026-07-20, user-directed) -- both
+  // Does NOT replace Whirlwind Strike -- both
   // mechanics stay independently usable; the AI picks whichever suits the
   // current cluster of targets (see ai.js's maybeBladeDancerSweep).
   elf_blade_storm: {
@@ -782,7 +782,7 @@ window.GameData.TECHS = {
     prereqs: [], raceOnly: "elf",
     description: "Elf unit attacks have a 10% chance to inflict the Frozen condition on the target (0 movement, -25% attack, for a few turns).",
     costBreakdown: { lore: 20, coin: 10 },
-    // frozenChancePct (2026-08-10, user-directed): chance to inflict Frozen
+    // frozenChancePct: chance to inflict Frozen
     // now lives as a per-unit data field, same convention as siegePct/
     // doubleStrikePct, instead of ai.js's hardcoded FIRST_FROST_CHANCE
     // constant -- see applyElfCombatMechanics. 0.10 on every elf combat
@@ -1220,7 +1220,7 @@ window.GameData.TECHS = {
     effects: [{ type: "unlock_mechanic", mechanic: "defend_the_walls_orc" }],
   },
   // 2026-07-20, user-directed; scope widened and attack rating raised
-  // (2026-08-17, user-directed) -- see combat.js's spikesAttackRating/
+  // -- see combat.js's spikesAttackRating/
   // spikesCounterattack. Now covers ANY Orc structure (walls, buildings,
   // AND cities), not just walls and cities -- no attack bonus multiplier,
   // no militia spawn, flat attack rating instead of deriving from the Archer.
@@ -1251,7 +1251,7 @@ window.GameData.TECHS = {
     // firstStrikePct is genuinely additive with the unit's own base value
     // (see combat.js's effectiveFirstStrikePct) -- this +0.02 stacks on top
     // of Wolf Rider's baked-in base (see units.js) rather than replacing it.
-    // 0.015 -> 0.02 (2026-08-03, user-directed).
+    // 0.015 -> 0.02.
     description: "Wolf Rider gains 2% First Strike and increased attack and movement.",
     costBreakdown: { lore: 17, coin: 7 },
     effects: [{ type: "unit_stat_upgrade", unit: "wolf_rider", changes: { firstStrikePct: 0.02, attack: 2, movement: 1 } }],
@@ -1265,7 +1265,7 @@ window.GameData.TECHS = {
   },
 
   // --- Layer 3 ---
-  // Merged with the former "Campaign of Terror" (2026-07-14, user-directed):
+  // Merged with the former "Campaign of Terror":
   // that tech (L5) has been removed entirely and its influence-suppression
   // effect folded in here, moving it up to L3 -- a real timing buff, not
   // just a naming change. The resource payout also changed from a flat
@@ -1340,7 +1340,7 @@ window.GameData.TECHS = {
     description: "Ranged attacks (not adjacent melee) from a Scout or a Dragon set their target ablaze: the Burning condition deals 1 damage at the start of the burning unit's turn for 3 turns, unless it's currently on Coast, Ocean, or a river tile. Goblin Miscreant's melee attacks ignite too, having no ranged option of its own.",
     costBreakdown: { lore: 22, coin: 13 },
     effects: [
-      // burnChancePct (2026-08-10, user-directed): same per-unit data field
+      // burnChancePct: same per-unit data field
       // as Fireball's own burnChancePct above, replacing ai.js's previous
       // unconditional "every qualifying hit ignites". 1.0 preserves this
       // tech's existing behavior exactly.
@@ -1353,7 +1353,7 @@ window.GameData.TECHS = {
   orc_wasteland_riders: {
     id: "orc_wasteland_riders", label: "Wasteland Riders", category: "military", layer: 3, cost: 24,
     prereqs: ["orc_forced_march"], raceOnly: "orc",
-    // Civ-wide, not unit-restricted (2026-08-10, user-directed), same fix
+    // Civ-wide, not unit-restricted, same fix
     // and same reasoning as orc_forced_march above.
     description: "Reduces the movement cost of Desert by 0.5.",
     costBreakdown: { lore: 18, harvest: 6 },
@@ -1716,7 +1716,7 @@ window.GameData.TECHS = {
   // Game, below) -- same staged shape Human's Wizard uses (unit unlocked
   // first, each spell behind its own tech). Rumors of a tavern-born rascal
   // makes for a fitting requirement on Pub Crawl.
-  // Moved L3 -> L2 (2026-08-17, user-directed). Prereq pub_crawl (L3) stays
+  // Moved L3 -> L2. Prereq pub_crawl (L3) stays
   // put -- one-layer inversion, same "move the layer only" policy as
   // Human's Palace Charter/Invisibility/Fireball above.
   halfellow_making_trouble: {
@@ -1745,7 +1745,7 @@ window.GameData.TECHS = {
     effects: [{ type: "unlock_mechanic", mechanic: "high_ground" }],
   },
   halfellow_hedge_walls: {
-    // category "building" (2026-07-20, user-directed) despite unlocking no
+    // category "building" despite unlocking no
     // building of its own -- same call as Ramparts above.
     id: "halfellow_hedge_walls", label: "Hedge Walls", category: "building", layer: 3, cost: 38,
     prereqs: ["halfellow_hillside_harvest"], raceOnly: "halfellow",
@@ -1767,7 +1767,7 @@ window.GameData.TECHS = {
     // rate WORSE in both Halfellow and Human matchups and lengthened games,
     // so reverted back to 2.50. See project_pairwise_balance_human_orc_halfellow
     // memory.
-    // Cut back to 2.00 again (2026-07-24, user-directed), this time paired
+    // Cut back to 2.00 again, this time paired
     // with a brand-new tool for the same job -- Envoy (below) lets a
     // Pioneer/Wanderer claim a specific in-radius tile outright in a flat
     // 2 turns, independent of this multiplier. Dropping this back to 2.00
@@ -1876,7 +1876,7 @@ window.GameData.TECHS = {
     costBreakdown: { lore: 55, harvest: 40 },
     effects: [{ type: "unlock_mechanic", mechanic: "rouse_the_people" }],
   },
-  // "Set the Trap" (2026-08-11, user-directed): the Trouble Maker's third
+  // "Set the Trap": the Trouble Maker's third
   // trick, gated behind The Riddle Game as the capstone of its own
   // sub-tree. Unlocks BOTH trap flavors at once -- the player picks Frost
   // or Fire per placement, not a separate tech per flavor (user-directed:
@@ -1908,7 +1908,7 @@ window.GameData.getTech = function (techId) {
   return tech;
 };
 
-// PURE TIER-BASED COST (2026-08-04, user-directed): every tech's REAL Lore
+// PURE TIER-BASED COST: every tech's REAL Lore
 // price is now derived entirely from its layer, not from the individually
 // hand-authored `cost` field still sitting on each tech definition above --
 // those numbers are inert data now, kept in place rather than mechanically
@@ -1922,7 +1922,7 @@ window.GameData.getTech = function (techId) {
 // cost -- cost and time are two independent formulas fed by the same tier
 // number, exactly mirroring how a unit's build cost and build time both
 // derive from unitPower without one being computed from the other.
-// `?? 1`, not `|| 1` (2026-08-06, user-directed): a real Level 0 tech's
+// `?? 1`, not `|| 1`: a real Level 0 tech's
 // `layer` is literally 0, which `||` treats as falsy and would wrongly
 // substitute 1 -- `??` only substitutes on null/undefined, so an explicit
 // 0 passes through correctly (Level 0 tech tree items are all
@@ -1934,7 +1934,7 @@ window.GameData.effectiveTechCost = function (tech) {
   return cfg.baseCost * Math.pow(cfg.tierGrowth, tech.layer ?? 1);
 };
 
-// Tech cost mix (2026-08-05, user-directed): every tech's cost used to be
+// Tech cost mix: every tech's cost used to be
 // paid entirely in Lore -- now split across harvest/coin/lore by column,
 // each ratio reflecting what that kind of research draws on: Civic leans
 // Harvest (labor/population-driven), Building leans Coin (construction),
@@ -2146,7 +2146,7 @@ const UNIT_UPKEEP_SPLIT_DEFAULT = window.GameConfig.units.upkeepSplitDefault;
 const UNIT_UPKEEP_SPLIT_MAGICAL = window.GameConfig.units.upkeepSplitMagical;
 const MAGICAL_UNIT_IDS = new Set(window.GameConfig.units.magicalUnitIds);
 
-// Base upkeep rate: 10% -> 35% (2026-07-17, user-directed). Measured
+// Base upkeep rate: 10% -> 35%. Measured
 // directly in a real 900-turn game (see [[project_roads_upkeep_stall_review]])
 // that at 10% a 19-unit army (14 military) cost only 6.3%/3.4% of a civ's
 // harvest/coin income -- a rounding error, not real economic pressure, and
@@ -2199,7 +2199,7 @@ const UPKEEP_BASE_RATE = window.GameConfig.units.upkeepBaseRate;
  *  selection rule chooseBuildAction already uses for the cost/build-time
  *  side.
  *
- *  `unit` (2026-07-14, user-directed) is the optional actual unit INSTANCE,
+ *  `unit` is the optional actual unit INSTANCE,
  *  not just its type -- when passed and `unit.startingUnit` is set, upkeep
  *  is zero regardless of everything else. Civ-creation's free starting
  *  Pioneer/2-Scouts (see main.js createNewGame) are stamped with this flag;
@@ -2215,7 +2215,7 @@ const UPKEEP_BASE_RATE = window.GameConfig.units.upkeepBaseRate;
 window.GameData.unitUpkeep = function (unitId, civ, unit) {
   if (unit && unit.startingUnit) return { harvest: 0, coin: 0, lore: 0 };
   const unitData = window.GameData.getUnit(unitId);
-  // Elf Raptor/Shadowsteed (2026-07-18, user-directed): `noUpkeep: true`
+  // Elf Raptor/Shadowsteed: `noUpkeep: true`
   // (units.js) -- both are Druid-summoned support units (scout / carrier),
   // not standing-army units, so they carry no ongoing cost at all.
   if (unitData.noUpkeep) return { harvest: 0, coin: 0, lore: 0 };

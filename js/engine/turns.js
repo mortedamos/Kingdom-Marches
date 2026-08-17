@@ -1286,7 +1286,7 @@ window.GameEngine = window.GameEngine || {};
       unit.usedThisTurn = false; unit.resting = false; unit.movesRemaining = null;
     }
 
-    // Multi-turn goto orders (2026-08-06, user-directed): MUST run here,
+    // Multi-turn goto orders: MUST run here,
     // after the reset immediately above, not in beginCivTurn (tried first,
     // and wrong -- see the 2026-08-06 fix note below). The human civ plays
     // via direct UI clicks at any point while the game is sitting idle
@@ -1314,7 +1314,7 @@ window.GameEngine = window.GameEngine || {};
           unit.gotoTarget = null;
         }
       }
-      // Sentry / Follow (2026-08-12, user-directed): same "persisted order,
+      // Sentry / Follow: same "persisted order,
       // re-evaluated fresh every turn" shape and hook point as the goto
       // orders just above -- see orders.js's advanceSentryOrder/
       // advanceFollowOrder.
@@ -1338,7 +1338,7 @@ window.GameEngine = window.GameEngine || {};
       }
     }
 
-    // Garrison (2026-08-06, user-directed): a standing "defending" brace
+    // Garrison: a standing "defending" brace
     // (see main.js's handleGarrisonUnit) that must be kept alive every turn
     // without asking the player -- re-stamps the condition fresh each round
     // so it never lapses to its nominal 1-turn expiry on its own. Ends
@@ -1393,7 +1393,7 @@ window.GameEngine = window.GameEngine || {};
       }
     }
 
-    // Automate Actions (2026-08-06, user-directed): same lifecycle slot as
+    // Automate Actions: same lifecycle slot as
     // the goto-order continuation just above, and for the same reason -- a
     // fresh usedThisTurn/movesRemaining budget must exist before an
     // automated unit's AI-reused decision logic runs. Units already mid

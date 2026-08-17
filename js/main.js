@@ -608,8 +608,7 @@
     });
   }
 
-  /** Open/close wiring for the Keyboard Shortcuts window (2026-08-07,
-   *  user-directed) -- same button/backdrop/Escape convention as
+  /** Open/close wiring for the Keyboard Shortcuts window -- same button/backdrop/Escape convention as
    *  setupLaunchOptionsOverlay. Opened from the Interface menu's
    *  "Keyboard Shortcuts" button; the "Enter Full Screen" button lives
    *  INSIDE this window (see index.html). Also opened from the title menu
@@ -774,12 +773,10 @@
     });
   }
 
-  // Continuously re-scheduled while the credits overlay is open (2026-08-07,
-  // user-directed) -- see startCreditsCrawl/closeCredits.
+  // Continuously re-scheduled while the credits overlay is open -- see startCreditsCrawl/closeCredits.
   let creditsAnimId = null;
 
-  /** "View Credits" in the Game Options modal: closes that modal (per the
-   *  user's own framing of the request) and fetches/parses credits.txt
+  /** "View Credits" in the Game Options modal: closes that modal and fetches/parses credits.txt
    *  (root folder) fresh every time it's opened, so editing the file needs
    *  no rebuild -- see js/ui/credits.js for the tiny format it understands. */
   function openCredits() {
@@ -1284,7 +1281,7 @@
     const gameState = {
       map, civs, turnNumber: 0, visibility: {}, explored: {}, tileMemory: {},
       turnOrder, turnStepIndex: 0, seed, aiActionLog: [],
-      // Game Options "Max Monsters" slider (2026-08-16, user-directed):
+      // Game Options "Max Monsters" slider:
       // per-game override of config.js's worldEncounters.monsters.
       // perKingdomCap -- see ai.js's maybeSpawnMonster/seedInitialMonsters,
       // which both read this instead of the config default. Falls back to
@@ -1292,8 +1289,7 @@
       // headless __sim.newGame call with no third argument still works.
       monsterCapPerKingdom: monsterCapPerKingdom ?? window.GameConfig.worldEncounters.monsters.perKingdomCap,
     };
-    // World-gen-time Wandering Monster seeding (2026-08-16, user-directed:
-    // "some monsters should exist at game start") -- see ai.js's
+    // World-gen-time Wandering Monster seeding -- see ai.js's
     // seedInitialMonsters for placement rules. Deliberately after the civs
     // above are fully placed, not before: it needs every civ's starting
     // units already on the map to keep its own placements clear of them.
@@ -1315,7 +1311,7 @@
    * requirement, on the originally preferred landmass, rather than fail to
    * place the civ at all.
    */
-  // Racial terrain preference (2026-07-18, user-directed): a civ should
+  // Racial terrain preference: a civ should
   // start somewhere that plays to its own tech-tree identity, mirroring the
   // terrain each race's civic techs actually key off. Dwarf can never start
   // ON Mountains at all (see scoreLocation's hard exclusion below), so
@@ -1448,7 +1444,7 @@
     const rect = canvas.getBoundingClientRect();
     canvas.width = Math.floor(rect.width);
     canvas.height = Math.floor(rect.height);
-    // Cloud overlay (2026-08-06, user-directed) is layered pixel-for-pixel
+    // Cloud overlay is layered pixel-for-pixel
     // over the map canvas, so it has to track the exact same size -- same
     // CSS-pixel convention (no devicePixelRatio scaling) as above, or the
     // cursor hole would land offset from the actual cursor.
@@ -1564,7 +1560,7 @@
   }
 
   /** Shows/hides the "AI Actions"/"AI Tech Trees" Report menu items --
-   *  spectator-only (2026-08-06, user-directed): both reports expose an
+   *  spectator-only: both reports expose an
    *  opponent's decision-making/tech progress, which is spectator-mode
    *  observability, not something a single-player human should be able to
    *  peek at about their own opponents. Same call-site convention as
@@ -1707,7 +1703,7 @@
     // Opening the menu re-reads the real state, which covers the player
     // having used F11 (browser-level fullscreen doesn't always fire the
     // Fullscreen API's own change event). The button itself now lives in
-    // the Keyboard Shortcuts window (2026-08-07, user-directed), not the
+    // the Keyboard Shortcuts window, not the
     // Interface dropdown -- resync on whichever one the player actually
     // opens next.
     const interfaceBtn = $("menu-interface-btn");
@@ -1814,17 +1810,15 @@
       gameState,
     };
     const json = window.GameEngine.savegame.serialize(payload);
-    // .kmsg extension, not .json (2026-08-07, user-directed; renamed
-    // .kms->.kmsg 2026-08-10) -- the payload itself is still plain JSON text
+    // .kmsg extension, not .json -- the payload itself is still plain JSON text
     // (savegame.js's serialize/deserialize are untouched), this only changes
     // what the downloaded file is named.
     const blob = new Blob([json], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    // Filename includes the kingdom's race and a save timestamp (2026-08-10,
-    // user-directed) so multiple saves/games don't collide or read as
-    // interchangeable in a downloads folder.
+    // Filename includes the kingdom's race and a save timestamp so multiple
+    // saves/games don't collide or read as interchangeable in a downloads folder.
     const civ = gameState.civs[humanCivId];
     const raceName = civ ? window.GameData.getRace(civ.raceId).label : "kingdom";
     const now = new Date();
@@ -1854,26 +1848,17 @@
 
   /**
    * Replaces the live session with a loaded save -- but first makes sure
-   * every race the save actually needs has its art loaded (2026-08-10,
-   * user-directed: "when loading a save game, we should make sure all
-   * relevant graphics are loaded as well"). startGame's own
-   * preloadAll(racesInPlay) call only ever fetched art for the CURRENT
-   * session's own races -- e.g. a Human-vs-Dwarf game never touched Orc or
-   * Undead art at all -- so loading an old save with a different race mix
-   * would otherwise leave those civs rendering as bare color/symbol
-   * placeholders (sprites.js's pick() silently falls back when nothing's
-   * in its registry) until something else happened to trigger a fetch.
-   * window.UI.sprites.preloadAll is idempotent per race (loadVariants' own
-   * `if (registry[key]) return` guard skips anything already cached this
-   * session), so re-calling it here with the SAVE's actual races is cheap
-   * when they overlap the current session and correctly fills the gap when
-   * they don't. Reuses the same loading screen startGame shows; the actual
-   * state swap (finishApplyLoadedPayload) only happens once loading
-   * settles, so the player is never looking at placeholder art for a race
-   * that should have real art. Music/sfx are deliberately left alone here
-   * -- out of scope for this fix, and forcing their progress rows to
-   * a fake 100% just keeps the shared loading-screen markup honest about
-   * what this specific reload actually touches. */
+   * every race the save actually needs has its art loaded, since startGame's
+   * own preloadAll(racesInPlay) call only ever fetches art for the CURRENT
+   * session's own races, and sprites.js's pick() would otherwise silently
+   * fall back to placeholders for a save with a different race mix.
+   * window.UI.sprites.preloadAll is idempotent per race, so re-calling it
+   * here with the SAVE's actual races is cheap when they overlap the current
+   * session and correctly fills the gap when they don't. Reuses the same
+   * loading screen startGame shows; the actual state swap
+   * (finishApplyLoadedPayload) only happens once loading settles. Music/sfx
+   * are deliberately left alone here -- their progress rows just stay as-is
+   * rather than being forced to a fake 100%. */
   function applyLoadedPayload(payload) {
     // Stopped immediately, not deferred to finishApplyLoadedPayload -- a
     // spectator autoplay tick firing against the soon-to-be-discarded OLD
@@ -1920,9 +1905,9 @@
     for (const k of Object.keys(viewState)) delete viewState[k];
     Object.assign(viewState, {
       scrollX: 0, scrollY: 0, zoomLevel: 1.0, showInfluence: true, showGrid: true,
-      // Interface menu's "End Turn Reminders" checkbox (2026-08-12,
-      // user-directed) -- gates handleEndTurnClick's confirmEndTurn dialog
-      // entirely when off, same non-persisted per-session convention as
+      // Interface menu's "End Turn Reminders" checkbox -- gates
+      // handleEndTurnClick's confirmEndTurn dialog entirely when off, same
+      // non-persisted per-session convention as
       // showGrid/showInfluence above (not part of the save file).
       endTurnRemindersEnabled: true,
       selectedUnit: null, selectedCity: null, selectedTile: null, humanCivId,
@@ -1973,7 +1958,7 @@
 
   function handleEndTurnClick() {
     if (spectatorMode) return; // spectator turns advance automatically
-    // Turn-end guard (2026-08-01, user-directed): surface anything the player
+    // Turn-end guard: surface anything the player
     // probably didn't mean to skip. Deliberately a confirm, not a block --
     // deliberately holding units in reserve or coasting a turn without
     // research is a legitimate choice, it just shouldn't happen by accident.
@@ -1995,7 +1980,7 @@
 
   /** Things the player very likely still wants to do this turn. Empty means
    *  End Turn goes straight through with no confirm. Each item is
-   *  { text, x, y, tabKind } (2026-08-04, user-directed: x/y/tabKind let
+   *  { text, x, y, tabKind } -- x/y/tabKind let
    *  the dialog render a tile-link jump-and-select button next to the text,
    *  same as sidebar.js's own tileLink -- x/y are omitted for "No research
    *  selected", which isn't tied to any one tile). Cities are listed
@@ -2018,7 +2003,7 @@
         x: first.x, y: first.y, tabKind: "unit",
       });
     }
-    // Affordability-gated (2026-08-05, user-directed): a civ that simply
+    // Affordability-gated: a civ that simply
     // can't afford ANY currently-available tech, or a city that can't
     // afford ANY currently-available build, has nothing it could actually
     // do about "no research selected"/"not building anything" right now --
@@ -2026,14 +2011,14 @@
     // up. window.GameEngine.ai.availableBuilds already tags every option
     // with `affordable` (see its own doc comment).
     if (!civ.currentResearch && window.GameEngine.tech.hasAffordableResearch(civ)) {
-      // chooseResearch (2026-08-10, user-directed): renders a "Choose
+      // chooseResearch: renders a "Choose
       // Research" button instead of a tile "Go to" link -- see dialog.js's
       // confirmEndTurn branch and wireDialogButtons below.
       items.push({ text: "No research selected", chooseResearch: true });
     }
     for (const c of civ.cities) {
       // Shared with the sidebar's per-city idle tag and the map's idle
-      // badge (2026-08-07, user-directed) -- see cities.js's isCityIdle for
+      // badge -- see cities.js's isCityIdle for
       // the exact rules (a city that spent this turn's production on
       // resources or research HAS made its choice, it's no more unresolved
       // than one mid-build).
@@ -2047,10 +2032,10 @@
   /** Opens the name-and-confirm dialog for `unit` founding on its own tile,
    *  and does the founding itself if the player accepts. Reachable only via
    *  the unit panel's own "Found City" button (handleFoundCity) -- there is
-   *  deliberately no automatic end-of-turn settler sweep anymore (2026-08-06,
-   *  user-directed: never auto-prompt to found a city just because a
-   *  pioneer happens to be standing on a valid tile; the player uses the
-   *  button when they actually want to). `onDone` runs once the dialog is
+   *  deliberately no automatic end-of-turn settler sweep: never auto-prompt
+   *  to found a city just because a pioneer happens to be standing on a
+   *  valid tile; the player uses the button when they actually want to.
+   *  `onDone` runs once the dialog is
    *  answered either way. */
   function openFoundCityDialog(civ, unit, onDone) {
     const suggested = window.GameData.getNextCityName(civ.raceId, civ.usedCityNames || []);
@@ -2073,7 +2058,7 @@
           window.GameEngine.orders.invalidateReachCache();
           window.GameEngine.turns.refreshVisibility(gameState);
           window.SfxSystem.playAction(civ.raceId, unit.typeId, "found", unit.x, unit.y);
-          // Free first-city tech (2026-08-05, user-directed): mirrors
+          // Free first-city tech: mirrors
           // cities.js foundCity's own civ.cities.length === 1 grant for AI
           // civs -- this path duplicates that check since it never calls
           // that function. Interactive for the human player instead of an
@@ -2090,7 +2075,7 @@
     redraw();
   }
 
-  /** Free first-city tech choice (2026-08-05, user-directed): opens right
+  /** Free first-city tech choice: opens right
    *  after a civ's FIRST city is founded (see openFoundCityDialog above),
    *  offering every Layer-1 tech for its race as a free pick -- see
    *  tech.js's firstCityTechChoices/grantFreeTech. No-ops straight to
@@ -2136,7 +2121,7 @@
     unit.pendingIntent = null;
     unit.gotoTarget = null;
     if (unit.channeling === "garrison") unit.channeling = null;
-    // Sentry / Follow (2026-08-12, user-directed) -- same "any new order
+    // Sentry / Follow -- same "any new order
     // supersedes a standing one" rule gotoTarget already gets here, so a
     // unit taken off Sentry/Follow by being given something else to do
     // doesn't keep re-triggering its old standing order next turn.
@@ -2144,7 +2129,7 @@
     unit.followTarget = null;
   }
 
-  /** Shift-held "repeat for the next 3 turns" (2026-08-07, user-directed):
+  /** Shift-held "repeat for the next 3 turns":
    *  called by handleRestAndDefend/handleResourceProduction/
    *  handleCityResearch right after each has successfully applied its
    *  action once, normally. Holding Shift at the moment the action is
@@ -2192,16 +2177,14 @@
       el.tagName === "SELECT" || el.isContentEditable));
   }
 
-  /** Global keyboard shortcuts (2026-08-07, user-directed). Registered ONCE
+  /** Global keyboard shortcuts. Registered ONCE
    *  at bootstrap, same "safe pre-game, guards internally" convention
    *  setupContextMenuDismissal uses -- every handler below re-checks
    *  gameState/viewState/humanCivId itself rather than assuming a game is
    *  running.
    *
    *  General: WASD and the arrow keys both pan the map, mapped onto the same
-   *  panKeys entries (2026-08-12, user-directed -- arrows used to move the
-   *  selected unit one tile; that's still reachable via a normal map click,
-   *  just no longer a dedicated shortcut), continuous, applied every
+   *  panKeys entries, continuous, applied every
    *  animation-loop frame while held -- see startAnimationLoop's panKeys
    *  read; Shift arms the "next 3 turns" auto-repeat on Rest and Defend/
    *  Gather More Resources/Research (see maybeScheduleAutoRepeat) and
@@ -2238,7 +2221,7 @@
         return;
       }
 
-      // Enter = End Turn (2026-08-10, user-directed). Checked before the
+      // Enter = End Turn. Checked before the
       // overlay gate below so it also confirms the "There's still work you
       // can do this turn" dialog (game-dialog-confirm-btn is already wired
       // to its End Turn action by wireDialogButtons) -- every OTHER overlay
@@ -2259,7 +2242,7 @@
       if (!gameState || !viewState || !humanCivId || anyOverlayOpen()) return;
 
       const key = e.key.toLowerCase();
-      // Arrow keys pan the map exactly like WASD (2026-08-12, user-directed)
+      // Arrow keys pan the map exactly like WASD
       // -- mapped onto the SAME panKeys entries (ArrowUp -> "w", etc.) rather
       // than a parallel set, so startAnimationLoop's per-frame pan read
       // (below) needs no changes and the two input methods can never drift.
@@ -2282,13 +2265,11 @@
         } else if (viewState.selectedCity && viewState.selectedCity.civId === humanCivId) {
           handleResourceProduction(viewState.selectedCity);
         } else {
-          // Nothing selected (2026-08-10, user-directed): jump to the next
+          // Nothing selected: jump to the next
           // idle city, or the next unit needing orders if there's no idle
           // city -- same priority goToNextIdleCityOrNextUnit already gives
           // the Next Idle City/Next Unit sidebar buttons. If THAT comes back
-          // false (2026-08-12, user-directed: "if no cities are idle, and
-          // all units have orders, then space should ... end turn") there is
-          // nothing left to jump to this turn, so Space falls through to the
+          // false, there is nothing left to jump to this turn, so Space falls through to the
           // same End Turn path Enter already uses -- still routed through
           // handleEndTurnClick, so the confirmEndTurn reminder (when enabled)
           // still gets its say rather than skipping straight to advanceTurn.
@@ -2330,7 +2311,7 @@
     openFoundCityDialog(civ, unit, () => redraw());
   }
 
-  /** "Found City Here" on a remote tile (2026-08-07, user-directed): if the
+  /** "Found City Here" on a remote tile: if the
    *  site is already road-connected (or exempt -- see cities.js's
    *  canFoundCityAt), founds immediately; otherwise asks whether to build a
    *  road there first, since a new city must be road-connected to found. A
@@ -2403,7 +2384,7 @@
   let pendingPreUnitCounts = null;
 
   function finishRoundBookkeeping(victoryResult) {
-    // Human defeat (2026-08-06, user-directed): two independent ways to
+    // Human defeat: two independent ways to
     // lose in single player -- this civ's own elimination (all cities
     // destroyed after founding at least one, or wiped before founding --
     // see turns.js's checkElimination), which can happen while OTHER civs
@@ -2446,7 +2427,7 @@
             offerNextUnitBuiltNotice(civ, afterUnitBuilt);
           }
         };
-        // Starvation disband choice goes first (2026-08-10, user-directed) --
+        // Starvation disband choice goes first --
         // it's the one entry in this chain reporting a LOSS rather than
         // progress, so it leads rather than getting buried behind good news.
         // The Wisp-cap disband choice (also a loss notice, see turns.js's
@@ -2469,14 +2450,14 @@
         ? `${victoryResult.winner} has conquered all rivals!`
         : `${victoryResult.winner} has achieved territorial dominance! (${(victoryResult.share * 100).toFixed(0)}% of the map)`;
       viewState.dialog = { kind: "message", title: "Victory!", text };
-      // Switches music to the winning race's victory theme (2026-07-22,
-      // user-directed) -- <race>_victory_#.mp3, falls back to that race's
+      // Switches music to the winning race's victory theme --
+      // <race>_victory_#.mp3, falls back to that race's
       // normal theme if it doesn't have one yet (see music.js's resolveCurrent).
       window.MusicSystem.notifyVictory(gameState.civs[victoryResult.winner].raceId);
     }
   }
 
-  /** Human defeat announcement (2026-08-06, user-directed) -- see
+  /** Human defeat announcement -- see
    *  finishRoundBookkeeping's humanLost check. Stats drawn from data
    *  already tracked civ-wide (no new tracking needed): cityEvents (see
    *  cities.js's foundCity/destroyCity) survives the civ's own elimination
@@ -2498,7 +2479,7 @@
     window.MusicSystem.notifyGameOver();
   }
 
-  /** "Return to Title Screen" (2026-08-06, user-directed) -- a full reload
+  /** "Return to Title Screen" -- a full reload
    *  rather than a hand-rolled teardown of gameState/viewState/timers/
    *  music/sfx visibility hooks/etc: the game has already ended, there's
    *  nothing left to preserve, and a reload guarantees every piece of
@@ -2510,7 +2491,7 @@
     location.reload();
   }
 
-  /** Tech-researched announcement (2026-08-06, user-directed): opens the
+  /** Tech-researched announcement: opens the
    *  instant a tech finishes (see finishRoundBookkeeping). Lists every
    *  OTHER tech in this civ's race tree that named `techId` as a
    *  prerequisite -- "here's what just opened up" -- plus a shortcut
@@ -2518,7 +2499,7 @@
    *  answered either way (same chaining convention offerNextUnitBuiltNotice
    *  uses), so finishRoundBookkeeping can queue the
    *  unit-built notices right behind it. */
-  /** Starvation unit-loss choice (2026-08-10, user-directed): drains
+  /** Starvation unit-loss choice: drains
    *  civ.pendingStarvationDisbands one at a time -- turns.js pushes one
    *  entry per round the human civ's stockpile goes negative with units
    *  left to lose (see its own doc comment for why the AI doesn't use this
@@ -2556,7 +2537,7 @@
     redraw();
   }
 
-  /** Orc "Bog Spirit" Wisp cap choice (2026-08-10, user-directed): drains
+  /** Orc "Bog Spirit" Wisp cap choice: drains
    *  civ.pendingWispDisbands one at a time -- turns.js's beginCivTurn pushes
    *  one entry per excess Wisp a dead Bog Witch left behind (see its own
    *  doc comment for why the AI doesn't use this path). Same shape as
@@ -2602,7 +2583,7 @@
       techLabel: tech.label,
       techDescription: tech.description || "",
       unlockedTechs,
-      // Already-researching gate (2026-08-12, user-directed): a city's
+      // Already-researching gate: a city's
       // "Research" boost action can finish `techId` early, mid-turn, ahead
       // of this notice actually showing (queued for round-end -- see
       // finishRoundBookkeeping). If the player had ALREADY picked a next
@@ -2625,7 +2606,7 @@
         viewState.onTechTreeClosed = onDone;
         lastRenderedTechTreeKey = null;
       },
-      // "View" link next to each unlocked tech (2026-08-10, user-directed):
+      // "View" link next to each unlocked tech:
       // opens the tree already scrolled to and pulsing on that tech, with
       // its layer forced open even if it would otherwise be collapsed (see
       // techtree.js's render/renderNode focusTechId handling).
@@ -2640,7 +2621,7 @@
     redraw();
   }
 
-  /** Unit-built announcements (2026-08-06, user-directed): drains
+  /** Unit-built announcements: drains
    *  civ.pendingUnitBuiltNotices one at a time (ai.js's
    *  queueUnitBuiltNotice pushes one per completed build -- an ARRAY since,
    *  unlike tech, more than one city can finish a unit in the same round),
@@ -2682,7 +2663,7 @@
     redraw();
   }
 
-  /** Treasure find flavor text (2026-08-17, user-directed): names the
+  /** Treasure find flavor text: names the
    *  object found, then its effect -- shared by the immediate "openChest"
    *  ring action below and offerNextTreasureNotice's deferred Ruin Delve
    *  notices, so both read identically. Trap results aren't routed through
@@ -2712,7 +2693,7 @@
     };
   }
 
-  /** Ruin Delve treasure-find announcements (2026-08-17, user-directed):
+  /** Ruin Delve treasure-find announcements:
    *  same drain-one-at-a-time-as-its-own-modal shape as
    *  offerNextUnitBuiltNotice above -- ai.js's queueTreasureNotice (called
    *  from turns.js's once-per-Ruin treasure roll) pushes one per find onto
@@ -2729,7 +2710,7 @@
     redraw();
   }
 
-  /** Automate Actions confirmation queue (2026-08-06, user-directed): drains
+  /** Automate Actions confirmation queue: drains
    *  civ.units for a pendingIntent one at a time (staged by the
    *  unit.automated && !opts.forcedX gates in ai.js's considerAttackOrGarrison/
    *  maybeFoundCity/startDruidSummon), same one-at-a-time blocking-modal
@@ -2785,7 +2766,7 @@
   }
 
   /**
-   * Off-screen attack notice (2026-08-06, user-directed): a snapshot/diff
+   * Off-screen attack notice: a snapshot/diff
    * pair, NOT a hook threaded into combat.js/ai.js -- takes a cheap
    * before-picture of the human civ's own units'/cities' hp+position right
    * before a single enemy unit-step runs (see advanceTurn's processBatch
@@ -2839,7 +2820,7 @@
    *  there); "Skip" just dismisses without that tab switch. Either way,
    *  `onDone` is what actually continues processing the rest of the turn
    *  (advanceTurn's processBatch). */
-  // Orientation pause (2026-08-12, user-directed): after "Go to Attack" on
+  // Orientation pause: after "Go to Attack" on
   // the PRE-attack notice specifically (see its offerAttackNotice call
   // below), the player has just been dropped onto the scene but the fight
   // hasn't happened yet -- give them a beat to actually look at it before
@@ -2927,7 +2908,7 @@
    * runs synchronously with no yield back to the browser, only the final
    * state actually paints -- no mid-loop flicker.)
    */
-  /** Turn-progress banner (2026-08-04, user-directed): End Turn used to
+  /** Turn-progress banner: End Turn used to
    *  resolve every other civ's whole turn synchronously in one blocking
    *  pass -- nothing painted until it was over, however long that took, so
    *  the player just sat looking at their last move with no feedback that
@@ -2937,7 +2918,7 @@
    *  civ BOUNDARY specifically so the "<Race> Kingdom Taking Its Turn..."
    *  banner set just before the yield actually gets a chance to paint.
    *  Skips announcing the human civ's own (already-acted) segment. */
-  /** Idle-city default (2026-08-12, user-directed): a city the player never
+  /** Idle-city default: a city the player never
    *  gave an action to this turn defaults to Gather Resources rather than
    *  producing nothing at all -- matches the confirmEndTurn dialog's own
    *  "these will gather resources" text (see collectUnresolvedTurnWork's
@@ -2963,7 +2944,7 @@
     function processBatch() {
       let stepResult;
       do {
-        // Off-screen attack notice (2026-08-06, user-directed): checked
+        // Off-screen attack notice: checked
         // around every single unit-step, not just once per civ/round, so an
         // attack pauses the batch the moment it happens rather than after
         // however many more units act first. Skipped on the step that
@@ -2979,7 +2960,7 @@
           return;
         }
 
-        // Pre-attack notice (2026-08-10, user-directed): a true BEFORE-the-
+        // Pre-attack notice: a true BEFORE-the-
         // hit hook, not the post-hoc snapshot-diff below. An AI unit that
         // just decided to attack a human-owned unit stages that decision
         // instead of resolving it (see ai.js's considerAttackOrGarrison's
@@ -3093,7 +3074,7 @@
       };
     }
 
-    // Tile links (2026-08-03, user-directed): anything in the sidebar that
+    // Tile links: anything in the sidebar that
     // names a specific tile -- a city in the Kingdom tab, the coordinates
     // inside an AI unit's mission text, a queued building's chosen site --
     // jumps the map there. See sidebar.js's tileLink/linkifyCoords for the
@@ -3170,7 +3151,7 @@
         viewState.techTreeCivId = null;
         viewState.techTreeHoverId = null;
         // Fires the deferred unit-built-notice/pendingIntent chain
-        // (2026-08-07, user-directed bug fix) -- see openTechResearchedDialog's
+        // -- see openTechResearchedDialog's
         // onChooseResearch, which stashes it here instead of firing it the
         // instant the tech tree opens, specifically so those notices can't
         // pop up and steal focus while the player is still choosing research.
@@ -3262,7 +3243,7 @@
         modal.innerHTML = window.UI.dialog.render(viewState.dialog);
         lastRenderedDialog = viewState.dialog;
         wireDialogButtons(viewState.dialog);
-        // Confirm-action sfx (2026-08-06, user-directed): fires once, right
+        // Confirm-action sfx: fires once, right
         // here, the instant a confirm-an-action prompt is FIRST shown to the
         // player -- not on the button click that answers it (that's
         // playButtonClick's job, via main.js's global click listener).
@@ -3296,7 +3277,7 @@
   }
 
   /**
-   * RADIAL MAP MENU (2026-08-06, user-directed) -- see js/ui/ringmenu.js for
+   * RADIAL MAP MENU -- see js/ui/ringmenu.js for
    * the geometry and js/engine/orders.js for what each subject is offered.
    *
    * Two things this has to get right, both learned the hard way elsewhere in
@@ -3350,7 +3331,7 @@
     } else {
       if (!orders.canCommand(unit, gameState, humanCivId)) return close();
       const unitOptions = orders.contextMenuOptions(unit, gameState, menu.x, menu.y, humanCivId);
-      // MERGED RING (2026-08-06, user-directed): only when the ring's own
+      // MERGED RING: only when the ring's own
       // tile IS the unit's own tile -- a unit ring aimed at a REMOTE tile
       // (moveTo/attack against something elsewhere) still gets the single
       // city:open cross-link a few lines down, not a merge, since there's no
@@ -3367,7 +3348,7 @@
       }
     }
 
-    // Keyboard-shortcut hints (2026-08-07, user-directed): a static badge on
+    // Keyboard-shortcut hints: a static badge on
     // the two pills that always have one, plus the Shift-held "next 3
     // turns" prefix on all three auto-repeat-eligible pills (see
     // maybeScheduleAutoRepeat -- Space/restAndDefend/city:resourceProduction/
@@ -3481,7 +3462,7 @@
       };
       if (confirmBtn) confirmBtn.onclick = () => finish(true);
       if (cancelBtn) cancelBtn.onclick = () => finish(false);
-      // Per-item "Go to" links (2026-08-04, user-directed) -- jumping to fix
+      // Per-item "Go to" links -- jumping to fix
       // the thing the dialog just flagged means the player isn't ending the
       // turn after all, so this dismisses the dialog exactly like "Keep
       // Playing" (finish(false)) rather than leaving it open over the map.
@@ -3634,7 +3615,7 @@
     redraw();
   }
 
-  /** Sentry (2026-08-12, user-directed): sits and does nothing until an
+  /** Sentry: sits and does nothing until an
    *  enemy comes within range, then attacks it -- see orders.js's
    *  advanceSentryOrder for the per-turn check (run from turns.js's
    *  finishCivTurn) and isSpent for why a sentried unit never nags for a
@@ -3659,7 +3640,7 @@
     redraw();
   }
 
-  /** Follow (2026-08-12, user-directed): opens tile-placement mode (same
+  /** Follow: opens tile-placement mode (same
    *  mechanism startTeleportPlacement/startWispSummonPlacement use), but
    *  the highlighted "slots" are wherever this civ's OTHER units currently
    *  stand rather than empty terrain -- picking one sets unit.followTarget
@@ -3696,7 +3677,7 @@
     redraw();
   }
 
-  /** Automate Actions toggle (2026-08-06, user-directed) -- see sidebar.js's
+  /** Automate Actions toggle -- see sidebar.js's
    *  automateBtn and ai.js's runAutomatedUnitTurn/turns.js's finishCivTurn
    *  hook for the actual per-turn behavior this flag switches on. Turning
    *  it off drops any pendingIntent still waiting on a confirmation the
@@ -3710,7 +3691,7 @@
     redraw();
   }
 
-  /** Garrison (2026-08-06, user-directed): the same x2-defense "defending"
+  /** Garrison: the same x2-defense "defending"
    *  condition Rest and Defend also sets, but CHANNELED -- started once, then
    *  kept alive automatically every turn (see turns.js's finishCivTurn,
    *  which re-applies the condition for any human unit with
@@ -3751,7 +3732,7 @@
     redraw();
   }
 
-  // Hidden/stealth (2026-08-03, user-reported): the engine mechanic
+  // Hidden/stealth: the engine mechanic
   // (combat.js's canGoHidden/enterHidden/revealHidden) existed with only AI
   // call sites -- see sidebar.js's stealthActions for the button gating.
   // Entering is a full-turn action, same contract enterHidden documents for
@@ -3778,7 +3759,7 @@
     redraw();
   }
 
-  // Channeled actions (2026-07-21, user-directed): Prospector's Claim,
+  // Channeled actions: Prospector's Claim,
   // Dungeon Delve, and Galley Fishing are all explicitly started/cancelled
   // now -- see sidebar.js's channelActions for the button gating (tech
   // unlocked, right unit/tile, not already channeling) and turns.js's
@@ -3813,7 +3794,7 @@
     return city;
   }
 
-  /** The "city:*" half of the ring's dispatch (2026-08-06, user-directed) --
+  /** The "city:*" half of the ring's dispatch --
    *  see orders.js's cityRingOptions for what's offered and when. Split out
    *  of handleContextMenuAction because these run without a selected unit,
    *  which that function's own guard rules out. */
@@ -4021,7 +4002,7 @@
             const unitLabel = unit.name || window.GameData.getUnit(unit.typeId).label;
             let title, text;
             if (result.disarmed) {
-              // Halfellow "Making Trouble" (2026-08-17, user-directed): a
+              // Halfellow "Making Trouble": a
               // Trouble Maker disarms a chest trap instead of springing it --
               // no damage, no condition.
               title = "Trap Disarmed!";
@@ -4048,7 +4029,7 @@
         if (kind && kind.startsWith("startChannel:")) {
           handleStartChannel(kind.slice("startChannel:".length));
         } else if (kind && kind.startsWith("castFlight:")) {
-          // "castFlight:X,Y" (2026-08-06, user-directed bug fix) -- same
+          // "castFlight:X,Y" -- same
           // payload-in-the-kind-string convention as startChannel: above.
           // The target's coordinates ride along because orders.js's
           // contextMenuOptions can offer more than one of these at once (one
@@ -4063,7 +4044,7 @@
           const ally = civ.units.find((u) => u.x === tx && u.y === ty && u !== unit && !u.carriedBy);
           window.GameEngine.ai.castFlightOnAlly(civ, unit, ally, gameState);
         } else if (kind && kind.startsWith("carryUnit:")) {
-          // "carryUnit:X,Y" (2026-08-10, user-directed): `unit` is the
+          // "carryUnit:X,Y": `unit` is the
           // carrier, the target at (X,Y) is the passenger it's picking up --
           // same payload-in-kind-string convention as castFlight above.
           handleCarryUnit(unit, kind.slice("carryUnit:".length));
@@ -4073,7 +4054,7 @@
           // the two roles swapped.
           handleCarryUnit(null, kind.slice("boardCarrier:".length), unit);
         } else if (kind === "dropOff") {
-          // "Drop Off" (2026-08-11, user-directed): commits instantly, no
+          // "Drop Off": commits instantly, no
           // placement mode -- see orders.js's ring option, gated on
           // hasOpenDisembarkTile so this only ever appears when there's
           // somewhere to actually put the passenger down.
@@ -4081,7 +4062,7 @@
           if (civ) {
             window.GameEngine.ai.performPlayerDisembark(civ, unit, gameState);
             // Same immediate-visibility fix as every other summon/placement
-            // flow (2026-08-11, user-directed) -- the dropped passenger
+            // flow -- the dropped passenger
             // otherwise wouldn't render until this civ's next visibility
             // refresh.
             window.GameEngine.turns.refreshVisibility(gameState);
@@ -4089,12 +4070,12 @@
         } else if (kind === "summonWisp") {
           startWispSummonPlacement(unit);
         } else if (kind && kind.startsWith("setTrap:")) {
-          // Halfellow "Set the Trap" (2026-08-11, user-directed): "setTrap:
+          // Halfellow "Set the Trap": "setTrap:
           // frost"/"setTrap:fire" -- same payload-in-kind-string convention
           // as castFlight/carryUnit above.
           startTrapPlacement(unit, kind.slice("setTrap:".length));
         } else if (kind === "summonRaptor" || kind === "summonShadowsteed") {
-          // Elf Druid (2026-08-10, user-directed): a single click, no
+          // Elf Druid: a single click, no
           // placement mode needed -- Raptor/Shadowsteed always land on an
           // open adjacent tile (see ai.js's spawnUnitAdjacentToUnit), unlike
           // the Wisp's arbitrary swamp destination just above.
@@ -4102,7 +4083,7 @@
           if (civ) {
             window.GameEngine.ai.performPlayerDruidSummon(civ, unit, kind === "summonRaptor" ? "raptor" : "shadowsteed", gameState);
             // Same immediate-visibility fix as Summon Wisp/Set the Trap
-            // (2026-08-11, user-directed) -- a freshly-spawned Raptor/
+            // -- a freshly-spawned Raptor/
             // Shadowsteed otherwise wouldn't render until this civ's next
             // visibility refresh. Usually a no-op in practice (it lands
             // adjacent to a unit whose own vision almost always already
@@ -4120,7 +4101,7 @@
         } else if (kind === "fireball") {
           startFireballPlacement(unit);
         } else if (kind && kind.startsWith("riddle:")) {
-          // Halfellow "Riddle" (2026-08-11, user-directed) -- same shape as
+          // Halfellow "Riddle" -- same shape as
           // Freezing Touch above.
           const [tx, ty] = kind.slice("riddle:".length).split(",").map(Number);
           const civ = gameState.civs[humanCivId];
@@ -4129,7 +4110,7 @@
             window.GameEngine.ai.performPlayerRiddle(civ, unit, found.unit, gameState);
           }
         } else if (kind && kind.startsWith("resourceHeist:")) {
-          // Halfellow "Resource Heist" (2026-08-11, user-directed) -- same
+          // Halfellow "Resource Heist" -- same
           // shape as Freezing Touch above.
           const [tx, ty] = kind.slice("resourceHeist:".length).split(",").map(Number);
           const civ = gameState.civs[humanCivId];
@@ -4138,7 +4119,7 @@
             window.GameEngine.ai.performPlayerResourceHeist(civ, unit, found.unit, gameState);
           }
         } else if (kind && kind.startsWith("unlockTheGate:")) {
-          // Halfellow "Unlock the Gate" (2026-08-11, user-directed):
+          // Halfellow "Unlock the Gate":
           // targets a wall structure, not a unit -- uses cities.js's
           // findStructureAt (same lookup orders.js's ring option used to
           // build the pill) instead of attackTargetAt.
@@ -4151,7 +4132,7 @@
           }
         } else if (kind && kind.startsWith("activateAura:")) {
           // "activateAura:heavy_metal"/"activateAura:power_metal"
-          // (2026-08-10, user-directed) -- a free toggle, not a spent
+          // -- a free toggle, not a spent
           // action: see orders.js's contextMenuOptions for the two-techs-
           // known case offering both as separate pills.
           unit.activeAura = kind.slice("activateAura:".length);
@@ -4182,7 +4163,7 @@
     const explored = gameState.explored[civ.id] || new Set();
     const { map } = gameState;
     const isWizard = caster.typeId === "wizard";
-    // Elf "Roots of the World" is Forest-only (2026-08-17, user-directed) --
+    // Elf "Roots of the World" is Forest-only --
     // Human "Teleportation" isn't restricted by terrain.
     const isValidSlot = isWizard ? window.GameEngine.ai.isValidTeleportTile : window.GameEngine.ai.isValidForestTeleportTile;
     const slots = [];
@@ -4197,7 +4178,7 @@
     viewState.placement = {
       slots,
       label: targetUnit === caster ? abilityLabel : `${abilityLabel}: ${targetUnit.name || window.GameData.getUnit(targetUnit.typeId).label}`,
-      // previewUnitId/previewRaceId (2026-08-11, user-directed): same
+      // previewUnitId/previewRaceId: same
       // half-transparent sprite preview as the summon flows -- shows the
       // unit actually being relocated (the caster itself, or the targeted
       // ally) standing on the hovered tile.
@@ -4207,7 +4188,7 @@
         if (slot) {
           performTeleport(civ, caster, targetUnit, slot.x, slot.y, gameState);
           // Same immediate-visibility fix as Summon Wisp/Set the Trap
-          // (2026-08-11, user-directed) -- teleporting onto a distant
+          // -- teleporting onto a distant
           // explored-but-not-currently-visible tile is exactly the "shows
           // up late" case, arguably more exposed to it than either of those
           // two since the destination can be anywhere already explored.
@@ -4219,7 +4200,7 @@
     redraw();
   }
 
-  /** Human "Fireball!" (2026-08-17, user-directed): tile-placement mode over
+  /** Human "Fireball!": tile-placement mode over
    *  every in-bounds tile within FIREBALL_RANGE (3, mirrored here as a
    *  literal -- see ai.js) of the caster -- no explored/visibility
    *  requirement, matching orders.js's own gate on the ring option. Picking
@@ -4254,7 +4235,7 @@
     redraw();
   }
 
-  /** Orc "Bog Spirit" (2026-08-10, user-directed): same tile-placement
+  /** Orc "Bog Spirit": same tile-placement
    *  mechanism as Roots of the World above, but the slot list is every
    *  ever-EXPLORED swamp tile (see ai.js's isValidWispSummonTile) -- a Wisp
    *  is permanently confined to swamp terrain, so nowhere else is legal to
@@ -4275,7 +4256,7 @@
     viewState.placement = {
       slots,
       label: "Summon Wisp",
-      // previewUnitId/previewRaceId (2026-08-11, user-directed): render.js's
+      // previewUnitId/previewRaceId: render.js's
       // drawPlacementOverlay draws a real, half-transparent Wisp sprite on
       // the hovered tile instead of a placeholder rune.
       previewUnitId: "wisp", previewRaceId: civ.raceId,
@@ -4297,7 +4278,7 @@
     redraw();
   }
 
-  /** Halfellow "Set the Trap" (2026-08-11, user-directed): same
+  /** Halfellow "Set the Trap": same
    *  tile-placement mechanism as Summon Wisp above, but the slot list is a
    *  small bounding box around the Trouble Maker itself (TRAP_PLACEMENT_RANGE
    *  in ai.js), not the whole ever-explored set -- a trap is snuck in right
@@ -4322,7 +4303,7 @@
     viewState.placement = {
       slots,
       label: trapKind === "fire" ? "Set Fire Trap" : "Set Frost Trap",
-      // previewUnitId/previewRaceId (2026-08-11, user-directed): render.js's
+      // previewUnitId/previewRaceId: render.js's
       // drawPlacementOverlay draws a real, half-transparent trap sprite on
       // the hovered tile instead of the plain gold rectangle alone.
       previewUnitId: trapKind === "fire" ? "trap_fire" : "trap_frost", previewRaceId: civ.raceId,
@@ -4332,7 +4313,7 @@
           window.GameEngine.ai.performPlayerTrapSet(civ, troubleMaker, trapKind, slot.x, slot.y, gameState);
           // Same immediate-visibility fix as Summon Wisp above -- a freshly
           // placed trap otherwise wouldn't render until this civ's next
-          // visibility refresh (2026-08-11, user-directed).
+          // visibility refresh.
           window.GameEngine.turns.refreshVisibility(gameState);
         }
         redraw();
@@ -4341,7 +4322,7 @@
     redraw();
   }
 
-  /** Carry/Board (2026-08-10, user-directed): resolves the OTHER unit from
+  /** Carry/Board: resolves the OTHER unit from
    *  its (x,y) coordinates -- exactly one of `carrier`/`passenger` is passed
    *  in already selected (whichever ring the player clicked from), the other
    *  is null and gets looked up here. Delegates the actual eligibility
@@ -4367,7 +4348,7 @@
     redraw();
   }
 
-  /** "Claim Gathered Resources" (2026-08-06, user-directed): a clean
+  /** "Claim Gathered Resources": a clean
    *  voluntary stop that BANKS unit._channelStash into the civ's stockpile
    *  before clearing the channel -- mirrors ai.js's maybeCashOutChannel
    *  (the AI's own voluntary-stop path) exactly, just player-triggered
@@ -4400,7 +4381,7 @@
    *  (income minus total unit upkeep) negative on any resource -- same math
    *  as sidebar.js's own Economy panel "Net (H/C/L)" row, just with this
    *  one hypothetical extra unit's upkeep folded in before committing
-   *  (2026-08-10, user-directed). Returns a "H/C/L" label naming the
+   *. Returns a "H/C/L" label naming the
    *  resource(s) that would go negative, or null if the build is safe. */
   function wouldUpkeepGoNegative(civ, unitId) {
     const res = civ.resources || { harvest: 0, coin: 0, lore: 0 };
@@ -4424,7 +4405,7 @@
 
   function handleChooseBuild(index) {
     // Resolved from viewState.ringMenu, NOT viewState.selectedCity
-    // (2026-08-06, user-directed bug fix). This popover can be open while a
+    //. This popover can be open while a
     // MERGED ring's subject is "unit" (a unit standing on its own city --
     // see orders.js's mergeUnitCityOptions), in which case the sidebar's
     // active tab is deliberately left on the unit, so selectedCity is null
@@ -4448,7 +4429,7 @@
     viewState.ringMenu = null;
 
     if (option.kind !== "building") {
-      // Negative-net-upkeep warning (2026-08-10, user-directed): same "Net
+      // Negative-net-upkeep warning: same "Net
       // (H/C/L)" math as the sidebar's own Economy panel (js/ui/sidebar.js),
       // just previewing this one MORE unit's upkeep added on top before
       // committing, rather than only showing it after the fact.
@@ -4492,7 +4473,7 @@
     redraw();
   }
 
-  /** "Resource Production" (2026-08-06, user-directed): spends this city's
+  /** "Resource Production": spends this city's
    *  production for the CURRENT turn on resources instead of a unit or a
    *  building -- see cities.js's applyResourceProduction for the payout and
    *  why it lands on this turn rather than the next one.
@@ -4551,7 +4532,7 @@
   }
 
   /** Spends one pending level-up on `stat` for the currently selected unit
-   *  (2026-08-04, user-reported): the player-facing counterpart to ai.js's
+   *: the player-facing counterpart to ai.js's
    *  chooseLevelUpStat -- see sidebar.js's levelUpActions for the button
    *  markup and ai.js's applyComputedXP for why a human-controlled unit's
    *  level-up is left pending instead of auto-resolved in the first place. */
@@ -4584,13 +4565,13 @@
       if (idx >= 0) window.UI.input.setActiveTab(gameState, viewState, idx);
     }
     centerViewOn(next.x, next.y);
-    // Flash the tile (2026-08-06, user-directed) -- see render.js's
+    // Flash the tile -- see render.js's
     // drawFlashTile, driven by the existing per-frame animation loop.
     viewState.flashTile = { x: next.x, y: next.y, startTime: performance.now() };
     redraw();
   }
 
-  /** "Next Idle City" (2026-08-07, user-directed) -- same cycler shape as
+  /** "Next Idle City" -- same cycler shape as
    *  handleNextUnit just above, for cities.js's isCityIdle predicate (the
    *  same one backing the sidebar's per-city Idle tag, the map's idle
    *  badge, and the End Turn nag) instead of units needing orders. Mirrors
@@ -4665,7 +4646,7 @@
       if (idx >= 0) window.UI.input.setActiveTab(gameState, viewState, idx);
     }
     centerViewOn(x, y);
-    // Brief flash (2026-08-12, user-directed) -- render.js's drawTileFlash
+    // Brief flash -- render.js's drawTileFlash
     // fades this out on its own over TILE_FLASH_ANIM_MS; the animation loop
     // already calls render() every frame regardless (see startAnimationLoop),
     // so no extra redraw scheduling is needed to animate it.
@@ -4694,7 +4675,7 @@
     redraw();
   }
 
-  /** Help Build (2026-08-12, user-directed): a Pioneer standing on its own
+  /** Help Build: a Pioneer standing on its own
    *  city cuts 1 turn off whatever that city is currently building -- see
    *  orders.js's contextMenuOptions for the "helpBuild" ring option this
    *  answers, gated the same way handleBuildRoad is (typeId, not just the
@@ -4714,7 +4695,7 @@
   }
 
   /** Disband is the only permanent, no-undo action a unit's own action list
-   *  offers (2026-08-04, user-reported) -- it used to fire immediately on
+   *  offers -- it used to fire immediately on
    *  click, one text-color away from Rest/Defend in the same button list,
    *  while Found City (fully reversible -- you just don't get a city) asked
    *  for confirmation. Gated behind the same generic confirm dialog Found
@@ -4783,7 +4764,7 @@
   // The sidebar is not re-rendered here (data doesn't change between turns).
   let animFrameId = null;
   let lastPanMs = null;
-  // WASD map panning (2026-08-07, user-directed) -- px/second at 100% zoom,
+  // WASD map panning -- px/second at 100% zoom,
   // applied every frame while a key is held (see setupGlobalShortcuts'
   // panKeys) rather than one fixed step per keydown, so holding a key pans
   // smoothly regardless of the OS's key-repeat rate. 2D only, same scoping
@@ -4813,7 +4794,7 @@
           }
           window.UI.render.render($("map-canvas"), gameState, viewState);
           // Clouds ride this same loop, drawn onto their own overlay canvas
-          // after the map beneath them (2026-08-06, user-directed). 2D only
+          // after the map beneath them. 2D only
           // -- the 3D path has no equivalent sky layer, and its canvas is a
           // different element entirely.
           window.UI.clouds.render($("map-clouds"), viewState);

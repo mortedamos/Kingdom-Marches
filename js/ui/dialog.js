@@ -61,7 +61,7 @@ window.UI = window.UI || {};
       // buttons) existed.
       const items = (dialog.items || []).map((item) => {
         const label = escapeHtml(item.text);
-        // "No research selected" (2026-08-10, user-directed) isn't tied to
+        // "No research selected" isn't tied to
         // a tile, so it gets its own jump-straight-to-the-tech-tree button
         // instead of a tile-link "Go to" -- see wireDialogButtons.
         const link = item.chooseResearch
@@ -71,7 +71,7 @@ window.UI = window.UI || {};
           : "";
         return `<li>${label}${link}</li>`;
       }).join("");
-      // Idle-city note (2026-08-12, user-directed): only shown when the list
+      // Idle-city note: only shown when the list
       // actually contains an idle-city item (tabKind "city", no
       // chooseResearch flag) -- see main.js's defaultIdleCitiesToGatherResources,
       // which is what actually applies this default the moment End Turn is
@@ -91,7 +91,7 @@ window.UI = window.UI || {};
         </div>`;
     }
     if (dialog.kind === "confirm") {
-      // Generic yes/no confirm (2026-08-04, user-directed): first consumer is
+      // Generic yes/no confirm: first consumer is
       // Disband Unit -- an irreversible action that, unlike Found City, had
       // no confirmation at all and sat in the sidebar one text-color away
       // from Rest/Defend. Reuses foundCity's own button ids/wiring shape
@@ -108,7 +108,7 @@ window.UI = window.UI || {};
         </div>`;
     }
     if (dialog.kind === "chooseTech") {
-      // Free first-city tech pick (2026-08-05, user-directed): an N-way
+      // Free first-city tech pick: an N-way
       // choice, unlike every other dialog kind here which tops out at 2
       // buttons -- each option is its own full-width button (reuses
       // .menu-dropdown-btn, already left-aligned) rather than trying to
@@ -124,7 +124,7 @@ window.UI = window.UI || {};
         <div class="game-dialog-choices">${options}</div>`;
     }
     if (dialog.kind === "chooseStarvationDisband") {
-      // Starvation unit loss (2026-08-10, user-directed): upkeep ran the
+      // Starvation unit loss: upkeep ran the
       // stockpile negative, so a unit has to go -- the player picks which
       // one instead of a random pick vanishing with no warning. Same N-way
       // .game-dialog-choice shape as chooseTech above, just data-disband-
@@ -141,7 +141,7 @@ window.UI = window.UI || {};
         <div class="game-dialog-choices">${options}</div>`;
     }
     if (dialog.kind === "chooseWispDisband") {
-      // Orc "Bog Spirit" Wisp cap (2026-08-10, user-directed): a Bog Witch
+      // Orc "Bog Spirit" Wisp cap: a Bog Witch
       // died and left more Wisps than living Bog Witches to sustain them --
       // same N-way .game-dialog-choice/data-disband-index shape as
       // chooseStarvationDisband above, just a different trigger and wording.
@@ -156,13 +156,13 @@ window.UI = window.UI || {};
         <div class="game-dialog-choices">${options}</div>`;
     }
     if (dialog.kind === "techResearched") {
-      // Tech-researched announcement (2026-08-06, user-directed): fires once
+      // Tech-researched announcement: fires once
       // per completed tech (see main.js's finishRoundBookkeeping). Lists
       // every OTHER tech this one was a prerequisite for -- "here's what
       // just opened up" -- alongside a direct shortcut into the tech tree so
       // picking the next one doesn't need a separate menu hunt.
       // Each entry links back into the tech tree at that exact node
-      // (2026-08-10, user-directed) via a data-goto-tech-id button, wired by
+      // via a data-goto-tech-id button, wired by
       // main.js's wireDialogButtons -- same tile-link visual treatment as
       // the confirmEndTurn dialog's own "Go to" jump buttons.
       const unlocked = (dialog.unlockedTechs || []).length
@@ -172,7 +172,7 @@ window.UI = window.UI || {};
            ).join("")}</ul>`
         : "";
       // "Choose Next Research" is hidden when a tech is already being
-      // researched (2026-08-12, user-directed) -- see main.js's
+      // researched -- see main.js's
       // openTechResearchedDialog for how alreadyResearching gets set.
       return `
         <h2>Research Complete</h2>
@@ -185,7 +185,7 @@ window.UI = window.UI || {};
         </div>`;
     }
     if (dialog.kind === "unitBuilt") {
-      // Unit-built announcement (2026-08-06, user-directed): fires once per
+      // Unit-built announcement: fires once per
       // completed unit (see main.js's finishRoundBookkeeping, which queues
       // one of these per unit if more than one city finishes the same
       // round -- see offerNextUnitBuiltNotice). Two shortcuts: back to the
@@ -200,7 +200,7 @@ window.UI = window.UI || {};
         </div>`;
     }
     if (dialog.kind === "confirmAutomatedAction") {
-      // Automate Actions confirmation (2026-08-06, user-directed): the
+      // Automate Actions confirmation: the
       // blocking, one-at-a-time gate an automated unit's staged
       // pendingIntent waits behind before it's actually allowed to found a
       // city, spend resources, or start a fight -- see main.js's
@@ -215,7 +215,7 @@ window.UI = window.UI || {};
         </div>`;
     }
     if (dialog.kind === "attackNotice") {
-      // Off-screen attack notice (2026-08-06, user-directed): fires the
+      // Off-screen attack notice: fires the
       // instant a human-owned unit or city takes damage (or is destroyed)
       // while its tile isn't currently on screen -- see main.js's
       // detectHumanAttack/advanceTurn, which pauses turn processing right
@@ -230,7 +230,7 @@ window.UI = window.UI || {};
         </div>`;
     }
     if (dialog.kind === "gameOver") {
-      // Human defeat (2026-08-06, user-directed): fires the instant this
+      // Human defeat: fires the instant this
       // civ is eliminated, or another civ wins first -- see main.js's
       // finishRoundBookkeeping/openGameOverDialog. Stats-only, single exit
       // (no "keep playing" option -- the game has genuinely ended for this

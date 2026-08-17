@@ -4,7 +4,7 @@
  * Mouse interactions on the map canvas: click to select a tile, drag to pan.
  * Also the human-player city naming prompt (per the city naming addendum §1).
  *
- * SELECTION MODEL (2026-08-01, user-directed)
+ * SELECTION MODEL
  * -------------------------------------------
  * Clicking used to be a priority chain with early returns -- city beat unit
  * beat structure beat terrain -- so exactly ONE of viewState.selectedCity/
@@ -178,7 +178,7 @@ window.UI = window.UI || {};
     // Hover tile drives the path preview and the move/attack cursor. Tracked
     // on the canvas only (not window) so leaving the map clears it.
     //
-    // Frozen while a ring menu is open (2026-08-06, user-directed). The
+    // Frozen while a ring menu is open. The
     // cosmetic reason is that a stale attack reticle shouldn't sit under the
     // menu; the structural reason is worse. Every hover change calls
     // onChange() -> redraw(), and moving the cursor from the subject tile out
@@ -230,7 +230,7 @@ window.UI = window.UI || {};
     viewState.selection = sel;
     resolveSelection(gameState, viewState);
 
-    // ...EXCEPT when there's a unit standing here (2026-08-03, user-directed):
+    // ...EXCEPT when there's a unit standing here:
     // a unit always wins the tab. Carrying the previous kind forward is right
     // for reading terrain across an empty stretch of map, but when you click
     // a tile precisely because something is standing on it, landing on the
@@ -244,7 +244,7 @@ window.UI = window.UI || {};
     }
 
     // "move" sfx plays on selection (clicking the unit), not on actual
-    // movement (2026-07-24, user-directed) -- it's a "here I am, ready"
+    // movement -- it's a "here I am, ready"
     // acknowledgement sound, not a footstep-timed one. Now fires only when
     // the click actually LANDED on a unit tab, so clicking a city tile while
     // reading Terrain no longer chirps at you.
@@ -265,7 +265,7 @@ window.UI = window.UI || {};
     if (!sel) { syncLegacySelection(viewState); return []; }
 
     // Follow a selected unit that moved on its OWN since the last redraw
-    // (2026-08-06, user-directed): a queued multi-turn move/build-road
+    //: a queued multi-turn move/build-road
     // order (see orders.js's advanceGotoOrder) can relocate the selected
     // unit turn after turn with no player click in between -- previously
     // the only way a human unit ever moved was a direct player action,
