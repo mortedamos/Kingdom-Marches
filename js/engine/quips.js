@@ -54,13 +54,10 @@ window.GameEngine = window.GameEngine || {};
   /**
    * Unconditional word-bubble spawn -- unlike maybeQuip above, no random
    * roll and no race/unit/action pool lookup, just shows `text` above
-   * `unit` right now. For a specific, scripted moment that should ALWAYS
-   * show something (2026-07-24, user-directed: Halfellow's "Riddle"
-   * ability -- see ai.js's maybeRiddlePlay -- shows the actual riddle
-   * question above the caster, then the answer or a stumped response
-   * above the target, reusing this exact bubble system rather than a new
-   * one). No aiActionLog entry (the caller's own Riddle: log line already
-   * covers it) -- purely the cosmetic bubble.
+   * `unit` right now. Used e.g. by Halfellow's "Riddle" ability (see ai.js's
+   * maybeRiddlePlay) to show the riddle question above the caster, then the
+   * answer or a stumped response above the target. No aiActionLog entry
+   * (the caller's own log line already covers it) -- purely cosmetic.
    */
   function spawnQuipText(unit, text) {
     if (!unit || !text) return;

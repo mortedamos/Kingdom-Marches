@@ -1011,12 +1011,9 @@ window.GameEngine = window.GameEngine || {};
         gain.coin >= 0.5 ? `+${Math.round(gain.coin)}C` : null,
         gain.lore >= 0.5 ? `+${Math.round(gain.lore)}L` : null,
       ].filter(Boolean).join(" ");
-      // "Gather More Resources" (2026-08-06, user-directed rename -- was
-      // "Resources", which read as a status label rather than a verb).
-      // Label no longer shows the amount --
       // `amounts` is still computed and still gates whether this pill is
       // offered at all (a freshly founded city with nothing to take a share
-      // of yet still gets no pill), just not printed into the label text.
+      // of yet gets no pill), just not printed into the label text.
       if (amounts) options.push({ kind: "city:resourceProduction", label: "Gather More Resources" });
 
       // "Research": the fourth thing this city's

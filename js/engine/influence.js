@@ -169,11 +169,8 @@ window.GameEngine = window.GameEngine || {};
       if (civ.eliminated) continue;
       if (!civ.unlockedMechanics || !civ.unlockedMechanics.has("dungeon_delve")) continue;
       for (const unit of civ.units) {
-        // Any unit type can hold a delve claim since 2026-08-14 (see
-        // doc/world_encounters_design.md) -- was unit.typeId === "wizard"-only.
-        // Kept in sync with turns.js's own payout gate (2026-07-30,
-        // user-directed fix: was < 2, wasting a full turn of an already-
-        // filled offset sitting inert before it started projecting).
+        // Any unit type can hold a delve claim. Kept in sync with turns.js's
+        // own payout gate.
         if ((unit._ritualTurns || 0) < 1) continue;
         const filled = unit._delveFilledOffsets;
         if (!filled || filled.size === 0) continue;
@@ -336,8 +333,7 @@ window.GameEngine = window.GameEngine || {};
   }
 
   /** Counts owned tiles per civ -- the actual victory-condition number.
-   *  Every tile is claimable now (2026-07-19, user-directed: deep ocean and
-   *  tundra both count too, extending the water-tile change above) -- ordinary
+   *  Every tile is claimable, including deep ocean and tundra -- ordinary
    *  land counts fully, while water (ocean+coast) and tundra each count for
    *  only LOW_VALUE_TERRAIN_WEIGHT (25%) of a normal tile, both in a civ's
    *  owned count and in the total claimable pool (so the victory-share

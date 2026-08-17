@@ -542,11 +542,9 @@ window.UI = window.UI || {};
     const doubleStrikePct = window.GameEngine.combat.effectiveDoubleStrikePct(unit, civ);
     const siegePct = window.GameEngine.combat.effectiveSiegePct(unit, civ);
 
-    // Level-up notice (2026-08-07, user-directed: the actual picker is
-    // ring-menu-only now, see orders.js's "levelUp" pill/main.js's
-    // buildRingPage) -- same INFORMATION ONLY convention this whole panel
-    // follows: the verb lives on the ring, this just tells the player one
-    // is waiting so it can't be missed the next time this unit is selected.
+    // Level-up notice: the picker itself is ring-menu-only (orders.js's
+    // "levelUp" pill / main.js's buildRingPage) -- this just tells the
+    // player one is waiting so it isn't missed.
     let levelUpActions = "";
     if (isHumanUnit) {
       const pendingCount = window.GameEngine.combat.pendingLevelUps(unit);

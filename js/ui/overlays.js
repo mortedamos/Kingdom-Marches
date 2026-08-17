@@ -213,8 +213,8 @@ window.UI = window.UI || {};
   }
 
   /**
-   * Live death effects (puff of smoke resolving into a skull, 2026-08-07,
-   * user-directed), drained each frame from window.GameEngine.deathFx's
+   * Live death effects (puff of smoke resolving into a skull), drained each
+   * frame from window.GameEngine.deathFx's
    * cosmetic event queue. Tile-position-anchored rather than unit-anchored,
    * same reasoning as activeAreaEffects: the unit is already gone from
    * civ.units by the time otherCivRemoveDeadUnit fires this (ai.js), so
@@ -674,9 +674,9 @@ window.UI = window.UI || {};
     }
   }
 
-  /** Golden glow + sparkle for a unit with a pending level-up (2026-08-07,
-   *  user-directed) -- the only on-map affordance for this now that the
-   *  level-up picker lives solely in the ring menu (see sidebar.js's
+  /** Golden glow + sparkle for a unit with a pending level-up -- the only
+   *  on-map affordance for this, since the level-up picker lives solely in
+   *  the ring menu (see sidebar.js's
    *  info-only banner and main.js's buildRingPage): a player scanning the
    *  map should be able to spot which units are owed a veteran bonus
    *  without opening each one's ring. `pendingLevelUps` is combat.js's
@@ -938,9 +938,8 @@ window.UI = window.UI || {};
     }
     if (unit.typeId === "troubadour"
         && (civ.unlockedMechanics.has("heavy_metal") || civ.unlockedMechanics.has("power_metal"))
-        // Human civs must explicitly activate the aura (2026-08-10,
-        // user-directed) -- see turns.js's own matching gate. AI civs are
-        // unaffected, same always-on behavior as before.
+        // Human civs must explicitly activate the aura -- see turns.js's
+        // own matching gate. AI civs' aura is always on.
         && (!civ.isHuman || unit.auraActive)) {
       const hasHeavyMetal = civ.unlockedMechanics.has("heavy_metal");
       const hasPowerMetal = civ.unlockedMechanics.has("power_metal");
@@ -987,10 +986,9 @@ window.UI = window.UI || {};
     drawLevelUpGlowBehind, drawLevelUpSparkles,
     hexToRgba, drawHatch, drawConstructionSite, auraInfoForUnit, drawTileScoreOverlay,
     ATTACK_ANIM_MS, SLASH_ANIM_MS, AREA_EFFECT_ANIM_MS, AREA_EFFECT_COLORS, DEATH_EFFECT_ANIM_MS,
-    // Exported (2026-08-16, user-directed KMKB feature) so the Knowledge
-    // Base's Conditions page can read the same icon set this module draws
-    // on the map, rather than keeping a second hand-copied list that could
-    // drift out of sync with it.
+    // Exported so the Knowledge Base's Conditions page can read the same
+    // icon set this module draws on the map, rather than keeping a second
+    // hand-copied list that could drift out of sync with it.
     CONDITION_ICONS,
   };
 })();

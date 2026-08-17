@@ -2592,9 +2592,9 @@
       // made -- dialog.js hides that button whenever this is true.
       alreadyResearching: !!civ.currentResearch,
       onChooseResearch: () => {
-        // Defer onDone until the tech tree is actually CLOSED (2026-08-07,
-        // user-directed bug fix), rather than firing it the instant the
-        // player clicks through to the tech tree -- onDone is the head of
+        // Defer onDone until the tech tree is actually CLOSED, rather than
+        // firing it the instant the player clicks through to the tech tree
+        // -- onDone is the head of
         // the unit-built-notice/pendingIntent chain (see
         // finishRoundBookkeeping), and firing it here raced a fresh
         // "unitBuilt" dialog open against the tech tree overlay the player
@@ -2813,8 +2813,8 @@
   /** Shows the "X is being attacked" modal (see js/ui/dialog.js's
    *  "attackNotice" kind) and pauses turn processing until it's answered.
    *  The camera has already been recentered on the attack by the caller
-   *  (processBatch, 2026-08-07, user-directed -- see the comment there) by
-   *  the time this dialog appears, so its effects are still animating in
+   *  (processBatch) by the time this dialog appears, so its effects are
+   *  still animating in
    *  view behind it. "Go to" (via goToTile) mainly selects the attacked
    *  unit/city's own sidebar tab now rather than moving the camera (already
    *  there); "Skip" just dismisses without that tab switch. Either way,
@@ -2844,8 +2844,8 @@
   }
 
   /** Fires the attack an enemy AI unit staged instead of resolving
-   *  immediately (2026-08-10, user-directed pre-attack notice -- see
-   *  processBatch's pendingAttack check and ai.js's considerAttackOrGarrison
+   *  immediately -- see processBatch's pendingAttack check and ai.js's
+   *  considerAttackOrGarrison
    *  defenderIsHuman branch). Same forcedTarget re-invocation shape
    *  offerNextPendingIntent uses for the human's OWN automated units, minus
    *  the Confirm/Decline choice -- the player gets advance notice of an
@@ -2993,9 +2993,9 @@
           // hook above -- wall auto-attacks, Burning ticks, Fireball splash,
           // siege, anything else that changes the human civ's hp without an
           // ai.js considerAttackOrGarrison decision to hang a pre-attack
-          // pause on. Arrive at the site immediately (2026-08-07,
-          // user-directed), not only once the player manually clicks "Go to"
-          // on the dialog below -- see offerAttackNotice for the dialog itself.
+          // pause on. Arrive at the site immediately, not only once the
+          // player manually clicks "Go to" on the dialog below -- see
+          // offerAttackNotice for the dialog itself.
           centerViewOn(notice.x, notice.y);
           redraw();
           offerAttackNotice(notice, processBatch);
@@ -3047,14 +3047,9 @@
     window.UI.sidebar.render($("sidebar"), gameState, viewState);
     const zoomLabel = $("zoom-level-label");
     if (zoomLabel) zoomLabel.textContent = `${Math.round((viewState.zoomLevel || 1) * 100)}%`;
-    // The sidebar's own controls -- all that's left of them (2026-08-06,
-    // user-directed). Every unit verb and the whole city production picker
-    // moved to the radial map menu, so their wiring moved with them into
-    // renderRingMenu below; what remains here is the footer, which is the
-    // one place buttons genuinely belong in a panel that is otherwise just
-    // information. The handleXxx functions themselves all still exist and
-    // are unchanged -- handleContextMenuAction is simply their only caller
-    // now, which is why nothing was stranded by the deletion.
+    // Unit verbs and city production live in the radial map menu
+    // (renderRingMenu / handleContextMenuAction); the sidebar only owns
+    // the footer buttons, since everything else here is just information.
     const endTurnBtn = $("end-turn-btn");
     if (endTurnBtn) endTurnBtn.onclick = handleEndTurnClick;
     const nextUnitBtn = $("next-unit-btn");
@@ -3111,14 +3106,13 @@
       // something, not just once per turn -- otherwise the node they clicked
       // wouldn't visibly become "Researching" until the turn rolled over.
       const civ = gameState.civs[viewState.techTreeCivId];
-      // "Just opened" (2026-08-16, user-directed, replacing the old
-      // collapsible-layer mechanic): the overlay's display is always reset
-      // to "none" by the close handler below, and only ever set back to
-      // "flex" by this block -- so display not already being "flex" here
-      // means this render is the first one since the screen opened, which
-      // is exactly the one-shot moment to auto-center on the highest
-      // available layer (skipped if a focusTechId link is also driving its
-      // own scroll target this render -- that one wins).
+      // "Just opened": the overlay's display is always reset to "none" by
+      // the close handler below, and only ever set back to "flex" by this
+      // block -- so display not already being "flex" here means this render
+      // is the first one since the screen opened, which is the one-shot
+      // moment to auto-center on the highest available layer (skipped if a
+      // focusTechId link is also driving its own scroll target this render
+      // -- that one wins).
       const justOpened = overlay.style.display !== "flex";
       const key = `${viewState.techTreeCivId}:${gameState.turnNumber}:${civ.currentResearch || ""}`;
       if (key !== lastRenderedTechTreeKey) {
@@ -3172,13 +3166,11 @@
           redraw();
         };
       }
-      // Hover prereq/unlock highlighting (2026-08-10, user-directed;
-      // dimming + layer force-open removed 2026-08-10, user-directed
-      // follow-up -- too much visual "flicker" as the cursor moved
-      // around): hovering any node highlights its prereq ancestors and
-      // whatever it unlocks with a colored border, nothing else -- no
-      // dimming of unrelated nodes, and layers never expand/collapse from a
-      // hover (see techtree.js's computeRelations/relationKindFor). Forces
+      // Hover prereq/unlock highlighting: hovering any node highlights its
+      // prereq ancestors and whatever it unlocks with a colored border,
+      // nothing else -- no dimming of unrelated nodes, and layers never
+      // expand/collapse from a hover (see techtree.js's
+      // computeRelations/relationKindFor). Forces
       // a rebuild the same way the toggle handler above does
       // (mouseenter/mouseleave aren't part of the identity key), so the
       // highlight classes actually appear. The node the cursor is
@@ -3587,8 +3579,7 @@
     }
   }
 
-  // Rest and Defend (2026-08-07, user-directed: merged from two separate
-  // actions into one) -- both effects still apply: healUnit at end of turn
+  // Rest and Defend -- both effects apply: healUnit at end of turn
   // via unit.resting (turns.js), AND doubled defense until the start of
   // this unit's next turn via the "defending" condition (same
   // expiresAtTurn convention ai.js's performDefend uses for the AI side).
@@ -3823,8 +3814,8 @@
       return;
     }
 
-    // NOT selectCityAt for the rest of these (2026-08-06, user-directed bug
-    // fix): selectCityAt forces the sidebar's active tab to "city", and
+    // NOT selectCityAt for the rest of these: selectCityAt forces the
+    // sidebar's active tab to "city", and
     // syncLegacySelection nulls every OTHER legacy selected* field the
     // instant it does -- including viewState.selectedUnit. On a merged ring
     // (menu.subject "unit", a unit standing on its own city), the very next
@@ -3863,9 +3854,9 @@
         // ringmenu.js's renderPopover / buildlist.js) -- the ring stays open
         // rather than closing, so Back returns to the categories.
         //
-        // subject: menu.subject, NOT a hardcoded "city" (2026-08-06,
-        // user-directed): on the co-located tile (a unit standing on its own
-        // city), menu.subject is "unit" and renderRingMenu renders the
+        // subject: menu.subject, NOT a hardcoded "city": on the co-located
+        // tile (a unit standing on its own city), menu.subject is "unit" and
+        // renderRingMenu renders the
         // MERGED unit+city ring for that -- see its own onUnitOwnTile check.
         // Hardcoding "city" here would silently drop back to a city-only
         // ring the moment Back is pressed after opening a build list from
@@ -3883,9 +3874,9 @@
     redraw();
   }
 
-  /** Dispatches whichever ring-menu entry the player picked (2026-08-06,
-   *  user-directed -- see orders.js's contextMenuOptions for what each
-   *  `kind` means and when it's offered, js/ui/ringmenu.js for how it's
+  /** Dispatches whichever ring-menu entry the player picked -- see
+   *  orders.js's contextMenuOptions for what each `kind` means and
+   *  when it's offered, js/ui/ringmenu.js for how it's
    *  rendered). Re-reads viewState.ringMenu/selectedUnit fresh rather
    *  than closing over anything from when the menu was built, same
    *  "recompute at click time" convention handleChooseBuild already uses
@@ -4021,9 +4012,9 @@
         break;
       }
       default:
-        // "startChannel:<kind>" (2026-08-06, user-directed full-list mirror)
-        // -- one case per channel type would just repeat this same call
-        // five times, so the channel kind is parsed out of the menu kind
+        // "startChannel:<kind>" -- one case per channel type would just
+        // repeat this same call five times, so the channel kind is parsed
+        // out of the menu kind
         // string instead. See orders.js's contextMenuOptions for the exact
         // list (prospecting/delving/fishing/hunting/farming).
         if (kind && kind.startsWith("startChannel:")) {
@@ -4143,11 +4134,10 @@
     redraw();
   }
 
-  /** Elf "Roots of the World" / Human "Teleportation" (2026-08-10/11,
-   *  user-directed -- the latter promotes what used to be an AI-only
-   *  mechanic, see ai.js's performWizardTeleport/attemptWizardTeleport/
-   *  maybeTeleportStrike, to this exact same player-facing flow): opens
-   *  tile-placement mode (same viewState.placement mechanism
+  /** Elf "Roots of the World" / Human "Teleportation" -- see ai.js's
+   *  performWizardTeleport/attemptWizardTeleport/maybeTeleportStrike for
+   *  the AI side of this same mechanic. Opens tile-placement mode (same
+   *  viewState.placement mechanism
    *  handleOpenBuildPicker uses for structure slots) with every currently-
    *  EXPLORED, currently-legal teleport tile as a slot -- see ai.js's
    *  isValidTeleportTile, the same gate performDruidTeleport/
@@ -4267,9 +4257,7 @@
           // The Wisp's own vision (and the newly-claimed tile itself) won't
           // show up until the next visibility refresh otherwise -- see
           // render.js's Units pass, gated on `visible.has(idx)` -- which
-          // would normally wait until this civ's next turn (2026-08-11,
-          // user-directed: "should show up immediately, not wait for the
-          // turn to end").
+          // would normally wait until this civ's next turn.
           window.GameEngine.turns.refreshVisibility(gameState);
         }
         redraw();
@@ -4373,9 +4361,8 @@
   /**
    * Queues the picked build. Units start immediately; buildings first drop
    * into placement mode -- the player clicks one of the highlighted legal
-   * slots on the map and the build is queued bound to that tile
-   * (2026-08-01, user-directed: placement is chosen at queue time, not on
-   * completion, so walls can be planned deliberately).
+   * slots on the map and the build is queued bound to that tile, so
+   * placement is chosen at queue time, not on completion.
    */
   /** Whether building one more `unitId` would push the civ's net income
    *  (income minus total unit upkeep) negative on any resource -- same math
@@ -4478,16 +4465,13 @@
    *  building -- see cities.js's applyResourceProduction for the payout and
    *  why it lands on this turn rather than the next one.
    *
-   *  Takes `city` explicitly (2026-08-06, user-reported fix -- a prior
-   *  version of this read it back from viewState.ringMenu.x/y instead, which
-   *  broke the button outright: handleContextMenuAction nulls
+   *  Takes `city` explicitly rather than reading it back from
+   *  viewState.ringMenu.x/y: handleContextMenuAction nulls
    *  viewState.ringMenu BEFORE calling handleCityRingAction, which is what
-   *  calls this, so ringMenu was already null on every real click, not just
-   *  the merged-ring case that rewrite was trying to fix. handleCityRingAction
-   *  has already resolved the correct city by the time it calls this, the
-   *  same way it already passes `city` directly to cancelBuild/
-   *  applyResearchBoost right alongside this call -- no reason for this one
-   *  case to read it back out of view state instead of just taking it. */
+   *  calls this, so ringMenu is already null by the time this runs.
+   *  handleCityRingAction has already resolved the correct city by the time
+   *  it calls this, the same way it already passes `city` directly to
+   *  cancelBuild/applyResearchBoost right alongside this call. */
   function handleResourceProduction(city) {
     const civ = humanCivId && gameState.civs[humanCivId];
     if (!civ || !city || city.civId !== humanCivId) return;
@@ -4496,10 +4480,10 @@
     if (!goToNextIdleCityOrNextUnit()) redraw();
   }
 
-  /** 2026-08-07, user-reported: finishing research via a city's own
-   *  "Research" boost pill never triggered the "research complete" dialog --
-   *  only turns.js's per-turn tickResearch path ever set civ.lastCompletedTech
-   *  (see finishRoundBookkeeping, which reads and clears it every round).
+  /** Finishing research via a city's own "Research" boost pill must also
+   *  trigger the "research complete" dialog, not just turns.js's per-turn
+   *  tickResearch path -- both need to set civ.lastCompletedTech (see
+   *  finishRoundBookkeeping, which reads and clears it every round).
    *  applyResearchBoost/reduceResearchTurns share the identical completion
    *  logic and return a receipt with the same shape (`{completed, techId}`),
    *  just never wrote it into that flag -- do so here so both paths notify

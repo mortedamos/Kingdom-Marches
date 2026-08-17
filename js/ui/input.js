@@ -24,9 +24,8 @@
  * a derived index, only meaningful until the next rebuild.
  *
  * Which tab starts active on a fresh click: a unit on the tile always wins
- * (2026-08-03, user-directed -- see handleTileClick); otherwise the kind you
- * were already reading carries over, so panning across terrain keeps showing
- * terrain.
+ * (see handleTileClick); otherwise the kind you were already reading
+ * carries over, so panning across terrain keeps showing terrain.
  *
  * The four legacy viewState.selected* fields are still maintained, derived
  * from whichever tab is active (see syncLegacySelection). That keeps
@@ -114,10 +113,8 @@ window.UI = window.UI || {};
       onChange();
     });
 
-    // RADIAL MENU (2026-08-06, user-directed rewrite -- previously right-
-    // click issued a move/attack immediately, same-turn range only; then a
-    // linear list at the cursor). Every right-click now opens a ring of
-    // context-relevant actions AROUND the clicked tile (see orders.js's
+    // RADIAL MENU: every right-click opens a ring of context-relevant
+    // actions AROUND the clicked tile (see orders.js's
     // contextMenuOptions for what's offered and why, js/ui/ringmenu.js for
     // the geometry, main.js's redraw()/handleContextMenuAction for how it's
     // rendered and dispatched) -- this handler only decides WHERE the

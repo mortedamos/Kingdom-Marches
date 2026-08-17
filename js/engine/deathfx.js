@@ -1,6 +1,6 @@
 /**
- * DEATH EFFECT EVENTS (2026-08-07, user-directed)
- * -------------------------------------------------
+ * DEATH EFFECT EVENTS
+ * -------------------
  * A brief puff-of-smoke-resolving-into-a-skull cosmetic, queued at (x, y)
  * rather than anchored to a unit -- the unit is already gone from civ.units
  * by the time this fires (see ai.js's otherCivRemoveDeadUnit, the single

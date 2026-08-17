@@ -6,19 +6,9 @@
  *
  *     powershell -File working/tools/build-sfx-manifest.ps1
  *
- * WHY THIS EXISTS (2026-08-03, user-reported): js/audio/sfx.js used to have
- * no idea which clips were real. It optimistically probed variants
- * _1.._SFX_MAX_VARIANTS, mp3 then wav, and learned what was missing from the
- * resulting 404s -- which is where the "many missing sound file errors in the
- * developer console" came from (a browser-level network log; a JS try/catch
- * cannot suppress it). Worse, a probe that happened to pick a missing variant
- * played NOTHING that time, which is the "sometimes the move sfx just doesn't
- * play" symptom.
- *
- * With a real manifest, sfx.js never requests a file that isn't there, always
- * picks a variant that exists, and can preload exactly the right set during
- * the loading screen instead of streaming each clip on first use (the source
- * of the audible delay on attack/move sounds).
+ * With a real manifest, js/audio/sfx.js never requests a file that isn't
+ * there, always picks a variant that exists, and preloads exactly the right
+ * set during the loading screen instead of streaming each clip on first use.
  */
 
 window.GameData = window.GameData || {};

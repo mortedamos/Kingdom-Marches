@@ -7,14 +7,12 @@
  * intended next pick (via ai.js's previewNextResearch, a non-mutating
  * preview), locked (city-gate or prereqs unmet), or simply available.
  *
- * Read-only for every civ EXCEPT the human player's own (2026-08-01,
- * user-directed): before this the player had no way to pick research at all,
- * because chooseResearch was only ever called from ai.js, which turns.js
- * skips for the human civ -- a human game sat at "Research: None selected"
- * forever. Available nodes in your own tree are now buttons.
+ * Read-only for every civ EXCEPT the human player's own: chooseResearch is
+ * only ever called from ai.js, which turns.js
+ * skips for the human civ, so available nodes in the player's own tree are
+ * buttons instead.
  *
- * Every layer row always renders fully expanded (2026-08-16, user-directed
- * removal of the collapse/expand mechanic that used to live here) -- the
+ * Every layer row always renders fully expanded -- the
  * caller instead vertically centers the view on the highest currently-
  * available layer the moment the screen opens (see main.js's redraw(),
  * which does this via `data-avail` below rather than anything in this pure-
@@ -62,15 +60,15 @@ window.UI = window.UI || {};
     return false;
   }
   /**
-   * Prereq/unlock relations for whichever tech is currently hovered
-   * (2026-08-10, user-directed: "show what techs unlocked the current tech,
-   * and what techs are unlocked by the current tech" without cluttering the
-   * screen with permanent arrows). Returns null if nothing's hovered.
+   * Prereq/unlock relations for whichever tech is currently hovered --
+   * shows what techs unlocked the current tech, and what techs are
+   * unlocked by the current tech, without cluttering the screen with
+   * permanent arrows. Returns null if nothing's hovered.
    *
    * DIRECT ancestors/descendants are one hop away (tech.prereqs itself, and
    * whatever else's prereqs name this tech); INDIRECT ones are everything
    * further up/down the chain. Both get their own relationKindFor() CSS
-   * class on any node -- every node is always visible now (2026-08-16, see
+   * class on any node -- every node is always visible (see
    * this file's own top-of-file doc comment), so relations just recolor the
    * nodes themselves, nothing more.
    */
@@ -255,14 +253,13 @@ window.UI = window.UI || {};
     const prereqsOk = missingPrereqs.length === 0;
     const locked = !completed && !researching && (!cityGateOk || !prereqsOk);
 
-    // Up-front affordability (2026-08-04, user-directed research redesign):
-    // chooseResearch now pays this tech's full cost from the stockpile
-    // the instant it's picked, same one-time-purchase model a unit/building
-    // queue already uses -- so a tech whose gates are satisfied but that the
-    // civ can't yet AFFORD needs its own state, not a "Click to research"
-    // button that would silently fail (chooseResearch returning false with
-    // nothing else telling the player why). Multi-resource (2026-08-05,
-    // user-directed): cost is now split across harvest/coin/lore by
+    // Up-front affordability: chooseResearch pays this tech's full cost
+    // from the stockpile the instant it's picked, same one-time-purchase
+    // model a unit/building queue uses -- so a tech whose gates are
+    // satisfied but that the civ can't yet AFFORD needs its own state, not
+    // a "Click to research" button that would silently fail (chooseResearch
+    // returning false with nothing else telling the player why). Cost is
+    // split across harvest/coin/lore by
     // category (see GameData.effectiveTechCostBreakdown) -- ALL THREE must
     // be affordable.
     const cost = window.GameData.effectiveTechCostBreakdown(tech);
@@ -281,9 +278,9 @@ window.UI = window.UI || {};
     else if (locked) {
       stateClass = "locked";
       // Names the actual missing prereq(s) by label instead of a bare "Needs
-      // prerequisite" (2026-08-04, user-reported: that message gave no way
+      // prerequisite", which gives no way
       // to tell WHICH tech was missing without cross-referencing the tree by
-      // eye). Both gates can be unmet at once -- rare, but shown together
+      // eye. Both gates can be unmet at once -- rare, but shown together
       // rather than silently dropping one -- since meetsCityGate and the
       // prereq check are independent conditions, not an if/else in
       // tech.js's own chooseResearch gate.
@@ -373,9 +370,7 @@ window.UI = window.UI || {};
     // hovered node itself; ancestor/descendant are its prereq chain both
     // ways, indirect ones a notch dimmer than direct so the eye reads
     // "closer" vs "further" at a glance. Nodes with NO relation are left
-    // completely alone now (2026-08-10, user-directed follow-up: dimming
-    // every unrelated node on every hover move caused too much visual
-    // "flicker") -- only the related path itself ever changes appearance.
+    // completely alone -- only the related path itself ever changes appearance.
     let relationClass = "";
     if (relationKind === "self") relationClass = " techtree-node-relation-self";
     else if (relationKind === "ancestor-direct") relationClass = " techtree-node-relation-ancestor";

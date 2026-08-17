@@ -8,8 +8,8 @@
  * the individual `cost` field still authored on each node below (inert
  * data now, kept rather than mechanically stripped from every entry). That
  * total is then split across harvest/coin/lore by the node's OWN column
- * (2026-08-05, user-directed -- see GameData.TECH_COST_RATIO/
- * effectiveTechCostBreakdown): Civic leans Harvest, Building leans Coin,
+ * (see GameData.TECH_COST_RATIO/effectiveTechCostBreakdown): Civic leans
+ * Harvest, Building leans Coin,
  * Military splits Coin/Lore evenly. A layer can hold more than one node (a
  * Building and a Civic tech may share a layer; Military may fork into two
  * choices at a layer). The one hard rule: a race's 4 buildings never share
@@ -50,15 +50,7 @@
  *                                                  `value`, floored at 0.5 (civ-wide) -- see ai.js's
  *                                                  landCostForTerrain. Applies every time a unit steps off a
  *                                                  matching tile, anywhere on its path, not just at the start
- *                                                  of its turn. Replaced terrain_movement_bonus (2026-08-06,
- *                                                  user-directed) on every tech that used to grant one: a
- *                                                  once-per-turn budget bonus only paid off if the unit
- *                                                  happened to START its turn on the favored terrain, and paid
- *                                                  nothing for crossing miles of it mid-move -- this pays off
- *                                                  on every single step instead, which is what these techs
- *                                                  were always meant to reward. The OLD bonus effect type
- *                                                  still exists in the engine (nothing currently emits it) --
- *                                                  see computeMovementBudget in ai.js.
+ *                                                  of its turn.
  *   unit_terrain_movement_discount { terrain, value, units }  same, but scoped to specific unit type ids only
  *   unlock_mountain_tunneling               makes Mountains passable (slow) for this civ
  *   unlock_mechanic         { mechanic }     generic flag for bespoke mechanics (e.g. "dark_ritual")
@@ -77,15 +69,10 @@
 window.GameData = window.GameData || {};
 
 window.GameData.TECHS = {
-  // --- LEVEL 0: shared starting infrastructure (2026-08-06, user-directed
-  // rewrite of the old single "Shared Infrastructure" tech). Five techs,
-  // every race, no raceOnly/excludedRaces, layer: 0 (a real integer now --
-  // the old layer: 0.5 fudge existed only to dodge a `tech.layer || 1`
-  // falsy-zero bug in a few call sites; those are now fixed to treat 0
-  // correctly -- see effectiveTechCost/unitTechLayer below and
-  // techtree.js's own layer-bucketing). ALL FIVE are auto-completed for
-  // every civ at creation (main.js's createNewGame) -- nothing at Level 0
-  // is ever actually researched/paid for. A civ's own signature combat
+  // --- LEVEL 0: shared starting infrastructure. Every race, no
+  // raceOnly/excludedRaces, layer: 0. ALL are auto-completed for every civ
+  // at creation (main.js's createNewGame) -- nothing at Level 0 is ever
+  // actually researched/paid for. A civ's own signature combat
   // unit (Raider, Spearguard, etc., via that race's real Level 1
   // startingTech) must still actually be researched like anything else;
   // Scout is deliberately the civ's only quasi-"combat" capability until
@@ -120,12 +107,9 @@ window.GameData.TECHS = {
     costBreakdown: { harvest: 2, coin: 3 },
     effects: [{ type: "unlock_unit", unit: "galley" }],
   },
-  // Pioneer/Scout resource actions (2026-08-05, user-directed; auto-granted
-  // 2026-08-06). Each unlocks one half of what used to be a single free
-  // `canProspect`/"surveying" channeled action (js/ui/sidebar.js's
-  // channelActions, js/engine/turns.js) -- split in two so the button/tech
-  // naming can be resource-specific ("Hunt Game"/"Farm Soil") instead of
-  // the generic "Start Prospecting".
+  // Pioneer/Scout resource actions -- each unlocks one channeled action
+  // (js/ui/sidebar.js's channelActions, js/engine/turns.js), named for its
+  // specific resource ("Hunt Game"/"Farm Soil").
   hunt_game: {
     id: "hunt_game", label: "Hunt Game", category: "civic", layer: 0, cost: 10,
     prereqs: [],
@@ -138,14 +122,10 @@ window.GameData.TECHS = {
     description: "Pioneers and Trackers can farm Fertile Soil tiles for bonus Harvest.",
     effects: [{ type: "unlock_mechanic", mechanic: "farm_soil" }],
   },
-  // Ruin Delving (2026-08-14, user-directed; see doc/world_encounters_design.md):
-  // retired from being a Human-only, Wizard-gated L3 civic tech
-  // ("dungeon_delve", removed below) and promoted to Level 0 shared
+  // Ruin Delving (see doc/world_encounters_design.md): Level 0 shared
   // infrastructure, same tier as Pioneer/Scout/Galley/Hunt Game/Farm Soil --
-  // every civ starts with it, no race restriction, and any unit (not just a
-  // Wizard) can Delve. Grants the SAME mechanic id, "dungeon_delve" --
-  // nothing downstream (orders.js/ai.js/turns.js) needed to change, only
-  // this tech's own id/gate/description did.
+  // every civ starts with it, no race restriction, any unit can Delve.
+  // Grants the "dungeon_delve" mechanic id (read by orders.js/ai.js/turns.js).
   ruin_delving: {
     id: "ruin_delving", label: "Ruin Delving", category: "civic", layer: 0, cost: 10,
     prereqs: [],
@@ -570,9 +550,9 @@ window.GameData.TECHS = {
     costBreakdown: { lore: 14, coin: 6 },
     effects: [{ type: "building_count_bonus", bonus: { lore: 2 } }],
   },
-  // 2026-08-10, user-directed: halves the flat RESOURCE_EXHAUSTION_CHANCE
-  // (5%->2%) for this civ's Ruin/Gold Vein/Iron Vein/Fish Shoal/Game/Fertile
-  // Soil channels -- see turns.js's resourceExhaustionChanceFor.
+  // Halves the flat RESOURCE_EXHAUSTION_CHANCE (5%->2%) for this civ's
+  // Ruin/Gold Vein/Iron Vein/Fish Shoal/Game/Fertile Soil channels -- see
+  // turns.js's resourceExhaustionChanceFor.
   elf_tending_to_the_earth: {
     id: "elf_tending_to_the_earth", label: "Tending to the Earth", category: "civic", layer: 1, cost: 18,
     prereqs: [], raceOnly: "elf",
@@ -707,9 +687,9 @@ window.GameData.TECHS = {
     costBreakdown: { lore: 12, coin: 4 },
     effects: [{ type: "unlock_unit", unit: "blade_dancer" }],
   },
-  // 2026-07-20, user-directed: a normal action (move, then optionally act --
-  // see project_turn_action_economy memory), same category as an ordinary
-  // Attack, not a full-turn action. See ai.js's performBladeSweep for the
+  // A normal action (move, then optionally act), same category as an
+  // ordinary Attack, not a full-turn action. See ai.js's performBladeSweep
+  // for the
   // shared implementation and combat.js's resolveRound for the
   // attackDamageMult/counterDamageMult context both this and Blade Storm rely on.
   elf_whirlwind_strike: {
@@ -798,7 +778,7 @@ window.GameData.TECHS = {
     ],
   },
   elf_hunters_soul: {
-    id: "elf_hunters_soul", label: "Hunter's Soul", category: "military", layer: 2, cost: 38, // moved L3->L2, 2026-08-10, user-directed
+    id: "elf_hunters_soul", label: "Hunter's Soul", category: "military", layer: 2, cost: 38,
     prereqs: ["elf_watching_hunting"], raceOnly: "elf",
     description: "Rangers gain +1 range and 25% Double Strike.",
     costBreakdown: { lore: 24, coin: 14 },
@@ -1150,10 +1130,8 @@ window.GameData.TECHS = {
   orc_forced_march: {
     id: "orc_forced_march", label: "Forced March", category: "civic", layer: 1, cost: 14,
     prereqs: [], raceOnly: "orc",
-    // Civ-wide, not unit-restricted (2026-08-10, user-directed: "should
-    // reduce this cost for all orc units") -- terrain_movement_discount
-    // applies to every unit this civ owns, unlike the old unit_terrain_
-    // movement_discount's units:[] allowlist (raider/wolf_rider/ogre only).
+    // Civ-wide: terrain_movement_discount applies to every unit this civ
+    // owns (unlike unit_terrain_movement_discount's units:[] allowlist).
     description: "Reduces the movement cost of Plains by 0.5.",
     costBreakdown: { lore: 10, harvest: 4 },
     effects: [{ type: "terrain_movement_discount", terrain: "plains", value: 0.5 }],
@@ -1219,11 +1197,9 @@ window.GameData.TECHS = {
     costBreakdown: { coin: 12, lore: 6 },
     effects: [{ type: "unlock_mechanic", mechanic: "defend_the_walls_orc" }],
   },
-  // 2026-07-20, user-directed; scope widened and attack rating raised
-  // -- see combat.js's spikesAttackRating/
-  // spikesCounterattack. Now covers ANY Orc structure (walls, buildings,
-  // AND cities), not just walls and cities -- no attack bonus multiplier,
-  // no militia spawn, flat attack rating instead of deriving from the Archer.
+  // See combat.js's spikesAttackRating/spikesCounterattack. Covers ANY Orc
+  // structure (walls, buildings, cities) -- no attack bonus multiplier, no
+  // militia spawn, flat attack rating instead of deriving from the Archer.
   orc_spikes: {
     id: "orc_spikes", label: "Spikes!", category: "building", layer: 2, cost: 22,
     prereqs: [], raceOnly: "orc",
@@ -1366,10 +1342,9 @@ window.GameData.TECHS = {
     costBreakdown: { lore: 18, coin: 10 },
     effects: [{ type: "unlock_mechanic", mechanic: "hound_and_hunter" }],
   },
-  // 2026-07-20, user-directed. Replaces (not stacks with) Spikes!'s attack
-  // rating while both are known -- same "upgrade tech" convention as e.g.
-  // Sudden Doom replacing Strike from the Shadows -- see combat.js's
-  // spikesAttackRating.
+  // Replaces (not stacks with) Spikes!'s attack rating while both are
+  // known -- same "upgrade tech" convention as e.g. Sudden Doom replacing
+  // Strike from the Shadows -- see combat.js's spikesAttackRating.
   orc_bigger_spikes: {
     id: "orc_bigger_spikes", label: "Bigger Spikes!", category: "building", layer: 3, cost: 38,
     prereqs: ["orc_spikes"], raceOnly: "orc",
@@ -1565,19 +1540,16 @@ window.GameData.TECHS = {
   halfellow_sneaking_around: {
     id: "halfellow_sneaking_around", label: "Sneaking Around", category: "military", layer: 1, cost: 25,
     prereqs: [], raceOnly: "halfellow",
-    // Restricted to Wanderer only (2026-07-20, user-directed, narrowed from
-    // "every Halfellow unit") -- see combat.js's canGoHidden, which keys
-    // this restriction off raceId so Elf's OWN unlock of the same shared
-    // "sneaking_around" mechanic (elf_shadowed_hush_unseen) stays
-    // unrestricted, race-wide as before.
+    // Restricted to Wanderer only -- see combat.js's canGoHidden, which
+    // keys this restriction off raceId so Elf's own unlock of the same
+    // shared "sneaking_around" mechanic (elf_shadowed_hush_unseen) stays
+    // race-wide.
     description: "The Wanderer may spend its whole turn to become Hidden for 3 turns (voluntarily cancellable early). Cannot activate with an enemy unit on an adjacent tile. Whenever a Hidden unit is revealed for ANY reason, it is forced visible for at least 1 turn before it can go Hidden again.",
     costBreakdown: { harvest: 15, lore: 10 },
     effects: [{ type: "unlock_mechanic", mechanic: "sneaking_around" }],
   },
-  // 2026-07-24, user-directed: civ-wide (every Halfellow unit, not just
-  // Trouble Maker -- same "grants an action race-wide" shape as Sneaking
-  // Around above), a lookout post rather than a combat/economy tool. Full
-  // turn action: go Hidden and hold position (see ai.js's
+  // Civ-wide (every Halfellow unit), a lookout post rather than a
+  // combat/economy tool. Full turn action: go Hidden and hold position (see ai.js's
   // maybeHalfellowKeepAnEyeOut) with a flat +3 vision radius for the
   // duration -- see combat.js/sidebar.js wherever visionRadius is read.
   halfellow_keep_an_eye_out: {
@@ -1624,10 +1596,9 @@ window.GameData.TECHS = {
     costBreakdown: { harvest: 14, coin: 10 },
     effects: [{ type: "unlock_unit", unit: "pony_patrol" }],
   },
-  // 2026-07-20, user-directed (unnamed in the request -- "Undaunted" is my
-  // own pick, easy to rename). Mirrors Orc's Hound and Hunter structurally
-  // (spawns on the dead unit's own now-vacated tile, gated on typeId at
-  // every death call site) -- see combat.js's maybeSpawnPonyReplacement.
+  // Mirrors Orc's Hound and Hunter structurally (spawns on the dead unit's
+  // own now-vacated tile, gated on typeId at every death call site) -- see
+  // combat.js's maybeSpawnPonyReplacement.
   halfellow_undaunted: {
     id: "halfellow_undaunted", label: "Undaunted", category: "military", layer: 4, cost: 50,
     prereqs: ["halfellow_pony_patrol"], raceOnly: "halfellow",
@@ -1646,7 +1617,6 @@ window.GameData.TECHS = {
     costBreakdown: { lore: 50 },
     effects: [{ type: "unlock_mechanic", mechanic: "knife_in_the_dark" }],
   },
-  // 2026-07-20, user-directed.
   halfellow_courage: {
     id: "halfellow_courage", label: "Courage", category: "military", layer: 3, cost: 40,
     prereqs: ["halfellow_knife_in_the_dark"], raceOnly: "halfellow",
@@ -1709,16 +1679,11 @@ window.GameData.TECHS = {
     costBreakdown: { lore: 16, coin: 12, harvest: 12 },
     effects: [{ type: "building_count_bonus", bonus: { coin: 1 } }],
   },
-  // 2026-07-24, user-directed: unlocks the Trouble Maker unit, WITH Resource
-  // Heist and Unlock the Gate already built in (no separate tech needed for
-  // either -- see ai.js's maybeResourceHeistPlay/maybeUnlockTheGatePlay).
-  // Riddle is the one ability that needs its own further tech (The Riddle
-  // Game, below) -- same staged shape Human's Wizard uses (unit unlocked
-  // first, each spell behind its own tech). Rumors of a tavern-born rascal
-  // makes for a fitting requirement on Pub Crawl.
-  // Moved L3 -> L2. Prereq pub_crawl (L3) stays
-  // put -- one-layer inversion, same "move the layer only" policy as
-  // Human's Palace Charter/Invisibility/Fireball above.
+  // Unlocks the Trouble Maker unit, with Resource Heist and Unlock the Gate
+  // already built in (see ai.js's maybeResourceHeistPlay/
+  // maybeUnlockTheGatePlay). Riddle needs its own further tech (The Riddle
+  // Game, below) -- unit unlocked first, each spell behind its own tech.
+  // Prereq pub_crawl sits at a higher layer than this tech.
   halfellow_making_trouble: {
     id: "halfellow_making_trouble", label: "Making Trouble", category: "mystic", layer: 2, cost: 45,
     prereqs: ["halfellow_pub_crawl"], raceOnly: "halfellow",
@@ -1778,8 +1743,8 @@ window.GameData.TECHS = {
     costBreakdown: { harvest: 20, coin: 18, lore: 17 },
     effects: [{ type: "fill_rate_mult", value: 2.00 }],
   },
-  // 2026-07-24, user-directed: a channeled action for Pioneer/Wanderer --
-  // stand on (or adjacent to, see ai.js's maybeEnvoyPlay) an already-in-
+  // A channeled action for Pioneer/Wanderer -- stand on (or adjacent to,
+  // see ai.js's maybeEnvoyPlay) an already-in-
   // radius, not-yet-owned tile and channel for a flat 2 turns to claim it
   // outright, independent of the normal fill-rate math -- guaranteed speed
   // and, critically, lets the player/AI CHOOSE which tile gets priority
@@ -1827,8 +1792,8 @@ window.GameData.TECHS = {
     costBreakdown: { lore: 28, harvest: 22 },
     effects: [{ type: "unlock_mechanic", mechanic: "great_stories", value: 0.5 }],
   },
-  // 2026-07-24, user-directed: Trouble Maker's third trick, plus Wanderer
-  // (not civ-wide -- only these two unit types). Ranged debuff: target
+  // Trouble Maker's third trick, plus Wanderer (not civ-wide -- only these
+  // two unit types). Ranged debuff: target
   // resists at (their race's curiosity * 0.75), so even a maximally curious
   // race (1.0) still fails a quarter of the time. On a failed resist,
   // applies Befuddled (see combat.js's applyBefuddled) -- -50% attack, 75%
@@ -1879,9 +1844,8 @@ window.GameData.TECHS = {
   // "Set the Trap": the Trouble Maker's third
   // trick, gated behind The Riddle Game as the capstone of its own
   // sub-tree. Unlocks BOTH trap flavors at once -- the player picks Frost
-  // or Fire per placement, not a separate tech per flavor (user-directed:
-  // "one tech, but no snare option, just frozen or burning along with some
-  // damage"). Two unlock_unit effects register both "trap_frost"/"trap_fire"
+  // or Fire per placement, not a separate tech per flavor. Two unlock_unit
+  // effects register both "trap_frost"/"trap_fire"
   // with techForUnit (so unitBuildCost can derive each one's resource split
   // from this tech's shared costBreakdown) even though no city can ever
   // build either -- see units.js's cityBuildable: false, mirrors Orc's Bog
@@ -1944,11 +1908,10 @@ window.GameData.effectiveTechCost = function (tech) {
 // already uses for display. The TOTAL magnitude is unchanged
 // (effectiveTechCost's own pure-layer formula) -- only how it's split
 // across resources changes.
-// mystic (2026-08-10, user-directed 4th column -- Wizard/Druid/Metal Singer/
-// Bog Witch/Trouble Maker split out of Military): leans Lore harder than
-// Military does, reflecting arcane study rather than martial drilling --
-// its own distinct economic identity, same as how each of the other three
-// already leans a different resource.
+// mystic (Wizard/Druid/Metal Singer/Bog Witch/Trouble Maker): leans Lore
+// harder than Military does, reflecting arcane study rather than martial
+// drilling -- its own distinct economic identity, same as how each of the
+// other three leans a different resource.
 window.GameData.TECH_COST_RATIO = {
   civic: { harvest: 0.5, coin: 0.2, lore: 0.3 },
   building: { harvest: 0.1, coin: 0.6, lore: 0.3 },
@@ -2074,11 +2037,9 @@ window.GameData.unitTechLayer = function (unitId) {
 // GameConfig.research's own doc comment) -- unit power already trends up
 // with layer on its own (deeper units tend to have better stats), so this is
 // a second, thinner "sophistication tax" layered on top of that, not a
-// restatement of it. Exponent is the RAW layer now, not layer-1
-// (2026-08-04, user-directed, matching effectiveTechCost's own convention
-// change) -- Layer 1 is no longer a free/no-premium baseline; a layer-5 unit
-// (Dragon-tier) now lands at roughly (1.18)^5 =~2.3x a layer-1 unit of
-// identical power (was ~2x under the old layer-1 exponent).
+// restatement of it. Exponent is the RAW layer, matching
+// effectiveTechCost's own convention -- a layer-5 unit (Dragon-tier) lands
+// at roughly (1.18)^5 =~2.3x a layer-1 unit of identical power.
 const LAYER_PREMIUM_RATE = window.GameConfig.units.buildLayerPremiumRate;
 
 /** Multiplier applied to unitBuildCost (the one-time purchase) for how deep

@@ -8,15 +8,11 @@
  * what it says once the engine has already decided to trigger one) and
  * js/ui/render.js for the bubble rendering.
  *
- * Structure (2026-07-18, user-directed): UNIT_QUIPS[raceId][unitTypeId][action]
- * -- every race x unit-type x action combination that can actually occur in
- * play gets its OWN dedicated pool. There is deliberately no race-wide
- * fallback anymore (a Human Spearguard and a Human Knight used to be able
- * to fall back to the same generic "human" pool; they no longer can) and no
- * separate unit-type-only override layer either -- one flat, fully
- * cross-referenced structure. getRandomQuip() looks up the exact triple and
- * returns null (no quip this time, not a generic substitute) if that exact
- * cell has no data.
+ * Structure: UNIT_QUIPS[raceId][unitTypeId][action] -- every race x
+ * unit-type x action combination that can actually occur in play gets its
+ * own dedicated pool, one flat fully cross-referenced structure with no
+ * race-wide or unit-type-only fallback layer. getRandomQuip() looks up the
+ * exact triple and returns null (no quip this time) if that cell has no data.
  *
  * Shared infrastructure units (Pioneer/Scout/Galley) still get full
  * per-RACE variation -- a Human Pioneer and an Elf Pioneer say different

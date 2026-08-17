@@ -41,10 +41,9 @@ window.GameEngine = window.GameEngine || {};
   /** True if there's at least one tech the civ could actually start
    *  researching RIGHT NOW -- gates/prereqs met (availableTechs) AND
    *  affordable from the current stockpile (effectiveTechCostBreakdown).
-   *  Used by main.js's end-turn "unresolved work" guard (2026-08-05,
-   *  user-directed) so a civ that simply can't afford anything yet isn't
-   *  nagged with "No research selected" every turn -- there's nothing it
-   *  could actually do about that right now. */
+   *  Used by main.js's end-turn "unresolved work" guard so a civ that can't
+   *  afford anything yet isn't nagged with "No research selected" every
+   *  turn. */
   function hasAffordableResearch(civ) {
     const stock = civ.stockpile || { harvest: 0, coin: 0, lore: 0 };
     return availableTechs(civ).some((id) => {
@@ -80,10 +79,9 @@ window.GameEngine = window.GameEngine || {};
   // Same rate shape as ai.js's buildingBuildTurns (industriousness alone --
   // research is a civilian pursuit, not a military one, so militarism
   // doesn't factor in the way it does for raceUnitBuildRate). Shares
-  // GameConfig.pacing.slowness with ai.js's BUILD_SLOWNESS now (2026-08-04,
-  // user-directed) -- one universal pacing knob for every timed queue in
-  // the game, not a separate rate per subsystem. researchPaceFactor
-  // is a RATIO on top of that shared slowness,
+  // GameConfig.pacing.slowness with ai.js's BUILD_SLOWNESS -- one universal
+  // pacing knob for every timed queue in the game. researchPaceFactor is a
+  // RATIO on top of that shared slowness,
   // same treatment as ai.js's unitPaceFactor/buildingPaceFactor -- see
   // config.js's own doc comment for why (research had grown into the same
   // "takes too long" problem buildings did, especially at high tiers for a
@@ -111,17 +109,12 @@ window.GameEngine = window.GameEngine || {};
     return Math.max(1, Math.round((scaledCost / industriousness) * window.GameConfig.pacing.slowness * window.GameConfig.pacing.researchPaceFactor));
   }
 
-  /** Counts down one turn on the civ's in-progress research (2026-08-04,
-   *  user-directed redesign: research now pays its FULL cost up front
-   *  via chooseResearch below -- same one-time-purchase model as a unit or
-   *  building queue -- rather than accumulating progress from income turn
-   *  by turn, so this is now purely a turn-count timer with nothing left
-   *  to spend here. Harvest/coin/lore income still fills civ.stockpile
-   *  exactly as before (turns.js's beginCivTurn) -- that's what funds the
-   *  NEXT tech's up-front payment (2026-08-05: now split across all 3, not
-   *  just Lore -- see GameData.effectiveTechCostBreakdown), just no longer
-   *  wired directly into this
-   *  function. */
+  /** Counts down one turn on the civ's in-progress research. Research pays
+   *  its full cost up front via chooseResearch below -- same one-time-
+   *  purchase model as a unit or building queue -- so this is purely a
+   *  turn-count timer. Harvest/coin/lore income still fills civ.stockpile
+   *  as usual (turns.js's beginCivTurn), funding the NEXT tech's up-front
+   *  payment (see GameData.effectiveTechCostBreakdown). */
   function tickResearch(civ) {
     if (!civ.currentResearch) return null;
     civ.researchTurnsRemaining = Math.max(0, (civ.researchTurnsRemaining || 0) - 1);

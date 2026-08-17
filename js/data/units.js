@@ -240,12 +240,12 @@ window.GameData.UNITS = {
   },
   archer: {
     id: "archer", label: "Archer", symbol: "⌖", category: "military", raceOnly: "human",
-    attack: 5, defense: 3, movement: 2, visionRadius: 3, range: 2, attackChars: ["➵", "➳"], 
+    attack: 4, defense: 3, movement: 2, visionRadius: 3, range: 2, attackChars: ["➵", "➳"], 
     coinCost: 20, firstStrikePct: 0.01, 
   },
   longbowman: {
     id: "longbowman", label: "Longbowman", symbol: "⌖", category: "military", raceOnly: "human", range: 3, 
-    attack: 6, defense: 4, movement: 2, visionRadius: 4,  // replaces Archer via the Longbow tech
+    attack: 5, defense: 4, movement: 2, visionRadius: 4,  // replaces Archer via the Longbow tech
     coinCost: 30, attackChars: ["➵", "➳"], firstStrikePct: 0.02,
   },
   catapult: {
@@ -269,7 +269,7 @@ window.GameData.UNITS = {
     // (ai.js's UTILITY_UNIT_MECHANICS taper, `relevantMechanics.length * 7
     // * 0.6^owned`) is entirely stat-independent by design.
     id: "wizard", label: "Wizard", symbol: "🧙‍♂️", category: "military", raceOnly: "human",
-    attack: 3, defense: 3, movement: 2, visionRadius: 3, range: 2, burnChancePct: 0.05, frozenChancePct: 0.05, 
+    attack: 2, defense: 3, movement: 2, visionRadius: 3, range: 2, burnChancePct: 0.05, frozenChancePct: 0.05, 
     coinCost: 35, attackChars: ["⚡", "❄️", "🔥", "☄", "✨"], doubleStrikePct: 0.1, biggerPct: .1,
   },
 
@@ -383,7 +383,7 @@ window.GameData.UNITS = {
   // works at range independent of whether Boomerang is researched yet.
   trouble_maker: {
     id: "trouble_maker", label: "Trouble Maker", symbol: "?", category: "military", raceOnly: "halfellow",
-    attack: 3, defense: 3, movement: 3, visionRadius: 3, range: 2,
+    attack: 2, defense: 3, movement: 3, visionRadius: 3, range: 2,
     coinCost: 32, attackChars: ["🪤", "🔓"], doubleStrikePct: 0.1,
   },
   // "Set the Trap" (Halfellow mystic L5): a Trouble Maker plants one of
@@ -431,7 +431,7 @@ window.GameData.UNITS = {
   },
   musketeer: {
     id: "musketeer", label: "Musketeer", symbol: "⌐", category: "military", raceOnly: "dwarf",
-    attack: 5, defense: 3, movement: 2, visionRadius: 3, range: 2,
+    attack: 4, defense: 3, movement: 2, visionRadius: 3, range: 2,
     coinCost: 22, attackChars: ["💥", "●"],
   },
   // Pinnacle unit -- a slow, near-indestructible city-crusher rather than a
@@ -449,12 +449,9 @@ window.GameData.UNITS = {
   // intended feel as a once-in-a-game commitment.
   runeforged_titan: {
     id: "runeforged_titan", label: "Runeforged Titan", symbol: "▣", category: "military", raceOnly: "dwarf",
-    // defense restored to the wall-tier 32 this unit's own doc comments above
-    // describe (2026-07-30, user-directed fix: had regressed to 15 -- barely
-    // above the next-highest unit's 11 -- making "near-indestructible to an
-    // ordinary attacker" false in practice and causing the Resilient
-    // Spirit/Unyielding death-save to fire on hits that were never supposed
-    // to be anywhere near lethal against a full-health Titan).
+    // High defense is load-bearing: near-indestructible to an ordinary
+    // attacker, so Resilient Spirit/Unyielding's death-save shouldn't fire
+    // on a hit against a full-health Titan.
     attack: 10, defense: 17, movement: 2, visionRadius: 2, siegePct: 3.50,
     coinCost: 60, biggerPct: 1.2, attackChars: ["🪨", "💥"],
     veryRare: true, neverExplores: true, siegeTarget: true,
@@ -495,12 +492,12 @@ window.GameData.UNITS = {
   },
   impaler: {
     id: "impaler", label: "Impaler", symbol: "▲", category: "military", raceOnly: "orc",
-    attack: 4, defense: 3, movement: 2, visionRadius: 2, attackChars: ["𐃆"],
+    attack: 4, defense: 3, movement: 2, visionRadius: 2, attackChars: ["𐃆"], firstStrikePct: 0.1,
     coinCost: 18,
   },
   wolf_rider: {
     id: "wolf_rider", label: "Wolf Rider", symbol: "♞", category: "military", raceOnly: "orc",
-    attack: 5, defense: 2, movement: 4, visionRadius: 4, firstStrikePct: 0.1, attackChars: ["➵", "➳"],
+    attack: 5, defense: 2, movement: 4, visionRadius: 4, firstStrikePct: 0.2, attackChars: ["➵", "➳"],
     coinCost: 20, biggerPct: .2, doubleStrikePct: 0.2,
   },
   bog_witch: {
@@ -535,7 +532,7 @@ window.GameData.UNITS = {
   },
   battering_ram: {
     id: "battering_ram", label: "Battering Ram", symbol: "⚙", category: "military", raceOnly: "orc",
-    attack: 6, defense: 5, movement: 2, visionRadius: 2, siegePct: 1.75,
+    attack: 7, defense: 5, movement: 2, visionRadius: 2, siegePct: 2.0,
     coinCost: 30, biggerPct: .5, attackChars: ["💥"],
     nameSpecial: true, // a machine, not a person -- see unit-names.js
   },
@@ -594,7 +591,7 @@ window.GameData.UNITS = {
   highland_griffin: {
     id: "highland_griffin", label: "Highland Griffin", symbol: "🦅", category: "military",
     attack: 4, defense: 2, movement: 3, visionRadius: 4, flying: true,
-    coinCost: 16, attackChars: ["🦅"],
+    coinCost: 16, attackChars: ["彡"],
     cityBuildable: false, noUpkeep: true, nameSpecial: true, neverExplores: true,
   },
   basilisk: {

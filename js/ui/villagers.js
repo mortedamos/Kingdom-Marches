@@ -1,25 +1,21 @@
 /**
- * AMBIENT VILLAGER FIGURES (2026-08-07, user-directed; extended 2026-08-12)
- * -------------------------------------------------------
+ * AMBIENT VILLAGER FIGURES
+ * ------------------------
  * Tiny figures that occasionally spawn at a city's own tile or one of its
  * structures' tiles, wander along a gently-curved, variable-paced path to a
  * different one of those points, pause briefly, then fade out and
  * disappear. Pure atmosphere, drawn as plain filled shapes rather than
- * sprite art, matching this session's other small procedural-canvas
- * cosmetics (the death effect, the construction placeholder, the idle-city
- * badge).
+ * sprite art, matching other small procedural-canvas cosmetics (the death
+ * effect, the construction placeholder, the idle-city badge).
  *
- * A separate, lower-frequency spawn (2026-08-12, user-directed: "in addition
- * to structures, a kingdom's villagers should sometimes also generate on
- * tiles under influence, then wander to another tile under influence, then
- * vanish") walks the same way between two ordinary tiles the kingdom
- * currently owns, not just city/structure tiles -- see territoryPointsFor.
+ * A separate, lower-frequency spawn walks the same way between two ordinary
+ * tiles the kingdom currently owns (not just city/structure tiles) -- see
+ * territoryPointsFor.
  *
  * Head and arms are tinted with a race-appropriate skin tone (picked once
  * per figure at spawn, from a small per-race palette); the torso/"clothes"
- * stays tinted with the owning civ's race color, same as before. Undead
- * isn't called out with its own palette in the user's spec, so it falls
- * back to the same human-tone palette humans/elves/dwarves/halfellows use.
+ * stays tinted with the owning civ's race color. Undead falls back to the
+ * same human-tone palette humans/elves/dwarves/halfellows use.
  *
  * PURELY COSMETIC, same guarantee clouds.js documents for itself: no game
  * state is ever mutated, and nothing here triggers its own redraw --
@@ -35,20 +31,16 @@ window.UI = window.UI || {};
   const PAUSE_SECONDS = [1, 3];
   const FADE_SECONDS = 0.6;
   const SPAWN_CHANCE_PER_STRUCTURE = 0.05; // rolled once per structure, per tick's spawn-check window
-  // Territory villagers (2026-08-12, user-directed: "in addition to
-  // structures, a kingdom's villagers should sometimes also generate on
-  // tiles under influence, then wander to another tile under influence,
-  // then vanish") -- one flat per-city roll per spawn-check window, separate
-  // from the per-structure rolls above, using territoryPointsFor's owned-
-  // tile pool instead of waypointsFor's city+structures pool.
+  // Territory villagers: one flat per-city roll per spawn-check window,
+  // separate from the per-structure rolls above, using territoryPointsFor's
+  // owned-tile pool instead of waypointsFor's city+structures pool.
   const TERRITORY_SPAWN_CHANCE = 0.15;
   const SPAWN_CHECK_INTERVAL_SECONDS = 6; // how often each city's structures roll their spawn chance
   const MAX_PER_CITY = 6; // safety cap so a huge city can't flood the screen
   const BASE_SPEED_RANGE = [0.16, 0.3]; // tiles/second baseline pace, before the per-figure variable-speed wobble
 
-  // Orc: olive green / brown / green. Undead: pale/bone white (2026-08-10,
-  // user-directed). Everyone else (human, elf, dwarf, halfellow): human
-  // skin tones.
+  // Orc: olive green / brown / green. Undead: pale/bone white. Everyone
+  // else (human, elf, dwarf, halfellow): human skin tones.
   const SKIN_TONES = {
     orc: ["#6b8e23", "#7b5233", "#4f7942"],
     undead: ["#f5f5f0", "#eceae4", "#e3e1da"],

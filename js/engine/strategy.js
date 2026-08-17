@@ -120,8 +120,7 @@ window.GameEngine = window.GameEngine || {};
    *  (1.0) = 1.4, so the bonus below (1.5 minimum) is sized to clear that in
    *  every case, not just typical ones.
    *
-   *  `cityDelta` (2026-07-23, user-directed -- see ai.js's recentCityDelta
-   *  and the 2026-07-23 balance-audit memory): founded-minus-razed city
+   *  `cityDelta` (see ai.js's recentCityDelta): founded-minus-razed city
    *  count over the last ~30 turns. `cityGateBonus` above is deliberately
    *  sized to beat even a fully-warlike race's `conquest` score -- fine
    *  when the civ is actually converting pioneers into lasting cities, but

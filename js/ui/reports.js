@@ -61,13 +61,9 @@ window.UI = window.UI || {};
       return { civId, label: race.label, color: race.color, values };
     });
 
-    // Victory threshold (2026-08-12, user-directed): the Influence report is
-    // the one place a player can see raw "tiles owned" numbers, so this is
-    // where "how close is anyone to winning" belongs -- computed fresh from
-    // the CURRENT map's actual claimable tile count (countTerritory), not a
-    // fixed number, since totalClaimable varies with map size/civ count.
-    // Same formula checkVictory itself uses (turns.js), just surfaced here
-    // instead of left implicit.
+    // Computed fresh from the current map's claimable tile count
+    // (countTerritory), not a fixed number, since totalClaimable varies with
+    // map size/civ count. Same formula checkVictory (turns.js) uses.
     let victoryThresholdTiles = null, totalClaimable = null;
     if (reportType !== "power" && window.GameEngine.influence) {
       const territory = window.GameEngine.influence.countTerritory(gameState);

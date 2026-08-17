@@ -1232,19 +1232,15 @@ window.GameEngine = window.GameEngine || {};
   }
 
   /**
-   * Human "Ramparts" (2026-08-17, user-directed rework): walls AND cities
-   * (not other buildings) can counterattack ONLY while a unit is Garrisoned
-   * (unit.channeling === "garrison") in this city -- see attackStructure
-   * (walls) and attackCity (cities) for the two call sites. No garrison, no
-   * counterattack at all (structureRecord's own base attack, if any, no
-   * longer applies here either -- Ramparts' whole premise is now "the walls
-   * fight as well as whoever's holding them"). The wall's attack rating AND
-   * reach both become that garrisoned unit's own effectiveAttack/
-   * effectiveRange, exactly ("becomes the same as that unit"). Same
-   * structure-specific 25% First-Strike discount as Rouse the People/
-   * Spikes! use. Mutates attackerUnit.hp; returns the raw counter damage
-   * dealt (0 if nothing's garrisoned, or the attacker is out of the
-   * garrisoned unit's reach).
+   * Human "Ramparts": walls AND cities (not other buildings) can
+   * counterattack ONLY while a unit is Garrisoned (unit.channeling ===
+   * "garrison") in this city -- see attackStructure (walls) and attackCity
+   * (cities) for the two call sites. No garrison, no counterattack at all.
+   * The wall's attack rating AND reach both become that garrisoned unit's
+   * own effectiveAttack/effectiveRange. Same structure-specific 25%
+   * First-Strike discount as Rouse the People/Spikes! use. Mutates
+   * attackerUnit.hp; returns the raw counter damage dealt (0 if nothing's
+   * garrisoned, or the attacker is out of the garrisoned unit's reach).
    */
   function wallCounterattack(structureRecord, defenderCiv, attackerUnit, attackerCiv, gameState) {
     if (!gameState) return 0;
@@ -1274,11 +1270,10 @@ window.GameEngine = window.GameEngine || {};
     return dmg;
   }
 
-  /** Orc "Spikes!"/"Bigger Spikes!": the higher
-   *  tech (if known) always wins rather than stacking with the lower one --
-   *  same "upgrade tech" convention as e.g. Sudden Doom replacing Strike
-   *  from the Shadows. 0 if the civ has neither. Ratings 2/4 (2026-08-17,
-   *  user-directed, up from 1/2). */
+  /** Orc "Spikes!"/"Bigger Spikes!": the higher tech (if known) always wins
+   *  rather than stacking with the lower one -- same "upgrade tech"
+   *  convention as e.g. Sudden Doom replacing Strike from the Shadows. 0 if
+   *  the civ has neither. */
   function spikesAttackRating(civ) {
     if (!civ.unlockedMechanics) return 0;
     if (civ.unlockedMechanics.has("bigger_spikes")) return 4;
@@ -1306,9 +1301,9 @@ window.GameEngine = window.GameEngine || {};
   }
 
   /** Halfellow "Rouse the People": `chance` probability a Militia spawns
-   *  adjacent to (x,y) -- 5% on being attacked (2026-07-20, user-directed,
-   *  raised from 1% -- see attackStructure/attackCity below), or 15%
-   *  specifically when a building/wall is actually destroyed (see ai.js
+   *  adjacent to (x,y) -- 5% on being attacked (see attackStructure/
+   *  attackCity below), or 15% specifically when a building/wall is
+   *  actually destroyed (see ai.js
    *  considerAttackOrGarrison's destroy handling). Returns the spawned
    *  unit, or null. */
   function maybeSpawnMilitia(defenderCiv, x, y, map, civs, chance = 0.05) {
@@ -1403,12 +1398,10 @@ window.GameEngine = window.GameEngine || {};
       : Math.round(damageRoll(atk));
     const dmg = rollHit();
     structureRecord.hp -= dmg;
-    // Double Strike (2026-08-12, user-directed: confirmed it can resolve
-    // against structures, same as it already does against units in
-    // resolveRound) -- a structure never counterattacks at all, so there's
-    // no return-hit sequencing to worry about; just a flat second roll of
-    // the same chance, gated on the first hit not already having destroyed
-    // the structure.
+    // Double Strike can resolve against structures same as units in
+    // resolveRound. A structure never counterattacks, so there's no
+    // return-hit sequencing to worry about; just a flat second roll of the
+    // same chance, gated on the first hit not already having destroyed it.
     let doubleStruck = false, doubleDamage = 0;
     if (structureRecord.hp > 0) {
       const doubleStrikePct = effectiveDoubleStrikePct(unit, attackerCiv);
@@ -1444,16 +1437,14 @@ window.GameEngine = window.GameEngine || {};
    * AND its structural integrity. An ungarrisoned city can be attacked
    * directly (garrisoned defenders are fought as normal units first -- the
    * caller in ai.js enforces this by only reaching here once the tile has no
-   * defender). A city now carries a real HP pool (2026-08-04, user-directed
-   * -- replaces the old single probabilistic win/lose roll): each attack
-   * deals mitigatedDamage(atk, cityDefenseValue) straight off city.hp, same
-   * formula and shape attackStructure already uses. When hp hits 0, the city
-   * drops one population level and hp refills to the new (smaller) max --
-   * no overkill carryover into that fresh pool, same as a unit or structure
-   * dying doesn't cleave onto whatever's next. A level-1 city that hits 0 hp
+   * defender). A city carries a real HP pool: each attack deals
+   * mitigatedDamage(atk, cityDefenseValue) straight off city.hp, same
+   * formula and shape attackStructure uses. When hp hits 0, the city drops
+   * one population level and hp refills to the new (smaller) max -- no
+   * overkill carryover into that fresh pool. A level-1 city that hits 0 hp
    * is destroyed outright rather than dropping to a nonsensical level 0. A
    * city never counterattacks on its own (Rouse the People/Ramparts/Spikes
-   * below are the only exceptions, same as before).
+   * below are the only exceptions).
    */
   const CITY_BASE_DEFENSE = CFG.cityBaseDefense;
   const CITY_DEFENSE_PER_LEVEL = CFG.cityDefensePerLevel;
@@ -1599,13 +1590,11 @@ window.GameEngine = window.GameEngine || {};
   }
 
   /**
-   * Human "Fireball!" (2026-08-17, user-directed rework: was an automatic
-   * half-damage splash tacked onto an ordinary attack, now its own standalone
-   * targeted action -- see ai.js's performWizardFireball). Deals a FULL
-   * damage roll (not applySplashDamage's half-roll) to every enemy unit AND
-   * structure in the 3x3 area centered on (centerX, centerY) -- the target
-   * tile itself, plus its 8 neighbors, no "primary target" distinction since
-   * there's no ordinary attack this is riding on top of anymore. Never hits
+   * Human "Fireball!" (see ai.js's performWizardFireball): a standalone
+   * targeted action. Deals a FULL damage roll (not applySplashDamage's
+   * half-roll) to every enemy unit AND structure in the 3x3 area centered
+   * on (centerX, centerY) -- the target tile itself, plus its 8 neighbors,
+   * no "primary target" distinction. Never hits
    * the caster's own civ, or cities directly (same "structures, not cities"
    * scope applySplashDamage already uses). Returns a log of hits, same shape
    * as applySplashDamage's, for the caller to roll ignite chance against.

@@ -675,8 +675,8 @@ window.GameEngine = window.GameEngine || {};
   }
 
   /**
-   * RESEARCH (city ring action, 2026-08-06, user-directed)
-   * -------------------------------------------------------
+   * RESEARCH (city ring action)
+   * ---------------------------
    * A fourth thing a city's turn can go into, alongside a unit, a building,
    * or Resource Production: throwing the city's own workforce at whatever
    * the civ is currently researching, cutting `researchBoostAmount(city)`
@@ -742,8 +742,8 @@ window.GameEngine = window.GameEngine || {};
   }
 
   /**
-   * SPREAD CULTURE (city ring action, 2026-08-13, user-directed)
-   * --------------------------------------------------------------
+   * SPREAD CULTURE (city ring action)
+   * ----------------------------------
    * A paid, one-turn boost to a city's influence spread -- unlike Resource
    * Production/Research above, this does NOT consume the city's turn (no
    * buildQueue/isProducingResources/isBoostingResearch gate): it's paid for
@@ -1079,9 +1079,8 @@ window.GameEngine = window.GameEngine || {};
 
   /**
    * Actual yield ONE tile is currently paying to `civ`, summed across every
-   * one of its cities that has this exact tile filled-in/worked (2026-08-12,
-   * user-directed: the tile-click info panel showing base terrain yield
-   * alongside the real, bonus-applied number) -- same math
+   * one of its cities that has this exact tile filled-in/worked -- feeds the
+   * tile-click info panel's base-vs-bonus-applied yield display. Same math
    * computeWorkedTileYield uses, isolated to a single tile via
    * tileYieldContribution. Returns null if no city of this civ currently
    * works the tile (owned but not yet filled-in, contested with no Barrow,

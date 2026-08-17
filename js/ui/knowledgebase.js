@@ -255,14 +255,11 @@ window.UI = window.UI || {};
   }
 
   /** Draws a static idle-frame portrait of `unitId` (as `raceId` would
-   *  render it) onto `canvas`. If that art isn't already loaded (2026-08-17,
-   *  user-reported: this used to just fall back to the unit's `symbol`
-   *  glyph permanently in this case -- e.g. the title screen, where nothing
-   *  has been preloaded yet, or ANY race not in the current game, which
-   *  includes every universal unit whenever this module's own default
-   *  preview race isn't in play) the glyph is drawn immediately so the
-   *  canvas is never blank, but a real, targeted load for just this one
-   *  (unitId, raceId) pair is also kicked off (sprites.js's
+   *  render it) onto `canvas`. If that art isn't already loaded -- e.g. the
+   *  title screen, where nothing has been preloaded yet, or any race not in
+   *  the current game -- the unit's `symbol` glyph is drawn immediately so
+   *  the canvas is never blank, while a real, targeted load for just this
+   *  one (unitId, raceId) pair is kicked off (sprites.js's
    *  ensureUnitLoaded) -- the KMKB browses every unit in the game
    *  regardless of what's actually in the current game, unlike normal
    *  play, so it can't rely on preloadAll's own in-play-races scoping the
@@ -563,9 +560,7 @@ window.UI = window.UI || {};
   }
 
   /** Full HTML for the left-hand stat list, alphabetical by display label
-   *  (2026-08-17, user-directed, matching Conditions' own alphabetical
-   *  order) -- one flat list, same reasoning as Conditions (no natural
-   *  "kingdom" grouping). */
+   *  -- one flat list, same as Conditions (no natural "kingdom" grouping). */
   function renderStatListHtml(selectedKey) {
     const sorted = [...STAT_INFO].sort((a, b) => a.label.localeCompare(b.label));
     return `<div class="kb-list-group">${sorted.map((s) => {

@@ -6,8 +6,7 @@
  * it can't drift out of sync with the real unit roster (e.g. if a unit's
  * attack stat or raceOnly ever changes, its sfx rows update automatically).
  *
- * File naming convention (2026-07-23, user-directed; mp3-only since
- * 2026-08-03 -- wav is no longer looked for at all):
+ * File naming convention (mp3-only -- wav is not looked for at all):
  *   assets/sfx/<race>_<unitId>_<action>_<n>.mp3
  * where <unitId> is the EXACT key from GameData.UNITS (matches sprites.js's
  * asset keying one-for-one -- see unit/{unitId}/{raceId} in sprites.js --
@@ -28,9 +27,7 @@
 window.GameData = window.GameData || {};
 
 // How many numbered variants (_1, _2, _3) a combination may have.
-// Lowered 5 -> 3 (2026-08-03, user-directed): nothing on disk has ever used
-// a _4 or _5 slot, so the extra headroom only widened the manifest scan and
-// the coverage tracker's grid for no benefit. Shared by js/audio/sfx.js,
+// Shared by js/audio/sfx.js,
 // working/tools/build-sfx-manifest.ps1 and working/tools/sfx-tracker.html so
 // all three agree on the range.
 window.GameData.SFX_MAX_VARIANTS = 3;

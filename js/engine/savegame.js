@@ -58,9 +58,9 @@ window.GameEngine = window.GameEngine || {};
     delete gameState._civTurnCtx;
     try {
       return JSON.stringify(payload, (key, value) => {
-        // followTarget (2026-08-12, user-directed Follow order) is a
-        // one-way reference, not a cycle like carries/carriedBy, but still
-        // needs the same uid-marker treatment: left as a plain object
+        // followTarget is a one-way reference, not a cycle like carries/
+        // carriedBy, but still needs the same uid-marker treatment: left as
+        // a plain object
         // reference, JSON.stringify would serialize a full DUPLICATE copy
         // of the target unit rather than preserve identity, so after a
         // reload followTarget would point at a stale clone instead of the

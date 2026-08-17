@@ -1,6 +1,6 @@
 /**
- * CREDITS CRAWL (2026-08-07, user-directed)
- * ------------------------------------------
+ * CREDITS CRAWL
+ * -------------
  * Turns doc/credits.txt into the HTML blocks main.js's credits overlay
  * scrolls bottom-to-top. Format (deliberately small -- no markdown library,
  * matching this project's no-build-step/no-dependency convention):

@@ -1358,9 +1358,9 @@ window.GameEngine = window.GameEngine || {};
       }
     }
 
-    // Shift-held "repeat for the next 3 turns" auto-repeat (2026-08-07,
-    // user-directed): main.js's maybeScheduleAutoRepeat stamps
-    // unit.autoRepeat/city.autoRepeat = {kind, turnsLeft} the moment the
+    // Shift-held "repeat for the next 3 turns" auto-repeat: main.js's
+    // maybeScheduleAutoRepeat stamps unit.autoRepeat/city.autoRepeat =
+    // {kind, turnsLeft} the moment the
     // player Shift-clicks (or Shift-presses the matching key for) Rest and
     // Defend, Gather More Resources, or Research. Re-fires that same action
     // here, once per turn, decrementing until it runs out -- same "runs
@@ -1461,18 +1461,12 @@ window.GameEngine = window.GameEngine || {};
    * elimination check, victory check, turn counter advance. Shared by
    * `runTurn` and `advanceOneUnitStep`.
    *
-   * Wall Defense (2026-08-18, user-reported bug fix -- moved out of
-   * beginCivTurn) runs its once-per-round scan HERE specifically, after
-   * every civ (including Wandering Monsters) has already moved and acted
-   * this round -- so a wall's check sees this round's REAL final positions,
-   * not stale ones from before anyone moved. Before this fix, a monster
-   * that approached, attacked, and retreated within a single round could
-   * never be caught: beginCivTurn's old per-civ check ran before that
-   * civ's own turn (and therefore before Monsters, if later in turnOrder,
-   * had moved at all this round), so the earliest a wall could react was
-   * the FOLLOWING round -- by which point a quick skirmisher was already
-   * gone. Runs before checkElimination so a kill lands in time for this
-   * same round's elimination/victory checks, not next round's.
+   * Wall Defense's once-per-round scan runs HERE, after every civ
+   * (including Wandering Monsters) has already moved and acted this round --
+   * so a wall's check sees this round's real final positions, catching a
+   * monster that approached, attacked, and retreated all in the same round.
+   * Runs before checkElimination so a kill lands in time for this same
+   * round's elimination/victory checks.
    */
   function endRound(gameState) {
     for (const civ of Object.values(gameState.civs)) {
