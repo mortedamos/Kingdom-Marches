@@ -713,6 +713,13 @@ window.GameEngine = window.GameEngine || {};
       return acc;
     }, { harvest: 0, coin: 0, lore: 0 });
 
+    // Human "Marketcraft": +10% to every mined/fished/farmed/hunted/delved
+    // channel-gathering payout below, civ-wide, while at least one Bazaar
+    // is built -- gated on the structure existing (civHasBuiltBuilding),
+    // not just the tech.
+    const marketcraftMult = 1 + ((civ.unlockedMechanics && civ.unlockedMechanics.has("marketcraft")
+      && window.GameEngine.cities.civHasBuiltBuilding(civ, "bazaar")) ? 0.10 : 0);
+
     // Dungeon Delve: a qualifying unit (any race/type, see
     // doc/world_encounters_design.md), channeling for 1+ turns (i.e. every
     // turn after the turn spent explicitly starting the channel), pays out
@@ -744,7 +751,7 @@ window.GameEngine = window.GameEngine || {};
         if (!tile || !tile.isRuin || unit.channeling !== "delving") continue;
         // Accumulates instead of paying out directly -- see
         // accumulateChannelStash's doc comment above.
-        accumulateChannelStash(unit, { coin: 3, lore: 3 });
+        accumulateChannelStash(unit, { coin: 3 * marketcraftMult, lore: 3 * marketcraftMult });
 
         // Ruin encounters: each can fire AT MOST ONCE per Ruin, ever --
         // tracked on the TILE itself (not the unit), so it survives a
@@ -824,7 +831,7 @@ window.GameEngine = window.GameEngine || {};
       }
       // Accumulates instead of paying out directly -- see
       // accumulateChannelStash's doc comment above.
-      accumulateChannelStash(unit, { harvest: 5, coin: 2 });
+      accumulateChannelStash(unit, { harvest: 5 * marketcraftMult, coin: 2 * marketcraftMult });
       if (Math.random() < resourceExhaustionChanceFor(civ)) {
         scheduleResourceRespawn(gameState, tile.resource);
         tile.resource = null;
@@ -856,7 +863,7 @@ window.GameEngine = window.GameEngine || {};
         delete unit._channelStash;
         continue;
       }
-      accumulateChannelStash(unit, { harvest: 3 });
+      accumulateChannelStash(unit, { harvest: 3 * marketcraftMult });
       if (Math.random() < resourceExhaustionChanceFor(civ)) {
         scheduleResourceRespawn(gameState, tile.resource);
         tile.resource = null;
@@ -874,7 +881,7 @@ window.GameEngine = window.GameEngine || {};
         delete unit._channelStash;
         continue;
       }
-      accumulateChannelStash(unit, { harvest: 3 });
+      accumulateChannelStash(unit, { harvest: 3 * marketcraftMult });
       if (Math.random() < resourceExhaustionChanceFor(civ)) {
         scheduleResourceRespawn(gameState, tile.resource);
         tile.resource = null;
@@ -909,7 +916,7 @@ window.GameEngine = window.GameEngine || {};
       const yieldMult = 1
         + (civ.mechanicValues?.prospectors_claim_yield || 0)
         + (civ.mechanicValues?.deep_mines_yield || 0);
-      accumulateChannelStash(unit, { coin: 3 * yieldMult });
+      accumulateChannelStash(unit, { coin: 3 * yieldMult * marketcraftMult });
       if (Math.random() < resourceExhaustionChanceFor(civ)) {
         scheduleResourceRespawn(gameState, tile.resource);
         tile.resource = null;
@@ -1461,17 +1468,18 @@ window.GameEngine = window.GameEngine || {};
    * elimination check, victory check, turn counter advance. Shared by
    * `runTurn` and `advanceOneUnitStep`.
    *
-   * Wall Defense's once-per-round scan runs HERE, after every civ
-   * (including Wandering Monsters) has already moved and acted this round --
-   * so a wall's check sees this round's real final positions, catching a
-   * monster that approached, attacked, and retreated all in the same round.
-   * Runs before checkElimination so a kill lands in time for this same
-   * round's elimination/victory checks.
+   * Wall Defense and Mage Tower's once-per-round scans run HERE, after
+   * every civ (including Wandering Monsters) has already moved and acted
+   * this round -- so a check sees this round's real final positions,
+   * catching a monster that approached, attacked, and retreated all in the
+   * same round. Runs before checkElimination so a kill lands in time for
+   * this same round's elimination/victory checks.
    */
   function endRound(gameState) {
     for (const civ of Object.values(gameState.civs)) {
       if (civ.eliminated) continue;
       window.GameEngine.ai.tickWallDefense(gameState, civ);
+      window.GameEngine.ai.tickMageTowerDefense(gameState, civ);
     }
     checkElimination(gameState);
     const victoryResult = checkVictory(gameState);

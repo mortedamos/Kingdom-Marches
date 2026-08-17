@@ -726,6 +726,10 @@ window.UI = window.UI || {};
         if (unit.carriedBy) continue; // aboard a carrier -- not drawn at its stale tile
         const idx = unit.y * map.width + unit.x;
         if (!visible.has(idx)) continue;
+        // An enemy unit's Hidden condition actually hides it from the human
+        // player -- own units stay visible regardless (see isOwnHidden
+        // below), and spectator mode (humanCivId null) shows everyone.
+        if (unit.conditions?.hidden && humanCivId != null && unit.civId !== humanCivId) continue;
         unitsToDraw.push({ civ, unit, visualPos: getVisualPos(unit) });
       }
     }

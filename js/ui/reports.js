@@ -52,7 +52,11 @@ window.UI = window.UI || {};
         <p><em>Not enough data yet -- play a few more turns first.</em></p>`;
     }
 
-    const civIds = Object.keys(gameState.civs);
+    // The "MONSTERS" pseudo-civ isn't a kingdom -- excluded so it doesn't
+    // show up as a stray zero line on these graphs (recordHistory already
+    // excludes it from gameState.history.civs).
+    const monsterCivId = window.GameConfig.worldEncounters.monsters.civId;
+    const civIds = Object.keys(gameState.civs).filter((civId) => civId !== monsterCivId);
     const series = civIds.map((civId) => {
       const civ = gameState.civs[civId];
       const race = window.GameData.getRace(civ.raceId);

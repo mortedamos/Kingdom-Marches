@@ -114,6 +114,7 @@ window.UI = window.UI || {};
   const AREA_EFFECT_COLORS = {
     blade_sweep: "179,136,255", // matches FLOAT_TEXT_STYLES.aura's purple
     fireball: "255,112,64", // matches FLOAT_TEXT_STYLES.warning's orange-red
+    teleport: "64,140,255", // Human "Teleportation" landing sparkle
     default: "255,255,255",
   };
 

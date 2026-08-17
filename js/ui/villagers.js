@@ -88,6 +88,7 @@ window.UI = window.UI || {};
       if (tx < 0 || tx >= map.width || ty < 0 || ty >= map.height) continue;
       const tile = map.tiles[ty * map.width + tx];
       if (tile.status !== "owned" || tile.ownerCivId !== civ.id) continue;
+      if (window.GameData.TERRAIN[tile.terrain].isWater) continue; // villagers are on foot
       pts.push({ x: tx, y: ty });
     }
     return pts;

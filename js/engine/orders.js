@@ -641,6 +641,9 @@ window.GameEngine = window.GameEngine || {};
       // drawn.
       if (unit.typeId === "wizard" && !unit.usedThisTurn && civ.unlockedMechanics?.has("flight_grant")) {
         const reach = 1 + (unit.movesRemaining ?? window.GameEngine.ai.computeMovementBudget(unit, gameState.map, gameState.civs));
+        if (!window.GameEngine.combat.isFlying(unit)) {
+          options.push({ kind: `castFlight:${unit.x},${unit.y}`, label: "Cast Fly on Self" });
+        }
         for (const ally of civ.units) {
           if (ally === unit || ally.carriedBy) continue;
           if (window.GameEngine.influence.chebyshev(unit.x, unit.y, ally.x, ally.y) > reach) continue;

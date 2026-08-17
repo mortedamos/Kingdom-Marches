@@ -569,14 +569,15 @@ window.GameEngine = window.GameEngine || {};
     setCondition(unit, "hidden", { expiresAtTurn: turnNumber + 3 });
   }
 
-  /** Halfellow "Riddle"/"Resource Heist": -50% attack, 75% defense (a -25%
+  /** Halfellow "Riddle"/"Resource Heist" (default 2 turns)/Human
+   *  "Teleportation" (1 turn): -50% attack, 75% defense (a -25%
    *  cut), movement capped at 1 (see ai.js's computeMovementBudget), and 0%
-   *  First Strike (see effectiveFirstStrikePct above) for 2 turns. A single
-   *  shared helper since both abilities apply the exact same condition --
+   *  First Strike (see effectiveFirstStrikePct above). A single
+   *  shared helper since every caller applies the exact same condition --
    *  keeps the numbers in one place for tuning instead of duplicated at both
    *  call sites. */
-  function applyBefuddled(unit, turnNumber) {
-    setCondition(unit, "befuddled", { expiresAtTurn: turnNumber + 2, attackMult: 0.5, defenseMult: 0.75 });
+  function applyBefuddled(unit, turnNumber, duration = 2) {
+    setCondition(unit, "befuddled", { expiresAtTurn: turnNumber + duration, attackMult: 0.5, defenseMult: 0.75 });
   }
 
   /** Centralizes ending Hidden for any REVEALED-BY-EVENT reason (enemy walked
@@ -1589,19 +1590,21 @@ window.GameEngine = window.GameEngine || {};
     return hits;
   }
 
+  const FIREBALL_DAMAGE_PCT = 0.75;
+
   /**
    * Human "Fireball!" (see ai.js's performWizardFireball): a standalone
-   * targeted action. Deals a FULL damage roll (not applySplashDamage's
-   * half-roll) to every enemy unit AND structure in the 3x3 area centered
-   * on (centerX, centerY) -- the target tile itself, plus its 8 neighbors,
-   * no "primary target" distinction. Never hits
+   * targeted action. Deals FIREBALL_DAMAGE_PCT of the Wizard's attack (not
+   * applySplashDamage's half-roll) to every enemy unit AND structure in the
+   * 3x3 area centered on (centerX, centerY) -- the target tile itself, plus
+   * its 8 neighbors, no "primary target" distinction. Never hits
    * the caster's own civ, or cities directly (same "structures, not cities"
    * scope applySplashDamage already uses). Returns a log of hits, same shape
    * as applySplashDamage's, for the caller to roll ignite chance against.
    */
   function applyFireballBlast(casterUnit, casterCiv, centerX, centerY, gameState) {
     const { map, civs } = gameState;
-    const atk = effectiveAttack(casterUnit, casterCiv, {});
+    const atk = effectiveAttack(casterUnit, casterCiv, {}) * FIREBALL_DAMAGE_PCT;
     const hits = [];
     for (let dy = -1; dy <= 1; dy++) {
       for (let dx = -1; dx <= 1; dx++) {

@@ -60,24 +60,29 @@ window.UI = window.UI || {};
         : `<div class="all-units-moved">All units have orders</div>`;
 
       const civ = civs[viewState.humanCivId];
-      let researchLabel = "Choose Research";
-      if (civ && civ.currentResearch) {
-        const tech = window.GameData.getTech(civ.currentResearch);
-        // Turn-count progress now, not a Lore-income threshold (2026-08-04):
-        // research pays up front and counts down a fixed timer -- see
-        // tech.js's chooseResearch/tickResearch -- same shape as
-        // buildQueuePct's turnsRemaining/totalTurns math just below.
-        const pct = civ.researchTotalTurns
-          ? Math.min(100, Math.floor(100 * (civ.researchTotalTurns - civ.researchTurnsRemaining) / civ.researchTotalTurns))
-          : 0;
-        researchLabel = `Researching: ${tech.label} (${pct}%)`;
-      } else if (civ && civ.cities.length === 0) {
-        // Explains WHY nothing's pickable yet (see tech.js's meetsCityGate --
-        // every tech needs at least 1 city) rather than sitting there
-        // unexplained, which is what made the gate itself look broken.
-        researchLabel = "Choose Research (found a city first)";
+      const allTechsResearched = civ && civ.completedTechs.size >= window.GameData.techsForRace(civ.raceId).length;
+      if (civ && !civ.currentResearch && allTechsResearched) {
+        researchHtml = `<div class="all-units-moved">All tech has been researched.</div>`;
+      } else {
+        let researchLabel = "Choose Research";
+        if (civ && civ.currentResearch) {
+          const tech = window.GameData.getTech(civ.currentResearch);
+          // Turn-count progress now, not a Lore-income threshold (2026-08-04):
+          // research pays up front and counts down a fixed timer -- see
+          // tech.js's chooseResearch/tickResearch -- same shape as
+          // buildQueuePct's turnsRemaining/totalTurns math just below.
+          const pct = civ.researchTotalTurns
+            ? Math.min(100, Math.floor(100 * (civ.researchTotalTurns - civ.researchTurnsRemaining) / civ.researchTotalTurns))
+            : 0;
+          researchLabel = `Researching: ${tech.label} (${pct}%)`;
+        } else if (civ && civ.cities.length === 0) {
+          // Explains WHY nothing's pickable yet (see tech.js's meetsCityGate --
+          // every tech needs at least 1 city) rather than sitting there
+          // unexplained, which is what made the gate itself look broken.
+          researchLabel = "Choose Research (found a city first)";
+        }
+        researchHtml = `<button id="open-research-btn" class="research-btn">${escapeHtml(researchLabel)}</button>`;
       }
-      researchHtml = `<button id="open-research-btn" class="research-btn">${escapeHtml(researchLabel)}</button>`;
     }
 
     // "Next Idle City" -- same shared predicate

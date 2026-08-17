@@ -2193,7 +2193,7 @@
    *  mute controls use. Unit context: Space = Rest and Defend (or End Turn
    *  when nothing is selected and there's nothing left to do this turn --
    *  see the Space handler's own comment). City context: Space = Gather
-   *  More Resources. */
+   *  More Resources; C = Spread Culture, then jump to the next idle city. */
   function setupGlobalShortcuts() {
     function handleGlobalKeydown(e) {
       if (e.key === "Shift") {
@@ -2275,6 +2275,16 @@
           // still gets its say rather than skipping straight to advanceTurn.
           if (goToNextIdleCityOrNextUnit()) redraw();
           else handleEndTurnClick();
+        }
+        return;
+      }
+
+      // C: Spread Culture on the selected city, then jump to the next idle
+      // city -- same "act, then cycle" shape as Space's city branch above.
+      if (key === "c") {
+        if (viewState.selectedCity && viewState.selectedCity.civId === humanCivId) {
+          handleSpreadCulture(viewState.selectedCity);
+          handleNextIdleCity();
         }
         return;
       }
@@ -4032,8 +4042,9 @@
           // might be stale" reasoning "attack"'s own re-lookup above uses.
           const [tx, ty] = kind.slice("castFlight:".length).split(",").map(Number);
           const civ = gameState.civs[humanCivId];
-          const ally = civ.units.find((u) => u.x === tx && u.y === ty && u !== unit && !u.carriedBy);
-          window.GameEngine.ai.castFlightOnAlly(civ, unit, ally, gameState);
+          const target = (unit.x === tx && unit.y === ty) ? unit
+            : civ.units.find((u) => u.x === tx && u.y === ty && u !== unit && !u.carriedBy);
+          window.GameEngine.ai.castFlightOnAlly(civ, unit, target, gameState);
         } else if (kind && kind.startsWith("carryUnit:")) {
           // "carryUnit:X,Y": `unit` is the
           // carrier, the target at (X,Y) is the passenger it's picking up --
@@ -4583,8 +4594,8 @@
     redraw();
   }
 
-  /** After the player selects an action for a city (2026-08-07, user-
-   *  directed): jump straight to the next idle city if any remain,
+  /** After the player selects an action for a city: jump straight to
+   *  the next idle city if any remain,
    *  otherwise the next unit still awaiting orders, otherwise leave the
    *  camera where it is. Reuses the exact same cyclers the sidebar's own
    *  "Next Idle City"/"Next Unit" buttons call (handleNextIdleCity/

@@ -42,7 +42,7 @@ window.GameData.SFX_MAX_VARIANTS = 3;
 window.GameData.SFX_SPECIAL_ACTIONS = {
   pioneer: ["found", "build_road"],
   galley: ["carry"],
-  wizard: ["fireball"],
+  wizard: ["fireball", "teleport"],
   druid: ["found", "heal", "blink", "summon_raptor", "summon_shadowsteed"],
   shadowsteed: ["carry"],
   goblin_miscreant: ["ignite"],

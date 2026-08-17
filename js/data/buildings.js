@@ -39,13 +39,19 @@ window.GameData = window.GameData || {};
 
 window.GameData.BUILDINGS = {
   // ---------- HUMAN — see tech_tree_design.md for the full tree ----------
+  // No yield/yieldPct: Marketcraft's +10% mined/fished/farmed/hunted/delved
+  // bonus is civ-wide (see turns.js's channel-gathering loops), gated on
+  // civHasBuiltBuilding rather than a per-city yield multiplier.
   bazaar: {
     id: "bazaar", label: "Bazaar", symbol: "$", raceOnly: "human",
-    coinCost: 20, maxHp: 24, yieldPct: { harvest: 0.10 },
+    coinCost: 20, maxHp: 24,
   },
+  // No yield/yieldPct: Guild Charter's free-level-up bonus is granted at
+  // unit-spawn time (see ai.js's spawnUnitInCity), gated on this city
+  // specifically having a Guild Hall (cityHasStructure).
   guild_hall: {
     id: "guild_hall", label: "Guild Hall", symbol: "G", raceOnly: "human",
-    coinCost: 25, maxHp: 24, yieldPct: { coin: 0.10 },
+    coinCost: 25, maxHp: 24,
   },
   mage_college: {
     id: "mage_college", label: "Mage College", symbol: "M", raceOnly: "human",

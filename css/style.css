@@ -801,7 +801,7 @@ html, body {
      column's node body from getting cramped. */
   width: min(1240px, 94vw);
   max-height: 88vh;
-  padding: 20px 24px;
+  padding: 20px 16px 20px 24px;
   /* Flex column, NOT the scroll container itself (2026-08-18, user-
      reported bug fix -- see .techtree-modal-scroll below for why). */
   display: flex;
@@ -830,6 +830,10 @@ html, body {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
+  /* Breathing room so the native scrollbar doesn't sit flush against (and
+     overlap) the rightmost content -- see .techtree-modal's own reduced
+     right padding, which this makes up for. */
+  padding-right: 10px;
 }
 /* Legacy modals whose content still hangs directly off #id (not yet wrapped
    in a .techtree-modal-scroll div) -- same treatment, just targeted by id
@@ -838,6 +842,7 @@ html, body {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
+  padding-right: 10px;
 }
 /* game-dialog-modal never had a floating close-X (see js/main.js's dialog
    rendering -- its own OK/Cancel/etc. buttons live inside the scrollable
@@ -1207,7 +1212,7 @@ html, body {
      smaller on both large and small viewports, not just large ones. */
   width: min(1260px, 85%);
   height: 79vh;
-  padding: 20px 24px;
+  padding: 20px 16px 20px 24px;
   display: flex;
   flex-direction: column;
   overflow: hidden; /* .kb-list-pane/.kb-profile-pane scroll themselves */
@@ -1261,7 +1266,7 @@ html, body {
 .kb-list-btn:hover { background: var(--bg-panel-raised); }
 .kb-list-btn-selected { background: var(--bg-panel-raised); border-color: var(--accent); }
 .kb-list-btn-symbol { width: 18px; text-align: center; color: var(--text-dim); }
-.kb-profile-pane { flex: 1; min-width: 0; overflow-y: auto; }
+.kb-profile-pane { flex: 1; min-width: 0; overflow-y: auto; padding-right: 10px; }
 .kb-profile-empty {
   color: var(--text-dim);
   font-style: italic;

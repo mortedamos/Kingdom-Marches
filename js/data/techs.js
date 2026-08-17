@@ -246,9 +246,12 @@ window.GameData.TECHS = {
   marketcraft: {
     id: "marketcraft", label: "Marketcraft", category: "building", layer: 1, cost: 20,
     prereqs: [], raceOnly: "human",
-    description: "Unlocks the Bazaar (+10% harvest/turn, this city only).",
+    description: "Unlocks the Bazaar. While at least one is built, increases the yield of all mined/fished/farmed/hunted/delved tile resources by 10%.",
     costBreakdown: { coin: 12, harvest: 8 },
-    effects: [{ type: "unlock_building", building: "bazaar" }],
+    effects: [
+      { type: "unlock_building", building: "bazaar" },
+      { type: "unlock_mechanic", mechanic: "marketcraft" },
+    ],
   },
   human_defend_the_walls: {
     id: "human_defend_the_walls", label: "Defend the Walls", category: "building", layer: 1, cost: 18,
@@ -318,7 +321,7 @@ window.GameData.TECHS = {
   guild_charter: {
     id: "guild_charter", label: "Guild Charter", category: "building", layer: 2, cost: 35,
     prereqs: [], raceOnly: "human", // only the L2 city-gate applies
-    description: "Unlocks the Guild Hall (+10% coin/turn, this city only).",
+    description: "Unlocks the Guild Hall. Every new unit built in a city with a Guild Hall receives a free level-up.",
     costBreakdown: { lore: 22, coin: 13 },
     effects: [{ type: "unlock_building", building: "guild_hall" }],
   },
@@ -409,6 +412,16 @@ window.GameData.TECHS = {
     costBreakdown: { lore: 35, coin: 15 },
     effects: [{ type: "unlock_building", building: "mage_college" }],
   },
+  // Unlocks no building of its own (see ai.js's tickMageTowerDefense) --
+  // filed as "building" category since it's an upgrade to an existing
+  // building, same convention Ramparts already established for walls.
+  mage_tower: {
+    id: "mage_tower", label: "Mage Tower", category: "building", layer: 4, cost: 160,
+    prereqs: ["mage_college_tech"], raceOnly: "human",
+    description: "50% chance each turn a Mage College attacks an enemy unit within range 5 for 3 attack.",
+    costBreakdown: { harvest: 16, coin: 96, lore: 48 },
+    effects: [{ type: "unlock_mechanic", mechanic: "mage_tower" }],
+  },
   // Moved L4 -> L3, following catapult_engineering
   // down a layer. Its prereq is now L2, so the ordering stays sound.
   trebuchet_engineering: {
@@ -433,8 +446,8 @@ window.GameData.TECHS = {
   },
   teleportation: {
     id: "teleportation", label: "Teleportation", category: "mystic", layer: 4, cost: 60,
-    prereqs: ["wizardry"], raceOnly: "human",
-    description: "As a full turn action, the wizard may instantly move itself or an adjacent friendly unit to any unoccupied tile the civ has ever explored.",
+    prereqs: ["wizardry", "sea_charts"], raceOnly: "human",
+    description: "As a full turn action, the wizard may instantly move itself or an adjacent friendly unit to any unoccupied tile the civ has ever explored. The teleported unit has a 50% chance to land Befuddled for 1 turn.",
     costBreakdown: { lore: 60, coin: 30 },
     effects: [{ type: "unlock_mechanic", mechanic: "teleportation" }],
   },
@@ -454,14 +467,9 @@ window.GameData.TECHS = {
     costBreakdown: { lore: 60, coin: 25, harvest: 15 },
     effects: [{ type: "radius_bonus", value: 1 }],
   },
-  // Moved L5 -> L4. Its prereq (sovereign_power)
-  // stays at L5 -- a one-layer inversion, left as-is since the user only
-  // asked to move this tech, not its prereq; Palace Charter is simply
-  // cheaper now (L4 pricing) while still gated behind actually finishing
-  // Sovereign Power first.
   palace_charter: {
     id: "palace_charter", label: "Palace Charter", category: "building", layer: 4, cost: 90,
-    prereqs: ["sovereign_power"], raceOnly: "human",
+    prereqs: ["chivalric_order"], raceOnly: "human",
     description: "Unlocks the Palace (+1 influence radius to the city it's built next to). Stacks with Sovereign Power on that city -- deliberately: Humans get an outsized late-game influence advantage on their capital.",
     costBreakdown: { harvest: 25, lore: 20, coin: 15 },
     effects: [{ type: "unlock_building", building: "palace" }],
@@ -503,7 +511,7 @@ window.GameData.TECHS = {
   crusade: {
     id: "crusade", label: "Crusade", category: "military", layer: 5, cost: 90,
     prereqs: ["chivalric_order", "sovereign_power"], raceOnly: "human",
-    description: "The Paladin exudes a holy aura: in a 1-tile radius around itself (including itself), allied units heal 20% of their HP per turn regardless of whether they're resting, and gain +1 attack, +1 defense, and +25% siege.",
+    description: "The Paladin exudes a holy aura: in a 1-tile radius around itself (including itself), allied units heal 10% of their HP (minimum 1) per turn regardless of whether they're resting, and gain +2 attack, +1 defense, and +25% siege.",
     costBreakdown: { lore: 55, coin: 20, harvest: 15 },
     effects: [{ type: "unlock_mechanic", mechanic: "crusade" }],
   },

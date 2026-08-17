@@ -3837,14 +3837,21 @@ window.GameEngine = window.GameEngine || {};
         if (openSpot) { spawnX = openSpot.x; spawnY = openSpot.y; }
       }
     }
-    // `extra` merges in any caller-supplied fields (2026-07-22, user-
-    // directed: progressBuildQueue passes `_useClosestSpotSettle` through
+    // `extra` merges in any caller-supplied fields (progressBuildQueue
+    // passes `_useClosestSpotSettle` through
     // for a Pioneer built via chooseBuildAction's "radius fully filled"
     // trigger) -- spread AFTER the base fields so it can only add to them,
     // never silently override typeId/civId/position.
     const newUnit = { typeId: unitId, civId: civ.id, x: spawnX, y: spawnY, isCivilian: ["pioneer", "scout"].includes(unitId), homeCityName: city.name, ...extra };
     window.GameEngine.combat.initUnitHP(newUnit, civ);
     civ.units.push(newUnit);
+    // Human "Guild Charter": every new unit built in a city with a Guild
+    // Hall receives a free level-up -- granted as XP equal to the first
+    // level threshold, so it flows through the same pending-level-up/
+    // AI-auto-resolve path (applyComputedXP) as any other XP grant.
+    if (window.GameEngine.cities.cityHasStructure(city, "guild_hall")) {
+      applyComputedXP(newUnit, civ, window.GameEngine.combat.XP_LEVEL_THRESHOLDS[0]);
+    }
     // Orc "Goblin Miscreant": building one
     // actually produces two -- the second spawns on the closest open
     // adjacent tile to the city (not naval, and not stacked onto the same
@@ -3863,6 +3870,9 @@ window.GameEngine = window.GameEngine || {};
       const bonusUnit = { typeId: unitId, civId: civ.id, x: bonusSpot.x, y: bonusSpot.y, homeCityName: city.name };
       window.GameEngine.combat.initUnitHP(bonusUnit, civ);
       civ.units.push(bonusUnit);
+      if (window.GameEngine.cities.cityHasStructure(city, "guild_hall")) {
+        applyComputedXP(bonusUnit, civ, window.GameEngine.combat.XP_LEVEL_THRESHOLDS[0]);
+      }
     }
     // Pacing: once a civ's first-ever military unit actually completes, the
     // double-speed build bonus (see buildUnitOption) turns off for good.
@@ -4844,9 +4854,12 @@ window.GameEngine = window.GameEngine || {};
    * Costs the WIZARD's whole turn but does not leave the caster exhausted
    * afterward -- it can act normally again next turn. When teleporting an
    * ally rather than itself, that ally's turn is
-   * also consumed (it's already been moved this turn). Returns true on
-   * success.
+   * also consumed (it's already been moved this turn). On landing, plays
+   * the Wizard's own teleport sfx and a quick blue sparkle (see
+   * combat.js's spawnAreaEffect), and the teleported unit has a 50% chance
+   * to land Befuddled for 1 turn. Returns true on success.
    */
+  const TELEPORT_BEFUDDLE_CHANCE = 0.5;
   function performWizardTeleport(civ, caster, targetUnit, destX, destY, gameState, log) {
     if (targetUnit !== caster
         && window.GameEngine.influence.chebyshev(caster.x, caster.y, targetUnit.x, targetUnit.y) > 1) {
@@ -4864,6 +4877,12 @@ window.GameEngine = window.GameEngine || {};
     targetUnit._renderX = landing.x;
     targetUnit._renderY = landing.y;
     targetUnit._animStart = 0;
+
+    window.SfxSystem.playAction(civ.raceId, caster.typeId, "teleport", landing.x, landing.y);
+    window.GameEngine.combat.spawnAreaEffect(landing.x, landing.y, 0, "teleport");
+    if (Math.random() < TELEPORT_BEFUDDLE_CHANCE) {
+      window.GameEngine.combat.applyBefuddled(targetUnit, currentTurnNumber, 1);
+    }
 
     caster.usedThisTurn = true;
     if (targetUnit !== caster) targetUnit.usedThisTurn = true;
@@ -4923,6 +4942,7 @@ window.GameEngine = window.GameEngine || {};
       if (hit.kind === "unit" && hit.unit.hp <= 0) otherCivRemoveDeadUnit(gameState.civs, hit.unit);
     }
     window.GameEngine.combat.spawnAreaEffect(tx, ty, 1, "fireball");
+    window.SfxSystem.playAction(civ.raceId, caster.typeId, "fireball", tx, ty);
     caster.usedThisTurn = true;
     caster.currentMission = `Cast Fireball at (${tx},${ty})`;
     log.push(`Fireball: ${civ.id}'s Wizard blasts (${tx},${ty}), hitting ${hits.length} target(s), igniting ${ignited}`);
@@ -5079,7 +5099,7 @@ window.GameEngine = window.GameEngine || {};
    * from whichever AI civ acted most recently.
    */
   function castFlightOnAlly(civ, caster, target, gameState) {
-    if (!caster || !target || caster === target) return false;
+    if (!caster || !target) return false;
     if (caster.typeId !== "wizard") return false;
     if (!civ.unlockedMechanics?.has("flight_grant")) return false;
     if (caster.usedThisTurn) return false;
@@ -7267,8 +7287,9 @@ window.GameEngine = window.GameEngine || {};
    *  entirely -- same "always knows where the nearest enemy is" precedent
    *  Orc's Dire Wolf already establishes for a hunting creature (see
    *  maybeDireWolfHunt). Field units only -- never targets cities, walls,
-   *  or other structures. Confirmed, permanent design decision, not a
-   *  placeholder. */
+   *  or other structures, and skips a unit garrisoned in one of its own
+   *  civ's cities or standing on one of its own structures (isGarrisoned)
+   *  -- a monster harasses exposed units, not defenders behind walls. */
   function runMonsterUnitTurn(civ, unit, gameState, log) {
     if (unit.hp <= 0 || unit.usedThisTurn) return;
     const { civs, map } = gameState;
@@ -7279,7 +7300,7 @@ window.GameEngine = window.GameEngine || {};
     for (const oc of Object.values(civs)) {
       if (oc.id === civ.id || oc.eliminated) continue;
       for (const ou of oc.units) {
-        if (ou.carriedBy || ou.conditions?.hidden) continue;
+        if (ou.carriedBy || ou.conditions?.hidden || isGarrisoned(ou, oc)) continue;
         const d = window.GameEngine.influence.chebyshev(unit.x, unit.y, ou.x, ou.y);
         if (d <= visionRadius && d < targetDist) { target = ou; targetDist = d; }
       }
@@ -10605,7 +10626,13 @@ window.GameEngine = window.GameEngine || {};
     const range = window.GameEngine.combat.effectiveRange(unit, civ);
 
     let bestTarget = null, bestScore = -Infinity, bestCoalitionShift = 0, bestWinProb = 0;
+    // A player-ordered city/structure attack must not be hijacked by a
+    // nearby enemy unit scoring well here -- skip unit-targeting entirely
+    // so bestTarget stays null and execution falls through to the
+    // city/structure logic below (same forced-target precedence as
+    // opts.forcedTarget on the unit path).
     for (const otherCiv of Object.values(civs)) {
+      if (opts.forcedCity || opts.forcedStructure) break;
       if (otherCiv.id === civ.id || otherCiv.eliminated) continue;
       for (const enemyUnit of otherCiv.units) {
         if (opts.forcedTarget && enemyUnit !== opts.forcedTarget) continue;
@@ -11463,6 +11490,57 @@ window.GameEngine = window.GameEngine || {};
     if (log.length) appendAIActionLog(gameState, civ.id, log);
   }
 
+  // Human "Mage Tower": same "structure takes a potshot" shape as Wall
+  // Defense above, but keyed to a single specific building (Mage College)
+  // rather than every wall, with its own fixed range/attack rather than a
+  // tier list -- only one tech grants this, so no upgrade tiers to pick
+  // among.
+  const MAGE_TOWER_FIRE_CHANCE = 0.5;
+  const MAGE_TOWER_RANGE = 5;
+  const MAGE_TOWER_ATTACK = 3;
+  const MAGE_TOWER_ATTACK_CHARS = ["✨", "☄"];
+
+  /** Mage Tower: each of this civ's Mage College structures independently
+   *  rolls a 50% chance, once per round, to strike the nearest enemy unit
+   *  within MAGE_TOWER_RANGE -- ticked here directly from turns.js's
+   *  endRound (see tickWallDefense's own call site), same reasoning:
+   *  a passive structure ability with no unit or turn-order of its own. */
+  function tickMageTowerDefense(gameState, civ) {
+    if (!civ.unlockedMechanics || !civ.unlockedMechanics.has("mage_tower")) return;
+    const { civs } = gameState;
+    const log = [];
+    for (const city of civ.cities) {
+      for (const s of city.structures) {
+        if (s.id !== "mage_college") continue;
+        if (Math.random() >= MAGE_TOWER_FIRE_CHANCE) continue;
+        let target = null, targetCiv = null, bestDist = Infinity;
+        for (const otherCiv of Object.values(civs)) {
+          if (otherCiv.id === civ.id || otherCiv.eliminated) continue;
+          for (const eu of otherCiv.units) {
+            if (eu.conditions?.hidden) continue;
+            const dist = window.GameEngine.influence.chebyshev(s.x, s.y, eu.x, eu.y);
+            if (dist > MAGE_TOWER_RANGE) continue;
+            if (dist < bestDist) { bestDist = dist; target = eu; targetCiv = otherCiv; }
+          }
+        }
+        if (!target) continue;
+        const dmg = window.GameEngine.combat.mitigatedDamage(
+          MAGE_TOWER_ATTACK, window.GameEngine.combat.effectiveDefense(target, targetCiv, {}));
+        target.hp = Math.max(0, target.hp - dmg);
+        window.GameEngine.combat.recordCombatEvent({
+          ax: s.x, ay: s.y, atkUnit: { typeId: "wizard" }, dx: target.x, dy: target.y, defUnit: target,
+          attackChars: MAGE_TOWER_ATTACK_CHARS,
+        });
+        log.push(`Mage Tower: ${civ.id}'s Mage College at (${s.x},${s.y}) attacks ${targetCiv.id}'s ${describeUnit(target)} for ${dmg}`);
+        if (target.hp <= 0) {
+          log.push(`Mage Tower: ${targetCiv.id}'s ${describeUnit(target)} is slain by ${civ.id}'s Mage College at (${s.x},${s.y})`);
+          otherCivRemoveDeadUnit(civs, target);
+        }
+      }
+    }
+    if (log.length) appendAIActionLog(gameState, civ.id, log);
+  }
+
   // Death sfx lands a beat after the
   // killing blow's own "attack" clip (see SfxSystem.playAction's delayMs)
   // instead of overlapping it.
@@ -11831,6 +11909,7 @@ window.GameEngine = window.GameEngine || {};
     tryDeepGateOverseas,
     appendAIActionLog,
     tickWallDefense,
+    tickMageTowerDefense,
     operateGalley,
     exploreWater,
     exploreWith,
