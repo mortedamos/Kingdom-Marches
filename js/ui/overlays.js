@@ -115,8 +115,69 @@ window.UI = window.UI || {};
     blade_sweep: "179,136,255", // matches FLOAT_TEXT_STYLES.aura's purple
     fireball: "255,112,64", // matches FLOAT_TEXT_STYLES.warning's orange-red
     teleport: "64,140,255", // Human "Teleportation" landing sparkle
+    roots_teleport: "120,150,70", // Elf "Roots of the World" -- earthy, not arcane
+    natures_grace: "120,205,95", // Elf "Nature's Grace" healing green
+    flight: "255,255,255", // Human "Flight" -- white shed feathers
+    resource_heist: "150,120,180", // Halfellow "Resource Heist" -- sneaky purple-grey
+    unlock_the_gate: "190,150,70", // Halfellow "Unlock the Gate" -- brassy lock-picking
+    summon: "210,200,255", // creature/object summon poof (Raptor/Shadowsteed/Wisp/Trap)
+    zombie_raise: "150,110,180", // Undead raise-dead -- necrotic purple
+    curse: "140,60,190", // Orc Bog Witch curse -- matches CURSE_TINT_COLOR
     default: "255,255,255",
   };
+
+  /** Kinds that additionally scatter drifting glyphs over their footprint --
+   *  a spell whose identity is a THING (leaves, feathers, sparks) rather than
+   *  just a colored wash. Absent kinds draw the plain box only.
+   *  `drift` is the vertical travel as a fraction of the footprint: NEGATIVE
+   *  rises (leaves caught in an updraft, sparks), POSITIVE falls (feathers
+   *  shed by a unit taking flight). */
+  const AREA_EFFECT_GLYPHS = {
+    natures_grace: { chars: ["🍃", "🌿", "🍃"], drift: -0.7 },
+    teleport: { chars: ["✨", "✦", "✨"], drift: -0.7 },
+    roots_teleport: { chars: ["🌿", "🍂", "✨"], drift: -0.6 },
+    flight: { chars: ["🪶", "🤍", "🪶"], drift: 0.65 },
+    fireball: { chars: ["🔥", "💥", "🔥"], drift: -0.4 },
+    resource_heist: { chars: ["💰", "🌀", "💨"], drift: -0.5 },
+    unlock_the_gate: { chars: ["🔓", "⚙️", "💨"], drift: -0.3 },
+    summon: { chars: ["💫", "⭐", "✨"], drift: -0.6 },
+    zombie_raise: { chars: ["💀", "👻", "✨"], drift: -0.5 },
+    curse: { chars: ["💀", "🌀", "💜"], drift: -0.3 },
+  };
+  const AREA_EFFECT_GLYPH_COUNT = 7;
+
+  /** Drifting-glyph layer for AREA_EFFECT_GLYPHS kinds: each glyph rises and
+   *  fans out from the effect's center over the effect's own lifetime, fading
+   *  with the shared envelope. Deterministic per (effect, index) off the
+   *  effect's start time, so a glyph doesn't teleport between frames the way
+   *  a fresh Math.random() per frame would. Screen-space, so both renderers
+   *  get it from drawAreaEffectBox for free. */
+  function drawAreaEffectGlyphs(ctx, a, minX, minY, maxX, maxY, lineW, alpha, now) {
+    const cfg = AREA_EFFECT_GLYPHS[a.kind];
+    if (!cfg) return;
+    const cx = (minX + maxX) / 2, cy = (minY + maxY) / 2;
+    const t = Math.min(1, (now - a.start) / AREA_EFFECT_ANIM_MS);
+    const spread = Math.max(maxX - minX, lineW) * 0.55;
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.font = `${Math.max(8, lineW * 0.34)}px sans-serif`;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    for (let i = 0; i < AREA_EFFECT_GLYPH_COUNT; i++) {
+      // Cheap deterministic hash off the index -- irrational multipliers keep
+      // successive glyphs from lining up into a visible pattern.
+      const seed = (i * 0.6180339887 + (a.start % 1000) * 0.0011) % 1;
+      const angle = seed * Math.PI * 2;
+      const dist = (0.35 + seed * 0.65) * spread * t;
+      const gx = cx + Math.cos(angle) * dist;
+      // Vertical travel per AREA_EFFECT_GLYPHS.drift, plus a gentle sway --
+      // reads as tumbling rather than sliding on a rail.
+      const gy = cy + Math.sin(angle) * dist * 0.5 + t * spread * cfg.drift
+        + Math.sin(now / 220 + i) * lineW * 0.06;
+      ctx.fillText(cfg.chars[i % cfg.chars.length], gx, gy);
+    }
+    ctx.restore();
+  }
 
   /** Fade envelope shared by both renderers' area-effect draw: quick pop-in,
    *  hold, quick fade -- returns null if `a` has already expired. */
@@ -151,6 +212,7 @@ window.UI = window.UI || {};
       Math.max(0, maxX - minX - ctx.lineWidth), Math.max(0, maxY - minY - ctx.lineWidth),
     );
     ctx.restore();
+    drawAreaEffectGlyphs(ctx, a, minX, minY, maxX, maxY, lineW, alpha, now);
   }
 
   /** Draws a fading colored highlight over every tile within `radius`
@@ -582,6 +644,7 @@ window.UI = window.UI || {};
   const ZOMBIE_TINT_COLOR = "120,120,120"; // washed-out grey
   const WEB_TINT_COLOR = "233,230,210"; // pale webbing off-white
   const POISON_TINT_COLOR = "124,179,66"; // sickly venom green
+  const CURSE_TINT_COLOR = "140,60,190"; // dark hex-magic purple
 
   /** Stable per-unit random phase so multiple burning/frozen units on
    *  screen at once don't flicker in perfect unison. */
@@ -643,7 +706,7 @@ window.UI = window.UI || {};
 
   function drawConditionVisualEffects(ctx, unit, unitSprite, boxX, boxY, boxSize, now) {
     if (!unit.conditions) return;
-    const hasEffect = unit.conditions.zombie || unit.conditions.burning || unit.conditions.frozen || unit.conditions.webbed || unit.conditions.poisoned;
+    const hasEffect = unit.conditions.zombie || unit.conditions.burning || unit.conditions.frozen || unit.conditions.webbed || unit.conditions.poisoned || unit.conditions.curse;
     if (!hasEffect) return;
     const phase = conditionEffectPhase(unit);
     const frame = unitSprite ? window.UI.sprites.currentFrame(unitSprite.manifest, "idle", unit) : null;
@@ -672,6 +735,13 @@ window.UI = window.UI || {};
       // or "bound."
       const throb = 0.30 + 0.14 * Math.sin(now / 170 + phase) + 0.06 * Math.sin(now / 63 + phase * 2.1);
       tintSprite(ctx, image, frame, boxX, boxY, boxSize, POISON_TINT_COLOR, Math.max(0.18, Math.min(0.5, throb)));
+    }
+    if (unit.conditions.curse) {
+      // Slow, deep-purple pulse -- a hex settling in rather than an
+      // elemental effect, so it reads closer to Web's steady bind than to
+      // Burning/Poison's frantic flicker.
+      const pulse = 0.28 + 0.12 * Math.sin(now / 300 + phase);
+      tintSprite(ctx, image, frame, boxX, boxY, boxSize, CURSE_TINT_COLOR, Math.max(0.16, Math.min(0.4, pulse)));
     }
   }
 

@@ -926,6 +926,10 @@ window.UI = window.UI || {};
       const screenY = slot.y * ts + offsetY;
       if (screenX < -ts || screenX > ctx.canvas.width || screenY < -ts || screenY > ctx.canvas.height) continue;
       const isHovered = hover && hover.x === slot.x && hover.y === slot.y;
+      if (placement.targeting) {
+        drawTargetReticle(ctx, screenX, screenY, ts, isHovered, pulse);
+        continue;
+      }
       ctx.fillStyle = isHovered ? "rgba(255, 215, 90, 0.35)" : `rgba(255, 215, 90, ${0.22 * pulse + 0.12})`;
       ctx.fillRect(screenX, screenY, ts, ts);
       ctx.strokeStyle = isHovered ? "#ffd75a" : "rgba(255, 215, 90, 0.8)";
@@ -935,6 +939,36 @@ window.UI = window.UI || {};
         drawPlacementPreviewUnit(ctx, placement.previewUnitId, placement.previewRaceId, screenX, screenY, ts);
       }
     }
+  }
+
+  /** Target-selection mode's per-candidate marker (see main.js's
+   *  startTargetSelection): a cyan corner-bracket reticle around the unit
+   *  rather than the gold full-tile wash a build slot gets -- the player is
+   *  picking an existing unit here, not empty ground, and a solid wash would
+   *  sit on top of the very sprite they're trying to identify. Deliberately
+   *  leaves the tile centre clear for the same reason; only the hovered
+   *  candidate gets a faint fill, as confirmation of what a click would hit. */
+  function drawTargetReticle(ctx, screenX, screenY, ts, isHovered, pulse) {
+    const inset = ts * 0.07;
+    const arm = ts * 0.26;
+    const x0 = screenX + inset, y0 = screenY + inset;
+    const x1 = screenX + ts - inset, y1 = screenY + ts - inset;
+    ctx.save();
+    if (isHovered) {
+      ctx.fillStyle = "rgba(90, 230, 230, 0.20)";
+      ctx.fillRect(screenX, screenY, ts, ts);
+    }
+    ctx.strokeStyle = isHovered ? "#7bf5f5" : `rgba(90, 220, 220, ${0.55 * pulse + 0.35})`;
+    ctx.lineWidth = Math.max(1.5, ts * (isHovered ? 0.055 : 0.04));
+    ctx.lineCap = "round";
+    ctx.beginPath();
+    // Four corner brackets.
+    ctx.moveTo(x0, y0 + arm); ctx.lineTo(x0, y0); ctx.lineTo(x0 + arm, y0);
+    ctx.moveTo(x1 - arm, y0); ctx.lineTo(x1, y0); ctx.lineTo(x1, y0 + arm);
+    ctx.moveTo(x0, y1 - arm); ctx.lineTo(x0, y1); ctx.lineTo(x0 + arm, y1);
+    ctx.moveTo(x1 - arm, y1); ctx.lineTo(x1, y1); ctx.lineTo(x1, y1 - arm);
+    ctx.stroke();
+    ctx.restore();
   }
 
   /** Half-transparent preview of the unit a summon placement would actually

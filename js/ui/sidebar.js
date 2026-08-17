@@ -23,9 +23,15 @@ window.UI = window.UI || {};
     // Placement mode is modal -- left-click means "put it here" until it
     // resolves -- so it needs to say so loudly, above everything else.
     if (viewState.placement) {
+      // Target-selection mode (main.js's startTargetSelection) is the same
+      // modal cursor, but the player is picking an existing unit rather than
+      // a tile to put something on -- so it says so.
+      const isTargeting = viewState.placement.targeting;
       html += `<div class="placement-banner">
-        <strong>Placing ${escapeHtml(viewState.placement.label)}</strong>
-        <div>Click a highlighted tile on the map.<br>Click anywhere else to cancel.</div>
+        <strong>${isTargeting ? "" : "Placing "}${escapeHtml(viewState.placement.label)}</strong>
+        <div>${isTargeting
+          ? "Click a highlighted target on the map."
+          : "Click a highlighted tile on the map."}<br>Click anywhere else to cancel.</div>
       </div>`;
     }
 

@@ -4029,32 +4029,28 @@
         // list (prospecting/delving/fishing/hunting/farming).
         if (kind && kind.startsWith("startChannel:")) {
           handleStartChannel(kind.slice("startChannel:".length));
-        } else if (kind && kind.startsWith("castFlight:")) {
-          // "castFlight:X,Y" -- same
-          // payload-in-the-kind-string convention as startChannel: above.
-          // The target's coordinates ride along because orders.js's
-          // contextMenuOptions can offer more than one of these at once (one
-          // per eligible adjacent ally), so a bare "castFlight" kind
-          // wouldn't say which. See ai.js's castFlightOnAlly, which
-          // re-validates every condition that earned this pill its spot on
-          // the ring -- the target could have moved, died, or already been
-          // flighted since the ring was drawn, same "don't trust a menu that
-          // might be stale" reasoning "attack"'s own re-lookup above uses.
-          const [tx, ty] = kind.slice("castFlight:".length).split(",").map(Number);
+        } else if (kind === "castFlight") {
+          // Human "Flight". ai.js's castFlightOnAlly still re-validates every
+          // condition that earned this pill its spot on the ring (and walks
+          // the Wizard into range) -- the target could have moved, died, or
+          // already been flighted since the ring was drawn, same "don't trust
+          // a menu that might be stale" reasoning "attack"'s own re-lookup
+          // above uses.
           const civ = gameState.civs[humanCivId];
-          const target = (unit.x === tx && unit.y === ty) ? unit
-            : civ.units.find((u) => u.x === tx && u.y === ty && u !== unit && !u.carriedBy);
-          window.GameEngine.ai.castFlightOnAlly(civ, unit, target, gameState);
-        } else if (kind && kind.startsWith("carryUnit:")) {
-          // "carryUnit:X,Y": `unit` is the
-          // carrier, the target at (X,Y) is the passenger it's picking up --
-          // same payload-in-kind-string convention as castFlight above.
-          handleCarryUnit(unit, kind.slice("carryUnit:".length));
-        } else if (kind && kind.startsWith("boardCarrier:")) {
-          // "boardCarrier:X,Y" -- `unit` is the passenger, the target at
-          // (X,Y) is the carrier it's boarding. Mirrors carryUnit above with
-          // the two roles swapped.
-          handleCarryUnit(null, kind.slice("boardCarrier:".length), unit);
+          startTargetSelection("Cast Fly",
+            window.GameEngine.orders.flightTargets(unit, gameState, humanCivId),
+            (target) => window.GameEngine.ai.castFlightOnAlly(civ, unit, target, gameState));
+        } else if (kind === "carryUnit") {
+          // `unit` is the carrier; the picked target is the passenger.
+          startTargetSelection("Carry",
+            window.GameEngine.orders.carryTargets(unit, gameState, humanCivId),
+            (target) => handleCarryUnit(unit, target));
+        } else if (kind === "boardCarrier") {
+          // Mirrors carryUnit with the two roles swapped: `unit` is the
+          // passenger, the picked target is the carrier it boards.
+          startTargetSelection("Board",
+            window.GameEngine.orders.boardTargets(unit, gameState, humanCivId),
+            (target) => handleCarryUnit(target, unit));
         } else if (kind === "dropOff") {
           // "Drop Off": commits instantly, no
           // placement mode -- see orders.js's ring option, gated on
@@ -4093,45 +4089,41 @@
             // inconsistent with the other two summon flows.
             window.GameEngine.turns.refreshVisibility(gameState);
           }
-        } else if (kind === "teleportSelf") {
-          startTeleportPlacement(unit, unit);
-        } else if (kind && kind.startsWith("teleportAlly:")) {
-          const [tx, ty] = kind.slice("teleportAlly:".length).split(",").map(Number);
+        } else if (kind === "teleport") {
+          // The only TWO-stage targeted action: pick who moves, then (via
+          // startTeleportPlacement) where they land.
+          startTargetSelection(unit.typeId === "druid" ? "Roots of the World" : "Teleportation",
+            window.GameEngine.orders.teleportTargets(unit, gameState, humanCivId),
+            (target) => startTeleportPlacement(unit, target));
+        } else if (kind === "naturesGrace") {
           const civ = gameState.civs[humanCivId];
-          const ally = civ.units.find((u) => u.x === tx && u.y === ty && u !== unit && !u.carriedBy);
-          if (ally) startTeleportPlacement(unit, ally);
+          startTargetSelection("Nature's Grace",
+            window.GameEngine.orders.naturesGraceTargets(unit, gameState, humanCivId),
+            (target) => window.GameEngine.ai.performPlayerNaturesGrace(civ, unit, target, gameState));
         } else if (kind === "fireball") {
           startFireballPlacement(unit);
-        } else if (kind && kind.startsWith("riddle:")) {
-          // Halfellow "Riddle" -- same shape as
-          // Freezing Touch above.
-          const [tx, ty] = kind.slice("riddle:".length).split(",").map(Number);
+        } else if (kind === "riddle") {
           const civ = gameState.civs[humanCivId];
-          const found = window.GameEngine.orders.attackTargetAt(unit, gameState, tx, ty, humanCivId);
-          if (civ && found && found.kind === "unit") {
-            window.GameEngine.ai.performPlayerRiddle(civ, unit, found.unit, gameState);
-          }
-        } else if (kind && kind.startsWith("resourceHeist:")) {
-          // Halfellow "Resource Heist" -- same
-          // shape as Freezing Touch above.
-          const [tx, ty] = kind.slice("resourceHeist:".length).split(",").map(Number);
+          startTargetSelection("Riddle",
+            window.GameEngine.orders.riddleTargets(unit, gameState, humanCivId),
+            (target) => window.GameEngine.ai.performPlayerRiddle(civ, unit, target, gameState));
+        } else if (kind === "resourceHeist") {
           const civ = gameState.civs[humanCivId];
-          const found = window.GameEngine.orders.attackTargetAt(unit, gameState, tx, ty, humanCivId);
-          if (civ && found && found.kind === "unit") {
-            window.GameEngine.ai.performPlayerResourceHeist(civ, unit, found.unit, gameState);
-          }
-        } else if (kind && kind.startsWith("unlockTheGate:")) {
-          // Halfellow "Unlock the Gate":
-          // targets a wall structure, not a unit -- uses cities.js's
-          // findStructureAt (same lookup orders.js's ring option used to
-          // build the pill) instead of attackTargetAt.
-          const [tx, ty] = kind.slice("unlockTheGate:".length).split(",").map(Number);
+          startTargetSelection("Resource Heist",
+            window.GameEngine.orders.resourceHeistTargets(unit, gameState, humanCivId),
+            (target) => window.GameEngine.ai.performPlayerResourceHeist(civ, unit, target, gameState));
+        } else if (kind === "unlockTheGate") {
+          // The one targeted action aimed at a STRUCTURE rather than a unit:
+          // its candidates carry a cities.js findStructureAt record (see
+          // orders.js's unlockTheGateTargets) instead of being units.
           const civ = gameState.civs[humanCivId];
-          const found = window.GameEngine.cities.findStructureAt(gameState, tx, ty);
-          if (civ && found) {
-            window.GameEngine.ai.performPlayerUnlockTheGate(
-              civ, unit, { structure: found.record, city: found.city, civId: found.civ.id }, gameState);
-          }
+          startTargetSelection("Unlock the Gate",
+            window.GameEngine.orders.unlockTheGateTargets(unit, gameState, humanCivId),
+            (target) => window.GameEngine.ai.performPlayerUnlockTheGate(civ, unit, {
+              structure: target.structure.record,
+              city: target.structure.city,
+              civId: target.structure.civ.id,
+            }, gameState));
         } else if (kind && kind.startsWith("activateAura:")) {
           // "activateAura:heavy_metal"/"activateAura:power_metal"
           // -- a free toggle, not a spent
@@ -4145,9 +4137,50 @@
     redraw();
   }
 
+  /**
+   * TARGET-SELECTION MODE
+   * ---------------------
+   * The shared "one ability pill, then left-click the target" flow behind
+   * every targeted action. Each ability contributes only its candidate list
+   * (orders.js's flightTargets/teleportTargets/... -- see that file's own
+   * section comment for the per-ability eligibility rules) and what to do
+   * with the picked entry; everything else is common.
+   *
+   * Reuses viewState.placement wholesale rather than adding a parallel modal
+   * mode: placement was already "highlight a slot list, swallow the next
+   * left-click, resolve via onPick, cancel on a click outside the list or on
+   * right-click" (see input.js's two handlers). `targeting: true` is the only
+   * new field -- it switches render.js and sidebar.js to the "pick a unit"
+   * treatment instead of the gold build-slot wash, since the player is
+   * choosing an existing unit here, not empty ground to put something on.
+   *
+   * `targets` entries are either live unit objects or the {x, y, structure}
+   * records unlockTheGateTargets returns -- input.js matches on .x/.y, which
+   * both shapes carry, and hands the matched entry straight to onPick. Two
+   * candidates can never share a tile (every list excludes carried units), so
+   * a tile identifies a target unambiguously.
+   */
+  function startTargetSelection(label, targets, onPick) {
+    if (!humanCivId || !targets || !targets.length) return;
+    viewState.placement = {
+      slots: targets,
+      label,
+      targeting: true,
+      onPick: (slot) => {
+        viewState.placement = null;
+        if (slot) onPick(slot);
+        redraw();
+      },
+    };
+    redraw();
+  }
+
   /** Elf "Roots of the World" / Human "Teleportation" -- see ai.js's
    *  performWizardTeleport/attemptWizardTeleport/maybeTeleportStrike for
-   *  the AI side of this same mechanic. Opens tile-placement mode (same
+   *  the AI side of this same mechanic. Stage TWO of the teleport flow: the
+   *  caster and the unit being moved were already chosen in
+   *  target-selection mode (see the "teleport" ring case), so this only
+   *  picks the destination. Opens tile-placement mode (same
    *  viewState.placement mechanism
    *  handleOpenBuildPicker uses for structure slots) with every currently-
    *  EXPLORED, currently-legal teleport tile as a slot -- see ai.js's
@@ -4321,21 +4354,16 @@
     redraw();
   }
 
-  /** Carry/Board: resolves the OTHER unit from
-   *  its (x,y) coordinates -- exactly one of `carrier`/`passenger` is passed
-   *  in already selected (whichever ring the player clicked from), the other
-   *  is null and gets looked up here. Delegates the actual eligibility
-   *  re-check and state mutation to orders.js's performCarry, same
-   *  "re-validate, don't trust a menu that might be stale" reasoning
-   *  castFlight's handler above already follows. */
-  function handleCarryUnit(carrier, coordStr, passenger) {
+  /** Carry/Board: whichever ring the player opened decides which of the two
+   *  is the acting unit and which was picked in target-selection mode -- the
+   *  two call sites pass them in the right roles. Delegates the actual
+   *  eligibility re-check and state mutation to orders.js's performCarry,
+   *  same "re-validate, don't trust a menu that might be stale" reasoning
+   *  castFlight's handler already follows. */
+  function handleCarryUnit(carrier, passenger) {
     if (!humanCivId) return;
     const civ = gameState.civs[humanCivId];
-    if (!civ) return;
-    const [tx, ty] = coordStr.split(",").map(Number);
-    if (!carrier) carrier = civ.units.find((u) => u.x === tx && u.y === ty);
-    if (!passenger) passenger = civ.units.find((u) => u.x === tx && u.y === ty);
-    if (!carrier || !passenger) return;
+    if (!civ || !carrier || !passenger) return;
     window.GameEngine.orders.performCarry(carrier, passenger, civ);
   }
 
@@ -4751,6 +4779,12 @@
       return gameState;
     },
     getState: () => gameState,
+    // View-side counterpart to getState -- lets a test drive the real input
+    // path (render.js's tileCenterOnMap needs viewState to turn a tile into
+    // the pixel to click) instead of reaching past the UI to call handlers
+    // directly, which is what makes modal flows like target-selection
+    // verifiable at all.
+    getViewState: () => viewState,
     runTurn: (opts) => window.GameEngine.turns.runTurn(gameState, opts),
   };
 

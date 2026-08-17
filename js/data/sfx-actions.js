@@ -46,10 +46,14 @@ window.GameData.SFX_SPECIAL_ACTIONS = {
   druid: ["found", "heal", "blink", "summon_raptor", "summon_shadowsteed"],
   shadowsteed: ["carry"],
   goblin_miscreant: ["ignite"],
-  bog_witch: ["curse"],
+  bog_witch: ["curse", "summon_wisp"],
   dragon: ["ignite"],
   skeleton: ["raise_dead"],
-  wanderer: ["found"],
+  wanderer: ["found", "riddle"],
+  // Halfellow "Riddle"/"Resource Heist"/"Unlock the Gate"/"Set the Trap" --
+  // riddle is shared with wanderer above (both can cast it), the other
+  // three are Trouble Maker's own.
+  trouble_maker: ["riddle", "resource_heist", "unlock_the_gate", "set_trap"],
 };
 
 /** Every action a given unit type should have sfx for: attack (only if the

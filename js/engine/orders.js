@@ -522,6 +522,173 @@ window.GameEngine = window.GameEngine || {};
     return true;
   }
 
+  /**
+   * TARGETED-ACTION CANDIDATE LISTS
+   * -------------------------------
+   * Each helper below answers "which units/structures could this ability hit
+   * right now" for exactly one ability. Every one is consumed TWICE:
+   * contextMenuOptions uses `.length` to decide whether to offer the single
+   * ability pill at all, and main.js's startTargetSelection turns the same
+   * list into the highlighted, clickable candidates. One list per ability, so
+   * the picker can never highlight something the engine would then refuse
+   * (the same "UI must never offer what the engine refuses" rule
+   * canAttackUnitNow already enforces for attacks).
+   *
+   * This replaced a pill-per-target ring: with several units nearby the ring
+   * filled up with near-identical "Cast Fly on X"/"Carry Y" entries. One
+   * pill + a map click scales to any number of targets.
+   *
+   * All are pure/non-mutating and return plain arrays (empty, never null).
+   */
+
+  /** Human "Flight": self (unless already flying) plus every allied military
+   *  unit within the Wizard's REACH -- adjacency plus however far it can
+   *  still walk this turn, since castFlightOnAlly walks into range itself. */
+  function flightTargets(unit, gameState, humanCivId) {
+    const civ = gameState.civs[unit.civId];
+    if (!civ || unit.typeId !== "wizard" || unit.usedThisTurn) return [];
+    if (!civ.unlockedMechanics?.has("flight_grant")) return [];
+    const out = [];
+    if (!window.GameEngine.combat.isFlying(unit)) out.push(unit);
+    const reach = 1 + (unit.movesRemaining
+      ?? window.GameEngine.ai.computeMovementBudget(unit, gameState.map, gameState.civs));
+    for (const ally of civ.units) {
+      if (ally === unit || ally.carriedBy) continue;
+      if (window.GameEngine.influence.chebyshev(unit.x, unit.y, ally.x, ally.y) > reach) continue;
+      if (window.GameData.getUnit(ally.typeId).category !== "military") continue;
+      if (window.GameEngine.combat.isFlying(ally)) continue;
+      out.push(ally);
+    }
+    return out;
+  }
+
+  /** Human "Teleportation" / Elf "Roots of the World": the caster itself, or
+   *  any currently-ADJACENT ally (both perform* functions refuse a
+   *  non-adjacent target, so the picker must not offer one). */
+  function teleportTargets(unit, gameState, humanCivId) {
+    const civ = gameState.civs[unit.civId];
+    if (!civ || unit.usedThisTurn) return [];
+    const isWizard = unit.typeId === "wizard" && civ.unlockedMechanics?.has("teleportation");
+    const isDruid = unit.typeId === "druid" && civ.unlockedMechanics?.has("roots_of_the_world");
+    if (!isWizard && !isDruid) return [];
+    const out = [unit];
+    for (const ally of civ.units) {
+      if (ally === unit || ally.carriedBy) continue;
+      if (window.GameEngine.influence.chebyshev(unit.x, unit.y, ally.x, ally.y) > 1) continue;
+      out.push(ally);
+    }
+    return out;
+  }
+
+  /** Elf "Nature's Grace": every allied unit actually missing HP within the
+   *  caster's own effectiveRange and with a clear shot -- mirrors ai.js's
+   *  maybeNaturesGrace scan exactly, minus its "pick the most injured" step.
+   *  Excludes the caster: a Druid can't heal itself with this. */
+  function naturesGraceTargets(unit, gameState, humanCivId) {
+    const civ = gameState.civs[unit.civId];
+    if (!civ || unit.usedThisTurn) return [];
+    if (!civ.unlockedMechanics?.has("natures_grace")) return [];
+    // Shadowsteed carrying a Druid rider casts through the steed -- same
+    // dispatch ai.js's runUnitTurn uses.
+    const casts = unit.typeId === "druid"
+      || (unit.typeId === "shadowsteed" && unit.carries?.typeId === "druid");
+    if (!casts) return [];
+    const range = window.GameEngine.combat.effectiveRange(unit, civ);
+    const out = [];
+    for (const ally of civ.units) {
+      if (ally === unit || ally.carriedBy) continue;
+      if (ally.hp >= ally.maxHp) continue;
+      if (window.GameEngine.influence.chebyshev(unit.x, unit.y, ally.x, ally.y) > range) continue;
+      if (!window.GameEngine.ai.hasRangedLineOfSight(gameState.map, unit.x, unit.y, ally.x, ally.y)) continue;
+      out.push(ally);
+    }
+    return out;
+  }
+
+  /** Units this one could pick up as cargo right now (adjacent, own civ). */
+  function carryTargets(unit, gameState, humanCivId) {
+    const civ = gameState.civs[unit.civId];
+    if (!civ || unit.usedThisTurn) return [];
+    return adjacentOwnUnits(unit, civ).filter((n) => canCarryPassenger(unit, n, civ));
+  }
+
+  /** Adjacent carriers this unit could board -- the inverse of carryTargets,
+   *  through the same predicate so the two can never disagree. */
+  function boardTargets(unit, gameState, humanCivId) {
+    const civ = gameState.civs[unit.civId];
+    if (!civ || unit.usedThisTurn) return [];
+    return adjacentOwnUnits(unit, civ).filter((n) => canCarryPassenger(n, unit, civ));
+  }
+
+  function adjacentOwnUnits(unit, civ) {
+    return civ.units.filter((u) =>
+      u !== unit && Math.max(Math.abs(u.x - unit.x), Math.abs(u.y - unit.y)) === 1);
+  }
+
+  /** Halfellow "Riddle": enemy units within effectiveRange, excluding Hidden
+   *  and already-Befuddled ones, respecting the per-caster cooldown. */
+  function riddleTargets(unit, gameState, humanCivId) {
+    const civ = gameState.civs[unit.civId];
+    if (!civ || unit.usedThisTurn) return [];
+    if (unit.typeId !== "trouble_maker" && unit.typeId !== "wanderer") return [];
+    if (!civ.unlockedMechanics?.has("riddle")) return [];
+    if ((unit._riddleCooldownUntilTurn || 0) > (gameState.turnNumber || 0)) return [];
+    const range = window.GameEngine.combat.effectiveRange(unit, civ);
+    const out = [];
+    for (const otherCiv of Object.values(gameState.civs)) {
+      if (otherCiv.id === civ.id || otherCiv.eliminated) continue;
+      for (const eu of otherCiv.units) {
+        if (eu.carriedBy || eu.conditions?.hidden || eu.conditions?.befuddled) continue;
+        if (window.GameEngine.influence.chebyshev(unit.x, unit.y, eu.x, eu.y) > range) continue;
+        out.push(eu);
+      }
+    }
+    return out;
+  }
+
+  /** Halfellow "Resource Heist": ADJACENT enemy units mid-channel with a
+   *  non-empty stash -- same eligibility findResourceHeistTarget checks. */
+  function resourceHeistTargets(unit, gameState, humanCivId) {
+    const civ = gameState.civs[unit.civId];
+    if (!civ || unit.usedThisTurn) return [];
+    if (unit.typeId !== "trouble_maker" || !civ.unlockedMechanics?.has("resource_heist")) return [];
+    const out = [];
+    for (const otherCiv of Object.values(gameState.civs)) {
+      if (otherCiv.id === civ.id || otherCiv.eliminated) continue;
+      for (const eu of otherCiv.units) {
+        if (eu.carriedBy || eu.conditions?.hidden || !eu.channeling) continue;
+        if (Math.max(Math.abs(eu.x - unit.x), Math.abs(eu.y - unit.y)) !== 1) continue;
+        const stash = eu._channelStash;
+        if (!stash || ((stash.harvest || 0) + (stash.coin || 0) + (stash.lore || 0)) <= 0) continue;
+        out.push(eu);
+      }
+    }
+    return out;
+  }
+
+  /** Halfellow "Unlock the Gate": ADJACENT enemy wall segments not already
+   *  suppressed. Returns cities.js findStructureAt records ({civ, city,
+   *  record, building}) rather than units -- the only candidate list here
+   *  that targets a structure, so its entries carry x/y explicitly for the
+   *  picker to key off. */
+  function unlockTheGateTargets(unit, gameState, humanCivId) {
+    const civ = gameState.civs[unit.civId];
+    if (!civ || unit.usedThisTurn) return [];
+    if (unit.typeId !== "trouble_maker" || !civ.unlockedMechanics?.has("unlock_the_gate")) return [];
+    const out = [];
+    for (let dy = -1; dy <= 1; dy++) {
+      for (let dx = -1; dx <= 1; dx++) {
+        if (dx === 0 && dy === 0) continue;
+        const ax = unit.x + dx, ay = unit.y + dy;
+        const found = window.GameEngine.cities.findStructureAt(gameState, ax, ay);
+        if (!found || found.civ.id === civ.id || !found.building.isWall) continue;
+        if (window.GameEngine.combat.isWallDefenseSuppressed(found.record, gameState.turnNumber || 0)) continue;
+        out.push({ x: ax, y: ay, structure: found });
+      }
+    }
+    return out;
+  }
+
   /** Actually loads `passengerUnit` onto `carrierUnit` -- re-validates via
    *  canCarryPassenger first (the ring that offered this may be stale by the
    *  time the player clicks it: either unit could have moved, died, or
@@ -626,55 +793,25 @@ window.GameEngine = window.GameEngine || {};
         options.push({ kind: "openChest", label: "Open Chest" });
       }
 
-      // Cast Fly on an ally: one pill per eligible ally within the Wizard's
-      // REACH (adjacency plus however far it can still walk this turn --
-      // same "move there and still cast, same turn" formula maybeGrantFlight's
-      // AI play uses internally), offered from the WIZARD'S OWN tile rather
+      // Human "Flight": ONE pill, offered from the WIZARD'S OWN tile rather
       // than by right-clicking the ally directly, since right-clicking an
       // ally who is also a commandable unit of yours always retargets the
       // ring to become THAT unit's own ring first (see mapMenuOptions' own
-      // doc comment). Right-click the caster instead, same as every other
-      // own-tile action here. See ai.js's castFlightOnAlly for the actual
-      // cast, which re-validates every one of these conditions itself (and
-      // walks the Wizard into adjacency first if the target isn't already
-      // there) rather than trusting this list stayed accurate since it was
-      // drawn.
-      if (unit.typeId === "wizard" && !unit.usedThisTurn && civ.unlockedMechanics?.has("flight_grant")) {
-        const reach = 1 + (unit.movesRemaining ?? window.GameEngine.ai.computeMovementBudget(unit, gameState.map, gameState.civs));
-        if (!window.GameEngine.combat.isFlying(unit)) {
-          options.push({ kind: `castFlight:${unit.x},${unit.y}`, label: "Cast Fly on Self" });
-        }
-        for (const ally of civ.units) {
-          if (ally === unit || ally.carriedBy) continue;
-          if (window.GameEngine.influence.chebyshev(unit.x, unit.y, ally.x, ally.y) > reach) continue;
-          if (window.GameData.getUnit(ally.typeId).category !== "military") continue;
-          if (window.GameEngine.combat.isFlying(ally)) continue;
-          const allyLabel = ally.name || window.GameData.getUnit(ally.typeId).label;
-          options.push({ kind: `castFlight:${ally.x},${ally.y}`, label: `Cast Fly on ${allyLabel}` });
-        }
+      // doc comment). Clicking it opens target-selection mode over
+      // flightTargets (see main.js's startTargetSelection); ai.js's
+      // castFlightOnAlly still re-validates and walks into range itself.
+      if (flightTargets(unit, gameState, humanCivId).length) {
+        options.push({ kind: "castFlight", label: "Cast Fly" });
       }
 
-      // Carry / Board: one pill per eligible adjacent unit, same "offered
-      // from the ACTING unit's own tile" shape as "Cast Fly on an ally"
-      // above -- Carry from the carrier's ring, Board from the passenger's,
-      // both gated by the shared canCarryPassenger predicate so they can
-      // never disagree.
-      if (!unit.usedThisTurn) {
-        for (let dy = -1; dy <= 1; dy++) {
-          for (let dx = -1; dx <= 1; dx++) {
-            if (dx === 0 && dy === 0) continue;
-            const ax = unit.x + dx, ay = unit.y + dy;
-            const neighbor = civ.units.find((u) => u.x === ax && u.y === ay && u !== unit && u.civId === unit.civId);
-            if (!neighbor) continue;
-            if (canCarryPassenger(unit, neighbor, civ)) {
-              const label = neighbor.name || window.GameData.getUnit(neighbor.typeId).label;
-              options.push({ kind: `carryUnit:${ax},${ay}`, label: `Carry ${label}` });
-            } else if (canCarryPassenger(neighbor, unit, civ)) {
-              const label = neighbor.name || window.GameData.getUnit(neighbor.typeId).label;
-              options.push({ kind: `boardCarrier:${ax},${ay}`, label: `Board ${label}` });
-            }
-          }
-        }
+      // Carry / Board: Carry from the carrier's ring, Board from the
+      // passenger's, both gated by the shared canCarryPassenger predicate
+      // (via carryTargets/boardTargets) so they can never disagree.
+      if (carryTargets(unit, gameState, humanCivId).length) {
+        options.push({ kind: "carryUnit", label: "Carry" });
+      }
+      if (boardTargets(unit, gameState, humanCivId).length) {
+        options.push({ kind: "boardCarrier", label: "Board" });
       }
 
       // Drop Off: the disembark half of ai.js's operateDragonCarry/
@@ -707,46 +844,26 @@ window.GameEngine = window.GameEngine || {};
         }
       }
 
-      // Elf "Roots of the World": Druid teleport (ai.js's
-      // performDruidTeleport/attemptDruidTeleport). Two variants -- teleport
-      // the Druid itself, or an adjacent ally -- both hand off to main.js's
-      // tile-placement mode (viewState.placement) to pick the destination,
-      // since unlike every other ring pill this one needs an arbitrary
-      // explored tile, not a fixed slot list.
-      if (unit.typeId === "druid" && !unit.usedThisTurn
-          && civ.unlockedMechanics?.has("roots_of_the_world")) {
-        options.push({ kind: "teleportSelf", label: "Roots of the World (Teleport Self)" });
-        for (let dy = -1; dy <= 1; dy++) {
-          for (let dx = -1; dx <= 1; dx++) {
-            if (dx === 0 && dy === 0) continue;
-            const ax = unit.x + dx, ay = unit.y + dy;
-            const ally = civ.units.find((u) => u.x === ax && u.y === ay && u !== unit && !u.carriedBy);
-            if (!ally) continue;
-            const label = ally.name || window.GameData.getUnit(ally.typeId).label;
-            options.push({ kind: `teleportAlly:${ax},${ay}`, label: `Roots of the World (Teleport ${label})` });
-          }
-        }
+      // Elf "Roots of the World" / Human "Teleportation": ONE pill for both
+      // (ai.js's performDruidTeleport/performWizardTeleport) -- main.js's
+      // handler picks which off the acting unit's own typeId, so there's no
+      // need for separate kind strings. A two-stage flow, unlike every other
+      // targeted action here: first pick WHO moves (target-selection mode
+      // over teleportTargets -- the caster itself or an adjacent ally), then
+      // pick WHERE (tile-placement mode, since the destination is an
+      // arbitrary explored tile rather than a fixed slot list).
+      if (teleportTargets(unit, gameState, humanCivId).length) {
+        options.push({
+          kind: "teleport",
+          label: unit.typeId === "druid" ? "Roots of the World" : "Teleportation",
+        });
       }
 
-      // Human "Teleportation": Wizard teleport (ai.js's
-      // performWizardTeleport/attemptWizardTeleport/maybeTeleportStrike).
-      // Reuses the SAME "teleportSelf"/"teleportAlly:X,Y" ring kinds as
-      // Druid above -- main.js's handler picks performPlayerWizardTeleport
-      // vs. performPlayerDruidTeleport off the acting unit's own typeId, so
-      // there's no need for a second set of kind strings.
-      if (unit.typeId === "wizard" && !unit.usedThisTurn
-          && civ.unlockedMechanics?.has("teleportation")) {
-        options.push({ kind: "teleportSelf", label: "Teleportation (Teleport Self)" });
-        for (let dy = -1; dy <= 1; dy++) {
-          for (let dx = -1; dx <= 1; dx++) {
-            if (dx === 0 && dy === 0) continue;
-            const ax = unit.x + dx, ay = unit.y + dy;
-            const ally = civ.units.find((u) => u.x === ax && u.y === ay && u !== unit && !u.carriedBy);
-            if (!ally) continue;
-            const label = ally.name || window.GameData.getUnit(ally.typeId).label;
-            options.push({ kind: `teleportAlly:${ax},${ay}`, label: `Teleportation (Teleport ${label})` });
-          }
-        }
+      // Elf "Nature's Grace": ONE pill over naturesGraceTargets (allied units
+      // actually missing HP within the caster's own range). Previously
+      // AI-only -- see ai.js's maybeNaturesGrace for that side.
+      if (naturesGraceTargets(unit, gameState, humanCivId).length) {
+        options.push({ kind: "naturesGrace", label: "Nature's Grace" });
       }
 
       // Human "Freezing Touch" has no ring option: it's a passive +50%
@@ -761,66 +878,18 @@ window.GameEngine = window.GameEngine || {};
         options.push({ kind: "fireball", label: "Fireball!" });
       }
 
-      // Halfellow "Riddle": one pill per enemy unit within this caster's own
-      // effectiveRange (scales with Boomerang, same as a normal attack --
-      // see ai.js's maybeRiddlePlay), excluding Hidden or already-Befuddled
-      // targets, and respecting the per-caster cooldown
-      // (ai.js's RIDDLE_COOLDOWN_ROUNDS) the same way the AI does.
-      if ((unit.typeId === "trouble_maker" || unit.typeId === "wanderer") && !unit.usedThisTurn
-          && civ.unlockedMechanics?.has("riddle") && (unit._riddleCooldownUntilTurn || 0) <= (gameState.turnNumber || 0)) {
-        const range = window.GameEngine.combat.effectiveRange(unit, civ);
-        for (const otherCiv of Object.values(gameState.civs)) {
-          if (otherCiv.id === civ.id || otherCiv.eliminated) continue;
-          for (const eu of otherCiv.units) {
-            if (eu.carriedBy || eu.conditions?.hidden || eu.conditions?.befuddled) continue;
-            if (window.GameEngine.influence.chebyshev(unit.x, unit.y, eu.x, eu.y) > range) continue;
-            const label = eu.name || window.GameData.getUnit(eu.typeId).label;
-            options.push({ kind: `riddle:${eu.x},${eu.y}`, label: `Riddle ${label}` });
-          }
-        }
+      // Halfellow "Riddle"/"Resource Heist"/"Unlock the Gate": ONE pill each,
+      // over their own candidate list. Riddle is the worst of the old
+      // pill-per-target offenders -- it's RANGED (scales with Boomerang), so
+      // a crowded front line could fill the whole ring by itself.
+      if (riddleTargets(unit, gameState, humanCivId).length) {
+        options.push({ kind: "riddle", label: "Riddle" });
       }
-
-      // Halfellow "Resource Heist": melee-range only (requires adjacency to
-      // execute, unlike the two ranged ones above) -- one pill per adjacent
-      // enemy unit that's currently channeling (Prospector's Claim/Dungeon
-      // Delve/Fishing) with a non-empty stash, same eligibility
-      // findResourceHeistTarget itself checks.
-      if (unit.typeId === "trouble_maker" && !unit.usedThisTurn && civ.unlockedMechanics?.has("resource_heist")) {
-        for (let dy = -1; dy <= 1; dy++) {
-          for (let dx = -1; dx <= 1; dx++) {
-            if (dx === 0 && dy === 0) continue;
-            const ax = unit.x + dx, ay = unit.y + dy;
-            for (const otherCiv of Object.values(gameState.civs)) {
-              if (otherCiv.id === civ.id || otherCiv.eliminated) continue;
-              const eu = otherCiv.units.find((u) => u.x === ax && u.y === ay && !u.carriedBy);
-              if (!eu || !eu.channeling || eu.conditions?.hidden) continue;
-              const stash = eu._channelStash;
-              if (!stash || ((stash.harvest || 0) + (stash.coin || 0) + (stash.lore || 0)) <= 0) continue;
-              const label = eu.name || window.GameData.getUnit(eu.typeId).label;
-              options.push({ kind: `resourceHeist:${ax},${ay}`, label: `Resource Heist: ${label}` });
-            }
-          }
-        }
+      if (resourceHeistTargets(unit, gameState, humanCivId).length) {
+        options.push({ kind: "resourceHeist", label: "Resource Heist" });
       }
-
-      // Halfellow "Unlock the Gate": melee-range only, same as Resource
-      // Heist above -- one pill per adjacent enemy wall that isn't already
-      // suppressed (combat.js's isWallDefenseSuppressed), same eligibility
-      // findUnlockTheGateTarget itself checks. Targets a structure, not a
-      // unit -- uses cities.js's findStructureAt (returns { civ, city,
-      // record, building }) to get the parent city performUnlockTheGate
-      // needs to walk its neighboring wall segments.
-      if (unit.typeId === "trouble_maker" && !unit.usedThisTurn && civ.unlockedMechanics?.has("unlock_the_gate")) {
-        for (let dy = -1; dy <= 1; dy++) {
-          for (let dx = -1; dx <= 1; dx++) {
-            if (dx === 0 && dy === 0) continue;
-            const ax = unit.x + dx, ay = unit.y + dy;
-            const found = window.GameEngine.cities.findStructureAt(gameState, ax, ay);
-            if (!found || found.civ.id === civ.id || !found.building.isWall) continue;
-            if (window.GameEngine.combat.isWallDefenseSuppressed(found.record, gameState.turnNumber || 0)) continue;
-            options.push({ kind: `unlockTheGate:${ax},${ay}`, label: `Unlock the Gate: wall (${ax},${ay})` });
-          }
-        }
+      if (unlockTheGateTargets(unit, gameState, humanCivId).length) {
+        options.push({ kind: "unlockTheGate", label: "Unlock the Gate" });
       }
 
       // Elf "Air Beneath, Eyes Above"/"Shadowsteed": no tile-placement mode
@@ -1218,6 +1287,15 @@ window.GameEngine = window.GameEngine || {};
     contextMenuOptions,
     canCarryPassenger,
     performCarry,
+    // Targeted-action candidate lists -- see their own section comment.
+    flightTargets,
+    teleportTargets,
+    naturesGraceTargets,
+    carryTargets,
+    boardTargets,
+    riddleTargets,
+    resourceHeistTargets,
+    unlockTheGateTargets,
     cityRingOptions,
     mergeUnitCityOptions,
     mapMenuOptions,

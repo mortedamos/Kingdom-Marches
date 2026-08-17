@@ -4941,7 +4941,19 @@ window.GameEngine = window.GameEngine || {};
       }
       if (hit.kind === "unit" && hit.unit.hp <= 0) otherCivRemoveDeadUnit(gameState.civs, hit.unit);
     }
-    window.GameEngine.combat.spawnAreaEffect(tx, ty, 1, "fireball");
+    // A separate radius-0 burst PER TILE the blast actually covers (matching
+    // applyFireballBlast's own 3x3-clamped-to-map-bounds loop exactly),
+    // rather than one wide effect centered on the target -- "every square
+    // where fireball resolved" gets its own flame, not a shared wash. See
+    // overlays.js's AREA_EFFECT_GLYPHS.fireball.
+    const { map } = gameState;
+    for (let dy = -1; dy <= 1; dy++) {
+      for (let dx = -1; dx <= 1; dx++) {
+        const x = tx + dx, y = ty + dy;
+        if (x < 0 || x >= map.width || y < 0 || y >= map.height) continue;
+        window.GameEngine.combat.spawnAreaEffect(x, y, 0, "fireball");
+      }
+    }
     window.SfxSystem.playAction(civ.raceId, caster.typeId, "fireball", tx, ty);
     caster.usedThisTurn = true;
     caster.currentMission = `Cast Fireball at (${tx},${ty})`;
@@ -5062,6 +5074,9 @@ window.GameEngine = window.GameEngine || {};
       moveBonus: FLIGHT_MOVE_BONUS,
       visionBonus: FLIGHT_VISION_BONUS,
     });
+    // White falling-feather burst on the RECIPIENT's own tile (radius 0) --
+    // see overlays.js's AREA_EFFECT_GLYPHS.
+    window.GameEngine.combat.spawnAreaEffect(target.x, target.y, 0, "flight");
     caster.usedThisTurn = true;
     caster.currentMission = `Granted flight to ${describeUnit(target)} at (${target.x},${target.y})`;
     log.push(`Flight: ${civ.id}'s Wizard grants flight to their ${describeUnit(target)} at (${target.x},${target.y})`);
@@ -5491,6 +5506,10 @@ window.GameEngine = window.GameEngine || {};
     window.GameEngine.turns.bankChannelStash(target, civ);
     target.channeling = null;
     window.GameEngine.combat.applyBefuddled(target, currentTurnNumber);
+    // Purple-grey swirl on the VICTIM's tile -- see overlays.js's
+    // AREA_EFFECT_GLYPHS.resource_heist.
+    window.SfxSystem.playAction(civ.raceId, "trouble_maker", "resource_heist", target.x, target.y);
+    window.GameEngine.combat.spawnAreaEffect(target.x, target.y, 0, "resource_heist");
     let spotted = false;
     if (window.GameEngine.combat.hasCondition(unit, "hidden")) {
       const targetRace = window.GameData.getRace(targetCiv.raceId);
@@ -5582,7 +5601,11 @@ window.GameEngine = window.GameEngine || {};
       if (window.GameEngine.influence.chebyshev(structure.x, structure.y, s.x, s.y) > 1) continue;
       s.gateUnlockedUntilTurn = expiresAtTurn;
       affected++;
+      // A separate burst PER SEGMENT actually disabled, same "every square
+      // resolved gets its own" convention as performWizardFireball.
+      window.GameEngine.combat.spawnAreaEffect(s.x, s.y, 0, "unlock_the_gate");
     }
+    window.SfxSystem.playAction(civ.raceId, "trouble_maker", "unlock_the_gate", structure.x, structure.y);
     unit.usedThisTurn = true;
     unit.currentMission = `Unlocked the gate at (${structure.x},${structure.y})`;
     log.push(`Unlock the Gate: ${civ.id}'s ${describeUnit(unit)} disables ${target.civId}'s wall at (${structure.x},${structure.y}) and ${affected - 1} adjacent segment(s) for ${UNLOCK_THE_GATE_ROUNDS} rounds`);
@@ -5668,6 +5691,9 @@ window.GameEngine = window.GameEngine || {};
     const targetRace = window.GameData.getRace(targetCiv.raceId);
     const resistChance = (targetRace.curiosity ?? 0.5) * 0.75;
     const resisted = Math.random() < resistChance;
+    // Trouble Maker and Wanderer both cast this -- key sfx off the actual
+    // caster's own typeId rather than hardcoding one.
+    window.SfxSystem.playAction(civ.raceId, unit.typeId, "riddle", target.x, target.y);
     if (!resisted) window.GameEngine.combat.applyBefuddled(target, currentTurnNumber);
     window.GameEngine.combat.revealHidden(unit, currentTurnNumber);
     unit._riddleCooldownUntilTurn = currentTurnNumber + RIDDLE_COOLDOWN_ROUNDS;
@@ -6334,12 +6360,33 @@ window.GameEngine = window.GameEngine || {};
     const before = target.hp;
     target.hp = Math.min(target.maxHp, target.hp + healAmount);
     window.GameEngine.floatingText.spawnHealGain(target, target.hp - before);
+    // Green drifting-leaf burst on the HEALED unit's own tile (radius 0) --
+    // see overlays.js's AREA_EFFECT_GLYPHS. sfx is keyed to "druid"
+    // regardless of caster.typeId -- it's the Druid's own magic even when
+    // channeled through a mounted Shadowsteed (see describeUnit(caster) above).
+    window.SfxSystem.playAction(civ.raceId, "druid", "heal", target.x, target.y);
+    window.GameEngine.combat.spawnAreaEffect(target.x, target.y, 0, "natures_grace");
     caster.usedThisTurn = true;
     caster.currentMission = `Restored health to ${describeUnit(target)} at (${target.x},${target.y})`;
     // describeUnit(caster) rather than a hardcoded "Druid" -- caster is the
     // Shadowsteed itself when a mounted Druid rider casts through it (see
     // the shadowsteed+Druid dispatch check below), not always the Druid.
     log.push(`Nature's Grace: ${civ.id}'s ${describeUnit(caster)} heals ${describeUnit(target)} at (${target.x},${target.y}) for ${healAmount} HP`);
+  }
+
+  /** Direct player-invoked Nature's Grace: same currentTurnNumber/
+   *  currentGameStateRef + log-capture wrapper shape as
+   *  performPlayerDruidTeleport. `target` came from orders.js's
+   *  naturesGraceTargets, which is also what gated the ring pill, so
+   *  eligibility was already enforced by the same predicate. */
+  function performPlayerNaturesGrace(civ, caster, target, gameState) {
+    if (!caster || !target || caster.usedThisTurn) return false;
+    currentTurnNumber = gameState.turnNumber || 0;
+    currentGameStateRef = gameState;
+    const log = [];
+    performNaturesGrace(civ, caster, target, log);
+    if (log.length) appendAIActionLog(gameState, civ.id, log);
+    return true;
   }
 
   /** Elf "Nature's Grace" AI: heals the most-injured ally within the
@@ -6390,6 +6437,8 @@ window.GameEngine = window.GameEngine || {};
     targetUnit._renderX = landing.x;
     targetUnit._renderY = landing.y;
     targetUnit._animStart = 0;
+    window.SfxSystem.playAction(civ.raceId, "druid", "blink", landing.x, landing.y);
+    window.GameEngine.combat.spawnAreaEffect(landing.x, landing.y, 0, "roots_teleport");
     druid.usedThisTurn = true;
     if (targetUnit !== druid) targetUnit.usedThisTurn = true;
     if (targetUnit === druid) {
@@ -6610,6 +6659,10 @@ window.GameEngine = window.GameEngine || {};
     druid.currentMission = `Summoned a ${unitId} at (${spawned.x},${spawned.y})`;
     log.push(`Summon: ${civ.id}'s Druid summons a ${unitId} at (${spawned.x},${spawned.y})`);
     window.GameEngine.quips.maybeQuip(druid, civ, unitId === "raptor" ? "summon_raptor" : "summon_shadowsteed", gameState);
+    window.SfxSystem.playAction(civ.raceId, "druid", unitId === "raptor" ? "summon_raptor" : "summon_shadowsteed", spawned.x, spawned.y);
+    // Poof-of-magic burst on the newly-landed unit's tile -- see
+    // overlays.js's AREA_EFFECT_GLYPHS.summon.
+    window.GameEngine.combat.spawnAreaEffect(spawned.x, spawned.y, 0, "summon");
     return true;
   }
 
@@ -6721,6 +6774,8 @@ window.GameEngine = window.GameEngine || {};
     bogWitch.usedThisTurn = true;
     bogWitch.currentMission = `Summoned a Wisp at (${targetX},${targetY})`;
     log.push(`Summon: ${civ.id}'s Bog Witch summons a Wisp at (${targetX},${targetY})`);
+    window.SfxSystem.playAction(civ.raceId, "bog_witch", "summon_wisp", targetX, targetY);
+    window.GameEngine.combat.spawnAreaEffect(targetX, targetY, 0, "summon");
     return true;
   }
 
@@ -6909,6 +6964,12 @@ window.GameEngine = window.GameEngine || {};
     troubleMaker.usedThisTurn = true;
     troubleMaker.currentMission = `Set a ${trapKind} trap at (${targetX},${targetY})`;
     log.push(`Set the Trap: ${civ.id}'s Trouble Maker sets a ${trapKind} trap at (${targetX},${targetY})`);
+    // sfx only -- deliberately NO spawnAreaEffect burst here, unlike every
+    // other summon: the trap is permanently Hidden from the instant it
+    // exists, and spawnAreaEffect's queue isn't civ-scoped (see overlays.js's
+    // drawAreaEffects), so a visible poof would betray its exact tile to
+    // anyone with eyes on the map -- defeating the whole point of Hidden.
+    window.SfxSystem.playAction(civ.raceId, "trouble_maker", "set_trap", targetX, targetY);
     return true;
   }
 
@@ -11664,6 +11725,8 @@ window.GameEngine = window.GameEngine || {};
       const curse = window.GameData.getUnit("bog_witch").curseOnDeath;
       if (curse) {
         setCondition(attackerUnit, "curse", { attackMult: curse.attackMult, moveMult: curse.moveMult, expiresAtTurn: turn + curse.duration });
+        window.SfxSystem.playAction(defenderCiv.raceId, "bog_witch", "curse", attackerUnit.x, attackerUnit.y);
+        window.GameEngine.combat.spawnAreaEffect(attackerUnit.x, attackerUnit.y, 0, "curse");
       }
     }
     // Malefic Malediction: a Bog Witch curses whatever she hits, kill or not
@@ -11675,6 +11738,8 @@ window.GameEngine = window.GameEngine || {};
     if (attackerUnit.typeId === "bog_witch" && !result.fullNegated && !result.fullMissed &&
         attackerCiv.unlockedMechanics && attackerCiv.unlockedMechanics.has("malefic_malediction")) {
       setCondition(defenderUnit, "curse", { attackMult: 0.5, moveMult: 0.5, expiresAtTurn: turn + CURSE_DURATION });
+      window.SfxSystem.playAction(attackerCiv.raceId, "bog_witch", "curse", defenderUnit.x, defenderUnit.y);
+      window.GameEngine.combat.spawnAreaEffect(defenderUnit.x, defenderUnit.y, 0, "curse");
     }
     // Violent Momentum: the attacker gets +2 movement, +10% First Strike and
     // +10% Double Strike next turn if this hit actually killed the defender.
@@ -11789,6 +11854,13 @@ window.GameEngine = window.GameEngine || {};
     defeatedUnit.maxHp = window.GameData.unitMaxHP(zAttack, zDefense, defeatedUnit.typeId);
     defeatedUnit.hp = defeatedUnit.maxHp;
     victorCiv.units.push(defeatedUnit);
+    // sfx reuses the "skeleton"/"raise_dead" taxonomy entry regardless of
+    // defeatedUnit's own typeId (which stays whatever it was in life, e.g.
+    // a raised Spearguard is still typeId "spearguard") -- Undead's own
+    // flagship unit stands in for "something rose from the dead" generically
+    // rather than needing a raise_dead row for every unit in the game.
+    window.SfxSystem.playAction(victorCiv.raceId, "skeleton", "raise_dead", defeatedUnit.x, defeatedUnit.y);
+    window.GameEngine.combat.spawnAreaEffect(defeatedUnit.x, defeatedUnit.y, 0, "zombie_raise");
     return true;
   }
 
@@ -11928,6 +12000,8 @@ window.GameEngine = window.GameEngine || {};
     isValidForestTeleportTile,
     performPlayerDruidTeleport,
     performPlayerWizardTeleport,
+    performPlayerNaturesGrace,
+    hasRangedLineOfSight,
     performPlayerFireball,
     performPlayerRiddle,
     performPlayerResourceHeist,
