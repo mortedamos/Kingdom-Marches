@@ -424,10 +424,11 @@ html, body {
      modifier class that sidebar.js's render() sets on this element every
      redraw from gameState.civs[humanCivId].raceId (or "spectator" when
      there's no human civ). The default source below is only what shows
-     before the first render() call ever runs. No border on the right --
-     that edge sits flush against the viewport edge, same as the plain 1px
-     divider this replaced. */
-  border-width: 16px 0 16px 16px;
+     before the first render() call ever runs. Border on all four sides --
+     each SVG already draws right-edge/right-corner art (mirrored, not
+     just left/top/bottom), so a right:0 border was hiding art that was
+     always there rather than actually saving space. */
+  border-width: 16px;
   border-style: solid;
   border-image-slice: 20;
   border-image-repeat: round;
