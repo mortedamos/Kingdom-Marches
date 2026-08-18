@@ -3,7 +3,7 @@
  * ------------
  * Full implementation of the music addendum's spec:
  *  - File convention: <race>_<situation>_<#>.mp3 in assets/music/
- *  - Situations: default, combat -- priority combat > default
+ *  - Situations: default only
  *  - Up to 3 variants per race/situation, no-repeat cycling
  *  - Missing files never crash -- logged to console, gracefully skipped
  *  - A track that fails to play is never retried this session
@@ -22,7 +22,7 @@ window.MusicSystem = (function () {
   // "victory": <race>_victory_#.mp3, scanned and resolved exactly like every
   // other per-race situation below -- no special casing needed there, only
   // in resolveCurrent's priority order (see notifyVictory/victoryRace).
-  const SITUATIONS = ["default", "combat", "neutral", "victory"];
+  const SITUATIONS = ["default", "neutral", "victory"];
   const MAX_VARIANTS = 3;
   const LOOP_PAUSE_MS = 1500; // fixed ~1-2s pause between same-situation loops
   const FADE_MS = 2500; // "a few seconds" crossfade, each direction
@@ -159,8 +159,8 @@ window.MusicSystem = (function () {
    *
    *  Split into a CRITICAL tier ("default" situation for every racesInPlay
    *  race, plus the race-less "neutral" tracks) that the returned promise
-   *  waits on, and a BACKGROUND tier (combat/victory) that keeps scanning
-   *  afterward without blocking the loading screen. "default" is
+   *  waits on, and a BACKGROUND tier (victory) that keeps scanning afterward
+   *  without blocking the loading screen. "default" is
    *  what's actually playing the instant a game starts, and "neutral" is
    *  what spectator mode needs before any race-specific situation applies
    *  (see resolveSpectatorTrack). onProgress(done, total) fires only for the
@@ -244,9 +244,8 @@ window.MusicSystem = (function () {
    *  order (1, 2, 3, back to 1...) before any one repeats, so a variant can
    *  never be starved the way a random no-immediate-repeat pick could.
    *  `lastVariantPlayed` is keyed per race+situation and persists across
-   *  situation changes (module-level, not reset), so returning to "default"
-   *  after a combat interruption resumes the rotation where it left off
-   *  rather than restarting at variant 1. */
+   *  different plays, so the rotation resumes where it left off rather than
+   *  restarting at variant 1. */
   function pickVariant(race, situation) {
     const pairKey = `${race}_${situation}`;
     const variants = availableVariants(race, situation);
@@ -447,19 +446,11 @@ window.MusicSystem = (function () {
   }
 
   /**
-   * Public: notify the system a situation has started/ended.
-   * situation: "combat" | null (null = situation ended, return to default)
-   * Priority: combat > default, per the music addendum §2.
+   * Public: reserved for future use (currently unused; music always plays in
+   * the default situation). Keep the function signature for API stability.
    */
-  let combatActive = false;
-
   function notifySituation(situation, isActive) {
-    if (situation === "combat") combatActive = isActive;
-    const resolved = combatActive ? "combat" : "default";
-    if (resolved !== activeSituation) {
-      activeSituation = resolved;
-      refreshNowPlaying();
-    }
+    // No-op: all music plays in the default situation
   }
 
   /** Public: a civ has won -- switch to that race's victory theme (see
@@ -555,9 +546,9 @@ window.MusicSystem = (function () {
     loadPersistedVolumes();
     await scanAvailability(racesInPlay, onProgress);
     // Only the critical tier (see scanAvailability's doc comment) has
-    // settled by this point -- background situations (combat/victory) are
-    // still being scanned, so these counts will keep rising afterward as
-    // those settle too.
+    // settled by this point -- background situations (victory) are still
+    // being scanned, so these counts will keep rising afterward as those
+    // settle too.
     console.log("[music] critical availability scan complete:",
       [...availability.entries()].filter(([, v]) => v).length, "tracks found so far,",
       [...availability.entries()].filter(([, v]) => !v).length, "missing so far (expected -- this is a prototype with no real mp3 files)");

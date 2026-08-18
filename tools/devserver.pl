@@ -52,7 +52,11 @@ sub read_line_with_timeout {
     }
 }
 
-my $port = shift(@ARGV) || 8777;
+# PORT env var takes priority so the harness can assign a free port when
+# 8777 is already claimed by another session's copy of this same server
+# (autoPort in .claude/launch.json) -- an explicit CLI arg still works for
+# manual `perl tools/devserver.pl <port>` runs outside that harness.
+my $port = $ENV{PORT} || shift(@ARGV) || 8777;
 
 my %TYPES = (
     html => 'text/html; charset=utf-8',

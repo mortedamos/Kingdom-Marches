@@ -1583,8 +1583,8 @@ window.UI = window.UI || {};
   // trying to make a wide (42%-of-tile) atmospheric wash read as soft
   // rather than as its own competing band, the user asked for a much
   // simpler model instead -- a thin blend right at the seam, nothing
-  // more. 0.15 (15% of the tile) is that seam, not a wash.
-  const TERRAIN_BLEND_FADE_FRACTION = 0.15;
+  // more. 0.10 (10% of the tile) is that seam, not a wash.
+  const TERRAIN_BLEND_FADE_FRACTION = 0.10;
   const TERRAIN_FRINGE_CACHE_CAP = 600; // generous; see doc comment above on why this stays small in practice
   let directionalMasks = null;
   const terrainFringeCache = new Map();
@@ -1678,7 +1678,7 @@ window.UI = window.UI || {};
   // fringe's 0.42) and much lower peak alphas, so it reads as a faint
   // crease rather than a wash competing with the color blend for the
   // same pixels.
-  const AO_FADE_FRACTION = 0.15;
+  const AO_FADE_FRACTION = 0.10;
   // DISABLED (2026-08-18, user-directed): the user asked to replace the
   // whole wide-wash blend model with a much simpler thin-seam-only
   // design (see TERRAIN_BLEND_FADE_FRACTION above). AO was a separate

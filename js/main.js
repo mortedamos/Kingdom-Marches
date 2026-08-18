@@ -2444,11 +2444,6 @@
       const civ = gameState.civs[humanCivId];
       const finishedTechId = civ.lastCompletedTech;
       civ.lastCompletedTech = null;
-      const before = pendingPreUnitCounts ? pendingPreUnitCounts[civ.id] : civ.units.length;
-      const dropped = civ.units.length < before;
-      window.MusicSystem.notifySituation("combat", dropped);
-      if (dropped) setTimeout(() => window.MusicSystem.notifySituation("combat", false), 4000);
-
       // Tech-researched / Unit-built announcements (2026-08-06, user-
       // directed): skipped once the game has actually ended THIS round
       // (below) -- nothing left to research or build toward, and the

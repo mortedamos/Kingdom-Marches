@@ -249,7 +249,7 @@ window.GameData.RACES = {
   },
 };
 
-window.GameData.RACE_LIST = Object.keys(window.GameData.RACES);
+window.GameData.RACE_LIST = Object.keys(window.GameData.RACES).filter((r) => r !== "undead");
 
 // Wandering Monsters (see doc/world_encounters_design.md): a minimal race
 // record for the "MONSTERS" pseudo-civ, deliberately NOT inside RACES above
