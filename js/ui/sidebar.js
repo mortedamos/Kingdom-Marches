@@ -18,6 +18,14 @@ window.UI = window.UI || {};
     const humanCiv = civs[viewState.humanCivId];
     const sel = viewState.selection;
 
+    // Gilded frame (see css/style.css's .sidebar.race-* rules): themed per
+    // the human player's kingdom, or the neutral spectator frame when
+    // there's no human civ (spectator mode never favors one AI kingdom
+    // over another). Set every render rather than once, since a loaded
+    // save can hand this a freshly-created container.
+    const raceClass = humanCiv ? humanCiv.raceId : "spectator";
+    container.className = `sidebar race-${raceClass}`;
+
     let html = "";
 
     // Placement mode is modal -- left-click means "put it here" until it

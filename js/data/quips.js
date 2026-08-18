@@ -21,8 +21,9 @@
  *
  * Actions covered are the ones with a real decision point worth a quip:
  * "attack" and "move" (any unit that can do either), "build_road" and
- * "found" (Pioneer, plus any other canFoundCity unit -- Halfellow's
- * Wanderer, Elf's Druid), and a handful of unit-specific ones: "summon_raptor"/
+ * "found" (Pioneer, plus any other canFoundCity unit -- e.g. Elf's Druid;
+ * Halfellow's Wanderer lost this ability 2026-08-17, user-directed), and a
+ * handful of unit-specific ones: "summon_raptor"/
  * "summon_shadowsteed" (Elf Druid, see ai.js startDruidSummon), "seek_target"
  * (Dwarf Runeforged Titan picking a new city to march on, see ai.js
  * maybeTitanMarch), "prospect" (a unit settling in to start a Gold Vein
@@ -678,6 +679,10 @@ window.GameData.UNIT_QUIPS = {
         "Right, brace yourselves, everyone!",
       ],
     },
+    // `found` removed (2026-08-17, user-directed) alongside units.js's
+    // wanderer.canFoundCity removal -- the "found" quip only ever fires for
+    // a canFoundCity unit (see ai.js's maybeFoundCity, the one call site),
+    // so these lines are now permanently unreachable.
     wanderer: {
       attack: [
         "Well, this is unexpected!",
@@ -688,11 +693,6 @@ window.GameData.UNIT_QUIPS = {
         "Off on an adventure, apparently.",
         "Packed light, hoping for the best.",
         "Wandering with purpose, mostly.",
-      ],
-      found: [
-        "What a lovely spot to settle!",
-        "This'll do nicely, I think.",
-        "New home! Kettle's going on.",
       ],
     },
     pony_patrol: {

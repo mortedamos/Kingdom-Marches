@@ -412,6 +412,19 @@ window.GameEngine = window.GameEngine || {};
     unit._channelStash = stash;
   }
 
+  /** Prospecting lore kicker (2026-08-17, user-directed): every channeled
+   *  gathering payout that doesn't already pay lore directly (Ruin Delving
+   *  does, via its own flat coin+lore split, so it's never passed through
+   *  here) also yields 10% of its harvest+coin total as lore, floored at 1
+   *  so even a small payout always trickles a little lore. Applied at the
+   *  call site to each action's own already-multiplier-adjusted gains
+   *  object, not as a civ-wide add-on. */
+  function withProspectingLore(gains) {
+    if (gains.lore) return gains;
+    const total = (gains.harvest || 0) + (gains.coin || 0);
+    return { ...gains, lore: Math.max(1, total * 0.10) };
+  }
+
   /** Delivers unit._channelStash straight to civ.stockpile (NOT
    *  civ.resources) and clears it -- the "cash out" moment, called on a
    *  natural channel end (voluntary stop or exhaustion) only. Deliberately
@@ -723,7 +736,7 @@ window.GameEngine = window.GameEngine || {};
     // Dungeon Delve: a qualifying unit (any race/type, see
     // doc/world_encounters_design.md), channeling for 1+ turns (i.e. every
     // turn after the turn spent explicitly starting the channel), pays out
-    // +3 lore, +3 coin per turn on top of normal city income -- that flat
+    // +9 lore, +9 coin per turn on top of normal city income -- that flat
     // bonus is the tech's ENTIRE resource effect (no per-tile harvest,
     // unlike Dwarf's Prospector's Claim below). The unit still gradually
     // claims the 1-tile radius around itself (see _delveFilledOffsets --
@@ -750,8 +763,9 @@ window.GameEngine = window.GameEngine || {};
         const tile = map.tiles[unit.y * map.width + unit.x];
         if (!tile || !tile.isRuin || unit.channeling !== "delving") continue;
         // Accumulates instead of paying out directly -- see
-        // accumulateChannelStash's doc comment above.
-        accumulateChannelStash(unit, { coin: 3 * marketcraftMult, lore: 3 * marketcraftMult });
+        // accumulateChannelStash's doc comment above. 3x payout (2026-08-17,
+        // user-directed, applies to every prospecting/gathering action).
+        accumulateChannelStash(unit, { coin: 9 * marketcraftMult, lore: 9 * marketcraftMult });
 
         // Ruin encounters: each can fire AT MOST ONCE per Ruin, ever --
         // tracked on the TILE itself (not the unit), so it survives a
@@ -811,7 +825,8 @@ window.GameEngine = window.GameEngine || {};
     // race, gated on the Level 0 "Fishing" tech) -- explicitly started (see
     // ai.js's maybeGalleyFishingPlay / the player's own "Start Fishing"
     // action), same shape as Dungeon Delve above but simpler: a flat
-    // +5 harvest/+2 coin per turn while it stays on a Fish Shoal tile and
+    // +15 harvest/+6 coin per turn (plus a 10%-of-total lore kicker, min 1
+    // -- see withProspectingLore) while it stays on a Fish Shoal tile and
     // keeps channeling, no graduated tiers and no territorial claim. Ends
     // the instant it's no longer on the shoal (moved off, or the shoal was
     // never there -- channeling got cleared elsewhere) or the shoal
@@ -830,8 +845,9 @@ window.GameEngine = window.GameEngine || {};
         continue;
       }
       // Accumulates instead of paying out directly -- see
-      // accumulateChannelStash's doc comment above.
-      accumulateChannelStash(unit, { harvest: 5 * marketcraftMult, coin: 2 * marketcraftMult });
+      // accumulateChannelStash's doc comment above. 3x payout plus the
+      // withProspectingLore kicker (2026-08-17, user-directed).
+      accumulateChannelStash(unit, withProspectingLore({ harvest: 15 * marketcraftMult, coin: 6 * marketcraftMult }));
       if (Math.random() < resourceExhaustionChanceFor(civ)) {
         scheduleResourceRespawn(gameState, tile.resource);
         tile.resource = null;
@@ -847,7 +863,8 @@ window.GameEngine = window.GameEngine || {};
     // race, gated on the canProspect unit-data flag) -- explicitly started
     // via the player's own "Hunt Game"/"Farm Soil" actions (no AI
     // counterpart yet, same as Pioneer's Build Road). Same shape as Galley
-    // Fishing just above: a flat +3 harvest per turn while it stays on its
+    // Fishing just above: a flat +9 harvest per turn (plus a 10%-of-total
+    // lore kicker, min 1 -- see withProspectingLore) while it stays on its
     // resource tile and keeps channeling, no graduated tiers and no
     // territorial claim. Ends the instant it's no longer on a qualifying
     // tile, the tech is no longer unlocked (defense in depth, same check
@@ -863,7 +880,8 @@ window.GameEngine = window.GameEngine || {};
         delete unit._channelStash;
         continue;
       }
-      accumulateChannelStash(unit, { harvest: 3 * marketcraftMult });
+      // 3x payout plus the withProspectingLore kicker (2026-08-17, user-directed).
+      accumulateChannelStash(unit, withProspectingLore({ harvest: 9 * marketcraftMult }));
       if (Math.random() < resourceExhaustionChanceFor(civ)) {
         scheduleResourceRespawn(gameState, tile.resource);
         tile.resource = null;
@@ -881,7 +899,13 @@ window.GameEngine = window.GameEngine || {};
         delete unit._channelStash;
         continue;
       }
-      accumulateChannelStash(unit, { harvest: 3 * marketcraftMult });
+      // Halfellow "Agriculture Culture": a flat resource-yield multiplier on
+      // ordinary farming, same additive-fraction shape as Mine Vein's
+      // prospectors_claim_yield/deep_mines_yield just below (1 + the tech's
+      // own mechanicValues entry).
+      const farmYieldMult = 1 + (civ.mechanicValues?.agriculture_culture || 0);
+      // 3x payout plus the withProspectingLore kicker (2026-08-17, user-directed).
+      accumulateChannelStash(unit, withProspectingLore({ harvest: 9 * farmYieldMult * marketcraftMult }));
       if (Math.random() < resourceExhaustionChanceFor(civ)) {
         scheduleResourceRespawn(gameState, tile.resource);
         tile.resource = null;
@@ -916,7 +940,8 @@ window.GameEngine = window.GameEngine || {};
       const yieldMult = 1
         + (civ.mechanicValues?.prospectors_claim_yield || 0)
         + (civ.mechanicValues?.deep_mines_yield || 0);
-      accumulateChannelStash(unit, { coin: 3 * yieldMult * marketcraftMult });
+      // 3x payout plus the withProspectingLore kicker (2026-08-17, user-directed).
+      accumulateChannelStash(unit, withProspectingLore({ coin: 9 * yieldMult * marketcraftMult }));
       if (Math.random() < resourceExhaustionChanceFor(civ)) {
         scheduleResourceRespawn(gameState, tile.resource);
         tile.resource = null;
@@ -1593,6 +1618,20 @@ window.GameEngine = window.GameEngine || {};
    * code (which detects "that was their last city" immediately at the
    * moment of destruction, not just on the next sweep) so both paths behave
    * identically -- a civ can be eliminated from either place.
+   *
+   * Also queues a "kingdom eliminated" announcement (2026-08-17,
+   * user-directed) -- put here, the one place both elimination paths
+   * already funnel through, rather than duplicated at each call site, so
+   * neither can forget it. gameState.pendingKingdomEliminations is a plain
+   * array of civIds -- JSON-safe, no savegame.js special-casing needed
+   * (unlike gameState._civTurnCtx) -- drained one at a time by main.js's
+   * redraw() into a "message" dialog. This engine layer has no concept of
+   * "the human player" at all (a civId here is just a civId -- spectator
+   * games have no human civ), so every elimination is queued unconditionally;
+   * main.js's own drain step is what skips the entry when it happens to be
+   * humanCivId, since that case already gets its own richer, dedicated Game
+   * Over screen (see openGameOverDialog/finishRoundBookkeeping's humanLost
+   * branch) instead of this generic announcement.
    */
   function eliminateCiv(gameState, civ) {
     civ.eliminated = true;
@@ -1604,6 +1643,8 @@ window.GameEngine = window.GameEngine || {};
         tile.contestedTurns = 0;
       }
     }
+    gameState.pendingKingdomEliminations = gameState.pendingKingdomEliminations || [];
+    gameState.pendingKingdomEliminations.push(civ.id);
   }
 
   function checkElimination(gameState) {
@@ -1636,21 +1677,43 @@ window.GameEngine = window.GameEngine || {};
     }
   }
 
-  function checkVictory(gameState) {
-    // Elimination victory: last civ standing wins immediately, regardless of
-    // influence share -- no point requiring a territory threshold once every
-    // rival has been wiped out entirely. The "MONSTERS" pseudo-civ (see
-    // doc/world_encounters_design.md) is excluded from both allCivs and
-    // survivors here -- it's permanently non-eliminated (see
-    // checkElimination's own comment above), so without this exclusion
-    // there would always be at least 2 "survivors" (the last real civ plus
-    // Monsters) and elimination victory could never trigger at all.
+  /** Elimination victory only: true once exactly one non-Monster civ remains
+   *  un-eliminated. The "MONSTERS" pseudo-civ (see
+   *  doc/world_encounters_design.md) is excluded from both allCivs and
+   *  survivors -- it's permanently non-eliminated (see checkElimination's
+   *  own comment above), so without this exclusion there would always be at
+   *  least 2 "survivors" (the last real civ plus Monsters) and elimination
+   *  victory could never trigger at all.
+   *
+   *  Pure -- no side effects, unlike checkVictory's territorial branch below
+   *  (which mutates gameState.victoryTracking's once-per-round sustain-turns
+   *  streak) -- so this is safe to call at ANY point mid-round, not just
+   *  from endRound's once-per-round sweep. See ai.js's
+   *  considerAttackOrGarrison, which calls this immediately at the moment a
+   *  city's destruction eliminates its civ (2026-08-17, user-directed:
+   *  "when a city is destroyed, immediately check for military victory"),
+   *  rather than waiting for endRound to eventually notice on its own
+   *  schedule -- letting a human player find out only after clicking End
+   *  Turn, sometimes several of their own actions later. Returns
+   *  { winner, type: "elimination" } or null. */
+  function checkEliminationVictory(gameState) {
     const monsterCivId = window.GameConfig.worldEncounters.monsters.civId;
     const allCivs = Object.values(gameState.civs).filter((civ) => civ.id !== monsterCivId);
     const survivors = allCivs.filter((civ) => !civ.eliminated);
     if (allCivs.length > 1 && survivors.length === 1) {
       return { winner: survivors[0].id, type: "elimination" };
     }
+    return null;
+  }
+
+  function checkVictory(gameState) {
+    // Elimination victory: last civ standing wins immediately, regardless of
+    // influence share -- no point requiring a territory threshold once every
+    // rival has been wiped out entirely. See checkEliminationVictory just
+    // above (also called independently, mid-round, the instant a
+    // destruction causes it).
+    const eliminationResult = checkEliminationVictory(gameState);
+    if (eliminationResult) return eliminationResult;
 
     const { counts, totalClaimable } = window.GameEngine.influence.countTerritory(gameState);
     let leadingCiv = null, leadingShare = 0;
@@ -1686,6 +1749,7 @@ window.GameEngine = window.GameEngine || {};
     runTurn,
     advanceOneUnitStep,
     checkVictory,
+    checkEliminationVictory,
     eliminateCiv,
     VICTORY_SHARE_THRESHOLD,
     VICTORY_SUSTAIN_TURNS,

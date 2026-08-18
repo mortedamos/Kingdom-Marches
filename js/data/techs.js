@@ -1519,7 +1519,9 @@ window.GameData.TECHS = {
   halfellow_arms: {
     id: "halfellow_arms", label: "Wanderer", category: "military", layer: 1, cost: 15,
     prereqs: [], raceOnly: "halfellow",
-    description: "Unlocks the Wanderer, the halfellows' basic melee fighter -- may also found a city, in addition to the normal Pioneer. Also reduces the movement cost of Plains by 0.5.",
+    // Wanderer's ability to found a city removed 2026-08-17, user-directed
+    // (see units.js's wanderer entry) -- description below updated to match.
+    description: "Unlocks the Wanderer, the halfellows' basic melee fighter. Also reduces the movement cost of Plains by 0.5.",
     costBreakdown: { harvest: 15 },
     effects: [
       { type: "unlock_unit", unit: "wanderer" },
@@ -1653,14 +1655,14 @@ window.GameData.TECHS = {
 
   // --- Layer 3 ---
   halfellow_riverboat_trade: {
-    id: "halfellow_riverboat_trade", label: "Riverboat Trade", category: "civic", layer: 3, cost: 38,
+    id: "halfellow_riverboat_trade", label: "Riverboat Trade", category: "civic", layer: 2, cost: 38,
     prereqs: ["halfellow_riverfolk"], raceOnly: "halfellow",
     description: "+0.75 coin per river tile within a city's radius.",
     costBreakdown: { coin: 22, harvest: 16 },
     effects: [{ type: "unlock_feature_bonus", feature: "river", bonus: { coin: 0.75 } }],
   },
   halfellow_nice_day_fishing: {
-    id: "halfellow_nice_day_fishing", label: "Nice Day for Fishing", category: "civic", layer: 3, cost: 38,
+    id: "halfellow_nice_day_fishing", label: "Nice Day for Fishing", category: "civic", layer: 2, cost: 38,
     prereqs: ["halfellow_riverfolk"], raceOnly: "halfellow",
     description: "+0.5 harvest from Rivers.",
     costBreakdown: { lore: 22, coin: 16 },
@@ -1673,6 +1675,22 @@ window.GameData.TECHS = {
     costBreakdown: { lore: 16, coin: 12, harvest: 12 },
     effects: [{ type: "unlock_tile_bonus", terrain: "tundra", bonus: { harvest: 0.35 } }],
   },
+  // New (2026-08-17, user-directed): a Halfellow-only upgrade to the
+  // universal "Farm Soil" channel (see turns.js's farming-channel block,
+  // "hunt_game/farm_soil" -- both Level 0, shared by every race). Gated
+  // behind that shared tech, same "race-specific upgrade to a universal
+  // base mechanic" shape Dwarf's Prospector's Claim/The Deep Mines use for
+  // Mine Vein (see mechanicValues.prospectors_claim_yield/deep_mines_yield,
+  // summed the same additive-fraction way this reads its own
+  // agriculture_culture value). value: 2.0 -- a 200% INCREASE, i.e. the
+  // farming payout becomes 1 + 2.0 = 3x, not 2x.
+  halfellow_agriculture_culture: {
+    id: "halfellow_agriculture_culture", label: "Agriculture Culture", category: "civic", layer: 3, cost: 38,
+    prereqs: ["farm_soil"], raceOnly: "halfellow",
+    description: "Increases resources earned from Farming Fertile Soil by 200%.",
+    costBreakdown: { harvest: 20, coin: 18 },
+    effects: [{ type: "unlock_mechanic", mechanic: "agriculture_culture", value: 2.0 }],
+  },
   halfellow_neighborhood_pub: {
     id: "halfellow_neighborhood_pub", label: "Neighborhood Pub", category: "building", layer: 2, cost: 35,
     prereqs: [], raceOnly: "halfellow",
@@ -1681,7 +1699,7 @@ window.GameData.TECHS = {
     effects: [{ type: "unlock_building", building: "neighborhood_pub" }],
   },
   halfellow_pub_crawl: {
-    id: "halfellow_pub_crawl", label: "Pub Crawl", category: "civic", layer: 3, cost: 40,
+    id: "halfellow_pub_crawl", label: "Pub Crawl", category: "civic", layer: 2, cost: 40,
     prereqs: ["halfellow_neighborhood_pub"], raceOnly: "halfellow",
     description: "+1 coin per building constructed in a city (walls don't count).",
     costBreakdown: { lore: 16, coin: 12, harvest: 12 },
@@ -1691,7 +1709,6 @@ window.GameData.TECHS = {
   // already built in (see ai.js's maybeResourceHeistPlay/
   // maybeUnlockTheGatePlay). Riddle needs its own further tech (The Riddle
   // Game, below) -- unit unlocked first, each spell behind its own tech.
-  // Prereq pub_crawl sits at a higher layer than this tech.
   halfellow_making_trouble: {
     id: "halfellow_making_trouble", label: "Making Trouble", category: "mystic", layer: 2, cost: 45,
     prereqs: ["halfellow_pub_crawl"], raceOnly: "halfellow",
@@ -1742,35 +1759,40 @@ window.GameData.TECHS = {
     // memory.
     // Cut back to 2.00 again, this time paired
     // with a brand-new tool for the same job -- Envoy (below) lets a
-    // Pioneer/Wanderer claim a specific in-radius tile outright in a flat
-    // 2 turns, independent of this multiplier. Dropping this back to 2.00
-    // keeps Envoy meaningfully useful for longer instead of being
-    // immediately dwarfed by a maxed-out passive rate once this tech is
-    // researched.
+    // Pioneer/Wanderer claim a specific in-radius tile outright in a single
+    // turn (originally a flat 2-turn channel; changed to a one-turn action
+    // 2026-08-17, user-directed), independent of this multiplier. Dropping
+    // this back to 2.00 keeps Envoy meaningfully useful for longer instead
+    // of being immediately dwarfed by a maxed-out passive rate once this
+    // tech is researched.
     description: "Gain influence in tiles 100% faster.",
     costBreakdown: { harvest: 20, coin: 18, lore: 17 },
     effects: [{ type: "fill_rate_mult", value: 2.00 }],
   },
-  // A channeled action for Pioneer/Wanderer -- stand on (or adjacent to,
-  // see ai.js's maybeEnvoyPlay) an already-in-
-  // radius, not-yet-owned tile and channel for a flat 2 turns to claim it
-  // outright, independent of the normal fill-rate math -- guaranteed speed
-  // and, critically, lets the player/AI CHOOSE which tile gets priority
-  // instead of waiting on the passive fill order. Small cost so it isn't
-  // spammed for free; deliberately not a big enough cost to matter early.
+  // A one-shot action for Pioneer/Wanderer (2026-08-17: changed from a
+  // 2-turn channel to a single full-turn action, user-directed; see ai.js's
+  // resolveEnvoyClaim/envoyTargetAt and its own ring-menu pill in
+  // orders.js's contextMenuOptions) -- stand on an already-in-radius,
+  // not-yet-owned tile and spend the turn to claim it outright, independent
+  // of the normal fill-rate math -- guaranteed speed and, critically, lets
+  // the player/AI CHOOSE which tile gets priority instead of waiting on the
+  // passive fill order. Small cost so it isn't spammed for free;
+  // deliberately not a big enough cost to matter early.
   halfellow_envoy: {
     id: "halfellow_envoy", label: "Envoy", category: "civic", layer: 4, cost: 30,
     prereqs: [], raceOnly: "halfellow",
-    description: "Pioneer and Wanderer may channel for 2 turns on an already-in-radius, unclaimed tile to claim it outright, independent of the normal gradual fill-in rate.",
+    description: "Pioneer and Wanderer may spend a full turn on an already-in-radius, unclaimed tile to claim it outright, independent of the normal gradual fill-in rate.",
     costBreakdown: { coin: 10, harvest: 8, lore: 6 },
     effects: [{ type: "unlock_mechanic", mechanic: "envoy" }],
   },
   halfellow_hearth_and_homeland: {
     id: "halfellow_hearth_and_homeland", label: "Hearth and Homeland", category: "civic", layer: 4, cost: 50,
     prereqs: [], raceOnly: "halfellow",
-    description: "Heal an extra 10% per turn when resting on a filled-in tile within one of your own cities' borders (not just inside the city itself).",
+    // 25%, minimum 1 point (2026-08-17, user-directed -- was 10% with no
+    // floor of its own; see combat.js's healUnit for the floor).
+    description: "Heal an extra 25% (minimum 1 point) per turn when resting on a filled-in tile within one of your own cities' borders (not just inside the city itself).",
     costBreakdown: { harvest: 26, lore: 24 },
-    effects: [{ type: "unlock_mechanic", mechanic: "hearth_and_homeland", value: 0.10 }],
+    effects: [{ type: "unlock_mechanic", mechanic: "hearth_and_homeland", value: 0.25 }],
   },
   halfellow_historical_society: {
     id: "halfellow_historical_society", label: "Historical Society", category: "building", layer: 3, cost: 52,
@@ -1850,17 +1872,17 @@ window.GameData.TECHS = {
     effects: [{ type: "unlock_mechanic", mechanic: "rouse_the_people" }],
   },
   // "Set the Trap": the Trouble Maker's third
-  // trick, gated behind The Riddle Game as the capstone of its own
-  // sub-tree. Unlocks BOTH trap flavors at once -- the player picks Frost
-  // or Fire per placement, not a separate tech per flavor. Two unlock_unit
-  // effects register both "trap_frost"/"trap_fire"
+  // trick. Gated behind Ice Fishing (2026-08-17, user-directed -- was
+  // gated behind The Riddle Game). Unlocks BOTH trap flavors at once -- the
+  // player picks Frost or Fire per placement, not a separate tech per
+  // flavor. Two unlock_unit effects register both "trap_frost"/"trap_fire"
   // with techForUnit (so unitBuildCost can derive each one's resource split
   // from this tech's shared costBreakdown) even though no city can ever
   // build either -- see units.js's cityBuildable: false, mirrors Orc's Bog
   // Spirit/Wisp pattern exactly.
   halfellow_set_the_trap: {
     id: "halfellow_set_the_trap", label: "Set the Trap", category: "mystic", layer: 3, cost: 90,
-    prereqs: ["halfellow_riddle_game"], raceOnly: "halfellow",
+    prereqs: ["halfellow_ice_fishing"], raceOnly: "halfellow",
     description: "The Trouble Maker may set a Frost Trap or a Fire Trap on any unoccupied tile within its own range. Either trap stays hidden indefinitely -- it is never spotted by normal means, though a splash/area attack that happens to land on it can still catch it by accident, same as any other hidden unit. The instant an enemy unit ends a move adjacent to it, the trap springs: 4 damage plus Frozen (0 movement, -25% attack, 3 turns) for a Frost Trap, or 4 damage plus Burning (1 damage/turn for 3 turns, no effect on Coast/Ocean/river) for a Fire Trap -- then the trap is spent. The Halfellow kingdom may field at most one trap (of either flavor) per living Trouble Maker.",
     costBreakdown: { harvest: 8, coin: 12, lore: 20 },
     effects: [

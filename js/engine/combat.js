@@ -1184,12 +1184,6 @@ window.GameEngine = window.GameEngine || {};
       // Halfellow: +25% heal rate when on any civ-owned tile outside a city
       multiplier = Math.round(multiplier * race.influenceHealMult);
     }
-    if (!inOwnCity && civ.unlockedMechanics?.has("hearth_and_homeland")
-        && window.GameEngine.cities.isTileFilledForCiv(civ, unit.x, unit.y)) {
-      // Halfellow "Hearth and Homeland": bonus heal rate on any filled-in tile
-      // within one of the civ's city borders, not just inside the city itself.
-      multiplier += multiplier * (civ.mechanicValues?.hearth_and_homeland || 0);
-    }
     // Halfellow "Devoted Companions": a carried passenger heals 33% faster
     // than normal -- see turns.js's automatic per-turn passenger heal (the
     // only caller that passes a non-default extraMult).
@@ -1199,8 +1193,26 @@ window.GameEngine = window.GameEngine || {};
     // (e.g. a 3-maxHP Scout resting at the 2x field rate) could round this to
     // 0, which reads as Rest having silently done nothing at all.
     const healAmount = Math.max(1, Math.round((unit.maxHp * pct) / 100));
+
+    // Halfellow "Hearth and Homeland": an extra, separately-floored heal
+    // bonus on any filled-in tile within one of the civ's city borders, not
+    // just inside the city itself. 25%, minimum 1 point (2026-08-17,
+    // user-directed -- was a 10% fold-in on the raw rate MULTIPLIER above,
+    // rolled together with the base heal and with no floor of its own, so a
+    // small early heal could round the whole bonus away to nothing).
+    // Computed as a percentage OF THE BASE HEAL just rolled above (already
+    // reflecting extraMult, same as the base heal does) rather than folded
+    // into the pre-roll multiplier, so it can be floored independently --
+    // same "a real bonus should visibly do SOMETHING" reasoning healAmount's
+    // own floor just above already follows.
+    let hearthBonus = 0;
+    if (!inOwnCity && civ.unlockedMechanics?.has("hearth_and_homeland")
+        && window.GameEngine.cities.isTileFilledForCiv(civ, unit.x, unit.y)) {
+      hearthBonus = Math.max(1, Math.round(healAmount * (civ.mechanicValues?.hearth_and_homeland || 0)));
+    }
+
     const before = unit.hp;
-    unit.hp = Math.min(unit.maxHp, unit.hp + healAmount);
+    unit.hp = Math.min(unit.maxHp, unit.hp + healAmount + hearthBonus);
     window.GameEngine.floatingText.spawnHealGain(unit, unit.hp - before);
     return unit.hp;
   }

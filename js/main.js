@@ -2396,6 +2396,16 @@
   let pendingPreUnitCounts = null;
 
   function finishRoundBookkeeping(victoryResult) {
+    // A leftover gameState.immediateVictoryResult (see checkImmediateVictory)
+    // from earlier this same round, never consumed because some OTHER
+    // dialog kept occupying viewState.dialog's one slot every redraw() until
+    // now -- the natural end-of-round path below is about to handle this
+    // exact same condition fresh (endRound's own checkVictory re-derives it
+    // independently), so clear the stale flag rather than let it linger into
+    // a LATER round and pop a redundant, already-shown "Victory!" once the
+    // player eventually dismisses whatever's up right now.
+    if (victoryResult) gameState.immediateVictoryResult = null;
+
     // Human defeat: two independent ways to
     // lose in single player -- this civ's own elimination (all cities
     // destroyed after founding at least one, or wiped before founding --
@@ -2489,6 +2499,81 @@
     // Fixed game_over.mp3, overriding any situational/victory theme (see
     // music.js's resolveCurrent priority order).
     window.MusicSystem.notifyGameOver();
+  }
+
+  /** Immediate military-victory check (2026-08-17, user-directed): a civ's
+   *  elimination can decide the whole game the instant its last city falls
+   *  -- ai.js's considerAttackOrGarrison stashes the result on
+   *  gameState.immediateVictoryResult right there (see turns.js's
+   *  checkEliminationVictory for why that's safe to compute mid-round), and
+   *  this checks for it at the top of every redraw() so the player sees the
+   *  outcome the instant it happens, rather than having to click End Turn
+   *  first and wait for the round to fully close out.
+   *
+   *  Deferred (left set, tried again next redraw()) rather than shown
+   *  immediately if some OTHER dialog already has viewState.dialog's one
+   *  slot -- same "don't stomp a dialog already up" caution every other
+   *  notice queue in this game already takes care around.
+   *
+   *  Same humanLost priority finishRoundBookkeeping's own victory branch
+   *  uses: if this elimination is what took the human player OUT (their own
+   *  last city fell to someone else, same round), they see the defeat
+   *  screen, never a "Victory!" message for a civ that isn't theirs.
+   *  checkVictory's own once-per-round sweep (turns.js's endRound) still
+   *  independently re-detects this exact same elimination on its normal
+   *  schedule regardless (unchanged) -- this is purely a "tell the player
+   *  sooner" path, not the only path that catches it. */
+  function checkImmediateVictory() {
+    const victoryResult = gameState && gameState.immediateVictoryResult;
+    if (!victoryResult || viewState.dialog) return;
+    gameState.immediateVictoryResult = null;
+    const humanLost = !!humanCivId && victoryResult.winner !== humanCivId
+      && !!gameState.civs[humanCivId]?.eliminated;
+    if (humanLost) {
+      openGameOverDialog(gameState.civs[humanCivId]);
+    } else {
+      clearInterval(autoplayTimer);
+      // Same plain-civId text finishRoundBookkeeping's own elimination-type
+      // victory branch uses ("HUMAN has conquered all rivals!", not the
+      // prettier race label) -- this is that exact same message, just shown
+      // sooner, so it should read identically either way it gets triggered.
+      viewState.dialog = {
+        kind: "message", title: "Victory!",
+        text: `${victoryResult.winner} has conquered all rivals!`,
+      };
+      window.MusicSystem.notifyVictory(gameState.civs[victoryResult.winner].raceId);
+    }
+  }
+
+  /** Kingdom-elimination announcement queue (2026-08-17, user-directed; see
+   *  turns.js's eliminateCiv, the single place every elimination path queues
+   *  into gameState.pendingKingdomEliminations). Drains at most one entry
+   *  per redraw() call, same "defer rather than clobber" caution
+   *  checkImmediateVictory uses -- an entry left in the queue just gets
+   *  picked up again next redraw() rather than lost.
+   *
+   *  Checked AFTER checkImmediateVictory at this function's one call site in
+   *  redraw(): if the SAME civ's elimination just won (or lost) the whole
+   *  game, that dialog already claimed the slot this redraw() and this
+   *  waits its turn -- the elimination notice is still queued, so it shows
+   *  right after the player dismisses the more important one.
+   *
+   *  The human player's own elimination is skipped entirely (not deferred,
+   *  just dropped) -- that already gets its own richer, dedicated Game Over
+   *  screen via checkImmediateVictory/finishRoundBookkeeping's humanLost
+   *  branch, so announcing it a second time here would be redundant. */
+  function checkPendingKingdomEliminations() {
+    const queue = gameState && gameState.pendingKingdomEliminations;
+    if (!queue) return;
+    while (queue.length && queue[0] === humanCivId) queue.shift();
+    if (!queue.length || viewState.dialog) return;
+    const civ = gameState.civs[queue.shift()];
+    if (!civ) return; // defensive -- civ objects are never removed from gameState.civs
+    const race = window.GameData.getRace(civ.raceId);
+    viewState.dialog = {
+      kind: "message", title: "Kingdom Eliminated",
+      text: `${race.label} has been eliminated from the game!`,
+    };
   }
 
   /** "Return to Title Screen" -- a full reload
@@ -3043,6 +3128,15 @@
   }
 
   function redraw() {
+    // Immediate victory/kingdom-elimination checks (2026-08-17,
+    // user-directed) -- run first, before anything else in this function,
+    // so a dialog either one raises is what the very rebuild about to
+    // happen actually reflects, same "settle state before drawing" ordering
+    // the tab-rebuild comment just below already follows for a different
+    // reason. See their own doc comments just above this function.
+    checkImmediateVictory();
+    checkPendingKingdomEliminations();
+
     // Rebuild the selected tile's tab list from live state BEFORE anything
     // draws. The tabs hold direct references to units/cities/structures, any
     // of which can die, move, or be captured between redraws (autoplay does
@@ -4015,7 +4109,8 @@
               text = `${unitLabel} finds a trap, but disarms it.`;
             } else if (result.trapped) {
               title = "It's a Trap!";
-              text = `${unitLabel} springs a ${result.kind} trap: -${result.damage} HP and ${result.kind === "fire" ? "Burning" : "Frozen"}.`;
+              const trapEffectLabel = { fire: "Burning", frost: "Frozen", poison: "Poisoned", befuddle: "Befuddled" }[result.kind];
+              text = `${unitLabel} springs a ${result.kind} trap: -${result.damage} HP and ${trapEffectLabel}.`;
             } else {
               ({ title, text } = describeTreasureFind(unitLabel, result));
               window.SfxSystem.playTreasureChestOpen();
@@ -4024,6 +4119,20 @@
             redraw();
           }
         }
+        break;
+      }
+      case "actAsEnvoy": {
+        // Halfellow "Envoy" -- a full-turn
+        // action now (2026-08-17, was a 2-turn channel): ai.js's
+        // resolveEnvoyClaim does the actual claim (and its own floating-text
+        // confirmation, same "engine function shows its own effect"
+        // convention openChest's reward branch above uses) and
+        // re-validates eligibility itself, since the tile could have been
+        // claimed by something else between when the ring was drawn and
+        // when this click resolves -- no dialog needed, just redraw.
+        const civ = gameState.civs[humanCivId];
+        if (civ) window.GameEngine.ai.resolveEnvoyClaim(civ, unit, gameState);
+        redraw();
         break;
       }
       default:

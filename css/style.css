@@ -419,12 +419,31 @@ html, body {
 .sidebar {
   width: 280px;
   background: var(--bg-panel);
-  border-left: 1px solid var(--border);
+  /* Gilded frame (2026-08-18, user-directed): one border-image per kingdom
+     (see assets/img/sidebar-gilding-<race>.svg), swapped via a `race-*`
+     modifier class that sidebar.js's render() sets on this element every
+     redraw from gameState.civs[humanCivId].raceId (or "spectator" when
+     there's no human civ). The default source below is only what shows
+     before the first render() call ever runs. No border on the right --
+     that edge sits flush against the viewport edge, same as the plain 1px
+     divider this replaced. */
+  border-width: 16px 0 16px 16px;
+  border-style: solid;
+  border-image-slice: 20;
+  border-image-repeat: round;
+  border-image-source: url("../assets/img/sidebar-gilding-human.svg");
   display: flex;
   flex-direction: column;
   overflow-y: auto;
-  padding: 16px;
+  padding: 14px;
 }
+.sidebar.race-human     { border-image-source: url("../assets/img/sidebar-gilding-human.svg"); }
+.sidebar.race-elf       { border-image-source: url("../assets/img/sidebar-gilding-elf.svg"); }
+.sidebar.race-dwarf     { border-image-source: url("../assets/img/sidebar-gilding-dwarf.svg"); }
+.sidebar.race-orc       { border-image-source: url("../assets/img/sidebar-gilding-orc.svg"); }
+.sidebar.race-undead    { border-image-source: url("../assets/img/sidebar-gilding-undead.svg"); }
+.sidebar.race-halfellow { border-image-source: url("../assets/img/sidebar-gilding-halfellow.svg"); }
+.sidebar.race-spectator { border-image-source: url("../assets/img/sidebar-gilding-spectator.svg"); }
 .panel h2 {
   margin: 0 0 12px 0;
   font-size: 20px;

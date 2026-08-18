@@ -356,7 +356,12 @@ window.GameData.UNITS = {
   wanderer: {
     id: "wanderer", label: "Wanderer", symbol: "⚔", category: "military", raceOnly: "halfellow",
     attack: 2, defense: 4, movement: 2, visionRadius: 3,
-    canFoundCity: true, // additional settler option alongside the shared Pioneer -- see halfellow_arms
+    // canFoundCity removed (2026-08-17, user-directed) -- Wanderer settling
+    // was an additional option alongside the shared Pioneer (see
+    // halfellow_arms); every consumer of this flag (orders.js/main.js/
+    // ai.js/sidebar.js/knowledgebase.js) reads it generically off unit
+    // data, so removing it here is the single, complete fix -- no other
+    // code references "wanderer" by name for this.
     coinCost: 15, attackChars: ["🥄", "🪃", "🔪", "🗡", "🎣"],
   },
   pony_patrol: {

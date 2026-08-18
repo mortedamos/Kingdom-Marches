@@ -1,0 +1,57 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96" viewBox="0 0 96 96">
+  <!-- Undead: bone rule, a plain skull at each corner and a row of
+       arch-topped grave markers along the edges. Violet does the eye
+       sockets and the marker glow, so the kingdom color reads at a glance.
+
+       Note: this is the one frame that is mirrored on the horizontal axis
+       ONLY. A tombstone flipped upside down stops reading as a tombstone,
+       so the bottom corners and bottom edge are placed by plain
+       translation and every stone stays arch-up. Nothing is ever rotated. -->
+  <defs>
+    <linearGradient id="mat" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="96" y2="96">
+      <stop offset="0" stop-color="#e6e0d4"/>
+      <stop offset="1" stop-color="#6a655c"/>
+    </linearGradient>
+
+    <g id="stone">
+      <path d="M-3.2,16 L-3.2,10.6 A3.2,3.2 0 0 1 3.2,10.6 L3.2,16 Z"
+            fill="url(#mat)" stroke="#242320" stroke-width="0.7"/>
+      <circle cx="0" cy="12" r="1.3" fill="#5b5470"/>
+    </g>
+
+    <g id="corner">
+      <circle cx="11" cy="10.5" r="5.2" fill="url(#mat)" stroke="#242320" stroke-width="0.8"/>
+      <circle cx="9" cy="9.8" r="1.5" fill="#5b5470"/>
+      <circle cx="13" cy="9.8" r="1.5" fill="#5b5470"/>
+      <rect x="9.2" y="14.6" width="3.6" height="2.6" fill="url(#mat)" stroke="#242320" stroke-width="0.6"/>
+    </g>
+
+    <g id="edgeH">
+      <use href="#stone" transform="translate(9.33,0)"/>
+      <use href="#stone" transform="translate(28,0)"/>
+      <use href="#stone" transform="translate(46.67,0)"/>
+    </g>
+    <g id="edgeV">
+      <use href="#stone" transform="translate(11,-6.67)"/>
+      <use href="#stone" transform="translate(11,12)"/>
+      <use href="#stone" transform="translate(11,30.67)"/>
+    </g>
+  </defs>
+
+  <g fill="none" stroke="url(#mat)" stroke-width="1.4">
+    <path d="M0,3.5 L96,3.5"/>
+    <path d="M0,92.5 L96,92.5"/>
+    <path d="M3.5,0 L3.5,96"/>
+    <path d="M92.5,0 L92.5,96"/>
+  </g>
+
+  <use href="#corner"/>
+  <use href="#corner" transform="translate(96,0) scale(-1,1)"/>
+  <use href="#corner" transform="translate(0,74)"/>
+  <use href="#corner" transform="translate(96,74) scale(-1,1)"/>
+
+  <use href="#edgeH" transform="translate(20,0)"/>
+  <use href="#edgeH" transform="translate(20,74)"/>
+  <use href="#edgeV" transform="translate(0,20)"/>
+  <use href="#edgeV" transform="translate(96,20) scale(-1,1)"/>
+</svg>

@@ -7157,17 +7157,29 @@ window.GameEngine = window.GameEngine || {};
    *  scheduleResourceRespawn pattern every other resource uses on
    *  exhaustion -- a chest is spent the instant it's opened, not via the
    *  per-turn RESOURCE_EXHAUSTION_CHANCE roll every worked-channel resource
-   *  uses), then resolves either a trap (reusing the exact same Frozen/
-   *  Burning + flat damage support as Halfellow's Set the Trap -- see
-   *  checkTrapSpring/TRAP_DAMAGE/FROZEN_DURATION/applyBurning above) or a
-   *  reward (coin/lore banked to civ.stockpile, or XP granted straight to
-   *  the opening unit via applyComputedXP -- same path real combat XP
+   *  uses), then resolves either a trap (one of CHEST_TRAP_KINDS below,
+   *  each just the chest's own flat damage plus a condition that already
+   *  exists elsewhere in the game -- Frozen/Burning reuse Halfellow's Set
+   *  the Trap's own FROZEN_DURATION/applyBurning, Poisoned/Befuddled reuse
+   *  the Marsh Adder's applyPoisoned and Halfellow Riddle's applyBefuddled)
+   *  or a reward (coin/lore banked to civ.stockpile, or XP granted straight
+   *  to the opening unit via applyComputedXP -- same path real combat XP
    *  takes, so any pending level-up queues normally). Returns a result
    *  object; the caller (main.js's handleContextMenuAction) is responsible
    *  for showing a modal with it -- this file has no UI dependency
    *  anywhere else and shouldn't gain one here. Returns null if `unit`
    *  isn't actually standing on a chest (stale ring-menu click, e.g. the
    *  tile's chest was claimed by someone else the same turn). */
+  const CHEST_TRAP_KINDS = ["fire", "frost", "poison", "befuddle"];
+  /** Coin/XP chest rewards (2026-08-17, user-directed): +/-25% variance on
+   *  cfg.rewardAmount, freshly rolled per chest, rounded to the nearest
+   *  whole number -- makes every chest open feel a little less like a
+   *  vending machine. Deliberately NOT applied to Lore or the mapFragment
+   *  reveal (not requested, and a fragment reveal has no `amount` to jitter
+   *  in the first place). */
+  function jitterChestReward(amount) {
+    return Math.round(amount * (1 + (Math.random() * 0.5 - 0.25)));
+  }
   function openTreasureChest(civ, unit, gameState) {
     const { map } = gameState;
     const tile = map.tiles[unit.y * map.width + unit.x];
@@ -7186,22 +7198,32 @@ window.GameEngine = window.GameEngine || {};
       if (unit.typeId === "trouble_maker") {
         return { trapped: true, disarmed: true };
       }
-      const isFire = Math.random() < 0.5;
+      // 2026-08-17, user-directed: 4 equally-likely trap kinds, each just
+      // slapping the chest's existing flat damage/status shape onto a
+      // condition that already exists elsewhere in the game (Marsh Adder's
+      // Poisoned, Halfellow's Riddle-inflicted Befuddled) rather than
+      // inventing anything new.
+      const trapKind = CHEST_TRAP_KINDS[Math.floor(Math.random() * CHEST_TRAP_KINDS.length)];
       unit.hp = Math.max(0, unit.hp - cfg.trapDamage);
       window.GameEngine.floatingText.spawnFloatingText(unit, `-${cfg.trapDamage} (Trapped!)`, "warning");
-      if (isFire) {
+      if (trapKind === "fire") {
         applyBurning(unit, "unit", gameState);
-      } else {
+      } else if (trapKind === "frost") {
         window.GameEngine.combat.setCondition(unit, "frozen", { attackMult: 0.75, expiresAtTurn: (gameState.turnNumber || 0) + FROZEN_DURATION });
+      } else if (trapKind === "poison") {
+        applyPoisoned(unit, gameState);
+      } else {
+        window.GameEngine.combat.applyBefuddled(unit, gameState.turnNumber || 0);
       }
       civ.units = civ.units.filter((u) => u.hp > 0);
-      return { trapped: true, kind: isFire ? "fire" : "frost", damage: cfg.trapDamage };
+      return { trapped: true, kind: trapKind, damage: cfg.trapDamage };
     }
 
     const rewardType = cfg.rewardTypes[Math.floor(Math.random() * cfg.rewardTypes.length)];
     if (rewardType === "xp") {
-      applyComputedXP(unit, civ, cfg.rewardAmount);
-      return { trapped: false, rewardType, amount: cfg.rewardAmount };
+      const amount = jitterChestReward(cfg.rewardAmount);
+      applyComputedXP(unit, civ, amount);
+      return { trapped: false, rewardType, amount };
     }
     if (rewardType === "mapFragment") {
       // See turns.js's revealMapFragment. Falls back to a coin payout if
@@ -7209,12 +7231,19 @@ window.GameEngine = window.GameEngine || {};
       // nothing would be a worse outcome than the trap.
       const revealed = window.GameEngine.turns.revealMapFragment(civ, gameState);
       if (!revealed) {
-        civ.stockpile.coin = (civ.stockpile.coin || 0) + cfg.rewardAmount;
-        window.GameEngine.floatingText.spawnFloatingText(unit, `+${cfg.rewardAmount} coin`, "resource");
-        return { trapped: false, rewardType: "coin", amount: cfg.rewardAmount };
+        const amount = jitterChestReward(cfg.rewardAmount);
+        civ.stockpile.coin = (civ.stockpile.coin || 0) + amount;
+        window.GameEngine.floatingText.spawnFloatingText(unit, `+${amount} coin`, "resource");
+        return { trapped: false, rewardType: "coin", amount };
       }
       window.GameEngine.floatingText.spawnFloatingText(unit, "Map Fragment!", "resource");
       return { trapped: false, rewardType: "mapFragment", revealed };
+    }
+    if (rewardType === "coin") {
+      const amount = jitterChestReward(cfg.rewardAmount);
+      civ.stockpile.coin = (civ.stockpile.coin || 0) + amount;
+      window.GameEngine.floatingText.spawnFloatingText(unit, `+${amount} coin`, "resource");
+      return { trapped: false, rewardType, amount };
     }
     civ.stockpile[rewardType] = (civ.stockpile[rewardType] || 0) + cfg.rewardAmount;
     window.GameEngine.floatingText.spawnFloatingText(unit, `+${cfg.rewardAmount} ${rewardType}`, "resource");
@@ -10666,40 +10695,76 @@ window.GameEngine = window.GameEngine || {};
     return best;
   }
 
+  /** Whether (x,y) is a legal Envoy claim target for `civ` RIGHT NOW: inside
+   *  some city's influence radius, land (not water), and not already filled
+   *  in. Returns { x, y, city, key } (same shape findEnvoyTarget returns) or
+   *  null. Unlike findEnvoyTarget's civ-wide nearest-tile search (AI-only,
+   *  used to pick where to head), this checks one specific tile -- it's the
+   *  ring-menu gate (orders.js's contextMenuOptions) for the player's own
+   *  "Act as Envoy" pill, same manual-trigger convention the mining/farming/
+   *  fishing channels use: the player moves the unit onto the tile
+   *  themselves, and the pill appears once they're standing somewhere
+   *  eligible, same as Mine Vein appearing once a Prospector stands on a
+   *  vein. */
+  function envoyTargetAt(civ, gameState, x, y) {
+    const { map } = gameState;
+    const tile = map.tiles[y * map.width + x];
+    if (!tile || window.GameData.TERRAIN[tile.terrain].isWater) return null;
+    for (const city of civ.cities) {
+      const dx = x - city.x, dy = y - city.y;
+      if (Math.max(Math.abs(dx), Math.abs(dy)) > city.influenceRadius) continue;
+      const key = `${dx},${dy}`;
+      if (city.filledOffsets.has(key)) continue;
+      return { x, y, city, key };
+    }
+    return null;
+  }
+
   /**
-   * Halfellow "Envoy": Pioneer or Wanderer may
-   * channel for a flat 2 turns on an already-in-radius, unclaimed tile to
-   * claim it outright (city.filledOffsets.add, same underlying claim
-   * mechanism organic growth uses) -- independent of the normal gradual
-   * fill-in rate, and lets the AI CHOOSE which tile gets priority instead
-   * of waiting on the passive fill order. Checked as a low priority
+   * Halfellow "Envoy": resolves a claim for `unit` on whichever tile it's
+   * currently standing on -- adds that tile to its city's filledOffsets
+   * outright (the same underlying claim mechanism organic growth uses),
+   * independent of the normal gradual fill-in rate. A full-turn action
+   * (2026-08-17, user-directed -- was a flat 2-turn channel before this):
+   * resolves completely the instant the unit reaches the tile, spending
+   * that whole turn, rather than requiring the unit to sit still channeling
+   * across two MORE turns after arrival.
+   *
+   * Re-derives eligibility via envoyTargetAt rather than trusting a
+   * previously-found target blindly -- the tile could have been claimed by
+   * organic growth, Spread Culture, or another Envoy the very same civ-turn
+   * between when a target was first found and when this actually runs, same
+   * "don't trust a stale lookup" reasoning main.js's castFlight
+   * re-validation uses. Spawns its own floating-text confirmation, same
+   * "the engine function that has the visible effect shows it" convention
+   * cities.js's applyCultureSpread and openTreasureChest's reward branch
+   * already use -- shared as-is by maybeEnvoyPlay (AI, additionally appends
+   * its own log line) and main.js's "actAsEnvoy" ring handler (player).
+   * Returns the resolved { x, y, city } on success, or null if `unit`'s
+   * current tile no longer qualifies (stale ring click, or the AI's target
+   * turned out to already be gone).
+   */
+  function resolveEnvoyClaim(civ, unit, gameState) {
+    const target = envoyTargetAt(civ, gameState, unit.x, unit.y);
+    if (!target) return null;
+    target.city.filledOffsets.add(target.key);
+    unit.usedThisTurn = true;
+    unit.currentMission = `Acted as Envoy, claiming (${target.x},${target.y})`;
+    window.GameEngine.floatingText.spawnFloatingText(unit, "Claimed for " + target.city.name, "resource");
+    return { x: target.x, y: target.y, city: target.city };
+  }
+
+  /**
+   * Halfellow "Envoy": Pioneer or Wanderer heads for the nearest
+   * already-in-radius, unclaimed tile and claims it in one turn once there
+   * (see resolveEnvoyClaim) -- lets the AI CHOOSE which tile gets priority
+   * instead of waiting on the passive fill order. Checked as a low priority
    * (secondary to settling/fighting) opportunistic action for an otherwise
    * idle Pioneer/Wanderer -- see its call sites in maybeFoundCity (Pioneer)
    * and runUnitTurn (Wanderer). Returns true if it consumed the turn. */
   function maybeEnvoyPlay(civ, unit, gameState, log) {
     if (civ.raceId !== "halfellow" || !civ.unlockedMechanics || !civ.unlockedMechanics.has("envoy")) return false;
     if (unit.typeId !== "pioneer" && unit.typeId !== "wanderer") return false;
-
-    if (unit.channeling === "envoy") {
-      const stayedPut = unit.x === unit._envoyX && unit.y === unit._envoyY;
-      if (!stayedPut) { unit.channeling = null; unit._envoyTurns = 0; return false; }
-      unit._envoyTurns = (unit._envoyTurns || 0) + 1;
-      if (unit._envoyTurns >= 2) {
-        const city = unit._envoyCity;
-        if (city && civ.cities.includes(city)) {
-          city.filledOffsets.add(unit._envoyKey);
-          log.push(`Envoy: ${civ.id}'s ${describeUnit(unit)} claims (${unit.x},${unit.y}) for ${city.name}`);
-        }
-        unit.channeling = null;
-        unit._envoyTurns = 0;
-        unit._envoyCity = null;
-      } else {
-        unit.currentMission = `Acting as Envoy, claiming this tile (${unit._envoyTurns}/2 turns)`;
-      }
-      unit.resting = true;
-      unit.usedThisTurn = true;
-      return true;
-    }
 
     const target = findEnvoyTarget(civ, unit, gameState);
     if (!target) return false;
@@ -10709,15 +10774,9 @@ window.GameEngine = window.GameEngine || {};
       unit.currentMission = `Heading to act as Envoy at (${target.x},${target.y})`;
       return true;
     }
-    unit.channeling = "envoy";
-    unit._envoyTurns = 0;
-    unit._envoyX = unit.x;
-    unit._envoyY = unit.y;
-    unit._envoyCity = target.city;
-    unit._envoyKey = target.key;
-    unit.resting = true;
-    unit.usedThisTurn = true;
-    unit.currentMission = "Settling in to act as Envoy";
+    const result = resolveEnvoyClaim(civ, unit, gameState);
+    if (!result) return false; // stale target (claimed by something else this same civ-turn) -- fall through
+    log.push(`Envoy: ${civ.id}'s ${describeUnit(unit)} claims (${result.x},${result.y}) for ${result.city.name}`);
     return true;
   }
 
@@ -11375,6 +11434,19 @@ window.GameEngine = window.GameEngine || {};
         if (bestCity.civ.hasFoundedCity && bestCity.civ.cities.length === 0 && !bestCity.civ.eliminated) {
           window.GameEngine.turns.eliminateCiv(gameState, bestCity.civ);
           log.push(`${bestCity.civ.id} has been eliminated!`);
+          // Immediate military-victory check (2026-08-17, user-directed:
+          // "when a city is destroyed, immediately check for military
+          // victory"): this elimination can decide the whole game right
+          // here -- don't make the player wait for End Turn to find out.
+          // checkEliminationVictory is cheap and side-effect-free (see its
+          // own doc comment), unlike checkVictory's territorial branch, so
+          // it's safe to call mid-turn like this; the once-per-round sweep
+          // in endRound still independently re-checks both win conditions
+          // on its normal schedule regardless. gameState.immediateVictoryResult
+          // is a plain, JSON-safe field (no savegame.js special-casing
+          // needed) -- main.js's redraw() checks it every call and shows
+          // the Victory/Defeat dialog the instant it's set.
+          gameState.immediateVictoryResult = window.GameEngine.turns.checkEliminationVictory(gameState);
         }
         unit.currentMission = `Razed ${bestCity.civ.id}'s city to the ground`;
       } else if (result.populationLost) {
@@ -12157,6 +12229,9 @@ window.GameEngine = window.GameEngine || {};
     maybeDungeonDelvePlay,
     openTreasureChest,
     maybeOpenChestPlay,
+    envoyTargetAt,
+    resolveEnvoyClaim,
+    maybeEnvoyPlay,
     ensureMonsterCiv,
     maybeSpawnMonster,
     seedInitialMonsters,
