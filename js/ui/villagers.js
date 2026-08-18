@@ -169,7 +169,13 @@ window.UI = window.UI || {};
    *  gameState.map. */
   function tick(visibleCities, map) {
     const now = performance.now();
-    const dt = lastFrameMs === null ? 0 : Math.min(0.1, (now - lastFrameMs) / 1000);
+    // Reduced motion freezes every figure in place (dt forced to 0, same
+    // technique as clouds.js's render()) rather than hiding them -- a
+    // static ambient figure is still useful "this tile is worked" detail,
+    // it just doesn't move. Also pauses new spawns (elapsed doesn't
+    // advance), which is an acceptable side effect of a fully frozen scene.
+    const reduced = window.UI.motion && window.UI.motion.isReduced();
+    const dt = (lastFrameMs === null || reduced) ? 0 : Math.min(0.1, (now - lastFrameMs) / 1000);
     lastFrameMs = now;
     elapsed += dt;
 

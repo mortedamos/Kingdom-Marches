@@ -482,6 +482,14 @@ window.UI = window.UI || {};
    * across zoom levels/camera distance.
    */
   function getUnitShakeOffset(unit, ts, now) {
+    // Screen-shake-style jitter is exactly the category
+    // prefers-reduced-motion exists for (vestibular triggers), unlike the
+    // combat slash glyph and death fade this module also draws -- those
+    // stay on unconditionally since they're the only visual record a
+    // discrete attack/death happened, not ambient motion. Sprite/HP-bar/
+    // condition-badge positions still key off this same unit -- returning
+    // zero just means they land at the unit's un-jittered position.
+    if (window.UI.motion && window.UI.motion.isReduced()) return { x: 0, y: 0 };
     let ox = 0, oy = 0;
     for (const a of activeCombatAnims) {
       const isAttacker = a.atkUnit === unit;
@@ -719,36 +727,41 @@ window.UI = window.UI || {};
     const phase = conditionEffectPhase(unit);
     const frame = unitSprite ? window.UI.sprites.currentFrame(unitSprite.manifest, "idle", unit) : null;
     const image = unitSprite ? unitSprite.image : null;
+    // Reduced motion: hold each condition tint at its formula's own base
+    // (mid-cycle) alpha instead of oscillating -- the tint itself still
+    // communicates "this unit is burning/frozen/etc", it just stops
+    // flickering/throbbing/pulsing.
+    const reduced = window.UI.motion && window.UI.motion.isReduced();
     if (unit.conditions.zombie) {
       tintSprite(ctx, image, frame, boxX, boxY, boxSize, ZOMBIE_TINT_COLOR, 0.45);
     }
     if (unit.conditions.burning) {
-      const flicker = 0.35 + 0.25 * Math.sin(now / 90 + phase) + 0.15 * Math.sin(now / 37 + phase * 1.7);
+      const flicker = reduced ? 0.35 : 0.35 + 0.25 * Math.sin(now / 90 + phase) + 0.15 * Math.sin(now / 37 + phase * 1.7);
       tintSprite(ctx, image, frame, boxX, boxY, boxSize, BURNING_TINT_COLOR, Math.max(0.15, Math.min(0.7, flicker)));
     }
     if (unit.conditions.frozen) {
-      const flicker = 0.30 + 0.20 * Math.sin(now / 140 + phase * 1.3);
+      const flicker = reduced ? 0.30 : 0.30 + 0.20 * Math.sin(now / 140 + phase * 1.3);
       tintSprite(ctx, image, frame, boxX, boxY, boxSize, FROZEN_TINT_COLOR, Math.max(0.15, Math.min(0.55, flicker)));
     }
     if (unit.conditions.webbed) {
       // Slow, low-amplitude breathing rather than burning/frozen's shimmer --
       // a web is a physical binding, not an elemental effect, so it should
       // read as "stuck" rather than "flickering."
-      const pulse = 0.30 + 0.08 * Math.sin(now / 260 + phase);
+      const pulse = reduced ? 0.30 : 0.30 + 0.08 * Math.sin(now / 260 + phase);
       tintSprite(ctx, image, frame, boxX, boxY, boxSize, WEB_TINT_COLOR, Math.max(0.22, Math.min(0.38, pulse)));
     }
     if (unit.conditions.poisoned) {
       // A queasy, uneven throb -- distinct from Web's slow steady pulse and
       // from Burning's fast flicker -- reads as "sickened," not "on fire"
       // or "bound."
-      const throb = 0.30 + 0.14 * Math.sin(now / 170 + phase) + 0.06 * Math.sin(now / 63 + phase * 2.1);
+      const throb = reduced ? 0.30 : 0.30 + 0.14 * Math.sin(now / 170 + phase) + 0.06 * Math.sin(now / 63 + phase * 2.1);
       tintSprite(ctx, image, frame, boxX, boxY, boxSize, POISON_TINT_COLOR, Math.max(0.18, Math.min(0.5, throb)));
     }
     if (unit.conditions.curse) {
       // Slow, deep-purple pulse -- a hex settling in rather than an
       // elemental effect, so it reads closer to Web's steady bind than to
       // Burning/Poison's frantic flicker.
-      const pulse = 0.28 + 0.12 * Math.sin(now / 300 + phase);
+      const pulse = reduced ? 0.28 : 0.28 + 0.12 * Math.sin(now / 300 + phase);
       tintSprite(ctx, image, frame, boxX, boxY, boxSize, CURSE_TINT_COLOR, Math.max(0.16, Math.min(0.4, pulse)));
     }
   }
@@ -771,7 +784,11 @@ window.UI = window.UI || {};
     if (window.GameEngine.combat.pendingLevelUps(unit) <= 0) return;
     const cx = boxX + boxSize / 2, cy = boxY + boxSize / 2;
     const phase = conditionEffectPhase(unit);
-    const pulse = 0.6 + 0.4 * Math.sin(now / 320 + phase);
+    // Reduced motion: draw the glow at its steady-state brightness instead
+    // of the sin() pulse -- still visible (a level-up is available, that's
+    // real information), just not animating.
+    const reduced = window.UI.motion && window.UI.motion.isReduced();
+    const pulse = reduced ? 1 : 0.6 + 0.4 * Math.sin(now / 320 + phase);
     ctx.save();
     ctx.globalCompositeOperation = "lighter";
     const r = boxSize * 0.68;
@@ -821,6 +838,13 @@ window.UI = window.UI || {};
    *  toward its upper-right corner the way a glint catches one edge of an
    *  object rather than its center. */
   function drawChestSparkle(ctx, tile, boxX, boxY, sz, now) {
+    // Reduced motion: a constant low-key glint instead of the catch-your-
+    // eye burst cycle -- still marks the chest as glinting, just not by
+    // flashing on and off.
+    if (window.UI.motion && window.UI.motion.isReduced()) {
+      drawSparkleMark(ctx, boxX + sz * 0.78, boxY + sz * 0.22, sz * 0.22 * 0.5, 0.5);
+      return;
+    }
     const phase = tileEffectPhase(tile);
     const t = (now + phase * 1000) % CHEST_SPARKLE_CYCLE_MS;
     if (t > CHEST_SPARKLE_BURST_MS) return;
@@ -840,11 +864,15 @@ window.UI = window.UI || {};
     const phase = conditionEffectPhase(unit);
     const orbitR = boxSize * 0.58;
     const count = 4;
+    // Reduced motion: park all 4 sparkles at fixed positions, full and
+    // steady, instead of orbiting + twinkling -- still reads as "this unit
+    // can level up", just not animating.
+    const reduced = window.UI.motion && window.UI.motion.isReduced();
     for (let i = 0; i < count; i++) {
-      const angle = now / 1100 + phase + (i / count) * Math.PI * 2;
+      const angle = (reduced ? 0 : now / 1100) + phase + (i / count) * Math.PI * 2;
       const sx = cx + Math.cos(angle) * orbitR;
       const sy = cy + Math.sin(angle) * orbitR * 0.82;
-      const twinkle = Math.max(0, Math.sin(now / 240 + phase * 3 + i * 2.1));
+      const twinkle = reduced ? 0.85 : Math.max(0, Math.sin(now / 240 + phase * 3 + i * 2.1));
       if (twinkle < 0.12) continue; // fully invisible beat -- skip the draw so it reads as twinkling, not just pulsing
       drawSparkleMark(ctx, sx, sy, boxSize * 0.1 * twinkle, twinkle);
     }

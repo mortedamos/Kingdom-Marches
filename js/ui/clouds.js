@@ -323,7 +323,13 @@ window.UI = window.UI || {};
     const now = performance.now();
     // First frame has no previous timestamp; a backgrounded tab can return
     // a huge gap. Clamp both so clouds never teleport across the screen.
-    const dt = lastFrameMs === null ? 0 : Math.min(0.1, (now - lastFrameMs) / 1000);
+    // Reduced motion holds clouds at their current position (dt forced to
+    // 0) rather than hiding them -- they're still useful atmosphere, they
+    // just stop drifting. lastFrameMs still advances every frame so
+    // toggling back to full motion doesn't replay a huge stored gap as one
+    // jump.
+    const reduced = window.UI.motion && window.UI.motion.isReduced();
+    const dt = (lastFrameMs === null || reduced) ? 0 : Math.min(0.1, (now - lastFrameMs) / 1000);
     lastFrameMs = now;
     elapsed += dt;
 

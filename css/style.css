@@ -1,3 +1,36 @@
+/* Cinzel display face, self-hosted (2026-08-18) -- previously pulled from
+   the Google Fonts CDN, the one external network dependency in an
+   otherwise fully offline, no-build game; offline it silently degraded to
+   the Georgia fallback below. Two files (not the usual single static
+   weight file) because these ARE Google's real served files for a
+   combined 400/700/900 request -- Google multiplexes one variable-weight
+   font across all three nominal @font-face blocks rather than shipping 3
+   separate static instances, and modern browsers resolve the requested
+   font-weight against the file's own wght axis. `font-weight: 400 900` is
+   a RANGE, matching that -- collapsing it to a single fixed weight would
+   silently flatten every bold/black heading back to regular. latin-ext
+   loads first per CSS's normal fallback order (later rule = higher
+   priority for the same unicode-range overlap is irrelevant here; both
+   are needed since they cover disjoint code points, see each
+   unicode-range). Licensed OFL-1.1 -- see assets/fonts/OFL.txt, credited
+   in credits.txt. */
+@font-face {
+  font-family: "Cinzel";
+  font-style: normal;
+  font-weight: 400 900;
+  font-display: swap;
+  src: url("../assets/fonts/cinzel-latin-ext-variable.woff2") format("woff2");
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+@font-face {
+  font-family: "Cinzel";
+  font-style: normal;
+  font-weight: 400 900;
+  font-display: swap;
+  src: url("../assets/fonts/cinzel-latin-variable.woff2") format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
 :root {
   --bg-dark: #14171c;
   --bg-panel: #1d2128;
@@ -135,6 +168,16 @@ html, body {
 }
 @keyframes loading-spin {
   to { transform: rotate(360deg); }
+}
+/* Reduced motion (js/ui/motion.js stamps this attribute on <html>,
+   resolving the in-game Auto/Full/Reduced control against the OS
+   prefers-reduced-motion query -- see that module's doc comment for why
+   this is NOT a plain @media query): freeze the spin, keep the ring
+   itself visible as a static "loading" indicator rather than removing it
+   -- it's still communicating real state, just not by rotating. */
+:root[data-motion-reduced="true"] .loading-spinner {
+  animation: none;
+  border-top-color: rgba(201, 168, 87, 0.9);
 }
 .loading-status {
   margin: 20px 0 0 0;
@@ -467,6 +510,55 @@ html, body {
 }
 .stat-row span:first-child { color: var(--text-dim); }
 .stat-row span:last-child { color: var(--text-main); font-weight: bold; }
+/* Kingdom panel's per-resource economy grid (2026-08-18) -- replaces the
+   old "Income (H / C / L)" triple-value rows, which forced the player to
+   hold a legend in their head and parse three numbers out of one string.
+   One row per resource with its own icon instead. economy-grid-stock adds
+   a 4th value column when a stockpile figure is known; the plain
+   .economy-grid stays 3 columns (Income/Upkeep/Net) otherwise. Column
+   count is small and fixed either way, so this is shorter top-to-bottom
+   than the 4 rows it replaces despite showing the same data plus icons --
+   see input.js's own history of sidebar content pushing End Turn off the
+   bottom of a 280px-wide panel. */
+.economy-grid {
+  display: grid;
+  grid-template-columns: 1fr repeat(3, minmax(30px, 1fr));
+  gap: 3px 4px;
+  align-items: center;
+}
+.economy-grid.economy-grid-stock {
+  grid-template-columns: 1fr repeat(4, minmax(26px, 1fr));
+}
+.economy-grid-header {
+  color: var(--text-dim);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  text-align: right;
+  padding-bottom: 3px;
+  border-bottom: 1px solid var(--border);
+}
+.economy-res {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--text-main);
+  font-size: 13px;
+}
+.economy-res .resource-icon {
+  width: 13px;
+  height: 13px;
+  flex: none;
+  color: var(--accent);
+}
+.economy-val {
+  text-align: right;
+  font-weight: bold;
+  font-size: 13px;
+  color: var(--text-main);
+  font-variant-numeric: tabular-nums;
+}
+.economy-val.economy-negative { color: #f0a830; }
 /* Idle-city tag (2026-08-07, user-directed): an FYI, not an error -- amber
    like the rest of the accent palette, not the danger red action buttons
    use for destructive actions. */
@@ -1184,6 +1276,12 @@ html, body {
   50% { box-shadow: 0 0 0 2px transparent inset; }
 }
 .techtree-node.techtree-node-focused { animation: techtree-node-focus-pulse 0.9s ease-in-out 2; }
+/* Reduced motion -- static highlight instead of the pulse, same reasoning
+   and same data attribute as .loading-spinner above. */
+:root[data-motion-reduced="true"] .techtree-node.techtree-node-focused {
+  animation: none;
+  box-shadow: 0 0 0 2px var(--accent) inset;
+}
 
 /* Prereq/unlock hover highlighting (2026-08-10, user-directed; dimming of
    unrelated nodes removed 2026-08-10, user-directed follow-up -- it caused

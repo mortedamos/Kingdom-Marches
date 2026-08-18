@@ -851,14 +851,33 @@ window.UI = window.UI || {};
       coin: res.coin - upkeep.coin,
       lore: res.lore - upkeep.lore,
     };
-    const netIsNegative = net.harvest < 0 || net.coin < 0 || net.lore < 0;
-    const fmt3 = (o, dp = 1) => `${o.harvest.toFixed(dp)} / ${o.coin.toFixed(dp)} / ${o.lore.toFixed(dp)}`;
-
+    // One row per resource (icon + label, Income, Upkeep, Net[, Stock])
+    // instead of the old "Income (H / C / L)" triple-value rows -- see the
+    // .economy-grid CSS doc comment for why. Net's per-cell negative
+    // highlight replaces the old whole-row highlight, same amber, now
+    // pinned to the actual offending resource instead of the whole row.
+    const RESOURCE_ROWS = [
+      { key: "harvest", label: "Harvest", icon: "icon-harvest" },
+      { key: "coin", label: "Coin", icon: "icon-coin" },
+      { key: "lore", label: "Lore", icon: "icon-lore" },
+    ];
     const economyHtml = isOwn ? `
-        <div class="stat-row"><span>Income (H / C / L)</span><span>${fmt3(res)}</span></div>
-        <div class="stat-row"><span>Unit Upkeep (H / C / L)</span><span>${fmt3(upkeep)}</span></div>
-        <div class="stat-row"><span>Net (H / C / L)</span><span${netIsNegative ? ' style="color:#f0a830"' : ''}>${fmt3(net)}</span></div>
-        ${stock ? `<div class="stat-row"><span>Stockpile (H / C / L)</span><span>${fmt3(stock, 0)}</span></div>` : ''}`
+        <div class="economy-grid${stock ? ' economy-grid-stock' : ''}">
+          <div class="economy-grid-header"></div>
+          <div class="economy-grid-header">Income</div>
+          <div class="economy-grid-header">Upkeep</div>
+          <div class="economy-grid-header">Net</div>
+          ${stock ? '<div class="economy-grid-header">Stock</div>' : ''}
+          ${RESOURCE_ROWS.map(({ key, label, icon }) => {
+            const negative = net[key] < 0;
+            return `
+          <div class="economy-res"><svg class="resource-icon"><use href="#${icon}"></use></svg>${label}</div>
+          <div class="economy-val">${res[key].toFixed(1)}</div>
+          <div class="economy-val">${upkeep[key].toFixed(1)}</div>
+          <div class="economy-val${negative ? ' economy-negative' : ''}">${net[key].toFixed(1)}</div>
+          ${stock ? `<div class="economy-val">${stock[key].toFixed(0)}</div>` : ''}`;
+          }).join("")}
+        </div>`
       : `<div class="stat-row"><span>Income / Upkeep / Stockpile</span><span>${UNKNOWN}</span></div>`;
 
     return `

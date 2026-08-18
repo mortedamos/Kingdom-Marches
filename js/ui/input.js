@@ -68,10 +68,20 @@ window.UI = window.UI || {};
       canvas.style.cursor = "grab";
     });
 
-    // Scroll wheel: pan normally; Ctrl+scroll zooms toward the cursor
+    // Scroll wheel: bare wheel zooms toward the cursor, matching every
+    // other strategy game's convention (GameConfig.view.wheelZooms, default
+    // true -- set false to restore the original bare-wheel-pans/Ctrl-wheel-
+    // zooms behavior). Shift+wheel pans horizontally, Alt+wheel pans
+    // vertically. Ctrl/Cmd+wheel ALWAYS zooms regardless of the flag --
+    // that's how trackpad pinch-to-zoom arrives (synthesized as a wheel
+    // event with ctrlKey true), so it can't be repurposed as "the pan
+    // modifier" without breaking pinch.
     canvas.addEventListener("wheel", (e) => {
       e.preventDefault();
-      if (e.ctrlKey || e.metaKey) {
+      const wheelZooms = window.GameConfig.view.wheelZooms !== false;
+      const isPinch = e.ctrlKey || e.metaKey;
+      const wantsZoom = isPinch || (wheelZooms && !e.shiftKey && !e.altKey);
+      if (wantsZoom) {
         // Zoom toward the mouse cursor so the tile under it stays fixed
         const rect = canvas.getBoundingClientRect();
         const cursorX = e.clientX - rect.left;
@@ -89,8 +99,24 @@ window.UI = window.UI || {};
         viewState.scrollY = (cursorY + scrollY) * (newZoom / oldZoom) - cursorY;
         viewState.zoomLevel = newZoom;
       } else {
-        viewState.scrollX = (viewState.scrollX || 0) + e.deltaX;
-        viewState.scrollY = (viewState.scrollY || 0) + e.deltaY;
+        // Normalize to px: Firefox reports DOM_DELTA_LINE (deltaMode 1),
+        // where deltaY/deltaX are tiny (~3) integers instead of the ~100
+        // Chrome/Safari send for DOM_DELTA_PIXEL (deltaMode 0) -- scale up
+        // so line-mode panning isn't ~30x slower than pixel-mode panning.
+        const scale = e.deltaMode === 1 ? 16 : 1;
+        if (wheelZooms) {
+          // Shift/Alt pan modifiers: use whichever raw delta axis carried
+          // the scroll (some devices/OSes report a plain vertical scroll
+          // as deltaY even while Shift is held, others already flip it to
+          // deltaX) so a single-axis scroll gesture always pans, never
+          // sits inert because it landed on the "wrong" axis.
+          const mag = (Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY) * scale;
+          if (e.shiftKey) viewState.scrollX = (viewState.scrollX || 0) + mag;
+          else viewState.scrollY = (viewState.scrollY || 0) + mag;
+        } else {
+          viewState.scrollX = (viewState.scrollX || 0) + e.deltaX * scale;
+          viewState.scrollY = (viewState.scrollY || 0) + e.deltaY * scale;
+        }
       }
       onChange();
     }, { passive: false });

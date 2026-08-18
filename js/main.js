@@ -409,6 +409,7 @@
   }
 
   function showSetupScreen() {
+    window.UI.motion.init();
     applyMuteUrlSwitch();
     $("title-build-stamp").textContent = renderBuildStamp();
     $("launch-options-content").innerHTML = renderLaunchOptions();
@@ -462,6 +463,7 @@
     setupTitleMenuBar();
     setupTitleAudioControls();
     setupTitleLoadGameControl();
+    setupMotionControls();
   }
 
   /** Title menu bar's File > Load Game: loads a save straight from the title
@@ -549,6 +551,25 @@
     sfxSlider.addEventListener("input", () => {
       window.SfxSystem.setSfxVolume(parseInt(sfxSlider.value, 10) / 100);
     });
+  }
+
+  /** Wires BOTH the title-screen and in-game "Motion" <select> controls
+   *  (window.UI.motion's Auto/Full/Reduced mode) to the same underlying
+   *  state -- both elements exist in the DOM unconditionally (unlike most
+   *  in-game-only controls), so this runs once from showSetupScreen rather
+   *  than needing a separate in-game wiring pass. Kept in sync with each
+   *  other (and with whatever the OS preference resolves "Auto" to) via
+   *  window.UI.motion.onChange, the same "one state, N listening controls"
+   *  shape syncAllMuteControls uses for the mute checkbox. */
+  function setupMotionControls() {
+    const selects = [$("title-menu-motion-select"), $("motion-select")].filter(Boolean);
+    if (!selects.length) return;
+    const sync = () => { for (const sel of selects) sel.value = window.UI.motion.getMode(); };
+    sync();
+    for (const sel of selects) {
+      sel.addEventListener("change", () => window.UI.motion.setMode(sel.value));
+    }
+    window.UI.motion.onChange(sync);
   }
 
   /** Open/close wiring for the title screen's own menu bar -- same
@@ -2423,10 +2444,6 @@
       const civ = gameState.civs[humanCivId];
       const finishedTechId = civ.lastCompletedTech;
       civ.lastCompletedTech = null;
-      if (finishedTechId) {
-        window.MusicSystem.notifySituation("discovery", true);
-        setTimeout(() => window.MusicSystem.notifyDiscoveryTrackEndedNaturally(), 8000);
-      }
       const before = pendingPreUnitCounts ? pendingPreUnitCounts[civ.id] : civ.units.length;
       const dropped = civ.units.length < before;
       window.MusicSystem.notifySituation("combat", dropped);

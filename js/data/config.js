@@ -65,9 +65,9 @@ window.GameConfig = {
     /** Local date this build was cut, YYYY-MM-DD. */
     date: "2026-08-18",
     /** Local time this build was cut, 24-hour HH:MM. */
-    time: "04:26",
+    time: "12:07",
     /** Monotonic build counter -- increment it, don't recompute it. */
-    number: 122,
+    number: 123,
   },
 
   // =========================================================================
@@ -530,6 +530,13 @@ window.GameConfig = {
     tileSize: 52,
     minZoom: 0.25,
     maxZoom: 2.0,
+
+    /** Bare mouse wheel zooms toward the cursor (matches every other
+     *  strategy game's convention) when true; Shift+wheel pans
+     *  horizontally, Alt+wheel pans vertically. When false, restores the
+     *  original bare-wheel-pans/Ctrl-wheel-zooms behavior. One flag to
+     *  revert (see js/ui/input.js's wheel handler). */
+    wheelZooms: true,
 
     /** Purely visual glide duration for a unit moving between tiles. */
     moveAnimMs: 350,

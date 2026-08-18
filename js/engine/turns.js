@@ -1168,7 +1168,7 @@ window.GameEngine = window.GameEngine || {};
     // up front from the stockpile when chosen (see tech.js), so there's
     // nothing else for beginCivTurn to hand it each turn.
     const finishedTechId = window.GameEngine.tech.tickResearch(civ);
-    if (finishedTechId) civ.lastCompletedTech = finishedTechId; // for music "discovery" trigger
+    if (finishedTechId) civ.lastCompletedTech = finishedTechId; // for the tech-researched dialog
 
     let aiTurnState = null;
     if (civ.id !== humanCivId) {

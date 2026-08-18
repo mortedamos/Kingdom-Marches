@@ -18,6 +18,10 @@ Suno.ai
 ## Art
 Google Gemini
 
+## Fonts
+Cinzel by The Cinzel Project Authors, licensed under the SIL Open Font
+License 1.1 (see assets/fonts/OFL.txt)
+
 ## Game Design
 Shawn Nicolen
 

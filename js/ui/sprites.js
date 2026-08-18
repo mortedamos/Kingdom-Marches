@@ -364,6 +364,11 @@ window.UI = window.UI || {};
     });
 
     const frames = anim.frames;
+    // Reduced motion: pin every idle animation to its first frame rather
+    // than running any of the timing/state-machine logic below -- skips
+    // the whole per-instance animStateCaches machinery entirely, not just
+    // its visual output.
+    if (window.UI.motion && window.UI.motion.isReduced()) return frameRect(frames[0]);
     // fps can be fractional (e.g. 0.5 = one frame every 2s) for slow-cycling
     // terrain animations -- only fall back to 1 when fps is genuinely absent,
     // not via `|| 1` (which would silently coerce an explicit 0 but is

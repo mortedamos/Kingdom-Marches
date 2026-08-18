@@ -111,8 +111,8 @@ js/engine/                GAME LOGIC -- reads data/, has none of its own.
 
 js/audio/
   music.js                 <race>_<situation>_<variant>.mp3 convention,
-                           situation priority combat > discovery > default,
-                           no-repeat variant cycling, volume persistence,
+                           situation priority combat > default, no-repeat
+                           variant cycling, volume persistence,
                            missing files logged and skipped, never a crash
   sfx.js                    Per-unit/per-action clips plus system sounds
                             (button clicks, confirmations, research
@@ -233,8 +233,8 @@ directory waiting on user-supplied files:
 
 To add or replace music, drop files named `<race>_<situation>_<variant>.mp3`
 into `assets/music/` -- race is one of `human`, `elf`, `dwarf`, `orc`,
-`undead`, `halfellow`; situation is `default`, `combat`, `discovery`, or
-`victory`; variant is `1`-`3` (you don't need all three -- the system picks
+`undead`, `halfellow`; situation is `default`, `combat`, or `victory`;
+variant is `1`-`3` (you don't need all three -- the system picks
 randomly among whichever exist, with no-repeat cycling). For spectator mode,
 use `neutral_1.mp3` / `neutral_2.mp3` / `neutral_3.mp3` instead. A missing
 file is logged to the console and skipped, never a crash.
