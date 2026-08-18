@@ -669,6 +669,17 @@ window.UI = window.UI || {};
     return tile._effectPhase;
   }
 
+  /** 4 stable random values [0,1) cached on the tile, for ground-clutter
+   *  placement (grass tuft offsets/sizes, sand-wisp cycle offset -- see
+   *  drawGrassClutter/drawSandWisp below). A separate cache from
+   *  tileEffectPhase above rather than reusing it, so retuning clutter's
+   *  random needs never perturbs chest-sparkle timing (they'd otherwise be
+   *  drawing from the same cached Math.random() call). */
+  function tileClutterSeed(tile) {
+    if (!tile._clutterSeed) tile._clutterSeed = [Math.random(), Math.random(), Math.random(), Math.random()];
+    return tile._clutterSeed;
+  }
+
   /** Tints whatever's already drawn within (boxX,boxY,boxSize) using
    *  source-atop compositing directly on the given canvas -- only correct
    *  when nothing else opaque sits under that box. */
@@ -803,12 +814,15 @@ window.UI = window.UI || {};
     ctx.restore();
   }
 
-  /** A small 4-point sparkle shape, filled at `alpha`. */
-  function drawSparkleMark(ctx, x, y, size, alpha) {
+  /** A small 4-point sparkle shape, filled at `alpha`. `color` defaults to
+   *  the warm gold used everywhere this was originally drawn (chest,
+   *  level-up) -- pass an explicit color for other metals (see
+   *  drawResourceGlint's silver iron glint below). */
+  function drawSparkleMark(ctx, x, y, size, alpha, color) {
     if (alpha <= 0 || size <= 0) return;
     ctx.save();
     ctx.globalAlpha = alpha;
-    ctx.fillStyle = "#fff3c4";
+    ctx.fillStyle = color || "#fff3c4";
     ctx.beginPath();
     ctx.moveTo(x, y - size);
     ctx.lineTo(x + size * 0.28, y - size * 0.28);
@@ -851,6 +865,41 @@ window.UI = window.UI || {};
     const burstT = t / CHEST_SPARKLE_BURST_MS;
     const alpha = (burstT < 0.3 ? burstT / 0.3 : Math.max(0, 1 - (burstT - 0.3) / 0.7)) * 0.8;
     drawSparkleMark(ctx, boxX + sz * 0.78, boxY + sz * 0.22, sz * 0.22 * alpha, alpha);
+  }
+
+  // Same burst cadence as the chest's glint (see CHEST_SPARKLE_CYCLE_MS/
+  // CHEST_SPARKLE_BURST_MS above) -- reused as its own constants rather
+  // than sharing those names so either can be retuned independently later
+  // without renaming across two unrelated resource types.
+  const RESOURCE_GLINT_CYCLE_MS = 4200;
+  const RESOURCE_GLINT_BURST_MS = 550;
+  // Metallic glint colors per resource (2026-08-18, user-requested,
+  // "just as we added a sparkle effect to treasure chests"): iron gets a
+  // cool silver-white catch of light, gold a warmer yellow-gold one --
+  // distinct enough from each other, and from the chest's own warm gold
+  // sparkle, to read as a different material at a glance.
+  const RESOURCE_GLINT_COLORS = { iron: "#e4ecf2", gold: "#ffe38a" };
+
+  /** Iron/Gold deposits: the same occasional-glint treatment as
+   *  drawChestSparkle above (same cycle/burst timing, same upper-right
+   *  placement on the icon box), just recolored per resource -- a metallic
+   *  deposit catching the light makes as much sense here as a treasure
+   *  chest's varnish/gem does. No-ops for any resource id not in
+   *  RESOURCE_GLINT_COLORS, so this can be called unconditionally per
+   *  tile.resource without callers needing to filter first. */
+  function drawResourceGlint(ctx, tile, boxX, boxY, sz, now, resourceId) {
+    const color = RESOURCE_GLINT_COLORS[resourceId];
+    if (!color) return;
+    if (window.UI.motion && window.UI.motion.isReduced()) {
+      drawSparkleMark(ctx, boxX + sz * 0.78, boxY + sz * 0.22, sz * 0.22 * 0.5, 0.5, color);
+      return;
+    }
+    const phase = tileEffectPhase(tile);
+    const t = (now + phase * 1000) % RESOURCE_GLINT_CYCLE_MS;
+    if (t > RESOURCE_GLINT_BURST_MS) return;
+    const burstT = t / RESOURCE_GLINT_BURST_MS;
+    const alpha = (burstT < 0.3 ? burstT / 0.3 : Math.max(0, 1 - (burstT - 0.3) / 0.7)) * 0.8;
+    drawSparkleMark(ctx, boxX + sz * 0.78, boxY + sz * 0.22, sz * 0.22 * alpha, alpha, color);
   }
 
   /** A handful of small gold sparkles orbiting the unit's box, each
@@ -1106,6 +1155,96 @@ window.UI = window.UI || {};
     ctx.fillText(String(Math.round(score)), cx, cy);
   }
 
+  // --- Ground clutter (2026-08-18, user-requested) --------------------
+  // Small ambient details riding the same "occasional glint" idiom as
+  // drawChestSparkle above, applied to bare ground instead of an icon:
+  // a couple of small grass tufts swaying on Plains, an occasional
+  // wind-blown sand gust on Desert. Both are LIVE-tile-only (see
+  // render.js's caller) -- same reasoning as the chest sparkle not
+  // appearing on remembered/fogged tiles: ambient motion belongs to what's
+  // currently being observed, not a stale memory snapshot.
+  const GRASS_TUFT_COUNT = 2;
+  const GRASS_SWAY_PERIOD_MS = 2600;
+  const GRASS_BLADE_COLOR = "#6f9143";
+
+  /** One small tuft of 3 thin blades fanning from a base point, tips
+   *  swaying sideways by `sway` px. */
+  function drawGrassTuft(ctx, baseX, baseY, size, sway) {
+    ctx.strokeStyle = GRASS_BLADE_COLOR;
+    ctx.lineWidth = Math.max(1, size * 0.12);
+    ctx.lineCap = "round";
+    const spread = [-0.4, 0, 0.4];
+    for (let i = 0; i < spread.length; i++) {
+      const tipX = baseX + spread[i] * size + sway * (0.7 + i * 0.15);
+      const tipY = baseY - size * (0.85 + i * 0.06);
+      ctx.beginPath();
+      ctx.moveTo(baseX + spread[i] * size * 0.3, baseY);
+      ctx.quadraticCurveTo(baseX + spread[i] * size * 0.6 + sway * 0.4, baseY - size * 0.5, tipX, tipY);
+      ctx.stroke();
+    }
+  }
+
+  /** Plains ground clutter: a couple of small grass tufts per tile,
+   *  swaying in a gentle "wind" wave that travels diagonally across the
+   *  map (phase offset by the tile's own x+y, not a per-tile random value)
+   *  rather than every tuft swaying in lockstep. Tuft positions/sizes ARE
+   *  stable-random per tile (tileClutterSeed) so they don't relocate frame
+   *  to frame. Reduced motion: tufts stand still (sway pinned to 0) rather
+   *  than being hidden entirely -- unlike the sand wisp below, a still
+   *  tuft of grass is a perfectly meaningful static rendering. */
+  function drawGrassClutter(ctx, tile, x, y, screenX, screenY, ts, now) {
+    const reduced = window.UI.motion && window.UI.motion.isReduced();
+    const seed = tileClutterSeed(tile);
+    for (let i = 0; i < GRASS_TUFT_COUNT; i++) {
+      const s0 = seed[i * 2], s1 = seed[i * 2 + 1];
+      const ox = 0.18 + s0 * 0.64;
+      const oy = 0.5 + s1 * 0.42;
+      const size = ts * (0.09 + s1 * 0.05);
+      const phase = s0 * Math.PI * 2;
+      const sway = reduced ? 0 : Math.sin(now / GRASS_SWAY_PERIOD_MS + phase + (x + y) * 0.5) * size * 0.4;
+      drawGrassTuft(ctx, screenX + ox * ts, screenY + oy * ts, size, sway);
+    }
+  }
+
+  const SAND_WISP_CYCLE_MS = 9000; // long relative to its own duration -- reads as "occasional," not constant
+  const SAND_WISP_DURATION_MS = 1400;
+
+  /** Desert ground clutter: an occasional gust of wind-blown sand
+   *  sweeping across part of the tile -- a few thin pale streaks that fade
+   *  in, drift rightward, and fade out. Most of the ~9s cycle draws
+   *  nothing at all (same "catches your eye now and then" cadence as
+   *  drawChestSparkle), with each tile's cycle offset by its own stable
+   *  random seed so a whole desert doesn't gust in unison. Inherently a
+   *  motion effect -- there's no meaningful "static gust" the way a still
+   *  grass tuft works above -- so it's skipped entirely under reduced
+   *  motion rather than pinned to some frame of a drifting streak. */
+  function drawSandWisp(ctx, tile, screenX, screenY, ts, now) {
+    if (window.UI.motion && window.UI.motion.isReduced()) return;
+    const seed = tileClutterSeed(tile);
+    const t = (now + seed[0] * SAND_WISP_CYCLE_MS) % SAND_WISP_CYCLE_MS;
+    if (t > SAND_WISP_DURATION_MS) return;
+    const p = t / SAND_WISP_DURATION_MS;
+    const alpha = Math.sin(p * Math.PI) * 0.35;
+    const baseY = screenY + ts * (0.3 + seed[1] * 0.4);
+    const travel = ts * 0.5;
+    const startX = screenX + ts * 0.12;
+    const curX = startX + travel * p;
+    const length = ts * 0.3;
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.strokeStyle = "#fff6da";
+    ctx.lineWidth = Math.max(1, ts * 0.025);
+    ctx.lineCap = "round";
+    for (let i = 0; i < 3; i++) {
+      const yOff = baseY + (i - 1) * ts * 0.05;
+      ctx.beginPath();
+      ctx.moveTo(curX, yOff);
+      ctx.lineTo(curX + length, yOff);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
   window.UI.overlays = {
     tick,
     updateCombatAnims, updateAreaEffects, updateQuipBubbles, updateFloatingTexts, updateDeathEffects,
@@ -1113,7 +1252,8 @@ window.UI = window.UI || {};
     drawQuipBubble, drawFloatingTexts, drawDeathEffects, drawDeathEffectAt,
     hasActiveQuip, hasActiveFloatingText, getActiveCombatAnims, getActiveAreaEffects, getActiveDeathEffects,
     getUnitShakeOffset, drawConditionVisualEffects, drawConditionBadges, drawChannelStashLabel, drawIdleCityBadge,
-    drawLevelUpGlowBehind, drawLevelUpSparkles, drawChestSparkle,
+    drawLevelUpGlowBehind, drawLevelUpSparkles, drawChestSparkle, drawResourceGlint,
+    drawGrassClutter, drawSandWisp,
     hexToRgba, drawHatch, drawConstructionSite, auraInfoForUnit, drawTileScoreOverlay,
     ATTACK_ANIM_MS, SLASH_ANIM_MS, AREA_EFFECT_ANIM_MS, AREA_EFFECT_COLORS, DEATH_EFFECT_ANIM_MS,
     // Exported so the Knowledge Base's Conditions page can read the same

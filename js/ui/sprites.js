@@ -369,6 +369,19 @@ window.UI = window.UI || {};
     // the whole per-instance animStateCaches machinery entirely, not just
     // its visual output.
     if (window.UI.motion && window.UI.motion.isReduced()) return frameRect(frames[0]);
+
+    // Static terrain and resources (2026-08-18, user-requested simplification):
+    // keep these at frame 0, no animation. Includes terrain (plains, mountains,
+    // hills, desert, swamp, tundra, forest) and resources (iron, gold).
+    const staticTerrains = new Set(["plains", "mountains", "hills", "desert", "swamp", "tundra", "forest"]);
+    const staticResources = new Set(["iron", "gold"]);
+    if (seed && typeof seed === "object") {
+      if ((seed.terrain && staticTerrains.has(seed.terrain)) ||
+          (seed.resource && staticResources.has(seed.resource))) {
+        return frameRect(frames[0]);
+      }
+    }
+
     // fps can be fractional (e.g. 0.5 = one frame every 2s) for slow-cycling
     // terrain animations -- only fall back to 1 when fps is genuinely absent,
     // not via `|| 1` (which would silently coerce an explicit 0 but is
@@ -572,6 +585,15 @@ window.UI = window.UI || {};
     // drawRiverOverlay.
     for (const part of ["cardinal", "hub"])
       critical.push(() => loadVariants(`river/${part}`, `assets/rivers/river_${part}`));
+    // Shoreline overlay stubs -- same layer/rotate-at-draw-time technique,
+    // drawn on a WATER tile toward each LAND neighbor rather than
+    // connecting same-feature tiles to each other (see render.js's
+    // drawShoreOverlay and tools/make-shore-stubs.ps1). No hub: unlike
+    // roads/rivers converging on a single center point, two adjacent
+    // cardinal edges' bands already cover a full tile edge each and
+    // naturally overlap in the shared corner.
+    for (const part of ["cardinal", "diagonal"])
+      critical.push(() => loadVariants(`shore/${part}`, `assets/terrain/shore_${part}`));
 
     return runTiered(critical, background, onProgress);
   }

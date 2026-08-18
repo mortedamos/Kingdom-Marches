@@ -14,66 +14,88 @@ window.GameData = window.GameData || {};
 // Movement cost values. "impassable" is a sentinel, not a number.
 window.GameData.IMPASSABLE = Infinity;
 
+// blendPriority (2026-08-18, render.js's drawTerrainBlend/drawTerrainAO):
+// the general land/land (and water/water) neighbor-fringe blending pass.
+// The COLOR fringe itself is symmetric -- any two differing, phase-
+// matched neighbors fade toward each other regardless of priority (an
+// earlier one-directional-by-priority design left the higher tile's own
+// edge perfectly crisp, which read as a hard border no matter how well
+// the color matched -- fixed by dropping priority from that part
+// entirely). Priority now only gates the AO/cast-shadow depth cue,
+// which SHOULD stay directional (a taller neighbor shadows a shorter
+// one, not the reverse): a STRICTLY higher-priority neighbor casts a
+// (faint) shadow, and one in the "tall" tier (Forest/Hills/Mountains,
+// see TALL_TIER_MIN_PRIORITY) casts a stronger one. Water<->land pairs
+// are excluded from this mechanism entirely -- that boundary is already
+// fully handled by the dedicated shoreline overlay (see
+// doc/art_style_guide.md SS9's shoreline addendum), and layering this
+// generic fringe on top of that specific one would just muddy it.
+// Ordering follows SS9's Ocean -> Coast -> Plains -> Hills -> Mountains
+// palette chain, with Forest/Swamp branching off Plains and Desert/
+// Tundra deliberately tied at the same tier (SS9: "exempt from the
+// chain") -- this tie only matters for the shadow now, not the color
+// blend, since desert and tundra still color-blend against each other
+// like any other differing pair.
 window.GameData.TERRAIN = {
   ocean: {
     id: "ocean", label: "Ocean", color: "#1c3f5e",
-    isWater: true, isDeepWater: true,
+    isWater: true, isDeepWater: true, blendPriority: 0,
     yield: { harvest: 0, coin: 0, lore: 0 },
     moveCostLand: window.GameData.IMPASSABLE,
     moveCostNaval: 1,
   },
   coast: {
     id: "coast", label: "Shallow Water / Coast", color: "#3a6f8f",
-    isWater: true, isDeepWater: false,
+    isWater: true, isDeepWater: false, blendPriority: 1,
     yield: { harvest: 2, coin: 1, lore: 0 },
     moveCostLand: window.GameData.IMPASSABLE,
     moveCostNaval: 1,
   },
   plains: {
     id: "plains", label: "Plains", color: "#9bb35b",
-    isWater: false,
+    isWater: false, blendPriority: 3,
     yield: { harvest: 2, coin: 1, lore: 0 },
     moveCostLand: 1,
     moveCostNaval: window.GameData.IMPASSABLE,
   },
   forest: {
     id: "forest", label: "Forest", color: "#3f6b3f",
-    isWater: false,
+    isWater: false, blendPriority: 5,
     yield: { harvest: 1, coin: 1, lore: 0 },
     moveCostLand: 2,
     moveCostNaval: window.GameData.IMPASSABLE,
   },
   hills: {
     id: "hills", label: "Hills", color: "#a08b5f",
-    isWater: false,
+    isWater: false, blendPriority: 6,
     yield: { harvest: 1, coin: 2, lore: 0 },
     moveCostLand: 2,
     moveCostNaval: window.GameData.IMPASSABLE,
   },
   mountains: {
     id: "mountains", label: "Mountains", color: "#8c8368",
-    isWater: false,
+    isWater: false, blendPriority: 7,
     yield: { harvest: 0, coin: 2, lore: 0 },
     moveCostLand: window.GameData.IMPASSABLE,
     moveCostNaval: window.GameData.IMPASSABLE,
   },
   desert: {
     id: "desert", label: "Desert", color: "#cbb878",
-    isWater: false,
+    isWater: false, blendPriority: 2,
     yield: { harvest: 0, coin: 1, lore: 0 },
     moveCostLand: 1,
     moveCostNaval: window.GameData.IMPASSABLE,
   },
   swamp: {
     id: "swamp", label: "Swamp/Marsh", color: "#536b4d",
-    isWater: false,
+    isWater: false, blendPriority: 4,
     yield: { harvest: 1, coin: 0, lore: 0 },
     moveCostLand: 2,
     moveCostNaval: window.GameData.IMPASSABLE,
   },
   tundra: {
     id: "tundra", label: "Tundra", color: "#c4cdd1",
-    isWater: false,
+    isWater: false, blendPriority: 2,
     yield: { harvest: 0, coin: 0, lore: 0 },
     moveCostLand: 2,
     moveCostNaval: window.GameData.IMPASSABLE,

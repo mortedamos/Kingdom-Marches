@@ -603,25 +603,63 @@ terrain-specific rules.
 ### Tileability and cross-terrain melding are two different problems
 
 The renderer (`render.js`) draws each tile as an independent square, edge
-to edge, with **no neighbor-aware blending or autotiling** — there is no
-code that inspects a tile's neighbors and picks a transition graphic.
-That means:
+to edge. Before 2026-08-18 this had **no neighbor-aware blending or
+autotiling at all** for terrain-to-terrain edges — there was no code that
+inspected a tile's neighbors and picked a transition graphic. As of that
+date it now has TWO such mechanisms, both procedural (no new Gemini art):
 
-- **Same-terrain tiling** (e.g. two `plains` tiles side by side) must be
-  genuinely seamless — content fills the frame edge-to-edge with no
+- **Water-to-land**: `drawShoreOverlay` (`render.js`) inspects each water
+  tile's 8 neighbors and composites a sand+foam fringe stub
+  (`tools/make-shore-stubs.ps1` — same technique as §10's road/river
+  overlays) toward whichever are land, both in the live render and in
+  `drawRememberedTile`'s fogged snapshot path. Built and shipped first,
+  on its own, since water/land is the single highest-contrast,
+  most-common terrain boundary on any map.
+- **Every other terrain pair** (plains/hills, forest/swamp, hills/
+  mountains, etc.): `drawTerrainBlend` (`render.js`) fades a soft wash of
+  the higher-priority neighbor's color onto the lower tile's edge, via
+  each terrain's `blendPriority` (`terrain.js`) — both cardinal and (for
+  a purely diagonal touch) corner. Explicitly excludes water<->land
+  pairs, which stay the shoreline overlay's exclusive territory. Rides
+  the same neighbor scan as `drawTerrainAO`, a companion depth cue: a
+  faint dark gradient at the same edges, a touch stronger when the
+  higher neighbor is in the "tall" tier (Forest/Hills/Mountains) to read
+  as a cast shadow — both tuned to stay weaker than a unit's own shadow
+  so units still pop above the terrain per this section's landform-
+  shading rule, and (after a user-caught regression) short/faint enough
+  to never darken the transition below the neighbor's own tone.
+  **Flat color, not the neighbor's sprite texture** — an earlier version
+  sampled actual sprite pixels (first the whole frame, then a cropped
+  edge slice) and both reproduced recognizable art features smeared
+  into the neighboring tile, an "echo" of the neighbor's shape showing
+  up where it didn't belong (also user-caught). The color itself isn't
+  `TERRAIN[id].color` either — that value is a seam-hiding BACKING
+  swatch, drawn behind the sprite specifically to stay mostly invisible,
+  never meant to represent the tile's actual dominant appearance (a
+  third user-caught mismatch, most visible on mountains: backing
+  `#8c8368` vs. the sprite's own much lighter rock/snow). The real fix
+  is `getTerrainAverageColor`: average the terrain sprite's actual
+  pixels, over a CENTER-CROPPED region (not the full frame) since
+  terrain art can carry its own edge vignette — verified on mountains,
+  where the full-frame average (143,133,106) sat a clear ~12-18 points
+  per channel darker than a 30%-centered-crop average (157,143,124).
+  See `doc/graphics_ux_improvement_plan.md` Phase 2b/2c for the full
+  implementation writeup, including the performance-cache design (a
+  zoom-independent fringe cache was necessary — an earlier version keyed
+  the cache to tile pixel size and paid a ~14ms rebuild on every zoom
+  tick).
+
+For same-terrain tiling (e.g. two `plains` tiles side by side), the
+original rule still holds:
+
+- Content must fill the frame edge-to-edge, genuinely seamless, with no
   border/vignette/frame-relative lighting that would create a visible
   repeat seam when identical or same-type-variant tiles sit adjacent.
   This is fully achievable through art alone and must be verified by
   eye (tile a few variants in a small grid and look for seams) before
-  shipping.
-- **Cross-terrain melding** (e.g. plains next to hills) can only be
-  approximated through palette harmony — designing each terrain's
-  colors to sit close in hue/value to its natural neighbor's colors —
-  since there's no transition-tile rendering mechanism. This softens
-  the visual jump at a boundary; it does not remove the hard tile edge.
-  True seamless cross-terrain blending would require new engine work
-  (directional edge-transition sprites + render logic to select them
-  based on actual neighbors) — out of scope for this pass, art-only.
+  shipping. The palette-harmony chain below remains relevant too — the
+  neighbor-blend mechanism softens a hard edge, it doesn't replace the
+  benefit of neighboring terrains already sharing a family of tones.
 
 ### Palette chain (art-only harmonization)
 
@@ -919,6 +957,37 @@ gotchas hit along the way, worth knowing before doing this again:
   to map bounds) — read them back *after* calling render, not the
   values you set going in, when computing screen coordinates for a
   manual pixel sample.
+
+### Shoreline overlay (2026-08-18) — same technique, a different shape
+
+`tools/make-shore-stubs.ps1` generates two more stubs the same way as
+above (System.Drawing, no rim/border, hand-wobbled contour, no straight
+edges), but the shape they solve is different enough to call out:
+
+- Roads/rivers **connect two tiles that share the same feature**, spoke-
+  to-spoke, meeting at a single center point — hence the hub piece that
+  fills that join.
+- The shoreline instead **decorates one water tile toward its land
+  neighbors** — a band that covers a full tile EDGE, not a point-to-point
+  line. Two adjacent cardinal directions (land to both north and east,
+  say) each draw their own full-edge band, and those bands naturally
+  overlap in the shared corner — so unlike roads/rivers, no hub/join
+  piece is needed at all. A land neighbor that touches *purely*
+  diagonally (no land on either adjacent cardinal side) is the one gap
+  that overlap doesn't cover, handled by a separate small corner-wedge
+  stub (`shore_diagonal.png`).
+- Seamless tiling is achieved differently too: the road/river technique
+  tapers wobble to zero at the center/corner crossing point (a single
+  shared point). An edge-hugging band instead needs the *entire* edge to
+  match its neighbor's, so the wobble runs an integer number of full
+  sine periods across the tile width instead — `sin(0)` and
+  `sin(2*pi*N)` are equal for any integer `N`, so two side-by-side copies
+  of the same stub always meet with matching contour values everywhere
+  along the shared edge, not just at its ends.
+- Computed live from neighbor terrain (`render.js`'s `shoreConnections`),
+  not a stored per-tile flag like `hasRoad`/`hasRiver` — terrain is fixed
+  for the whole game, so there's nothing that would ever need to
+  invalidate a cached value.
 
 ---
 

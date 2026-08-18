@@ -311,7 +311,33 @@ window.UI = window.UI || {};
                   x, y
                 )
               : null;
-            drawRememberedTile(ctx, screenX, screenY, ts, memory[idx], roadConn, x, y, showGrid, deferredIcons, gameState.seed);
+            // Same "read from the snapshot, not live tiles" reasoning as
+            // roadConn above. An unexplored neighbor (no memory entry)
+            // counts as not-land, same as an out-of-bounds one -- terrain
+            // itself never changes, but whether the PLAYER has seen it yet
+            // can differ tile-to-tile, and guessing land/water for a tile
+            // they've never observed would show them information they
+            // don't actually have.
+            const shoreConn = (memory[idx] && window.GameData.TERRAIN[memory[idx].terrain].isWater)
+              ? shoreConnections(
+                  (tx, ty) => tx >= 0 && tx < map.width && ty >= 0 && ty < map.height &&
+                              !!memory[ty * map.width + tx] && !window.GameData.TERRAIN[memory[ty * map.width + tx].terrain].isWater,
+                  x, y
+                )
+              : null;
+            // Same reasoning again: an unexplored neighbor can't
+            // contribute a blend fringe, since we don't actually know its
+            // terrain -- terrainBlendCandidates' getNeighborTile already
+            // returns null/undefined for that (falsy `memory[...]`), which
+            // it treats exactly like out-of-bounds.
+            const blendCandidates = memory[idx]
+              ? terrainBlendCandidates(
+                  (tx, ty) => tx >= 0 && tx < map.width && ty >= 0 && ty < map.height &&
+                              memory[ty * map.width + tx],
+                  memory[idx], x, y
+                )
+              : null;
+            drawRememberedTile(ctx, screenX, screenY, ts, memory[idx], roadConn, shoreConn, blendCandidates, x, y, showGrid, deferredIcons, gameState.seed);
             if (tileScoreMemory) overlays.drawTileScoreOverlay(ctx, screenX, screenY, ts, tileScoreMemory[idx]?.cityScore);
           } else {
             ctx.fillStyle = "#1a1a1a";
@@ -342,6 +368,44 @@ window.UI = window.UI || {};
             const f = window.UI.sprites.currentFrame(terrainSprite.manifest, "idle", tile);
             ctx.drawImage(terrainSprite.image, f.sx, f.sy, f.sw, f.sh, screenX, screenY, ts, ts);
           }
+        }
+
+        // Shoreline — composited stub overlay on water tiles bordering
+        // land, drawn right after terrain (before river/road) so it reads
+        // as the ground itself transitioning, the same "most under" layer
+        // reasoning terrain's own backing fill uses. Computed from live
+        // neighbor terrain, not a stored per-tile flag (unlike
+        // hasRiver/hasRoad) -- terrain never changes mid-game, so there's
+        // nothing to invalidate.
+        if (window.GameData.TERRAIN[tile.terrain].isWater) {
+          const shoreConn = shoreConnections(
+            (tx, ty) => tx >= 0 && tx < map.width && ty >= 0 && ty < map.height &&
+                        !window.GameData.TERRAIN[map.tiles[ty * map.width + tx].terrain].isWater,
+            x, y
+          );
+          drawShoreOverlay(ctx, screenX, screenY, ts, shoreConn);
+        }
+
+        // General terrain-to-terrain blend fringe -- every other terrain
+        // pair the shoreline overlay above doesn't cover (plains/hills,
+        // forest/plains, etc.). Same "most under" placement as shoreline,
+        // right after it so the two never fight over draw order on a tile
+        // that happens to be both (impossible today -- a tile has exactly
+        // one terrain -- but keeps this robust to that changing).
+        const blendCandidates = terrainBlendCandidates(
+          (tx, ty) => tx >= 0 && tx < map.width && ty >= 0 && ty < map.height &&
+                      map.tiles[ty * map.width + tx],
+          tile, x, y
+        );
+        drawTerrainBlend(ctx, blendCandidates, screenX, screenY, ts, tile);
+
+        // Ground clutter — small ambient details riding directly on the
+        // ground layer, live tiles only (see overlays.js's own doc comment
+        // for why remembered/fogged tiles skip this, same as chest sparkle).
+        if (tile.terrain === "plains") {
+          overlays.drawGrassClutter(ctx, tile, x, y, screenX, screenY, ts, now);
+        } else if (tile.terrain === "desert") {
+          overlays.drawSandWisp(ctx, tile, screenX, screenY, ts, now);
         }
 
         // River — composited stub overlay, drawn UNDER roads (see
@@ -380,6 +444,11 @@ window.UI = window.UI || {};
             // see overlays.js's drawChestSparkle.
             if (tile.resource === "chest") {
               deferredIcons.push(() => overlays.drawChestSparkle(ctx, tile, boxX, boxY, sz, performance.now()));
+            }
+            // Iron/Gold: same occasional-glint treatment, recolored per
+            // metal -- see overlays.js's drawResourceGlint.
+            if (tile.resource === "iron" || tile.resource === "gold") {
+              deferredIcons.push(() => overlays.drawResourceGlint(ctx, tile, boxX, boxY, sz, performance.now(), tile.resource));
             }
           } else {
             deferredIcons.push(() => {
@@ -1375,6 +1444,514 @@ window.UI = window.UI || {};
       if (hasRiver[d]) drawOverlayStub(ctx, cardinal.image, screenX, screenY, ts, ROAD_CARDINAL_ANGLE[d]);
   }
 
+  // --- Shoreline overlay: same layer/rotate-at-draw-time technique as
+  // roads/rivers, but decorating a WATER tile toward each LAND neighbor
+  // rather than connecting same-feature tiles to each other (see
+  // tools/make-shore-stubs.ps1 for the asset generation, and
+  // doc/art_style_guide.md SS10 for the shared technique). Two stubs:
+  //   shore/cardinal -- a sand+foam band hugging one full tile edge,
+  //                     authored pointing NORTH, rotated per
+  //                     SHORE_CARDINAL_ANGLE for each land-adjacent
+  //                     cardinal neighbor. No hub: unlike roads/rivers
+  //                     converging on a single center point, two adjacent
+  //                     cardinal bands (e.g. land to both N and E) each
+  //                     already cover their own full edge and naturally
+  //                     overlap in the shared corner -- no separate join
+  //                     piece needed.
+  //   shore/diagonal -- a smaller corner wedge, authored in the NE corner,
+  //                     rotated per SHORE_DIAGONAL_ANGLE -- only drawn for
+  //                     a land neighbor that touches PURELY diagonally
+  //                     (no land on either adjacent cardinal side), since
+  //                     that's the one case the cardinal bands' natural
+  //                     overlap doesn't already cover.
+  const SHORE_CARDINAL_ANGLE = { n: 0, e: 90, s: 180, w: 270 };
+  const SHORE_DIAGONAL_ANGLE = { ne: 0, se: 90, sw: 180, nw: 270 };
+
+  /** 8-neighbour LAND flags for water tile (x,y). `hasLandAt(tx,ty)` must
+   *  bounds-check and return true for a land (non-water) neighbor -- out-
+   *  of-bounds counts as not-land, same convention roadConnections uses
+   *  for out-of-bounds not-a-road. */
+  function shoreConnections(hasLandAt, x, y) {
+    return {
+      n: hasLandAt(x, y - 1), s: hasLandAt(x, y + 1),
+      e: hasLandAt(x + 1, y), w: hasLandAt(x - 1, y),
+      ne: hasLandAt(x + 1, y - 1), se: hasLandAt(x + 1, y + 1),
+      sw: hasLandAt(x - 1, y + 1), nw: hasLandAt(x - 1, y - 1),
+    };
+  }
+
+  /** Draws the composited shoreline for one WATER tile. `conn` has boolean
+   *  n/s/e/w/ne/se/sw/nw flags for which neighbors are LAND (see
+   *  shoreConnections). Silently draws nothing if the stub art hasn't
+   *  loaded yet -- unlike roads/rivers this has no plain-shape fallback,
+   *  since a missing shoreline is far less jarring than a missing road/
+   *  river (the water/land color boundary itself still reads fine on its
+   *  own, it just doesn't get the soft sand fringe). */
+  function drawShoreOverlay(ctx, screenX, screenY, ts, conn) {
+    const cardinal = window.UI.sprites.pick("shore/cardinal");
+    const diagonal = window.UI.sprites.pick("shore/diagonal");
+    if (!cardinal) return;
+    for (const d of ["n", "e", "s", "w"])
+      if (conn[d]) drawOverlayStub(ctx, cardinal.image, screenX, screenY, ts, SHORE_CARDINAL_ANGLE[d]);
+    if (!diagonal) return;
+    // Corner wedge only for a PURELY diagonal touch -- if either adjacent
+    // cardinal side is also land, that corner is already covered by the
+    // two cardinal bands' own overlap (see the doc comment above).
+    const corners = { ne: ["n", "e"], se: ["s", "e"], sw: ["s", "w"], nw: ["n", "w"] };
+    for (const [d, [a, b]] of Object.entries(corners)) {
+      if (conn[d] && !conn[a] && !conn[b]) {
+        drawOverlayStub(ctx, diagonal.image, screenX, screenY, ts, SHORE_DIAGONAL_ANGLE[d]);
+      }
+    }
+  }
+
+  // --- General terrain-to-terrain edge blending -----------------------
+  // doc/graphics_ux_improvement_plan.md Phase 2b / doc/art_style_guide.md
+  // SS9's shoreline addendum. Where the shoreline overlay above solves
+  // specifically water/land edges, this solves every OTHER terrain pair
+  // (plains/hills, forest/plains, hills/mountains, etc.): every pair of
+  // differing, phase-matched neighbors fades a soft wash of EACH OTHER's
+  // average sprite color onto their shared edge -- see
+  // TERRAIN_BLEND_PEAK_ALPHA below for why this is symmetric (both
+  // sides fade toward each other) rather than one tile bleeding onto
+  // the other, and getTerrainAverageColor for why the color itself is a
+  // sampled sprite average, not TERRAIN[...].color. Water<->land pairs
+  // are explicitly excluded (see isBlendEligiblePair) so this never
+  // overlaps the shoreline's own territory.
+  //
+  // Iteration history, all from live user review of the actual render:
+  // originally sampled actual pixels from the neighbor's SPRITE (first
+  // the whole frame stretched across the fringe, then a cropped slice
+  // near the shared edge) -- both reproduced recognizable art features
+  // (a hill's mound silhouette, a mountain's peak outline) smeared into
+  // the neighboring tile, an "echo" of the neighbor's shape showing up
+  // where it doesn't belong. Replaced with a flat color wash (no
+  // features to echo), initially TERRAIN[...].color -- but that's a
+  // seam-hiding BACKING swatch, chosen to stay invisible under the
+  // sprite, not representative of the tile's actual look (worst on
+  // mountains: backing #8c8368 vs. its own much lighter rock/snow).
+  // Replaced again with getTerrainAverageColor's real sprite-pixel
+  // average. Finally, the blend was one-directional (only the higher-
+  // blendPriority neighbor bled onto the lower tile) -- which left the
+  // HIGHER tile's own edge perfectly crisp, so a hard border remained
+  // on literally every pair tested (hills/plains, forest/plains,
+  // forest/desert, swamp/plains, coast/ocean) no matter how well the
+  // lower side's color matched. Made symmetric as the final fix. Only
+  // the fringe cache's simplicity claim survived all of this unchanged:
+  // (neighbor terrain id + direction) is still the whole key, since an
+  // average color needs no sprite lookup, no animation frame, and no
+  // per-variant distinction once computed -- at most 9 x 8 = 72 entries
+  // ever.
+  //
+  // Deliberately built at a FIXED resolution (FRINGE_SIZE), not at the
+  // current `ts` -- ts changes on nearly every wheel-zoom tick (see
+  // input.js), and keying the cache on it would mean a full cache rebuild
+  // (hundreds of canvases) on almost every scroll tick during a zoom
+  // gesture, measured at ~14ms for a cold zoom level on this map size vs.
+  // ~5ms warm -- a dropped-frame stutter on exactly the interaction where
+  // it'd be most visible. FRINGE_SIZE matches terrain art's native 64x64
+  // resolution (doc/art_style_guide.md SS3), and drawTerrainBlend scales
+  // it to `ts` at draw time via drawImage, same as every terrain sprite
+  // draw elsewhere in this file already does -- so cached fringes are
+  // reused across every zoom level for the life of the session, not
+  // rebuilt per zoom.
+  const FRINGE_SIZE = 64;
+  // SIMPLIFIED (2026-08-18, user-directed): after several rounds of
+  // trying to make a wide (42%-of-tile) atmospheric wash read as soft
+  // rather than as its own competing band, the user asked for a much
+  // simpler model instead -- a thin blend right at the seam, nothing
+  // more. 0.15 (15% of the tile) is that seam, not a wash.
+  const TERRAIN_BLEND_FADE_FRACTION = 0.15;
+  const TERRAIN_FRINGE_CACHE_CAP = 600; // generous; see doc comment above on why this stays small in practice
+  let directionalMasks = null;
+  const terrainFringeCache = new Map();
+
+  /** Builds the 8 direction masks (opaque at the named edge/corner, fading
+   *  to transparent over TERRAIN_BLEND_FADE_FRACTION of FRINGE_SIZE) once
+   *  ever per session -- see the FRINGE_SIZE doc comment above for why
+   *  this no longer varies per zoom level. */
+  function buildDirectionalMasks() {
+    const ts = FRINGE_SIZE;
+    const fade = ts * TERRAIN_BLEND_FADE_FRACTION;
+    function cardinalMask(edge) {
+      const canvas = document.createElement("canvas");
+      canvas.width = ts; canvas.height = ts;
+      const c = canvas.getContext("2d");
+      const grad = edge === "n" ? c.createLinearGradient(0, 0, 0, fade)
+        : edge === "s" ? c.createLinearGradient(0, ts, 0, ts - fade)
+        : edge === "e" ? c.createLinearGradient(ts, 0, ts - fade, 0)
+        : c.createLinearGradient(0, 0, fade, 0); // w
+      grad.addColorStop(0, "rgba(255,255,255,1)");
+      grad.addColorStop(1, "rgba(255,255,255,0)");
+      c.fillStyle = grad;
+      c.fillRect(0, 0, ts, ts);
+      return canvas;
+    }
+    function cornerMask(corner) {
+      const canvas = document.createElement("canvas");
+      canvas.width = ts; canvas.height = ts;
+      const c = canvas.getContext("2d");
+      const cx = corner.includes("e") ? ts : 0;
+      const cy = corner.includes("s") ? ts : 0;
+      // Same reach as the cardinal fade (not larger) -- a radial gradient
+      // of radius `fade` centered on the corner point reaches exactly
+      // `fade` inward along EITHER adjacent edge, matching the cardinal
+      // fringes flanking it there. A larger radius was tried first (to
+      // avoid the corner reading as "stingier" than its cardinal
+      // neighbors) but overshot: it made the corner patch visibly wider/
+      // deeper than the cardinal fringes it sits between, on both the
+      // land/land blend and the shoreline's water/land case.
+      const grad = c.createRadialGradient(cx, cy, 0, cx, cy, fade);
+      grad.addColorStop(0, "rgba(255,255,255,1)");
+      grad.addColorStop(1, "rgba(255,255,255,0)");
+      c.fillStyle = grad;
+      c.fillRect(0, 0, ts, ts);
+      return canvas;
+    }
+    return {
+      n: cardinalMask("n"), e: cardinalMask("e"), s: cardinalMask("s"), w: cardinalMask("w"),
+      ne: cornerMask("ne"), se: cornerMask("se"), sw: cornerMask("sw"), nw: cornerMask("nw"),
+    };
+  }
+
+  function getDirectionalMasks() {
+    if (!directionalMasks) directionalMasks = buildDirectionalMasks();
+    return directionalMasks;
+  }
+
+  // --- Depth cue: ambient occlusion / cast shadow at terrain steps -----
+  // doc/graphics_ux_improvement_plan.md Phase 2c. Rides the exact same
+  // per-tile neighbor scan as the color-blend fringe above (same
+  // eligibility, same cardinal-always/corner-only-if-pure-diagonal
+  // gating) -- see drawTerrainBlend, which now draws this alongside the
+  // color fringe for each qualifying direction rather than as a separate
+  // pass. One shape (a black gradient, same geometry as the white
+  // gradients above, just recolored), two strengths: any higher neighbor
+  // gets a faint AO_ALPHA_NORMAL darkening (the plan's "ambient occlusion
+  // at steps" bullet); a neighbor in the TALL tier specifically (Forest/
+  // Hills/Mountains -- blendPriority >= TALL_TIER_MIN_PRIORITY) gets the
+  // stronger AO_ALPHA_TALL instead, reading as a proper cast shadow (the
+  // plan's separate "terrain drop shadows" bullet). Folding both into one
+  // mechanism -- rather than a second, direction-restricted (S/SE-only)
+  // pass specifically for tall terrain -- avoids double-darkening the
+  // common case where a tall neighbor already triggers ordinary AO too,
+  // and keeps this section a single thing to reason about. Both alphas
+  // are tuned to stay weaker than drawUnitShadow so units still read as
+  // sitting ABOVE the ground, not level with it (doc/art_style_guide.md
+  // SS9's "terrain recedes, units pop" rule).
+  //
+  // CORRECTED (2026-08-18, user-reported): this used to share
+  // TERRAIN_BLEND_FADE_FRACTION (0.42) with the color fringe AND peak at
+  // full alpha exactly at the tile edge -- precisely where the fringe
+  // itself is ALSO strongest (closest to the neighbor's true, undarkened
+  // color). Stacking a 16-30% black overlay right there made the
+  // transition zone measurably darker than the neighbor tile it was
+  // blending toward (verified: sampling across a hills->mountains edge
+  // showed the hills-side pixel immediately before the boundary at ~100
+  // brightness, jumping to ~138 one pixel past it into plain mountain --
+  // a dark-dip-then-bright-step that reads as a MORE visible seam, not a
+  // softened one, exactly the "accented line" reported). Fixed by giving
+  // AO its own much shorter reach (AO_FADE_FRACTION, well under the color
+  // fringe's 0.42) and much lower peak alphas, so it reads as a faint
+  // crease rather than a wash competing with the color blend for the
+  // same pixels.
+  const AO_FADE_FRACTION = 0.15;
+  // DISABLED (2026-08-18, user-directed): the user asked to replace the
+  // whole wide-wash blend model with a much simpler thin-seam-only
+  // design (see TERRAIN_BLEND_FADE_FRACTION above). AO was a separate
+  // depth-cue layer riding the same mechanism and had already been the
+  // repeated source of "darker than the tile it's blending into"
+  // regressions across three rounds of tuning -- rather than carry that
+  // risk into the simplified design too, it's switched off at the root
+  // (alpha 0 on both) instead of removed outright, so the whole
+  // mechanism (masks, cache, tall-tier logic) stays in place to turn
+  // back on/retune later if depth cues are wanted again.
+  const AO_ALPHA_NORMAL = 0.0;
+  const AO_ALPHA_TALL = 0.0;
+  const TALL_TIER_MIN_PRIORITY = 5; // Forest -- see terrain.js's blendPriority comment for the full ordering
+  let shadowStamps = null;
+
+  /** Same geometry as buildDirectionalMasks, recolored black, but its own
+   *  (shorter) reach -- see the CORRECTED doc comment above for why this
+   *  can no longer share TERRAIN_BLEND_FADE_FRACTION with the color
+   *  fringe. Separate cache (not a recolor-at-draw-time trick) because
+   *  the color fringe cache above already proved out "build once, scale
+   *  at draw time" as the right pattern here. */
+  function buildShadowStamps() {
+    const ts = FRINGE_SIZE;
+    const fade = ts * AO_FADE_FRACTION;
+    function cardinal(edge) {
+      const canvas = document.createElement("canvas");
+      canvas.width = ts; canvas.height = ts;
+      const c = canvas.getContext("2d");
+      const grad = edge === "n" ? c.createLinearGradient(0, 0, 0, fade)
+        : edge === "s" ? c.createLinearGradient(0, ts, 0, ts - fade)
+        : edge === "e" ? c.createLinearGradient(ts, 0, ts - fade, 0)
+        : c.createLinearGradient(0, 0, fade, 0); // w
+      grad.addColorStop(0, "rgba(0,0,0,1)");
+      grad.addColorStop(1, "rgba(0,0,0,0)");
+      c.fillStyle = grad;
+      c.fillRect(0, 0, ts, ts);
+      return canvas;
+    }
+    function corner(cnr) {
+      const canvas = document.createElement("canvas");
+      canvas.width = ts; canvas.height = ts;
+      const c = canvas.getContext("2d");
+      const cx = cnr.includes("e") ? ts : 0;
+      const cy = cnr.includes("s") ? ts : 0;
+      // Same reach as the cardinal fade, same reasoning as
+      // buildDirectionalMasks' cornerMask above.
+      const grad = c.createRadialGradient(cx, cy, 0, cx, cy, fade);
+      grad.addColorStop(0, "rgba(0,0,0,1)");
+      grad.addColorStop(1, "rgba(0,0,0,0)");
+      c.fillStyle = grad;
+      c.fillRect(0, 0, ts, ts);
+      return canvas;
+    }
+    return {
+      n: cardinal("n"), e: cardinal("e"), s: cardinal("s"), w: cardinal("w"),
+      ne: corner("ne"), se: corner("se"), sw: corner("sw"), nw: corner("nw"),
+    };
+  }
+
+  function getShadowStamps() {
+    if (!shadowStamps) shadowStamps = buildShadowStamps();
+    return shadowStamps;
+  }
+
+  /** Draws one direction's AO/shadow stamp, strength chosen by whether
+   *  `neighborTile` is in the tall tier (see doc comment above). The
+   *  stamp's own gradient already fades 1 -> 0 across its reach;
+   *  `ctx.globalAlpha` just scales that peak down to whichever strength
+   *  applies, so the SHAPE of the falloff never needs two separate stamp
+   *  sets. */
+  function drawTerrainAO(ctx, neighborTile, direction, screenX, screenY, ts) {
+    const stamp = getShadowStamps()[direction];
+    const alpha = window.GameData.TERRAIN[neighborTile.terrain].blendPriority >= TALL_TIER_MIN_PRIORITY
+      ? AO_ALPHA_TALL : AO_ALPHA_NORMAL;
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.drawImage(stamp, 0, 0, FRINGE_SIZE, FRINGE_SIZE, screenX, screenY, ts, ts);
+    ctx.restore();
+  }
+
+  /** A neighbor terrain is eligible to blend against this tile's terrain
+   *  only if they're on the same "phase" (both water, or both land) --
+   *  water<->land is the shoreline overlay's exclusive territory (see the
+   *  doc comment above this section). */
+  function isBlendEligiblePair(myTerrainId, neighborTerrainId) {
+    return window.GameData.TERRAIN[myTerrainId].isWater === window.GameData.TERRAIN[neighborTerrainId].isWater;
+  }
+
+  const terrainAverageColorCache = new Map(); // terrainId -> "rgb(r,g,b)", only ever set once resolved -- see doc comment
+
+  /** CORRECTED (2026-08-18, user-reported): the flat-color fix above still
+   *  used TERRAIN[id].color for the fringe fill -- but that value is a
+   *  seam-hiding BACKING swatch (drawn behind the sprite specifically so
+   *  a chroma-key resize seam or a transparent sprite edge doesn't show
+   *  the canvas through it, see the live render loop's own "Terrain"
+   *  comment), never meant to represent what the tile actually looks
+   *  like on screen. For a sprite that's mostly light rock/snow drawn
+   *  over a duller gray-tan backing (mountains: color "#8c8368" vs. the
+   *  actual art), using the backing swatch as "the tile's color" makes
+   *  the fringe visibly mismatch the real tile it's blending toward --
+   *  exactly the "still picking up the border color, not the main color"
+   *  the user reported.
+   *
+   *  Fixed by averaging the REAL sprite pixels instead: draws the
+   *  terrain's own frame 0 sprite to a scratch canvas, reads every pixel
+   *  via getImageData, and means the RGB channels (skipping near-
+   *  transparent pixels, which would otherwise pull the average toward
+   *  black/gray from empty canvas corners around a non-square silhouette
+   *  like a mountain peak). One average per TERRAIN ID, not per variant
+   *  -- terrain variants are the same content with cosmetic differences
+   *  (per doc/art_style_guide.md, variants exist for repeat-tiling
+   *  variety, not different subject matter), so their averages should be
+   *  close enough that picking whichever variant happens to be loaded
+   *  first isn't worth the complexity of averaging across all of them.
+   *  Computed once ever per terrain id (not per direction, unlike the
+   *  fringe cache above it feeds) since the color doesn't depend on
+   *  which edge it's being applied to. */
+  // How much of the sprite frame (centered) gets averaged -- NOT the
+  // full frame. Verified empirically (2026-08-18, user-prompted): mountains'
+  // full-frame average came out (143,133,106) vs. a 30%-centered-crop
+  // average of (157,143,124) -- a real ~12-18 point-per-channel vignette
+  // (a darkened rim baked into the art itself, same thing the user
+  // separately flagged about terrain art edges in general), pulling the
+  // full-frame average toward the rim instead of the tile's actual
+  // dominant/main appearance. Plains showed no such gap (near-uniform
+  // art); forest's center came out DARKER than its full frame (dense
+  // canopy shadow in the middle, lighter gaps nearer the edges) -- but a
+  // forest tile's densely-shadowed canopy is exactly what a forest tile
+  // is supposed to read as, so a center-weighted sample is the more
+  // representative choice there too, not just a mountains-specific fix.
+  const TERRAIN_AVERAGE_COLOR_CROP_FRACTION = 0.5;
+
+  function getTerrainAverageColor(terrainId) {
+    if (terrainAverageColorCache.has(terrainId)) return terrainAverageColorCache.get(terrainId);
+    // No seed argument (not `null` -- pick()'s seed check is `typeof seed
+    // === "object"`, which is true for null too, and would then try to
+    // use null as a WeakMap key and throw). Omitting it takes pick()'s
+    // no-seed path, which just returns variants[0] -- fine here, since
+    // every variant of a terrain is the same subject matter with only
+    // cosmetic differences (see this function's own doc comment).
+    const sprite = window.UI.sprites.pick(`terrain/${terrainId}`);
+    if (!sprite) return null; // not loaded yet -- retry next call, see getTerrainFringe's caching guard
+    const frame = { sx: 0, sy: 0, sw: sprite.manifest.frameWidth, sh: sprite.manifest.frameHeight };
+    const canvas = document.createElement("canvas");
+    canvas.width = frame.sw; canvas.height = frame.sh;
+    const c = canvas.getContext("2d");
+    c.drawImage(sprite.image, frame.sx, frame.sy, frame.sw, frame.sh, 0, 0, frame.sw, frame.sh);
+    const cropW = Math.round(frame.sw * TERRAIN_AVERAGE_COLOR_CROP_FRACTION);
+    const cropH = Math.round(frame.sh * TERRAIN_AVERAGE_COLOR_CROP_FRACTION);
+    const cropX = Math.floor((frame.sw - cropW) / 2);
+    const cropY = Math.floor((frame.sh - cropH) / 2);
+    const data = c.getImageData(cropX, cropY, cropW, cropH).data;
+    let r = 0, g = 0, b = 0, count = 0;
+    for (let i = 0; i < data.length; i += 4) {
+      if (data[i + 3] < 10) continue; // skip near-transparent pixels -- e.g. the empty corners around a non-square silhouette
+      r += data[i]; g += data[i + 1]; b += data[i + 2]; count++;
+    }
+    if (count === 0) return null;
+    const avg = `rgb(${Math.round(r / count)}, ${Math.round(g / count)}, ${Math.round(b / count)})`;
+    terrainAverageColorCache.set(terrainId, avg);
+    return avg;
+  }
+
+  /** Returns the cached (building it if needed) masked fringe canvas, at
+   *  FRINGE_SIZE resolution, for `neighborTerrainId`'s average sprite
+   *  color (see getTerrainAverageColor) in the given direction. Takes the
+   *  terrain id directly (not a tile object) -- the average color is
+   *  computed once per terrain id, not per-tile. Special case (2026-08-18,
+   *  user-requested): forest always blends using plains color instead of
+   *  its own, for a consistent look across forest edges. */
+  function getTerrainFringe(neighborTerrainId, direction) {
+    const key = `${neighborTerrainId}|${direction}`;
+    const cached = terrainFringeCache.get(key);
+    if (cached) return cached;
+
+    // Only cache once a real average color is available -- see
+    // getTerrainAverageColor's doc comment. Falling back to the backing
+    // color AND caching that fallback would lock the fringe into the
+    // wrong color forever once the sprite does load; returning an
+    // uncached one-off instead means the next call (next frame) just
+    // retries cheaply until the sprite's ready, which given terrain
+    // sprites load in preloadAll's `critical` tier is normally just the
+    // very first frame or two.
+    // Forest uses plains color for blending (user-requested).
+    const colorSourceTerrainId = neighborTerrainId === "forest" ? "plains" : neighborTerrainId;
+    const avgColor = getTerrainAverageColor(colorSourceTerrainId);
+    const mask = getDirectionalMasks()[direction];
+    const canvas = document.createElement("canvas");
+    canvas.width = FRINGE_SIZE; canvas.height = FRINGE_SIZE;
+    const c = canvas.getContext("2d");
+    c.fillStyle = avgColor || window.GameData.TERRAIN[colorSourceTerrainId].color;
+    c.fillRect(0, 0, FRINGE_SIZE, FRINGE_SIZE);
+    c.globalCompositeOperation = "destination-in";
+    c.drawImage(mask, 0, 0);
+    if (avgColor) {
+      terrainFringeCache.set(key, canvas);
+      if (terrainFringeCache.size > TERRAIN_FRINGE_CACHE_CAP) {
+        terrainFringeCache.delete(terrainFringeCache.keys().next().value); // FIFO eviction -- see the doc comment above this section on why this cap is now moot in practice (at most 72 entries ever) but kept as a safety net
+      }
+    }
+    return canvas;
+  }
+
+  // How strongly the color fringe shows at the very tile edge.
+  // SIMPLIFIED (2026-08-18, user-directed): changed from symmetric
+  // (both sides fade toward each other) to unidirectional (darker
+  // color blends into lighter color). Darker terrain shows the blend
+  // fringe; lighter terrain remains unblended. This creates a cleaner
+  // directional transition.
+  const TERRAIN_BLEND_PEAK_ALPHA = 1.0; // Full neighbor color (unidirectional, only darker side blends)
+
+  /** Calculate perceived brightness/luminance of an RGB color string.
+   *  Used to determine blending direction: darker colors blend into
+   *  lighter colors. */
+  function getColorLuminance(rgbString) {
+    if (!rgbString || typeof rgbString !== "string") return 0;
+    const match = rgbString.match(/\d+/g);
+    if (!match || match.length < 3) return 0;
+    const [r, g, b] = match.slice(0, 3).map(Number);
+    // Standard luminance formula: 0.299*R + 0.587*G + 0.114*B
+    return 0.299 * r + 0.587 * g + 0.114 * b;
+  }
+
+  /** 8-neighbour blend candidates for tile (x,y): for each direction,
+   *  either `{tile, higherPriority}` for a differing, phase-eligible
+   *  neighbor, or null. The color fringe now draws for ANY differing
+   *  neighbor (see TERRAIN_BLEND_PEAK_ALPHA above) -- `higherPriority`
+   *  is kept only to gate the AO/shadow depth cue below, which SHOULD
+   *  stay directional (a taller neighbor casts a shadow on a shorter
+   *  one, not the other way around) even though the color blend no
+   *  longer is. `getNeighborTile(tx, ty)` must bounds-check and return a
+   *  tile-like object ({terrain: ...}) or null/undefined for out-of-
+   *  bounds/unknown -- same convention shoreConnections' hasLandAt
+   *  uses, generalized to carry the tile object plus this one extra
+   *  flag instead of a plain yes/no. */
+  function terrainBlendCandidates(getNeighborTile, tile, x, y) {
+    const myDef = window.GameData.TERRAIN[tile.terrain];
+    const dirs = { n: [0, -1], e: [1, 0], s: [0, 1], w: [-1, 0], ne: [1, -1], se: [1, 1], sw: [-1, 1], nw: [-1, -1] };
+    const result = {};
+    for (const [d, [dx, dy]] of Object.entries(dirs)) {
+      const nb = getNeighborTile(x + dx, y + dy);
+      if (!nb) { result[d] = null; continue; }
+      const nbDef = window.GameData.TERRAIN[nb.terrain];
+      const eligible = nb.terrain !== tile.terrain && isBlendEligiblePair(tile.terrain, nb.terrain);
+      result[d] = eligible ? { tile: nb, higherPriority: nbDef.blendPriority > myDef.blendPriority } : null;
+    }
+    return result;
+  }
+
+  /** Draws both the color fringe (SS2b, now unidirectional -- darker
+   *  into lighter, see TERRAIN_BLEND_PEAK_ALPHA) and the AO/shadow stamp
+   *  (SS2c, still directional) for one qualifying direction -- shadow
+   *  drawn AFTER the fringe so it reads as falling ACROSS the blended
+   *  transition, not underneath it. Only draws the fringe if the neighbor
+   *  is lighter (higher luminance) than the current tile. */
+  function drawTerrainBlendAndAO(ctx, candidate, direction, screenX, screenY, ts, currentTile) {
+    // Unidirectional blending: only blend if neighbor is lighter than current tile
+    const neighborColor = getTerrainAverageColor(candidate.tile.terrain);
+    const currentColor = getTerrainAverageColor(currentTile.terrain);
+    const neighborLuminance = getColorLuminance(neighborColor || window.GameData.TERRAIN[candidate.tile.terrain].color);
+    const currentLuminance = getColorLuminance(currentColor || window.GameData.TERRAIN[currentTile.terrain].color);
+
+    // Only draw fringe if neighbor is lighter (darker tile blends into lighter)
+    if (neighborLuminance > currentLuminance) {
+      const fringe = getTerrainFringe(candidate.tile.terrain, direction);
+      if (fringe) {
+        ctx.save();
+        ctx.globalAlpha = TERRAIN_BLEND_PEAK_ALPHA;
+        ctx.drawImage(fringe, 0, 0, FRINGE_SIZE, FRINGE_SIZE, screenX, screenY, ts, ts);
+        ctx.restore();
+      }
+    }
+    if (candidate.higherPriority) drawTerrainAO(ctx, candidate.tile, direction, screenX, screenY, ts);
+  }
+
+  /** Draws every qualifying fringe for one tile from precomputed
+   *  `candidates` (see terrainBlendCandidates) -- all 4 cardinals
+   *  unconditionally, and a corner ONLY when it's a PURELY diagonal
+   *  touch (neither adjacent cardinal is ALSO a differing neighbor),
+   *  same "avoid muddying two different textures overlapping" reasoning
+   *  drawShoreOverlay's corner handling uses. Now unidirectional: darker
+   *  terrain blends into lighter terrain. */
+  function drawTerrainBlend(ctx, candidates, screenX, screenY, ts, currentTile) {
+    for (const d of ["n", "e", "s", "w"]) {
+      const c = candidates[d];
+      if (!c) continue;
+      drawTerrainBlendAndAO(ctx, c, d, screenX, screenY, ts, currentTile);
+    }
+    const corners = { ne: ["n", "e"], se: ["s", "e"], sw: ["s", "w"], nw: ["n", "w"] };
+    for (const [d, [a, b]] of Object.entries(corners)) {
+      if (candidates[d] && !candidates[a] && !candidates[b]) {
+        drawTerrainBlendAndAO(ctx, candidates[d], d, screenX, screenY, ts, currentTile);
+      }
+    }
+  }
+
   function fullVisibilitySet(map) {
     const s = new Set();
     for (let i = 0; i < map.tiles.length; i++) s.add(i);
@@ -1455,7 +2032,7 @@ window.UI = window.UI || {};
    * visible). Finished with a dark scrim so it reads as visibly "remembered,
    * possibly stale" rather than currently seen.
    */
-  function drawRememberedTile(ctx, screenX, screenY, ts, snapshot, roadConn, x, y, showGrid, deferredIcons, mapSeed) {
+  function drawRememberedTile(ctx, screenX, screenY, ts, snapshot, roadConn, shoreConn, blendCandidates, x, y, showGrid, deferredIcons, mapSeed) {
     if (!snapshot) {
       // Explored should always have a matching memory entry, but fall back
       // to plain fog rather than throw if the two ever disagree.
@@ -1487,6 +2064,18 @@ window.UI = window.UI || {};
         ctx.drawImage(terrainSprite.image, f.sx, f.sy, f.sw, f.sh, screenX, screenY, ts, ts);
       }
     }
+
+    // Shoreline drawn right after terrain, same reasoning/placement as the
+    // live render loop. shoreConn is null for a non-water tile (see the
+    // caller) -- drawShoreOverlay would just no-op on an all-false conn
+    // object anyway, but skipping the call entirely avoids the two sprite
+    // lookups for the overwhelming majority of remembered tiles that
+    // aren't water at all.
+    if (shoreConn) drawShoreOverlay(ctx, screenX, screenY, ts, shoreConn);
+
+    // General terrain blend fringe, same placement/reasoning as the live
+    // render loop.
+    if (blendCandidates) drawTerrainBlend(ctx, blendCandidates, screenX, screenY, ts, snapshot);
 
     // River drawn UNDER road, same reasoning as the live render loop.
     drawRiverOverlay(ctx, screenX, screenY, ts, snapshot.hasRiver);
