@@ -1,4 +1,0 @@
-Drop your <race>_<situation>_<variant>.mp3 files in this folder.
-See the main README.md for the full naming convention and details.
-
-Example: orc_combat_1.mp3
