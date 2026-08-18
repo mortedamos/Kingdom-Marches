@@ -671,7 +671,7 @@ window.UI = window.UI || {};
 
   /** 4 stable random values [0,1) cached on the tile, for ground-clutter
    *  placement (grass tuft offsets/sizes, sand-wisp cycle offset -- see
-   *  drawGrassClutter/drawSandWisp below). A separate cache from
+   *  drawGrassClutter/drawWindWisp below). A separate cache from
    *  tileEffectPhase above rather than reusing it, so retuning clutter's
    *  random needs never perturbs chest-sparkle timing (they'd otherwise be
    *  drawing from the same cached Math.random() call). */
@@ -1159,10 +1159,12 @@ window.UI = window.UI || {};
   // Small ambient details riding the same "occasional glint" idiom as
   // drawChestSparkle above, applied to bare ground instead of an icon:
   // a couple of small grass tufts swaying on Plains, an occasional
-  // wind-blown sand gust on Desert. Both are LIVE-tile-only (see
-  // render.js's caller) -- same reasoning as the chest sparkle not
-  // appearing on remembered/fogged tiles: ambient motion belongs to what's
-  // currently being observed, not a stale memory snapshot.
+  // wind-blown gust on Desert (sand) and Tundra (snow -- same effect,
+  // added to Tundra after Desert's already read well). Both are LIVE-
+  // tile-only (see render.js's caller) -- same reasoning as the chest
+  // sparkle not appearing on remembered/fogged tiles: ambient motion
+  // belongs to what's currently being observed, not a stale memory
+  // snapshot.
   const GRASS_TUFT_COUNT = 2;
   const GRASS_SWAY_PERIOD_MS = 2600;
   const GRASS_BLADE_COLOR = "#6f9143";
@@ -1206,40 +1208,51 @@ window.UI = window.UI || {};
     }
   }
 
-  const SAND_WISP_CYCLE_MS = 9000; // long relative to its own duration -- reads as "occasional," not constant
-  const SAND_WISP_DURATION_MS = 1400;
+  const WIND_WISP_CYCLE_MS = 9000; // long relative to its own duration -- reads as "occasional," not constant
+  const WIND_WISP_DURATION_MS = 1400;
 
-  /** Desert ground clutter: an occasional gust of wind-blown sand
-   *  sweeping across part of the tile -- a few thin pale streaks that fade
-   *  in, drift rightward, and fade out. Most of the ~9s cycle draws
-   *  nothing at all (same "catches your eye now and then" cadence as
-   *  drawChestSparkle), with each tile's cycle offset by its own stable
-   *  random seed so a whole desert doesn't gust in unison. Inherently a
-   *  motion effect -- there's no meaningful "static gust" the way a still
-   *  grass tuft works above -- so it's skipped entirely under reduced
-   *  motion rather than pinned to some frame of a drifting streak. */
-  function drawSandWisp(ctx, tile, screenX, screenY, ts, now) {
+  /** Desert/Tundra ground clutter: an occasional gust of wind-blown
+   *  sand/snow sweeping across part of the tile -- one or two thin pale
+   *  streaks that fade in, curl slightly as they drift rightward (a
+   *  quadratic bow through the middle of the stroke, not a dead-straight
+   *  line -- SIMPLIFIED 2026-08-18, user-directed: was 3 straight parallel
+   *  lines, felt too busy/mechanical; cut to 1-2 with a swirl instead),
+   *  and fade out. Most of the ~9s cycle draws nothing at all (same
+   *  "catches your eye now and then" cadence as drawChestSparkle), with
+   *  each tile's cycle offset by its own stable random seed so a whole
+   *  desert/tundra doesn't gust in unison, and streak COUNT (1 vs 2) also
+   *  stable-random per tile so it's not visibly identical from tile to
+   *  tile. Inherently a motion effect -- there's no meaningful "static
+   *  gust" the way a still grass tuft works above -- so it's skipped
+   *  entirely under reduced motion rather than pinned to some frame of a
+   *  drifting streak. */
+  function drawWindWisp(ctx, tile, screenX, screenY, ts, now) {
     if (window.UI.motion && window.UI.motion.isReduced()) return;
     const seed = tileClutterSeed(tile);
-    const t = (now + seed[0] * SAND_WISP_CYCLE_MS) % SAND_WISP_CYCLE_MS;
-    if (t > SAND_WISP_DURATION_MS) return;
-    const p = t / SAND_WISP_DURATION_MS;
-    const alpha = Math.sin(p * Math.PI) * 0.35;
+    const t = (now + seed[0] * WIND_WISP_CYCLE_MS) % WIND_WISP_CYCLE_MS;
+    if (t > WIND_WISP_DURATION_MS) return;
+    const p = t / WIND_WISP_DURATION_MS;
+    const alpha = Math.sin(p * Math.PI) * 0.4;
+    const count = seed[2] < 0.5 ? 1 : 2;
     const baseY = screenY + ts * (0.3 + seed[1] * 0.4);
     const travel = ts * 0.5;
-    const startX = screenX + ts * 0.12;
+    const startX = screenX + ts * 0.15;
     const curX = startX + travel * p;
-    const length = ts * 0.3;
+    const length = ts * 0.22;
+    // Swirl: a perpendicular bow that eases in then back out over the
+    // gust's life, so the streak curls as it travels instead of sliding
+    // in a straight line.
+    const swirl = Math.sin(p * Math.PI * 1.5) * ts * 0.07;
     ctx.save();
     ctx.globalAlpha = alpha;
     ctx.strokeStyle = "#fff6da";
     ctx.lineWidth = Math.max(1, ts * 0.025);
     ctx.lineCap = "round";
-    for (let i = 0; i < 3; i++) {
-      const yOff = baseY + (i - 1) * ts * 0.05;
+    for (let i = 0; i < count; i++) {
+      const yOff = baseY + (i - (count - 1) / 2) * ts * 0.07;
       ctx.beginPath();
       ctx.moveTo(curX, yOff);
-      ctx.lineTo(curX + length, yOff);
+      ctx.quadraticCurveTo(curX + length * 0.5, yOff + swirl, curX + length, yOff - swirl);
       ctx.stroke();
     }
     ctx.restore();
@@ -1253,7 +1266,7 @@ window.UI = window.UI || {};
     hasActiveQuip, hasActiveFloatingText, getActiveCombatAnims, getActiveAreaEffects, getActiveDeathEffects,
     getUnitShakeOffset, drawConditionVisualEffects, drawConditionBadges, drawChannelStashLabel, drawIdleCityBadge,
     drawLevelUpGlowBehind, drawLevelUpSparkles, drawChestSparkle, drawResourceGlint,
-    drawGrassClutter, drawSandWisp,
+    drawGrassClutter, drawWindWisp,
     hexToRgba, drawHatch, drawConstructionSite, auraInfoForUnit, drawTileScoreOverlay,
     ATTACK_ANIM_MS, SLASH_ANIM_MS, AREA_EFFECT_ANIM_MS, AREA_EFFECT_COLORS, DEATH_EFFECT_ANIM_MS,
     // Exported so the Knowledge Base's Conditions page can read the same

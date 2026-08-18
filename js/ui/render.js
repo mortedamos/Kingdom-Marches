@@ -404,8 +404,8 @@ window.UI = window.UI || {};
         // for why remembered/fogged tiles skip this, same as chest sparkle).
         if (tile.terrain === "plains") {
           overlays.drawGrassClutter(ctx, tile, x, y, screenX, screenY, ts, now);
-        } else if (tile.terrain === "desert") {
-          overlays.drawSandWisp(ctx, tile, screenX, screenY, ts, now);
+        } else if (tile.terrain === "desert" || tile.terrain === "tundra") {
+          overlays.drawWindWisp(ctx, tile, screenX, screenY, ts, now);
         }
 
         // River — composited stub overlay, drawn UNDER roads (see
