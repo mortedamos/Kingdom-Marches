@@ -19,6 +19,14 @@ window.UI = window.UI || {};
   const MAX_ZOOM = window.GameConfig.view.maxZoom;
   const RUIN_ICON_SCALE = .75; // ruins read as a little bigger than a tile-fill resource icon (see per-resource iconScale in terrain.js)
   const MOVE_ANIM_MS = window.GameConfig.view.moveAnimMs; // purely visual glide duration for unit movement
+  // Very slight footstep bounce while a unit glides between tiles
+  // (2026-08-18, user-requested) -- see getVisualPos's `bounce` field and
+  // the unit draw loop below for where this gets applied. CYCLES is how
+  // many little hops happen over one tile-to-tile glide; AMOUNT is the
+  // hop height as a fraction of a tile, kept small on purpose ("very
+  // slight" -- this simulates footsteps, not a cartoon bounce).
+  const WALK_BOUNCE_CYCLES = 2;
+  const WALK_BOUNCE_AMOUNT = 0.05;
 
   // Combat anims, area effects, quips, floating text, condition badges/tints,
   // and the aura/hatch/tile-score color helpers all now live in overlays.js
@@ -58,13 +66,23 @@ window.UI = window.UI || {};
       unit._lastLogicalX = unit.x;
       unit._lastLogicalY = unit.y;
     }
+    let bounce = 0;
     if (unit._animStart) {
       const t = Math.min(1, (now - unit._animStart) / MOVE_ANIM_MS);
       unit._renderX = unit._animFromX + (unit._animToX - unit._animFromX) * t;
       unit._renderY = unit._animFromY + (unit._animToY - unit._animFromY) * t;
+      // Footstep bounce (see WALK_BOUNCE_CYCLES/AMOUNT above) -- abs(sin(...))
+      // rather than plain sin() so it touches down to 0 at the start/end of
+      // each little hop instead of dipping negative, i.e. a series of small
+      // hops rather than a wobble that goes both above and below the glide
+      // line. Skipped under reduced motion, same guard getUnitShakeOffset
+      // uses for its own screen-shake-style motion.
+      if (!(window.UI.motion && window.UI.motion.isReduced())) {
+        bounce = Math.abs(Math.sin(t * Math.PI * WALK_BOUNCE_CYCLES)) * WALK_BOUNCE_AMOUNT;
+      }
       if (t >= 1) unit._animStart = 0;
     }
-    return { x: unit._renderX, y: unit._renderY };
+    return { x: unit._renderX, y: unit._renderY, bounce };
   }
 
   // Stable pseudo-random horizontal slot (0=left, 1=center, 2=right) for a
@@ -826,7 +844,12 @@ window.UI = window.UI || {};
       const normalSize = ts - pad * 2;
       const boxSize = normalSize * scale;
       const boxX = screenX + ts / 2 - boxSize / 2;
-      const boxY = screenY + pad + normalSize - boxSize;
+      // visualPos.bounce (see getVisualPos) lifts only the sprite's own box,
+      // not screenY itself -- drawUnitShadow below still draws at screenY,
+      // so the shadow stays put on the ground while the sprite hops above
+      // it, like footsteps landing and lifting rather than the whole unit
+      // (shadow included) bobbing as one rigid block.
+      const boxY = screenY + pad + normalSize - boxSize - visualPos.bounce * ts;
 
       // Slight alpha reduction on OWN hidden units only (own units are
       // always fully visible to their own civ regardless of Hidden -- this
