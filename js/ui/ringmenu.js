@@ -199,8 +199,18 @@ window.UI = window.UI || {};
     // pushes it toward (and, worst case, past) the clipped edge instead of
     // needing its own box model.
     const shortcut = o.shortcut ? `<span class="map-ring-item-shortcut">${escapeHtml(o.shortcut)}</span>` : "";
+    // o.cost is a generic optional field ANY option can carry (currently
+    // only orders.js's buildBridge pill sets it) -- a short pre-formatted
+    // price string (e.g. "11C"), red via o.affordable===false rather than
+    // greyed out like an unaffordable buildlist.js row, since this pill
+    // still needs to stay clickable (it opens the tile picker; the actual
+    // affordability check happens per-segment at build time, same as
+    // advanceGotoOrder's own "Bridge halted — not enough Coin" abort).
+    const cost = o.cost != null
+      ? `<span class="map-ring-item-cost${o.affordable === false ? " map-ring-item-cost-unaffordable" : ""}">${escapeHtml(o.cost)}</span>`
+      : "";
     return `<button class="map-ring-item${sideClass}${cityClass}${o.danger ? " map-ring-item-danger" : ""}"`
-      + ` data-ring-kind="${escapeHtml(o.kind)}">${escapeHtml(o.label)}${shortcut}</button>`;
+      + ` data-ring-kind="${escapeHtml(o.kind)}">${escapeHtml(o.label)}${cost}${shortcut}</button>`;
   }
 
   /** Applies one layout to real elements. Shared by render (via a detached

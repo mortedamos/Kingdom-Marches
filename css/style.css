@@ -1142,6 +1142,17 @@ html, body {
   color: var(--text-dim);
   background: rgba(0, 0, 0, 0.25);
 }
+/* Cost badge (2026-08-19, user-directed) -- see ringmenu.js's itemHtml.
+   Same green/red-against-stockpile convention as buildlist.js's
+   costTokenHtml, just a single flat cost rather than a per-resource token
+   list (currently only orders.js's Build Bridge pill sets o.cost). */
+.map-ring-item-cost {
+  margin-left: 6px;
+  font-size: 11px;
+  font-weight: bold;
+  color: #6fbf6f;
+}
+.map-ring-item-cost-unaffordable { color: #d9695f; }
 
 /* Ring sub-page (2026-08-06) -- the build list and the level-up picker. A
    panel rather than more pills: these are rows of label + cost tokens +

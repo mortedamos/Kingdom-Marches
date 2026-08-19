@@ -347,7 +347,11 @@ window.GameEngine = window.GameEngine || {};
       // movement" rule the loop below applies to every other tile -- keeps
       // the finished road gapless, including at the starting tile.
       const startTile = map.tiles[unit.y * map.width + unit.x];
-      if (!unit.usedThisTurn && !startTile.hasRoad) {
+      // !tileCountsAsRoad, not !startTile.hasRoad -- a bridge segment
+      // already counts as a road without setting hasRoad itself (see
+      // cities.js's tileCountsAsRoad), so laying a real road on top of one
+      // would be redundant.
+      if (!unit.usedThisTurn && !window.GameEngine.cities.tileCountsAsRoad(startTile)) {
         startTile.hasRoad = true;
         unit.usedThisTurn = true;
         progressed = true;
@@ -369,7 +373,11 @@ window.GameEngine = window.GameEngine || {};
             unit.movesRemaining -= step.cost;
             progressed = true;
             const tile = map.tiles[unit.y * map.width + unit.x];
-            if (!tile.hasRoad) {
+            // !tileCountsAsRoad, not !tile.hasRoad -- see startTile's own
+            // comment above. A bridge tile already counts as a road, so the
+            // Pioneer just walks across it (no break, no action spent) and
+            // keeps laying real road from the far side onward.
+            if (!window.GameEngine.cities.tileCountsAsRoad(tile)) {
               if (!unit.usedThisTurn) { tile.hasRoad = true; unit.usedThisTurn = true; }
               break; // one new road segment per turn -- stop here regardless of leftover movement
             }
@@ -824,7 +832,12 @@ window.GameEngine = window.GameEngine || {};
             && window.GameEngine.cities.canFoundCityAt(gameState.map, gameState.civs, unit.x, unit.y, civ.raceId).ok) {
           options.push({ kind: "foundCity", label: "Found City" });
         }
-        if (baseUnit.canBuildRoad && !tile.hasRoad) {
+        // !tileCountsAsRoad, not !tile.hasRoad (2026-08-19 bugfix): a
+        // bridge segment already counts as a road (cities.js's
+        // tileCountsAsRoad) without ever setting tile.hasRoad itself, so
+        // the raw flag alone let a Pioneer standing on its own finished
+        // bridge tile "Build Road Here" redundantly on top of it.
+        if (baseUnit.canBuildRoad && !window.GameEngine.cities.tileCountsAsRoad(tile)) {
           options.push({ kind: "buildRoadHere", label: "Build Road Here" });
         }
         // Build Bridge: only offered standing right at the water's edge
@@ -834,9 +847,19 @@ window.GameEngine = window.GameEngine || {};
         // tile to build the next segment on -- same one-tile-at-a-time
         // shape as Build Road Here otherwise (cities.js's
         // canBuildBridgeSegment), just needing a picker at all since the
-        // target isn't the unit's own tile.
+        // target isn't the unit's own tile. cost/affordable (2026-08-19,
+        // user-directed): shown on the pill itself via ringmenu.js's
+        // generic cost-span support (same red/green-against-stockpile
+        // convention as buildlist.js's costTokenHtml) so the player isn't
+        // one click away from the sole answer being "Bridge halted — not
+        // enough Coin" (see advanceGotoOrder's buildBridge branch).
         if (baseUnit.canBuildRoad && isAdjacentToWater(gameState.map, unit.x, unit.y)) {
-          options.push({ kind: "buildBridge", label: "Build Bridge..." });
+          const bridgeCoinCost = window.GameData.getBuilding("bridge_section").coinCost;
+          const civStock = civ.stockpile || { harvest: 0, coin: 0, lore: 0 };
+          options.push({
+            kind: "buildBridge", label: "Build Bridge...",
+            cost: `${bridgeCoinCost}C`, affordable: civStock.coin >= bridgeCoinCost,
+          });
         }
         // Help Build: a Pioneer standing on its own civ's city can throw its
         // turn into whatever that city is currently building, decrementing
@@ -1173,7 +1196,9 @@ window.GameEngine = window.GameEngine || {};
     }
 
     options.push({ kind: "moveTo", label: "Move to This Tile" });
-    if (baseUnit.canBuildRoad && !tile.hasRoad) {
+    // !tileCountsAsRoad, not !tile.hasRoad -- see buildRoadHere's own
+    // comment above (onOwnTile branch) for why.
+    if (baseUnit.canBuildRoad && !window.GameEngine.cities.tileCountsAsRoad(tile)) {
       options.push({ kind: "buildRoadTo", label: "Build Road to This Tile" });
     }
     return options;

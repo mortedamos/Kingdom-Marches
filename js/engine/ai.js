@@ -1230,6 +1230,13 @@ window.GameEngine = window.GameEngine || {};
       return false;
     }
 
+    // segX/segY: the CURRENT segment's tile, re-stamped every call since
+    // (unlike the player's single-tile gotoTarget) this is re-derived fresh
+    // each turn rather than stored once -- read by render.js's
+    // constructionSites so an in-progress AI bridge segment gets the same
+    // hatch+turns-remaining overlay as a city's own build queue.
+    build.segX = nx; build.segY = ny;
+
     const building = window.GameData.getBuilding("bridge_section");
     if (build.turnsLeft == null) {
       civ.stockpile = civ.stockpile || { harvest: 0, coin: 0, lore: 0 };

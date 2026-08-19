@@ -527,11 +527,20 @@ window.UI = window.UI || {};
     if (b.unitCostMult) effects.push(`unit cost ×${b.unitCostMult}`);
     if (b.raiseDeadPowerBonus) effects.push(`+${Math.round(b.raiseDeadPowerBonus * 100)}% raised power`);
 
+    // A bridge segment doesn't belong to any one city (see cities.js's
+    // findStructureAt doc comment -- unlike every other structure, it's
+    // tracked on the civ, not a city's own structures list), so sel.city
+    // is null here and the Owner City row is skipped rather than crashing
+    // on sel.city.name (2026-08-19 bugfix -- this is what made the Bridge
+    // tab render nothing at all when clicked).
+    const ownerRow = sel.city
+      ? `<div class="stat-row"><span>Owner City</span><span>${escapeHtml(sel.city.name)}</span></div>`
+      : "";
     return `
       <div class="panel">
         <h2>${escapeHtml(b.label)}</h2>
         <div class="stat-row"><span>Race</span><span>${escapeHtml(race.label)}</span></div>
-        <div class="stat-row"><span>Owner City</span><span>${escapeHtml(sel.city.name)}</span></div>
+        ${ownerRow}
         <div class="stat-row"><span>HP</span><span>${Math.max(0, rec.hp)} / ${rec.maxHp}</span></div>
         ${hpBarHtml(rec.hp, rec.maxHp)}
         <div class="stat-row"><span>Position</span><span>(${rec.x}, ${rec.y})</span></div>
@@ -578,8 +587,8 @@ window.UI = window.UI || {};
         if (!canFoundCheck.ok && baseUnit.canFoundCity && canFoundCheck.reason) {
           rows += `<div class="stat-row"><em style="color:#f0a830">Cannot found here: ${escapeHtml(canFoundCheck.reason)}</em></div>`;
         }
-        if (baseUnit.canBuildRoad && tile.hasRoad) {
-          rows += `<div class="stat-row"><span>Road</span><span>Already built here</span></div>`;
+        if (baseUnit.canBuildRoad && window.GameEngine.cities.tileCountsAsRoad(tile)) {
+          rows += `<div class="stat-row"><span>Road</span><span>${tile.hasRoad ? "Already built here" : "Bridge counts as a road here"}</span></div>`;
         }
       } else {
         rows += `<div class="stat-row"><em>Already acted this turn</em></div>`;

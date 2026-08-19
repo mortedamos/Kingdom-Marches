@@ -306,6 +306,23 @@ window.UI = window.UI || {};
           constructionSites.set(`${bq.placeAt.x},${bq.placeAt.y}`, bq);
         }
       }
+      // In-progress bridge segments (2026-08-19, user-directed): same
+      // construction overlay as a queued building, just sourced from a
+      // Pioneer's own build state instead of city.buildQueue -- the
+      // player's single-tile gotoTarget (orders.js's startBridgeOrder) or
+      // the AI's per-turn-derived segX/segY (ai.js's
+      // advancePioneerBridgeBuild). turnsRemaining is null before the
+      // segment's Coin has actually been paid (drawConstructionSite treats
+      // that as "no countdown yet", same as it would for any other item).
+      for (const unit of civ.units) {
+        if (unit.gotoTarget && unit.gotoTarget.buildBridge) {
+          constructionSites.set(`${unit.gotoTarget.x},${unit.gotoTarget.y}`,
+            { turnsRemaining: unit.gotoTarget.bridgeTurnsLeft });
+        } else if (unit._bridgeBuild && unit._bridgeBuild.segX != null) {
+          constructionSites.set(`${unit._bridgeBuild.segX},${unit._bridgeBuild.segY}`,
+            { turnsRemaining: unit._bridgeBuild.turnsLeft });
+        }
+      }
     }
 
     for (let y = 0; y < map.height; y++) {
