@@ -1324,15 +1324,25 @@ window.UI = window.UI || {};
   // a whole swamp/forest doesn't populate in unison. Live tiles only (see
   // render.js's caller, same reasoning as ground clutter/chest sparkle).
 
-  const FROG_CYCLE_MS = 10000;
-  const FROG_ACTIVE_MS = 3600;
-  const FROG_HOP_COUNT = 3;
+  // Cycle/active timing (2026-08-19, user-directed: "way too many frogs and
+  // birds" -- the original 10-11s cycle with a ~36-38% active window meant
+  // a large fraction of every visible swamp/forest tile showed one at once.
+  // Stretched the cycle and cut the active window down to a ~5% duty cycle
+  // instead -- roughly a 7x rarer sighting per tile -- so a critter reads
+  // as a rare, worth-noticing event, not ambient population.
+  const FROG_CYCLE_MS = 32000;
+  const FROG_ACTIVE_MS = 1700;
+  const FROG_HOP_COUNT = 2;
   const FROG_COLOR = "#5f8f4a";
   const FROG_COLOR_DARK = "#3f6a34";
 
-  /** One small squat frog silhouette: a flattened body ellipse plus two
-   *  tiny eye bumps on top -- reads fine at the small size this renders at
-   *  without any interior linework. `squash` < 1 flattens it (mid-hop
+  /** One small frog silhouette (2026-08-19, user-directed redesign -- the
+   *  original plain ellipse-plus-eye-bumps "read as a bouncing slime ball,
+   *  not a frog"): a single wide-haunched, narrow-snouted shield outline
+   *  (bezier, not a circle/ellipse) so the silhouette itself reads as
+   *  squat and directional even at tiny render size, plus two small dark
+   *  eye dots close together near the front -- the cheapest, most legible
+   *  "this has a face" cue at this scale. `squash` < 1 flattens it (mid-hop
    *  crouch), > 1 stretches it tall (mid-air). */
   function drawFrogGlyph(ctx, x, y, size, squash) {
     ctx.save();
@@ -1340,12 +1350,15 @@ window.UI = window.UI || {};
     ctx.scale(1 + (1 - squash) * 0.5, squash);
     ctx.fillStyle = FROG_COLOR;
     ctx.beginPath();
-    ctx.ellipse(0, 0, size, size * 0.68, 0, 0, Math.PI * 2);
+    ctx.moveTo(0, size * 0.55);
+    ctx.bezierCurveTo(size * 0.95, size * 0.5, size * 0.85, -size * 0.05, size * 0.45, -size * 0.35);
+    ctx.bezierCurveTo(size * 0.3, -size * 0.58, -size * 0.3, -size * 0.58, -size * 0.45, -size * 0.35);
+    ctx.bezierCurveTo(-size * 0.85, -size * 0.05, -size * 0.95, size * 0.5, 0, size * 0.55);
     ctx.fill();
     ctx.fillStyle = FROG_COLOR_DARK;
     ctx.beginPath();
-    ctx.ellipse(-size * 0.35, -size * 0.5, size * 0.16, size * 0.16, 0, 0, Math.PI * 2);
-    ctx.ellipse(size * 0.35, -size * 0.5, size * 0.16, size * 0.16, 0, 0, Math.PI * 2);
+    ctx.ellipse(-size * 0.22, -size * 0.38, size * 0.15, size * 0.15, 0, 0, Math.PI * 2);
+    ctx.ellipse(size * 0.22, -size * 0.38, size * 0.15, size * 0.15, 0, 0, Math.PI * 2);
     ctx.fill();
     ctx.restore();
   }
@@ -1368,7 +1381,7 @@ window.UI = window.UI || {};
       { x: 0.48 + seed[2] * 0.2, y: 0.32 + seed[3] * 0.22 },
       { x: 0.68 + seed[1] * 0.16, y: 0.6 + seed[0] * 0.18 },
     ];
-    const size = ts * 0.1;
+    const size = ts * 0.08; // shrunk slightly (2026-08-19, user-directed)
     const reduced = window.UI.motion && window.UI.motion.isReduced();
     if (reduced) {
       drawFrogGlyph(ctx, screenX + spots[0].x * ts, screenY + spots[0].y * ts, size, 1);
@@ -1396,8 +1409,9 @@ window.UI = window.UI || {};
     drawFrogGlyph(ctx, screenX + px * ts, screenY + py * ts - lift, size, squash);
   }
 
-  const BIRD_CYCLE_MS = 11000;
-  const BIRD_ACTIVE_MS = 4200;
+  // Same rarity fix as the frog timing above (2026-08-19, user-directed).
+  const BIRD_CYCLE_MS = 34000;
+  const BIRD_ACTIVE_MS = 2000;
   const BIRD_COLOR = "#2e2b26";
 
   /** One small bird silhouette: two wing strokes curving up from a shared
