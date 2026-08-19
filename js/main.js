@@ -810,12 +810,14 @@
         $("credits-content").innerHTML = window.UI.credits.render(text);
         $("credits-overlay").style.display = "flex";
         startCreditsCrawl();
+        playTitleMusic();
       });
   }
 
   function closeCredits() {
     $("credits-overlay").style.display = "none";
     if (creditsAnimId != null) { cancelAnimationFrame(creditsAnimId); creditsAnimId = null; }
+    if (titleAudio) titleAudio.pause();
   }
 
   /** Drives the bottom-to-top scroll with rAF + measured pixel heights
@@ -1213,6 +1215,9 @@
         unlockedUnits: new Set(),
         unlockedBuildings: new Set(),
         civicInfluenceBonus: 0, radiusBonus: 0, usedCityNames: [],
+        // Every kingdom starts able to afford its own starting-tech unit
+        // immediately -- see config.js's units.startingCoin.
+        stockpile: { harvest: 0, coin: window.GameConfig.units.startingCoin, lore: 0 },
       };
       // LEVEL 0: every layer-0 tech for this race is auto-completed for free
       // at creation -- computed dynamically (by layer, not a hardcoded id
@@ -3778,6 +3783,39 @@
     redraw();
   }
 
+  /** Build Bridge: same tile-placement mechanism as Follow/Teleport above,
+   *  but the slots are every currently-EXPLORED, currently-legal bridge
+   *  landing tile (cities.js's computeBridgePath, straight line back to the
+   *  Pioneer, all water but the landing tile itself, under config.js's
+   *  bridges.maxSpan) -- picking one commits via orders.js's
+   *  startBridgeOrder, which then drives itself forward one segment at a
+   *  time every turn (see advanceGotoOrder's buildBridge branch) until the
+   *  whole span is built or it's cancelled/blocked. */
+  function startBridgePlacement(unit) {
+    if (!humanCivId || unit.usedThisTurn || unit.channeling) return;
+    const civ = gameState.civs[humanCivId];
+    if (!civ) return;
+    const explored = gameState.explored[civ.id] || new Set();
+    const { map } = gameState;
+    const slots = [];
+    for (const idx of explored) {
+      const x = idx % map.width, y = Math.floor(idx / map.width);
+      if (window.GameEngine.cities.computeBridgePath(map, unit, x, y).ok) slots.push({ x, y });
+    }
+    if (!slots.length) return;
+    endAutomationAndGoto(unit);
+    viewState.placement = {
+      slots,
+      label: "Build Bridge...",
+      onPick: (slot) => {
+        viewState.placement = null;
+        if (slot) window.GameEngine.orders.startBridgeOrder(unit, gameState, slot.x, slot.y);
+        redraw();
+      },
+    };
+    redraw();
+  }
+
   function handleCancelFollow() {
     if (!humanCivId || !viewState.selectedUnit) return;
     const unit = viewState.selectedUnit;
@@ -4041,6 +4079,9 @@
       }
       case "buildRoadHere":
         handleBuildRoad();
+        break;
+      case "buildBridge":
+        startBridgePlacement(unit);
         break;
       case "helpBuild":
         handleHelpBuild();

@@ -1607,10 +1607,13 @@ window.GameEngine = window.GameEngine || {};
   /**
    * Human "Fireball!" (see ai.js's performWizardFireball): a standalone
    * targeted action. Deals FIREBALL_DAMAGE_PCT of the Wizard's attack (not
-   * applySplashDamage's half-roll) to every enemy unit AND structure in the
-   * 3x3 area centered on (centerX, centerY) -- the target tile itself, plus
-   * its 8 neighbors, no "primary target" distinction. Never hits
-   * the caster's own civ, or cities directly (same "structures, not cities"
+   * applySplashDamage's half-roll) to every unit AND structure in the 3x3
+   * area centered on (centerX, centerY) -- the target tile itself, plus its
+   * 8 neighbors, no "primary target" distinction. Indiscriminate: the
+   * caster's OWN civ (including the caster itself, if it's standing in its
+   * own blast) is just as exposed as anyone else -- see ai.js's
+   * maybeFireballStrike for the AI-side risk/reward targeting that this
+   * demands. Never hits cities directly (same "structures, not cities"
    * scope applySplashDamage already uses). Returns a log of hits, same shape
    * as applySplashDamage's, for the caller to roll ignite chance against.
    */
@@ -1623,7 +1626,7 @@ window.GameEngine = window.GameEngine || {};
         const x = centerX + dx, y = centerY + dy;
         if (x < 0 || x >= map.width || y < 0 || y >= map.height) continue;
         for (const otherCiv of Object.values(civs)) {
-          if (otherCiv.id === casterUnit.civId || otherCiv.eliminated) continue;
+          if (otherCiv.eliminated) continue;
           const hitUnit = otherCiv.units.find((u) => u.x === x && u.y === y);
           if (hitUnit) {
             const dmg = mitigatedDamage(atk, effectiveDefense(hitUnit, otherCiv, {}));
@@ -1635,7 +1638,7 @@ window.GameEngine = window.GameEngine || {};
           }
         }
         const structFound = window.GameEngine.cities.findStructureAt(gameState, x, y);
-        if (structFound && structFound.civ.id !== casterUnit.civId) {
+        if (structFound) {
           const dmg = mitigatedDamage(atk, 0);
           structFound.record.hp -= dmg;
           hits.push({ kind: "structure", x, y, damage: dmg, civId: structFound.civ.id, id: structFound.record.id, record: structFound.record });

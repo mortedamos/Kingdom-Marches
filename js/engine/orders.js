@@ -35,6 +35,22 @@
 window.GameEngine = window.GameEngine || {};
 
 (function () {
+  /** True if any of the 8 tiles around (x,y) is open water -- gates the
+   *  "Build Bridge..." ring option onto a Pioneer actually standing at the
+   *  water's edge (see contextMenuOptions' onOwnTile branch). */
+  function isAdjacentToWater(map, x, y) {
+    const TERRAIN = window.GameData.TERRAIN;
+    for (let dy = -1; dy <= 1; dy++) {
+      for (let dx = -1; dx <= 1; dx++) {
+        if (dx === 0 && dy === 0) continue;
+        const nx = x + dx, ny = y + dy;
+        if (nx < 0 || nx >= map.width || ny < 0 || ny >= map.height) continue;
+        if (TERRAIN[map.tiles[ny * map.width + nx].terrain].isWater) return true;
+      }
+    }
+    return false;
+  }
+
   /** Is this a unit the player is allowed to give orders to at all? */
   function canCommand(unit, gameState, humanCivId) {
     if (!unit || !humanCivId) return false;
@@ -245,6 +261,24 @@ window.GameEngine = window.GameEngine || {};
     advanceGotoOrder(unit, gameState);
   }
 
+  /** Build Bridge: validates the whole span up front (cities.js's
+   *  computeBridgePath -- straight line, all water but the landing tile,
+   *  under the configured max span) and, if legal, commits to it as a
+   *  gotoTarget carrying the precomputed segment list. False if the span
+   *  is no longer legal (the picker's own slots should already guarantee
+   *  this, but the player could in principle sit on the confirmation for a
+   *  while as the map changes around them). */
+  function startBridgeOrder(unit, gameState, x, y) {
+    const result = window.GameEngine.cities.computeBridgePath(gameState.map, unit, x, y);
+    if (!result.ok) return false;
+    unit.gotoTarget = {
+      x, y, buildBridge: true,
+      bridgeWaterTiles: result.waterTiles, bridgeIndex: 0, bridgeTurnsLeft: null,
+    };
+    advanceGotoOrder(unit, gameState);
+    return true;
+  }
+
   function stopGotoOrder(unit) {
     unit.gotoTarget = null;
   }
@@ -319,6 +353,52 @@ window.GameEngine = window.GameEngine || {};
           if (progressed) window.GameEngine.turns.refreshVisibility(gameState);
         }
       }
+    } else if (target.buildBridge) {
+      // Unlike a road segment (instant, free, one per turn), each bridge
+      // segment costs Coin up front and takes bridge_section.minBuildTurns
+      // real turns, same pacing as a wall -- see cities.js's
+      // placeBridgeSegment/computeBridgePath and this feature's own design
+      // notes (2026-08-18). The Pioneer is committed to it (usedThisTurn)
+      // for every one of those turns, same as any other channeled action.
+      if (!unit.usedThisTurn) {
+        const idx = target.bridgeIndex || 0;
+        const waterTiles = target.bridgeWaterTiles;
+        if (idx < waterTiles.length) {
+          const seg = waterTiles[idx];
+          if (target.bridgeTurnsLeft == null) {
+            const building = window.GameData.getBuilding("bridge_section");
+            const civ = civs[unit.civId];
+            civ.stockpile = civ.stockpile || { harvest: 0, coin: 0, lore: 0 };
+            if (civ.stockpile.coin < building.coinCost) {
+              unit.gotoTarget = null;
+              unit.currentMission = "Bridge halted — not enough Coin";
+              return;
+            }
+            civ.stockpile.coin -= building.coinCost;
+            target.bridgeTurnsLeft = building.minBuildTurns;
+          }
+          target.bridgeTurnsLeft--;
+          unit.usedThisTurn = true;
+          progressed = true;
+          if (target.bridgeTurnsLeft <= 0) {
+            window.GameEngine.cities.placeBridgeSegment(civs[unit.civId], map, seg.x, seg.y);
+            // Advance the Pioneer onto the span it just finished -- the
+            // next segment (or the final land tile) is only reachable from
+            // there, and pathfinding a water tile that only became
+            // passable this instant would be redundant with just placing
+            // it there directly (same "set position directly" convention
+            // the road loop above already uses per-tile).
+            unit.x = seg.x; unit.y = seg.y;
+            target.bridgeIndex = idx + 1;
+            target.bridgeTurnsLeft = null;
+            window.GameEngine.turns.refreshVisibility(gameState);
+          }
+        } else {
+          // Every water segment is done -- the last step, onto the real
+          // landing tile, is just an ordinary move.
+          progressed = moveTo(unit, gameState, target.x, target.y, unit.civId);
+        }
+      }
     } else {
       // moveTo does its own canCommand check -- passing the unit's own
       // civId as `humanCivId` there is safe (not a security hole): a
@@ -340,7 +420,9 @@ window.GameEngine = window.GameEngine || {};
     }
     unit.currentMission = target.buildRoad
       ? `Building a road to (${target.x},${target.y})`
-      : `Moving to (${target.x},${target.y})`;
+      : target.buildBridge
+        ? `Building a bridge to (${target.x},${target.y})`
+        : `Moving to (${target.x},${target.y})`;
   }
 
   /**
@@ -728,6 +810,16 @@ window.GameEngine = window.GameEngine || {};
         }
         if (baseUnit.canBuildRoad && !tile.hasRoad) {
           options.push({ kind: "buildRoadHere", label: "Build Road Here" });
+        }
+        // Build Bridge: only offered standing right at the water's edge
+        // (same "gains the action once adjacent to water" gating the
+        // feature was designed around), opening main.js's tile-placement
+        // picker for the landing point (see startBridgePlacement) rather
+        // than committing to a single pre-picked tile the way Build Road
+        // Here does -- a bridge's whole span has to be validated together
+        // (cities.js's computeBridgePath), not tile-by-tile.
+        if (baseUnit.canBuildRoad && isAdjacentToWater(gameState.map, unit.x, unit.y)) {
+          options.push({ kind: "buildBridge", label: "Build Bridge..." });
         }
         // Help Build: a Pioneer standing on its own civ's city can throw its
         // turn into whatever that city is currently building, decrementing
@@ -1310,8 +1402,10 @@ window.GameEngine = window.GameEngine || {};
     moveTo,
     attack,
     startGotoOrder,
+    startBridgeOrder,
     advanceGotoOrder,
     stopGotoOrder,
+    isAdjacentToWater,
     advanceSentryOrder,
     advanceFollowOrder,
     performRestAndDefend,

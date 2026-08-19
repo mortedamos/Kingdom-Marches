@@ -31,8 +31,9 @@
  *                                      influence radius.
  *
  * Exception to the "exactly 4, race-only, one each" rule above: wall_section
- * (isWall: true, no raceOnly) is universal and stackable -- see its own
- * comment further down.
+ * (isWall: true, no raceOnly) and bridge_section (isBridge: true, no
+ * raceOnly) are both universal and stackable -- see their own comments
+ * further down.
  */
 
 window.GameData = window.GameData || {};
@@ -196,6 +197,23 @@ window.GameData.BUILDINGS = {
     // what actually governs everywhere -- every race builds a wall in
     // exactly 3 turns. cityDefensePerWall (see combat.js's
     // cityDefenseValue) is a separate, additional defense bonus per wall.
+    coinCost: 11, maxHp: 40, defense: 8,
+    minBuildTurns: 3,
+  },
+
+  // ---------- BRIDGES — universal, every race can build these (not raceOnly) ----------
+  // Same "several segments at once, one per open tile" shape as wall_section
+  // just above (isBridge instead of isWall) -- see cities.js's
+  // placeBridgeSpan for how a whole span of these gets queued as one player
+  // action but built one segment at a time, same pacing as a wall. Unlike
+  // a wall, a bridge is deliberately NOT a movement obstacle to anyone,
+  // friend or enemy (see ai.js's hasEnemyStructure) -- it's a crossing, not
+  // a fortification -- and it "counts as a road" for city-founding
+  // connectivity, movement discount, and road-count tech effects (see
+  // cities.js's tileCountsAsRoad). Exact same cost/build-time as a Wall
+  // section, user-directed (2026-08-18).
+  bridge_section: {
+    id: "bridge_section", label: "Bridge", symbol: "═", isBridge: true,
     coinCost: 11, maxHp: 40, defense: 8,
     minBuildTurns: 3,
   },

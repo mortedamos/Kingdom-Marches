@@ -773,6 +773,122 @@ window.UI = window.UI || {};
       }
     }
 
+    // Bridges -- same draw shape as the Structures pass just above, but
+    // reading civ.bridges instead of city.structures, since a bridge span
+    // doesn't belong to any one city (see cities.js's placeBridgeSegment).
+    // Kept as its own pass rather than folded into the loop above because
+    // that one iterates city.structures per city; a bridge has no such city
+    // to iterate from.
+    for (const civ of Object.values(civs)) {
+      const race = window.GameData.getRace(civ.raceId);
+      for (const s of civ.bridges || []) {
+        const idx = s.y * map.width + s.x;
+        if (!visible.has(idx)) continue;
+        const building = window.GameData.getBuilding(s.id);
+        const screenX = s.x * ts + offsetX;
+        const screenY = s.y * ts + offsetY;
+        const orientation = bridgeOrientation(map, civ.id, s.x, s.y);
+        const sprite = window.UI.sprites.pickWallSegment(s.id, civ.raceId, bridgeSpriteKey(orientation), s);
+        if (sprite) {
+          const img = sprite.image;
+          const drawHeight = ts * (img.naturalHeight / img.naturalWidth);
+          const drawY = screenY + ts - drawHeight;
+          if (orientation.startsWith("diagonal")) {
+            // Diagonal tiles only ever touch a diagonally-adjacent tile at
+            // a single grid CORNER POINT, never a full edge the way
+            // horizontal/vertical neighbors do -- so no matter how
+            // precisely the art's own band reaches its corners, two
+            // separately-generated tiles can only ever kiss at one pixel,
+            // which reads as disconnected (confirmed across several art
+            // iterations trying to fix this purely by redesigning the
+            // asset -- see this feature's doc history). Fix used here
+            // instead (2026-08-19, user-directed): draw the sprite SCALED
+            // UP from the tile's own center, well past the tile's own
+            // ts×ts bounds -- same "content can extend past a structure's
+            // own footprint" allowance a tall building already gets (art
+            // style guide §13's north-tile-overlap note), just applied
+            // uniformly in every direction instead of only upward. Two
+            // diagonally-adjacent bridge tiles each bleed into the
+            // other's space this way, so their oversized corners overlap
+            // and connect by simple coverage rather than needing
+            // pixel-perfect corner geometry from either one. Only
+            // diagonal segments need this -- horizontal/vertical already
+            // connect exactly at the shared edge with no scaling.
+            //
+            // A uniform bleed scale couples reach and thickness together
+            // (more overlap always meant a fatter band too, user-flagged
+            // 2026-08-19 as still not quite connecting AND already a bit
+            // thick). Scaling ANISOTROPICALLY along the band's own 45°
+            // axis decouples them: stretch length (more overlap into the
+            // neighbor tile, for guaranteed connection) independently
+            // from width (kept near 1:1 since the asset's native ~60px
+            // band is already close to vertical's ~64px). Done via the
+            // standard rotate/scale/rotate-back composition -- rotate the
+            // band's own axis onto local x, apply the two independent
+            // scale factors, rotate back -- rather than needing a
+            // pre-rotated asset.
+            // 1.32x left a real (if narrow, ~1.5px) gap in practice --
+            // the band's tapered TIP reaches less far into the neighbor
+            // tile than its wider mid-span cross-section, so measuring
+            // edge coverage alone overstated the actual overlap. Pushed
+            // further to 1.75x (2026-08-19) for real margin closing the
+            // gap against the octagonal node specifically (a same-civ
+            // diagonal run alone already read as fully seamless well
+            // before this point); width correspondingly trimmed to 0.85x
+            // so the extra length reach doesn't also read as a thicker
+            // band.
+            const DIAGONAL_LENGTH_SCALE = 1.75; // along the band's own diagonal axis
+            const DIAGONAL_WIDTH_SCALE = 0.85; // perpendicular to it
+            ctx.save();
+            ctx.translate(screenX + ts / 2, drawY + drawHeight / 2);
+            if (orientation === "diagonal_nesw") ctx.scale(-1, 1); // mirror for the NE-SW direction, see bridgeOrientation's doc comment
+            ctx.rotate(Math.PI / 4);
+            ctx.scale(DIAGONAL_LENGTH_SCALE, DIAGONAL_WIDTH_SCALE);
+            ctx.rotate(-Math.PI / 4);
+            ctx.drawImage(img, 0, 0, img.naturalWidth, img.naturalHeight, -ts / 2, -drawHeight / 2, ts, drawHeight);
+            ctx.restore();
+          } else if (orientation === "horizontal") {
+            // Rotate the single authored vertical (north-south) asset 90°
+            // to get the east-west band -- see bridgeSpriteKey's doc
+            // comment. Bridges are always square (1:1), so a 90° rotation
+            // about the tile's own center maps it back onto itself exactly,
+            // no distortion.
+            ctx.save();
+            ctx.translate(screenX + ts / 2, drawY + drawHeight / 2);
+            ctx.rotate(Math.PI / 2);
+            ctx.drawImage(img, 0, 0, img.naturalWidth, img.naturalHeight, -ts / 2, -drawHeight / 2, ts, drawHeight);
+            ctx.restore();
+          } else {
+            ctx.drawImage(img, 0, 0, img.naturalWidth, img.naturalHeight, screenX, drawY, ts, drawHeight);
+          }
+        } else {
+          const pad = ts * 0.15;
+          ctx.fillStyle = overlays.hexToRgba(race.color, 0.85);
+          ctx.fillRect(screenX + pad, screenY + ts * 0.35, ts - pad * 2, ts * 0.3);
+          ctx.strokeStyle = "rgba(0,0,0,0.5)";
+          ctx.lineWidth = 1;
+          ctx.strokeRect(screenX + pad, screenY + ts * 0.35, ts - pad * 2, ts * 0.3);
+          ctx.fillStyle = "#fff";
+          ctx.font = `bold ${Math.max(7, ts * 0.32)}px serif`;
+          ctx.textAlign = "center";
+          ctx.textBaseline = "middle";
+          ctx.fillText(building.symbol || "▪", screenX + ts / 2, screenY + ts / 2 - ts * 0.03);
+        }
+        if (s.hp < s.maxHp) {
+          const barPad = ts * 0.1;
+          const bw = ts - barPad * 2, bh = Math.max(2, ts * 0.08);
+          const bx = screenX + barPad, by = screenY + ts - barPad - bh;
+          ctx.fillStyle = "rgba(0,0,0,0.6)";
+          ctx.fillRect(bx, by, bw, bh);
+          ctx.fillStyle = "#5fbf5f";
+          ctx.fillRect(bx, by, bw * Math.max(0, s.hp) / s.maxHp, bh);
+        }
+        if (overlays.hasActiveFloatingText(s)) {
+          floatingTextQueue.push({ unit: s, screenX, screenY });
+        }
+      }
+    }
+
     // Aura radius overlay (Human "Crusade" Paladin / Dwarf "Heavy Metal"/
     // "Power Metal" Troubadour) -- see auraInfoForUnit. Drawn under the unit
     // sprites (before the Units pass below) so units/terrain stay legible on
@@ -1436,6 +1552,58 @@ window.UI = window.UI || {};
     if (horiz && !vert) return "horizontal";
     if (vert && !horiz) return "vertical";
     return "node";
+  }
+
+  /** Same idea as wallOrientation above, for a bridge_section tile -- but a
+   *  bridge span (unlike a wall run) can also cross diagonally, since
+   *  cities.js's computeBridgePath allows any straight 8-directional line.
+   *  Only ONE diagonal art asset is authored (a NW-SE run, top-left to
+   *  bottom-right) -- an NE-SW run reuses it MIRRORED at draw time (see
+   *  the Bridges draw pass's `flip` check below) rather than needing a
+   *  second asset, so this still returns one of only 5 distinct strings
+   *  even though there are 2 diagonal directions: "diagonal_nwse" draws
+   *  the asset as-is, "diagonal_nesw" draws it flipped. bridgeSpriteKey()
+   *  collapses both back to the single "diagonal" lookup key for the
+   *  sprite registry. "node" here means an endpoint (only one neighbor,
+   *  or none at all) or a genuine junction -- same "reads fine as a
+   *  single generic variant either way" reasoning wallOrientation's own
+   *  doc comment gives. */
+  function bridgeOrientation(map, civId, x, y) {
+    const isSameCivBridge = (nx, ny) => {
+      if (nx < 0 || nx >= map.width || ny < 0 || ny >= map.height) return false;
+      const s = map.tiles[ny * map.width + nx].structure;
+      return !!s && s.isBridge && s.civId === civId;
+    };
+    const horiz = isSameCivBridge(x + 1, y) || isSameCivBridge(x - 1, y);
+    const vert = isSameCivBridge(x, y - 1) || isSameCivBridge(x, y + 1);
+    const nwse = isSameCivBridge(x - 1, y - 1) || isSameCivBridge(x + 1, y + 1);
+    const nesw = isSameCivBridge(x + 1, y - 1) || isSameCivBridge(x - 1, y + 1);
+    const diag = nwse || nesw;
+    if (horiz && !vert && !diag) return "horizontal";
+    if (vert && !horiz && !diag) return "vertical";
+    // Both diagonals present at once (a true X junction) is vanishingly
+    // rare for a single straight-line bridge span -- picks whichever
+    // direction matched first, same "good enough, not pursued further
+    // unless it looks wrong in practice" acceptance wallOrientation's own
+    // node case already establishes for its own rare double-axis case.
+    if (nwse && !horiz && !vert) return "diagonal_nwse";
+    if (nesw && !horiz && !vert) return "diagonal_nesw";
+    return "node";
+  }
+
+  /** Collapses bridgeOrientation's 5 possible strings down to the 3 actual
+   *  sprite-lookup keys: "diagonal_nwse"/"diagonal_nesw" both resolve to
+   *  the single authored "diagonal" asset (see bridgeOrientation's doc
+   *  comment for why only one diagonal image exists), and "horizontal"
+   *  resolves to "vertical" -- there's no separate horizontal asset at
+   *  all, an east-west run just draws the vertical (north-south) asset
+   *  ROTATED 90° at draw time (see the Bridges draw pass below). Same
+   *  band, same thickness, by construction -- eliminates the
+   *  horizontal/vertical width-mismatch a separately-authored horizontal
+   *  asset kept drifting into (2026-08-18, user-directed). */
+  function bridgeSpriteKey(orientation) {
+    if (orientation === "horizontal") return "vertical";
+    return orientation.startsWith("diagonal") ? "diagonal" : orientation;
   }
 
   // --- River overlay: same draw-time compositing technique as roads, one

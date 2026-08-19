@@ -649,6 +649,24 @@ window.GameEngine = window.GameEngine || {};
         if (s.hp <= 0) window.GameEngine.cities.destroyStructure(gameState, s.x, s.y);
       }
     }
+
+    // Bridges: same Burning tick as city structures just above (a bridge
+    // can catch fire from Fireball's now-indiscriminate blast, same as any
+    // other structure -- see combat.js's applyFireballBlast), but read from
+    // civ.bridges instead, since a bridge doesn't belong to any one city.
+    for (const s of (civ.bridges || []).slice()) {
+      if (!s.burning) continue;
+      if (turnNumber > s.burning.expiresAtTurn) { delete s.burning; continue; }
+      if (isBurningExempt(map, s.x, s.y)) continue;
+      s.hp -= 1;
+      window.GameEngine.floatingText.spawnFloatingText(s, "-1 (Burning)", "warning");
+      // handleBridgeDestroyed (not the plain destroyStructure city.structures
+      // walls/buildings use) -- a burned-out bridge also drops whoever was
+      // standing on it into the water, same as one destroyed by direct
+      // attack (see that function's own doc comment for the Flying
+      // exception).
+      if (s.hp <= 0) window.GameEngine.ai.handleBridgeDestroyed(gameState, s.x, s.y);
+    }
   }
 
   /**

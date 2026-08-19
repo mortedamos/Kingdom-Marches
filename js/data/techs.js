@@ -165,6 +165,17 @@ window.GameData.TECHS = {
     costBreakdown: { harvest: 2, coin: 3 },
     effects: [{ type: "unlock_building", building: "wall_section" }],
   },
+  // Same universal, never-research-gated shape as walls above -- a Pioneer
+  // adjacent to water gets the ring-menu action regardless of civ.unlocked-
+  // Buildings (see buildings.js's header comment on wall_section for why);
+  // only the bridge's cost model actually comes from this tech.
+  bridges: {
+    id: "bridges", label: "Bridges", category: "building", layer: 0, cost: 10,
+    prereqs: [],
+    description: "Unlocks the Bridge Section, letting Pioneers span water to connect otherwise-separated land.",
+    costBreakdown: { harvest: 2, coin: 3 },
+    effects: [{ type: "unlock_building", building: "bridge_section" }],
+  },
 
   // --- Shared civic trunk: fallback for races not yet promoted to their own
   // civic column (currently only Undead -- Dwarf, Elf both got their own

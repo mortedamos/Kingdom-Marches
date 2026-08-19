@@ -416,7 +416,12 @@ window.GameEngine = window.GameEngine || {};
     return record;
   }
 
-  /** Resolves the structure sitting on tile (x,y), if any. Returns {civ,city,record,building} or null. */
+  /** Resolves the structure sitting on tile (x,y), if any. Returns
+   *  {civ,city,record,building} or null -- `city` is null for a bridge
+   *  segment, which (unlike every other structure) doesn't belong to any
+   *  one city; see placeBridgeSegment. Every caller of this already only
+   *  ever reads `.civ`/`.record`/`.building` except destroyStructure
+   *  itself, which branches on `.city` being null. */
   function findStructureAt(gameState, x, y) {
     const { map, civs } = gameState;
     if (x < 0 || x >= map.width || y < 0 || y >= map.height) return null;
@@ -424,6 +429,11 @@ window.GameEngine = window.GameEngine || {};
     if (!ptr) return null;
     const civ = civs[ptr.civId];
     if (!civ) return null;
+    if (ptr.isBridge) {
+      const record = (civ.bridges || []).find((s) => s.x === x && s.y === y);
+      if (!record) return null;
+      return { civ, city: null, record, building: window.GameData.getBuilding(record.id) };
+    }
     const city = civ.cities.find((c) => c.x === ptr.cityX && c.y === ptr.cityY);
     if (!city) return null;
     const record = city.structures.find((s) => s.x === x && s.y === y);
@@ -431,13 +441,89 @@ window.GameEngine = window.GameEngine || {};
     return { civ, city, record, building: window.GameData.getBuilding(record.id) };
   }
 
-  /** Removes a structure from its city and clears its tile pointer. */
+  /** Removes a structure from its city (or, for a bridge, from
+   *  civ.bridges) and clears its tile pointer. */
   function destroyStructure(gameState, x, y) {
     const found = findStructureAt(gameState, x, y);
     if (!found) return false;
-    found.city.structures = found.city.structures.filter((s) => s !== found.record);
+    if (found.city) {
+      found.city.structures = found.city.structures.filter((s) => s !== found.record);
+    } else {
+      found.civ.bridges = (found.civ.bridges || []).filter((s) => s !== found.record);
+    }
     delete gameState.map.tiles[y * gameState.map.width + x].structure;
     return true;
+  }
+
+  /** Straight-line chain of tiles from (x0,y0) to (x1,y1), one step per
+   *  tile of Chebyshev distance (8-directional, same movement model as
+   *  everything else in this game) -- does NOT include the starting tile,
+   *  matching pathfinding.js's own "steps from, but not including, start"
+   *  convention. The last entry is always exactly (x1,y1). */
+  function straightLineTiles(x0, y0, x1, y1) {
+    const steps = Math.max(Math.abs(x1 - x0), Math.abs(y1 - y0));
+    const tiles = [];
+    for (let i = 1; i <= steps; i++) {
+      tiles.push({ x: x0 + Math.round((x1 - x0) * i / steps), y: y0 + Math.round((y1 - y0) * i / steps) });
+    }
+    return tiles;
+  }
+
+  /**
+   * Validates a bridge span from `unit`'s current tile to a chosen landing
+   * tile (tx,ty) -- see main.js's startBridgePlacement (the ring-menu "Build
+   * Bridge..." picker) and orders.js's startBridgeOrder. The whole span is
+   * checked as ONE straight 8-directional line (straightLineTiles): every
+   * tile but the last must be open water with no existing structure of
+   * ANY civ's (a bridge can't overlap another bridge, friendly or not --
+   * two spans crossing at an angle would need real intersection handling
+   * this doesn't attempt), and the last tile must be ordinary passable land,
+   * not water, not another civ's city. Requires at least one water tile in
+   * between -- "bridging" straight onto adjacent land is just walking.
+   * Length is capped at config.js's bridges.maxSpan. Returns
+   * { ok: true, waterTiles } (the segments an actual build needs, i.e.
+   * every tile except the final land one) or { ok: false }.
+   */
+  function computeBridgePath(map, unit, tx, ty) {
+    if (tx < 0 || tx >= map.width || ty < 0 || ty >= map.height) return { ok: false };
+    const line = straightLineTiles(unit.x, unit.y, tx, ty);
+    if (line.length < 2) return { ok: false }; // nothing but adjacent land -- not a bridge
+    if (line.length - 1 > window.GameConfig.bridges.maxSpan) return { ok: false };
+    const waterTiles = line.slice(0, -1);
+    for (const { x, y } of waterTiles) {
+      const tile = map.tiles[y * map.width + x];
+      if (!TERRAIN[tile.terrain].isWater) return { ok: false };
+      if (tile.structure) return { ok: false }; // no overlapping an existing bridge/structure
+    }
+    const landTile = map.tiles[ty * map.width + tx];
+    const landTerrain = TERRAIN[landTile.terrain];
+    if (landTerrain.isWater || landTerrain.moveCostLand === window.GameData.IMPASSABLE) return { ok: false };
+    if (landTile.structure) return { ok: false };
+    return { ok: true, waterTiles };
+  }
+
+  /** Places one completed bridge segment at (x,y) -- the per-segment finish
+   *  of a multi-turn span (see orders.js's advanceGotoOrder buildBridge
+   *  branch). A bridge belongs to the CIV, not to any one city (unlike
+   *  every other structure -- see findStructureAt's own doc comment),
+   *  since a span can run far from the nearest city on either shore. */
+  function placeBridgeSegment(civ, map, x, y) {
+    const building = window.GameData.getBuilding("bridge_section");
+    const record = { id: "bridge_section", x, y, hp: building.maxHp, maxHp: building.maxHp };
+    civ.bridges = civ.bridges || [];
+    civ.bridges.push(record);
+    map.tiles[y * map.width + x].structure = { id: "bridge_section", civId: civ.id, isBridge: true };
+    return record;
+  }
+
+  /** True if `tile` counts as a road for connectivity/yield/movement
+   *  purposes -- either the ordinary hasRoad stamp, or a completed bridge
+   *  section (see placeBridgeSpan). Every "counts as a road" system in the
+   *  game (found-city connectivity, per-tile yield bonuses, road-count tech
+   *  effects) reads through this one check rather than hasRoad directly, so
+   *  a bridge never needs to separately re-implement each of them. */
+  function tileCountsAsRoad(tile) {
+    return !!(tile.hasRoad || tile.structure?.isBridge);
   }
 
   /**
@@ -458,7 +544,7 @@ window.GameEngine = window.GameEngine || {};
       // on them to complete a connection. Check BEFORE the road requirement so
       // the pioneer doesn't have to separately build road at the city itself.
       if (civ.cities.some((c) => c.x === cx && c.y === cy)) return true;
-      if (!map.tiles[idx].hasRoad) continue; // only road tiles can extend the search
+      if (!tileCountsAsRoad(map.tiles[idx])) continue; // only road (or bridge) tiles can extend the search
       for (let dy = -1; dy <= 1; dy++) {
         for (let dx = -1; dx <= 1; dx++) {
           if (dx === 0 && dy === 0) continue;
@@ -1117,7 +1203,7 @@ window.GameEngine = window.GameEngine || {};
         if (!isOffsetFilled(city, dx, dy)) continue;
         const nx = city.x + dx, ny = city.y + dy;
         if (nx < 0 || nx >= map.width || ny < 0 || ny >= map.height) continue;
-        if (map.tiles[ny * map.width + nx].hasRoad) n++;
+        if (tileCountsAsRoad(map.tiles[ny * map.width + nx])) n++;
       }
     }
     return n;
@@ -1241,7 +1327,7 @@ window.GameEngine = window.GameEngine || {};
     // the race-default half (fb.road) falls off with distance like any
     // other race-default bonus; the tech-unlocked half (ufb.road) doesn't.
     let usedRoadBonus = false;
-    if (tile.hasRoad && (fb.road || ufb.road) && roadBonusTilesUsed < ROAD_BONUS_TILE_CAP) {
+    if (tileCountsAsRoad(tile) && (fb.road || ufb.road) && roadBonusTilesUsed < ROAD_BONUS_TILE_CAP) {
       usedRoadBonus = true;
       if (fb.road) for (const [k, v] of Object.entries(fb.road)) totals[k] += v * (k === "lore" ? tileYieldMult : baseMult);
       if (ufb.road) for (const [k, v] of Object.entries(ufb.road)) totals[k] += v * tileYieldMult;
@@ -1431,6 +1517,9 @@ window.GameEngine = window.GameEngine || {};
     placeStructure,
     findStructureAt,
     destroyStructure,
+    tileCountsAsRoad,
+    computeBridgePath,
+    placeBridgeSegment,
     RING1_SLOT_COUNT: ADJACENT_OFFSETS.length,
     RING2_SLOT_COUNT: RING2_OFFSETS.length,
     SETTLER_MIN_POP,

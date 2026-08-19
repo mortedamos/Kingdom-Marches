@@ -556,6 +556,31 @@ window.UI = window.UI || {};
         }
       }
     }
+    // Bridge orientation variants -- same fallback-chain shape as walls
+    // above (pickWallSegment is reused as-is for bridge_section, see
+    // render.js). Only 3 variants, not 4: there's no separate "horizontal"
+    // asset -- an east-west run reuses "vertical" ROTATED 90° at draw time
+    // (see render.js's bridgeSpriteKey/the Bridges draw pass), since a
+    // separately-authored horizontal asset kept drifting to a different
+    // band width than vertical (2026-08-18, user-directed). "diagonal"
+    // covers both diagonal directions the same way (mirrored, not
+    // rotated, since bridges can also run diagonally per
+    // cities.js's computeBridgePath -- see bridgeOrientation()).
+    const bridgeBuildingIds = inPlayBuildingIds.filter(
+      (id) => window.GameData.BUILDINGS[id].isBridge
+    );
+    const BRIDGE_ORIENTATIONS = ["vertical", "diagonal", "node"];
+    for (const buildingId of bridgeBuildingIds) {
+      for (const raceId of racesInPlay) {
+        background.push(() => loadVariants(`building/${buildingId}/${raceId}`, `assets/buildings/${raceId}_${buildingId}`));
+        for (const orientation of BRIDGE_ORIENTATIONS) {
+          background.push(() => loadVariants(
+            `building/${buildingId}/${raceId}/${orientation}`,
+            `assets/buildings/${raceId}_${buildingId}_${orientation}`
+          ));
+        }
+      }
+    }
     for (const id of window.GameData.RESOURCE_LIST)
       critical.push(() => loadVariants(`enhancement/resource_${id}`, `assets/enhancements/resource_${id}`));
     critical.push(() => loadVariants("enhancement/ruin", "assets/enhancements/ruin"));

@@ -995,6 +995,105 @@ window.GameEngine = window.GameEngine || {};
     return scoreNextResearch(civ, racialWeights(civ));
   }
 
+  /**
+   * AI "when to build a bridge": called from the same idle-Pioneer fallback
+   * chain findNearestDisconnectedCity feeds (see maybeFoundCity's own call
+   * site) -- tries to either continue an already-started span
+   * (pioneer._bridgeBuild, so a Pioneer doesn't abandon a half-finished
+   * bridge for some other idea next turn) or start a new one toward the
+   * nearest DIFFERENT landmass reachable within config.js's bridges.maxSpan.
+   * Only commits when there's an actual reason to: reconnecting one of this
+   * civ's own cities scores far higher than reaching an unclaimed landmass
+   * with room to expand, which in turn beats a landmass nobody could
+   * productively use (already fully claimed by someone else). Returns true
+   * if it consumed the Pioneer's turn.
+   */
+  function maybeBuildBridge(civ, pioneer, gameState, log) {
+    if (pioneer._bridgeBuild) return advancePioneerBridgeBuild(civ, pioneer, gameState, log);
+
+    const building = window.GameData.getBuilding("bridge_section");
+    civ.stockpile = civ.stockpile || { harvest: 0, coin: 0, lore: 0 };
+    if (civ.stockpile.coin < building.coinCost) return false;
+
+    const { map } = gameState;
+    const here = map.tiles[pioneer.y * map.width + pioneer.x];
+    if (window.GameData.TERRAIN[here.terrain].isWater) return false;
+    const ownLandmassId = here.landmassId;
+    const maxSpan = window.GameConfig.bridges.maxSpan;
+    const explored = gameState.explored[civ.id] || new Set();
+
+    let best = null, bestScore = -Infinity;
+    for (const idx of explored) {
+      const tile = map.tiles[idx];
+      if (window.GameData.TERRAIN[tile.terrain].isWater) continue;
+      if (tile.landmassId == null || tile.landmassId === ownLandmassId) continue;
+      const x = idx % map.width, y = Math.floor(idx / map.width);
+      // Cheap pre-filter before the real (and pricier) path validation --
+      // Chebyshev distance is never SHORTER than the straight-line span
+      // computeBridgePath would need, so this only ever skips candidates
+      // that were going to fail anyway.
+      if (window.GameEngine.influence.chebyshev(pioneer.x, pioneer.y, x, y) > maxSpan + 2) continue;
+      const result = window.GameEngine.cities.computeBridgePath(map, pioneer, x, y);
+      if (!result.ok) continue;
+      let score = -result.waterTiles.length; // shorter spans preferred, all else equal
+      if (civ.cities.some((c) => map.tiles[c.y * map.width + c.x].landmassId === tile.landmassId)) {
+        score += 50; // reconnects one of this civ's own cities
+      } else if (!Object.values(gameState.civs).some((oc) =>
+          oc.cities.some((c) => map.tiles[c.y * map.width + c.x].landmassId === tile.landmassId))) {
+        score += 10; // unclaimed landmass -- room to expand onto
+      } // else: fully claimed by someone else already -- only the base -length score, rarely worth it
+      if (score > bestScore) { bestScore = score; best = { x, y, waterTiles: result.waterTiles }; }
+    }
+    if (!best || bestScore < 0) return false;
+
+    pioneer._bridgeBuild = { targetX: best.x, targetY: best.y, waterTiles: best.waterTiles, index: 0, turnsLeft: null };
+    return advancePioneerBridgeBuild(civ, pioneer, gameState, log);
+  }
+
+  /** One turn's worth of progress on pioneer._bridgeBuild (see
+   *  maybeBuildBridge) -- same per-segment cost/pacing as the player's own
+   *  orders.js advanceGotoOrder buildBridge branch (bridge_section's
+   *  coinCost charged when a segment STARTS, minBuildTurns real turns to
+   *  finish it), just driven by the AI's own per-unit turn loop instead of
+   *  a persisted gotoTarget. Advances the Pioneer onto each segment as it
+   *  completes, then makes the final ordinary move onto the real landing
+   *  tile once every segment is done. */
+  function advancePioneerBridgeBuild(civ, pioneer, gameState, log) {
+    const { map } = gameState;
+    const build = pioneer._bridgeBuild;
+    if (build.index >= build.waterTiles.length) {
+      moveUnitToward(pioneer, build.targetX, build.targetY, map, gameState.civs);
+      pioneer.usedThisTurn = true;
+      pioneer.currentMission = `Crossing the new bridge to (${build.targetX},${build.targetY})`;
+      log.push(`Pioneer at (${pioneer.x},${pioneer.y}) — bridge complete, heading to (${build.targetX},${build.targetY})`);
+      if (pioneer.x === build.targetX && pioneer.y === build.targetY) delete pioneer._bridgeBuild;
+      return true;
+    }
+    const building = window.GameData.getBuilding("bridge_section");
+    if (build.turnsLeft == null) {
+      civ.stockpile = civ.stockpile || { harvest: 0, coin: 0, lore: 0 };
+      if (civ.stockpile.coin < building.coinCost) {
+        delete pioneer._bridgeBuild; // can't afford to keep going -- abandon rather than stall forever
+        return false;
+      }
+      civ.stockpile.coin -= building.coinCost;
+      build.turnsLeft = building.minBuildTurns;
+    }
+    build.turnsLeft--;
+    pioneer.usedThisTurn = true;
+    const seg = build.waterTiles[build.index];
+    pioneer.currentMission = `Building a bridge segment at (${seg.x},${seg.y})`;
+    if (build.turnsLeft <= 0) {
+      window.GameEngine.cities.placeBridgeSegment(civ, map, seg.x, seg.y);
+      pioneer.x = seg.x; pioneer.y = seg.y;
+      build.index++;
+      build.turnsLeft = null;
+      window.GameEngine.turns.refreshVisibility(gameState);
+    }
+    log.push(`Pioneer at (${pioneer.x},${pioneer.y}) — working on a bridge (segment ${build.index + 1}/${build.waterTiles.length})`);
+    return true;
+  }
+
   /** Which of civ's own cities (if any) aren't yet reachable from the rest
    *  through its road network -- BFS out from the civ's first city through
    *  road tiles (city tiles count as connection points, same convention as
@@ -1018,7 +1117,7 @@ window.GameEngine = window.GameEngine || {};
       visited.add(idx);
       const hitCity = civ.cities.find((c) => c.x === x && c.y === y);
       if (hitCity) reached.add(hitCity);
-      if (!hitCity && !map.tiles[idx].hasRoad) continue;
+      if (!hitCity && !window.GameEngine.cities.tileCountsAsRoad(map.tiles[idx])) continue;
       for (let dy = -1; dy <= 1; dy++) {
         for (let dx = -1; dx <= 1; dx++) {
           if (dx === 0 && dy === 0) continue;
@@ -1209,6 +1308,13 @@ window.GameEngine = window.GameEngine || {};
           // maybeEnvoyPlay's doc comment. Tried before the road-connector/
           // wander fallbacks below since it's genuinely productive, not
           // just "less random."
+        } else if (maybeBuildBridge(civ, pioneer, gameState, log)) {
+          // See maybeBuildBridge's own doc comment -- either continuing an
+          // already-started span, or a fresh one worth starting (reconnects
+          // this civ's own territory, or reaches unclaimed land to expand
+          // onto). Tried before the plain road-connector fallback below
+          // since findNearestDisconnectedCity's own road-only BFS can never
+          // find a path across water in the first place.
         } else {
           // Nothing left to settle and nothing remembered either: before
           // falling back to a purely random walk, check whether any of this
@@ -1344,12 +1450,14 @@ window.GameEngine = window.GameEngine || {};
       if (isEnemyStructureBlockingTile(tile, pioneer)) return window.GameData.IMPASSABLE;
       if (isEnemyCityBlockingTile(civs, nx, ny, pioneer)) return window.GameData.IMPASSABLE;
       const destTerrain = window.GameData.TERRAIN[tile.terrain];
-      if (destTerrain.isWater) return window.GameData.IMPASSABLE;
+      // A Pioneer laying road can still cross an existing bridge to reach
+      // the far shore -- only genuinely bridge-less water stops it here.
+      if (destTerrain.isWater && !tile.structure?.isBridge) return window.GameData.IMPASSABLE;
       // Origin tile for THIS hop, not the pioneer's turn-start position --
       // see getMoveCost's doc comment (cost is charged for leaving it).
       const originTile = fromIdx != null ? map.tiles[fromIdx] : map.tiles[pioneer.y * map.width + pioneer.x];
       const originTerrain = window.GameData.TERRAIN[originTile.terrain];
-      return getMoveCost(originTerrain, destTerrain, baseUnit, pioneer, originTile);
+      return getMoveCost(originTerrain, destTerrain, baseUnit, pioneer, originTile, tile);
     };
     const path = window.GameEngine.pathfinding.findPath(pioneer.x, pioneer.y, targetX, targetY, map, costFn);
     if (!path || path.length === 0) return;
@@ -1650,9 +1758,15 @@ window.GameEngine = window.GameEngine || {};
    *  apply the flying exemption, for costFn's pass-through check) and by
    *  moveUnitToward's landing-safety check (which deliberately does NOT --
    *  a flying unit may cross the space above an enemy structure, but must
-   *  never actually stop there, same as it never stops on an occupied tile). */
+   *  never actually stop there, same as it never stops on an occupied tile).
+   *
+   *  Bridges are the one deliberate exception: unlike a wall or building, a
+   *  bridge is open to everyone crossing the water it spans, friend or
+   *  enemy alike (see cities.js's placeBridgeSpan) -- it's still fully
+   *  attackable/destructible (combat.js's attackStructure), just never a
+   *  movement obstacle. */
   function hasEnemyStructure(tile, civId) {
-    return !!tile.structure && tile.structure.civId !== civId;
+    return !!tile.structure && tile.structure.civId !== civId && !tile.structure.isBridge;
   }
 
   /** True if a civ other than `civId` has a city standing at (x,y) -- same
@@ -1814,8 +1928,17 @@ window.GameEngine = window.GameEngine || {};
    * `originTile` is the whole raw tile object, read for `.hasRoad` and
    * `.hasRiver` (river-keyed discounts like Rivercraft apply regardless of
    * the terrain underneath the river).
+   *
+   * `destTile` (optional, the raw tile object for destTerrain) is read only
+   * for `.structure.isBridge` -- a completed bridge makes its otherwise-
+   * IMPASSABLE water tile crossable for a LAND unit, at the same flat cost
+   * and ROAD_MOVE_DISCOUNT a road tile gets (see cities.js's
+   * placeBridgeSpan; "counts as a road" is the whole point). Naval units
+   * never consult it at all -- a Galley's own moveCostNaval path below is
+   * untouched by a bridge's presence, same as sailing under any other
+   * bridge in real life.
    */
-  function getMoveCost(originTerrain, destTerrain, unitData, unit, originTile) {
+  function getMoveCost(originTerrain, destTerrain, unitData, unit, originTile, destTile) {
     // restrictedToTerrain (e.g. the Orc Wisp, swamp-only) overrides everything
     // below, INCLUDING the flying bypass just after it -- a unit can be both
     // "flying" (cost-1, ignores penalties) and permanently confined to one
@@ -1845,18 +1968,26 @@ window.GameEngine = window.GameEngine || {};
       return originTerrain.moveCostNaval ?? window.GameData.IMPASSABLE;
     }
 
-    // Land unit: can the destination even be entered?
-    if (landCostForTerrain(destTerrain, mods) === window.GameData.IMPASSABLE) return window.GameData.IMPASSABLE;
+    // Land unit: can the destination even be entered? A bridge overrides the
+    // normal water-is-IMPASSABLE result entirely -- see this function's own
+    // doc comment.
+    const destBridge = !!destTile?.structure?.isBridge;
+    if (!destBridge && landCostForTerrain(destTerrain, mods) === window.GameData.IMPASSABLE) return window.GameData.IMPASSABLE;
 
     // It can -- charge for leaving the origin. Road discount applies AFTER
     // every terrain/tech discount landCostForTerrain already folded in, then
     // the SAME 0.5 floor is re-applied to the combined result -- otherwise a
     // tile already floored to 0.5 by tech discounts would drop to 0 once the
     // road discount also lands on it, instead of holding at the shared floor.
+    // A bridge ORIGIN can't go through landCostForTerrain at all (its real
+    // terrain underneath is water, permanently IMPASSABLE for a land unit --
+    // there'd be nothing to discount FROM), so it gets the same flat plains-
+    // like base cost 1 a road tile effectively starts from.
+    const originBridge = !!originTile?.structure?.isBridge;
     const originHasRiver = !!(originTile?.hasRiver
       && (originTile.hasRiver.n || originTile.hasRiver.s || originTile.hasRiver.e || originTile.hasRiver.w));
-    let cost = landCostForTerrain(originTerrain, mods, originHasRiver, unit?.typeId);
-    if (originTile?.hasRoad) cost = Math.max(0.5, cost - ROAD_MOVE_DISCOUNT);
+    let cost = originBridge ? 1 : landCostForTerrain(originTerrain, mods, originHasRiver, unit?.typeId);
+    if (originTile?.hasRoad || originBridge) cost = Math.max(0.5, cost - ROAD_MOVE_DISCOUNT);
     return cost;
   }
 
@@ -2199,7 +2330,7 @@ window.GameEngine = window.GameEngine || {};
       const destTerrain = window.GameData.TERRAIN[tile.terrain];
       const originTile = fromIdx != null ? map.tiles[fromIdx] : map.tiles[unit.y * map.width + unit.x];
       const originTerrain = window.GameData.TERRAIN[originTile.terrain];
-      return getMoveCost(originTerrain, destTerrain, baseUnit, unit, originTile);
+      return getMoveCost(originTerrain, destTerrain, baseUnit, unit, originTile, tile);
     };
 
     // A flier crossing OVER an enemy wall is fine; landing on it isn't --
@@ -4118,7 +4249,7 @@ window.GameEngine = window.GameEngine || {};
         const nx = unit.x + dx, ny = unit.y + dy;
         if (nx < 0 || nx >= map.width || ny < 0 || ny >= map.height) continue;
         const tile = map.tiles[ny * map.width + nx];
-        if (getMoveCost(originTerrain, TERRAIN[tile.terrain], unitData, unit, originTile) === window.GameData.IMPASSABLE) continue;
+        if (getMoveCost(originTerrain, TERRAIN[tile.terrain], unitData, unit, originTile, tile) === window.GameData.IMPASSABLE) continue;
         if (Object.values(civs).some((c) => c.units.some((u) => u.x === nx && u.y === ny))) continue;
         const d = window.GameEngine.influence.chebyshev(nx, ny, threat.x, threat.y);
         if (d > bestDist) { bestDist = d; best = { x: nx, y: ny }; }
@@ -5045,9 +5176,19 @@ window.GameEngine = window.GameEngine || {};
       }
     }
     window.SfxSystem.playAction(civ.raceId, caster.typeId, "fireball", tx, ty);
+    log.push(`Fireball: ${civ.id}'s Wizard blasts (${tx},${ty}), hitting ${hits.length} target(s), igniting ${ignited}`);
+    // Indiscriminate blast (see combat.js's applyFireballBlast): the caster
+    // itself can be caught in its own radius. If it was, the hits loop above
+    // already removed it via otherCivRemoveDeadUnit -- same "stop touching a
+    // unit that's already gone" convention as maybeBladeDancerSweep's own
+    // self-death branch, rather than writing usedThisTurn/currentMission
+    // onto a detached unit.
+    if (caster.hp <= 0) {
+      log.push(`Fireball: ${civ.id}'s Wizard is consumed by its own blast`);
+      return true;
+    }
     caster.usedThisTurn = true;
     caster.currentMission = `Cast Fireball at (${tx},${ty})`;
-    log.push(`Fireball: ${civ.id}'s Wizard blasts (${tx},${ty}), hitting ${hits.length} target(s), igniting ${ignited}`);
     return true;
   }
 
@@ -5064,54 +5205,67 @@ window.GameEngine = window.GameEngine || {};
     return ok;
   }
 
-  // Minimum enemy units/structures a Fireball must catch to be worth casting
-  // -- see maybeFireballStrike. A Fireball spent on a single isolated enemy
-  // is a worse trade than just attacking normally with effectiveAttack.
+  // Minimum NET score (enemy hits minus weighted allied hits, see
+  // scoreFireballBlast) a Fireball must clear to be worth casting -- see
+  // maybeFireballStrike. A Fireball spent on a single isolated enemy is a
+  // worse trade than just attacking normally with effectiveAttack.
   const FIREBALL_MIN_TARGETS = 2;
 
-  /** Dry-run count of how many enemy units/structures a Fireball centered on
-   *  (cx, cy) would hit -- same 3x3 scan applyFireballBlast itself uses, but
-   *  counting instead of dealing damage, since this runs during target
-   *  SELECTION (see maybeFireballStrike). */
-  function countFireballTargets(cx, cy, civs, casterCivId, gameState) {
+  // Since the blast is now indiscriminate (see combat.js's
+  // applyFireballBlast -- the caster's own civ, including the caster
+  // itself, is just as exposed as any enemy), each allied unit/structure
+  // caught in it weighs more heavily against the score than an enemy hit
+  // counts in its favor. The AI needs a clearly favorable trade before
+  // risking friendly fire, not just a break-even one.
+  const FIREBALL_ALLY_RISK_WEIGHT = 1.5;
+
+  /** Dry-run of how a Fireball centered on (cx, cy) would net out -- same
+   *  3x3 scan applyFireballBlast itself uses, but counting instead of
+   *  dealing damage, since this runs during target SELECTION (see
+   *  maybeFireballStrike). Returns enemy hits minus
+   *  (allied hits * FIREBALL_ALLY_RISK_WEIGHT) -- allied here also counts
+   *  the caster itself, if the caster's own tile falls within the blast. */
+  function scoreFireballBlast(cx, cy, casterUnit, civs, casterCivId, gameState) {
     const { map } = gameState;
-    let count = 0;
+    let enemy = 0, allied = 0;
     for (let dy = -1; dy <= 1; dy++) {
       for (let dx = -1; dx <= 1; dx++) {
         const x = cx + dx, y = cy + dy;
         if (x < 0 || x >= map.width || y < 0 || y >= map.height) continue;
         for (const otherCiv of Object.values(civs)) {
-          if (otherCiv.id === casterCivId || otherCiv.eliminated) continue;
-          if (otherCiv.units.some((u) => u.x === x && u.y === y && !u.conditions?.hidden)) count++;
+          if (otherCiv.eliminated) continue;
+          if (!otherCiv.units.some((u) => u.x === x && u.y === y && !u.conditions?.hidden)) continue;
+          if (otherCiv.id === casterCivId) allied++; else enemy++;
         }
         const struct = window.GameEngine.cities.findStructureAt(gameState, x, y);
-        if (struct && struct.civ.id !== casterCivId) count++;
+        if (struct) { if (struct.civ.id === casterCivId) allied++; else enemy++; }
       }
     }
-    return count;
+    return enemy - allied * FIREBALL_ALLY_RISK_WEIGHT;
   }
 
   /**
    * Human "Fireball!" AI: scans every currently-visible tile within
-   * FIREBALL_RANGE for the one whose 3x3 blast would catch the most enemy
-   * units/structures (see countFireballTargets), and casts there if it
-   * clears FIREBALL_MIN_TARGETS. Returns true if it consumed the turn.
+   * FIREBALL_RANGE for the one whose 3x3 blast nets the best score (see
+   * scoreFireballBlast -- enemy hits weighed against allied/self risk), and
+   * casts there if it clears FIREBALL_MIN_TARGETS. Returns true if it
+   * consumed the turn.
    */
   function maybeFireballStrike(civ, unit, gameState, log) {
     const { map, civs } = gameState;
     const visible = gameState.visibility[civ.id] || new Set();
-    let best = null, bestCount = 0;
+    let best = null, bestScore = -Infinity;
     for (let dy = -FIREBALL_RANGE; dy <= FIREBALL_RANGE; dy++) {
       for (let dx = -FIREBALL_RANGE; dx <= FIREBALL_RANGE; dx++) {
         const x = unit.x + dx, y = unit.y + dy;
         if (x < 0 || x >= map.width || y < 0 || y >= map.height) continue;
         if (window.GameEngine.influence.chebyshev(unit.x, unit.y, x, y) > FIREBALL_RANGE) continue;
         if (!visible.has(y * map.width + x)) continue;
-        const count = countFireballTargets(x, y, civs, civ.id, gameState);
-        if (count > bestCount) { bestCount = count; best = { x, y }; }
+        const score = scoreFireballBlast(x, y, unit, civs, civ.id, gameState);
+        if (score > bestScore) { bestScore = score; best = { x, y }; }
       }
     }
-    if (!best || bestCount < FIREBALL_MIN_TARGETS) return false;
+    if (!best || bestScore < FIREBALL_MIN_TARGETS) return false;
     return performWizardFireball(civ, unit, best.x, best.y, gameState, log);
   }
 
@@ -11534,10 +11688,11 @@ window.GameEngine = window.GameEngine || {};
       if (res.destroyed) {
         // Anti-Titan learning: the structure's owner just lost it TO a Titan.
         if (unit.typeId === "runeforged_titan") maybeLearnAntiTitanLesson(bestStruct.s.civ);
-        // Dwarf "The Long Reckoning": losing a BUILDING (walls explicitly
-        // don't count -- the tech's own wording) permanently marks the
-        // attacker as a rival.
-        if (!bestStruct.s.building.isWall) {
+        // Dwarf "The Long Reckoning": losing a BUILDING (walls and bridges
+        // explicitly don't count -- the tech's own wording is about a real
+        // economic/city building, not fortification or infrastructure)
+        // permanently marks the attacker as a rival.
+        if (!bestStruct.s.building.isWall && !bestStruct.s.building.isBridge) {
           window.GameEngine.combat.markRival(bestStruct.s.civ, civ.id);
         }
         // Rouse the People: same 15%-on-actual-destruction bonus as the city
@@ -11547,7 +11702,14 @@ window.GameEngine = window.GameEngine || {};
             bestStruct.s.civ, bestStruct.x, bestStruct.y, map, civs, 0.15);
           if (razeSpawn) log.push(`Rouse the People: ${bestStruct.s.civ.id} raised a Militia from the wreckage at (${razeSpawn.x},${razeSpawn.y})`);
         }
-        window.GameEngine.cities.destroyStructure(gameState, bestStruct.x, bestStruct.y);
+        // Bridges have one more consequence walls/buildings don't: whoever
+        // was standing on the span goes into the water with it (see
+        // handleBridgeDestroyed's own doc comment for the Flying exception).
+        if (bestStruct.s.building.isBridge) {
+          handleBridgeDestroyed(gameState, bestStruct.x, bestStruct.y);
+        } else {
+          window.GameEngine.cities.destroyStructure(gameState, bestStruct.x, bestStruct.y);
+        }
         log.push(`Raze: ${civ.id}'s ${describeUnit(unit)} destroyed ${bestStruct.s.civ.id}'s ${bestStruct.s.record.id}`);
         unit.currentMission = `Destroyed ${bestStruct.s.civ.id}'s ${bestStruct.s.record.id}`;
       } else {
@@ -11916,6 +12078,30 @@ window.GameEngine = window.GameEngine || {};
     }
   }
 
+  /**
+   * A bridge segment at (x,y) has just been reduced to 0 HP (combat, or
+   * Burning -- see turns.js's tickBurningDamage and this file's own
+   * structure-attack resolution). Whatever's standing on that tile goes
+   * into open water out from under it: any non-flying unit there dies
+   * (user-directed, 2026-08-18), same as any other combat death (full
+   * death sfx/vfx via otherCivRemoveDeadUnit) -- but a Flying unit is
+   * unaffected, since it was never depending on the bridge to begin with
+   * (same exemption isFlying already grants everywhere else a unit would
+   * otherwise be grounded by terrain/structure). Called BEFORE
+   * cities.js's destroyStructure actually removes the segment, so the
+   * occupant check still sees a real tile to reason about either way (it
+   * doesn't currently need to, but keeps the ordering unsurprising).
+   */
+  function handleBridgeDestroyed(gameState, x, y) {
+    for (const civ of Object.values(gameState.civs)) {
+      const occupant = civ.units.find((u) => u.x === x && u.y === y);
+      if (!occupant) continue;
+      if (!window.GameEngine.combat.isFlying(occupant)) otherCivRemoveDeadUnit(gameState.civs, occupant);
+      break; // at most one unit can ever stand on a tile
+    }
+    window.GameEngine.cities.destroyStructure(gameState, x, y);
+  }
+
   /** Suppresses the move-glide animation for a unit that just "popped" into
    *  view at (x, y) instead of walking there --
    *  a carried passenger is invisible in transit (see render.js's Units
@@ -12180,6 +12366,7 @@ window.GameEngine = window.GameEngine || {};
     stepAIUnit,
     finishAITurn,
     runUnitTurn,
+    handleBridgeDestroyed,
     findAdjacentWater,
     findNearestCoastalWaterFor,
     findClosestOpenPlacementTile,

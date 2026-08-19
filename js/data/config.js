@@ -65,9 +65,9 @@ window.GameConfig = {
     /** Local date this build was cut, YYYY-MM-DD. */
     date: "2026-08-18",
     /** Local time this build was cut, 24-hour HH:MM. */
-    time: "18:42",
+    time: "23:01",
     /** Monotonic build counter -- increment it, don't recompute it. */
-    number: 128,
+    number: 129,
   },
 
   // =========================================================================
@@ -276,6 +276,13 @@ window.GameConfig = {
     upkeepSplitMagical: { harvest: 0.50, coin: 0.25, lore: 0.25 },
     magicalUnitIds: ["wizard", "bog_witch", "dragon", "paladin"],
 
+    /** Coin every civ starts the game with (main.js's civ-creation loop) --
+     *  exactly covers every race's own starting-tech unit (Spearguard,
+     *  Ranger, FoeHammer, Raider, Wanderer, Skeleton all coinCost: 15), so
+     *  a kingdom can build its first defender turn 1 instead of waiting on
+     *  a few turns of production first. */
+    startingCoin: 15,
+
     /** Compounding premium per tech-tree layer -- exponent is the raw
      *  layer, so Level 0 (layer: 0, techs.js's pioneer_infrastructure/
      *  distant_horizons/distant_shores) sits at exponent 0, genuinely no
@@ -310,6 +317,18 @@ window.GameConfig = {
      *  upkeep -- deliberately weak bulk filler, discounted beyond what its
      *  low raw power alone would give it. */
     cheapUnitDiscountRate: 0.30,
+  },
+
+  // =========================================================================
+  // BRIDGES  (js/data/buildings.js's bridge_section, js/engine/cities.js)
+  // =========================================================================
+  bridges: {
+    /** Longest straight-line stretch of open water a single bridge project
+     *  can span, in tiles (see cities.js's computeBridgePath) -- keeps a
+     *  Pioneer from queueing an absurd deep-ocean crossing that would tie
+     *  it up for dozens of turns. A narrow strait or river mouth easily
+     *  fits well under this; a genuine ocean gap between landmasses won't. */
+    maxSpan: 8,
   },
 
   // =========================================================================
