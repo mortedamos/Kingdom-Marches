@@ -119,6 +119,7 @@ window.GameEngine = window.GameEngine || {};
   // 1.0) gets +50% fill-in speed from garrisoning a city; a low-
   // industriousness one (Orc, 0.3) only gets +15%.
   const GARRISON_FILL_MULT_RATE = CFG.garrisonFillMultRate;
+  const REST_AND_DEFEND_INFLUENCE_BONUS = CFG.restAndDefendInfluenceBonus;
 
   // Influence-per-population multiplier: deliberately NOT a per-race flat
   // field (races.js used to carry a bespoke `influenceMult`, e.g. Halfellow's
@@ -715,6 +716,17 @@ window.GameEngine = window.GameEngine || {};
       }
     }
 
+    // Rest and Defend city bonus (2026-08-19, user-directed): a unit
+    // actively Resting and Defending in this city heals EVERY structure --
+    // walls and ordinary buildings alike, unlike Hedge Walls above which is
+    // walls-only -- by a flat 1 hp/turn. Independent of Hedge Walls; both
+    // can apply to the same wall in the same tick.
+    if (civ.units.some((u) => u.x === city.x && u.y === city.y && u.channeling === "restAndDefend")) {
+      for (const s of city.structures) {
+        s.hp = Math.min(s.maxHp, s.hp + 1);
+      }
+    }
+
     return city.lastYield;
   }
 
@@ -1152,21 +1164,27 @@ window.GameEngine = window.GameEngine || {};
 
     const race = window.GameData.getRace(civ.raceId);
     const industriousness = race.industriousness ?? 0.5;
-    // Universal rule (2026-07-12): a garrisoned city -- at least one
-    // non-carried military unit standing right on its own tile -- fills in
-    // influence tiles faster, scaled by the civ's OWN industriousness, not a
-    // flat bonus. A high-industriousness civ (Halfellow, 1.0) gets a real
-    // payoff (+50% at GARRISON_FILL_MULT_RATE below) for holding a defender
-    // at home instead of raiding; a low-industriousness one (Orc, 0.3) gets
-    // much less (+15%), so this doesn't meaningfully change a
+    // Universal rule (2026-07-12; tightened 2026-08-19, user-directed): a
+    // military unit actively Resting and Defending right on the city's own
+    // tile fills in influence tiles faster, scaled by the civ's OWN
+    // industriousness, not a flat bonus -- PLUS a flat
+    // REST_AND_DEFEND_INFLUENCE_BONUS on top (part of that channel's own
+    // city-defense bonus package, see ai.js's tickWallDefense/
+    // tickMageTowerDefense for its combat-side siblings). Used to trigger on
+    // any military unit merely standing there regardless of orders; now
+    // requires the Rest and Defend channel specifically. A high-
+    // industriousness civ (Halfellow, 1.0) gets a real payoff (+50% at
+    // GARRISON_FILL_MULT_RATE below, before the flat bonus) for holding a
+    // defender at home instead of raiding; a low-industriousness one (Orc,
+    // 0.3) gets much less (+15%), so this doesn't meaningfully change a
     // conquest-focused civ's calculus, only a homebody one's. See
     // project_halfellow_tactics memory for the full reasoning -- this is
     // meant to give a defensive, city-building playstyle a mechanical payoff
     // that competes with raiding, not just a flavor difference.
     const isGarrisoned = civ.units.some((u) =>
-      u.x === city.x && u.y === city.y && !u.carriedBy
+      u.x === city.x && u.y === city.y && !u.carriedBy && u.channeling === "restAndDefend"
       && window.GameData.getUnit(u.typeId).category === "military");
-    const garrisonMult = isGarrisoned ? 1 + industriousness * GARRISON_FILL_MULT_RATE : 1;
+    const garrisonMult = isGarrisoned ? 1 + industriousness * GARRISON_FILL_MULT_RATE + REST_AND_DEFEND_INFLUENCE_BONUS : 1;
     // fillRateMult: tech-granted multiplier on top of the industriousness-scaled
     // rate (e.g. Halfellow's Community Fellowship, +150% -- "gain influence in
     // tiles 150% faster"). Defaults to 1 (see tech.js's applyTechEffects).

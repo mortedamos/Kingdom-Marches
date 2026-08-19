@@ -570,14 +570,14 @@ window.GameEngine = window.GameEngine || {};
   }
 
   /** Halfellow "Riddle"/"Resource Heist" (default 2 turns)/Human
-   *  "Teleportation" (1 turn): -50% attack, 75% defense (a -25%
-   *  cut), movement capped at 1 (see ai.js's computeMovementBudget), and 0%
-   *  First Strike (see effectiveFirstStrikePct above). A single
-   *  shared helper since every caller applies the exact same condition --
-   *  keeps the numbers in one place for tuning instead of duplicated at both
-   *  call sites. */
+   *  "Teleportation" (1 turn): attack, movement, and defense all cut to 25%
+   *  of normal (a flat -75%, 2026-08-19 user-directed -- was -50%
+   *  attack/-25% defense/movement capped at 1), and 0% First Strike (see
+   *  effectiveFirstStrikePct above). A single shared helper since every
+   *  caller applies the exact same condition -- keeps the numbers in one
+   *  place for tuning instead of duplicated at every call site. */
   function applyBefuddled(unit, turnNumber, duration = 2) {
-    setCondition(unit, "befuddled", { expiresAtTurn: turnNumber + duration, attackMult: 0.5, defenseMult: 0.75 });
+    setCondition(unit, "befuddled", { expiresAtTurn: turnNumber + duration, attackMult: 0.25, defenseMult: 0.25, movementMult: 0.25 });
   }
 
   /** Centralizes ending Hidden for any REVEALED-BY-EVENT reason (enemy walked
@@ -620,7 +620,7 @@ window.GameEngine = window.GameEngine || {};
     // by Necropolis).
     if (unit.conditions?.zombie) atk *= unit.conditions.zombie.statMult;
 
-    // Halfellow "Riddle"/"Resource Heist": Befuddled -- -50% attack for a
+    // Halfellow "Riddle"/"Resource Heist": Befuddled -- -75% attack for a
     // few turns (see applyBefuddled below). Same fixed-multiplier-on-the-
     // condition-object shape as curse/frozen above, not a hardcoded literal,
     // so a future tech/tuning pass can adjust attackMult without touching
@@ -699,7 +699,7 @@ window.GameEngine = window.GameEngine || {};
     // Undead "Zombie": same reduced-stats condition as effectiveAttack above.
     if (unit.conditions?.zombie) def *= unit.conditions.zombie.statMult;
 
-    // Halfellow "Riddle"/"Resource Heist": Befuddled -- 75% defense (a -25%
+    // Halfellow "Riddle"/"Resource Heist": Befuddled -- 25% defense (a -75%
     // cut) for a few turns. See effectiveAttack's matching check and
     // applyBefuddled below.
     if (unit.conditions?.befuddled) def *= unit.conditions.befuddled.defenseMult;
@@ -1246,14 +1246,16 @@ window.GameEngine = window.GameEngine || {};
 
   /**
    * Human "Ramparts": walls AND cities (not other buildings) can
-   * counterattack ONLY while a unit is Garrisoned (unit.channeling ===
-   * "garrison") in this city -- see attackStructure (walls) and attackCity
-   * (cities) for the two call sites. No garrison, no counterattack at all.
-   * The wall's attack rating AND reach both become that garrisoned unit's
-   * own effectiveAttack/effectiveRange. Same structure-specific 25%
-   * First-Strike discount as Rouse the People/Spikes! use. Mutates
-   * attackerUnit.hp; returns the raw counter damage dealt (0 if nothing's
-   * garrisoned, or the attacker is out of the garrisoned unit's reach).
+   * counterattack ONLY while a unit is Resting and Defending (unit.channeling
+   * === "restAndDefend", 2026-08-19 -- merged with the old separate Garrison
+   * action, user-directed) in this city -- see attackStructure (walls) and
+   * attackCity (cities) for the two call sites. No one resting and
+   * defending there, no counterattack at all. The wall's attack rating AND
+   * reach both become that unit's own effectiveAttack/effectiveRange. Same
+   * structure-specific 25% First-Strike discount as Rouse the People/
+   * Spikes! use. Mutates attackerUnit.hp; returns the raw counter damage
+   * dealt (0 if no one's resting and defending there, or the attacker is
+   * out of that unit's reach).
    */
   function wallCounterattack(structureRecord, defenderCiv, attackerUnit, attackerCiv, gameState) {
     if (!gameState) return 0;
@@ -1270,7 +1272,7 @@ window.GameEngine = window.GameEngine || {};
     const cityX = ptr ? ptr.cityX : structureRecord.x;
     const cityY = ptr ? ptr.cityY : structureRecord.y;
     const garrison = defenderCiv.units.find((u) =>
-      u.channeling === "garrison" && u.x === cityX && u.y === cityY);
+      u.channeling === "restAndDefend" && u.x === cityX && u.y === cityY);
     if (!garrison) return 0;
     const range = effectiveRange(garrison, defenderCiv);
     const dist = Math.max(Math.abs(attackerUnit.x - structureRecord.x), Math.abs(attackerUnit.y - structureRecord.y));

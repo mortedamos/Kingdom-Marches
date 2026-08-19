@@ -158,6 +158,7 @@ window.GameEngine = window.GameEngine || {};
           },
           resource: tile.resource || null,
           isRuin: !!tile.isRuin,
+          isCave: !!tile.isCave,
           city: cityAt.get(idx) || null,
           structure: structureAt.get(idx) || null,
           cityScore: Number.isFinite(rawCityScore) ? Math.round(rawCityScore * 10) / 10 : null,
@@ -231,6 +232,7 @@ window.GameEngine = window.GameEngine || {};
           },
           resource: tile.resource || null,
           isRuin: !!tile.isRuin,
+          isCave: !!tile.isCave,
           city: cityAt.get(idx) || null,
           structure: structureAt.get(idx) || null,
           cityScore: Number.isFinite(rawCityScore) ? Math.round(rawCityScore * 10) / 10 : null,
@@ -1408,22 +1410,18 @@ window.GameEngine = window.GameEngine || {};
       }
     }
 
-    // Garrison: a standing "defending" brace
-    // (see main.js's handleGarrisonUnit) that must be kept alive every turn
-    // without asking the player -- re-stamps the condition fresh each round
-    // so it never lapses to its nominal 1-turn expiry on its own. Ends
-    // itself automatically if the unit is no longer standing in one of this
-    // civ's own cities (carried off, or some future forced-move effect),
-    // same "auto-cancel if the precondition breaks" convention the resource
-    // channels' onAnchor gate above uses for moving off a vein/ruin.
+    // Rest and Defend: a standing "defending" brace (see main.js's
+    // handleRestAndDefend) that must be kept alive every turn without
+    // asking the player -- re-stamps the condition fresh each round so it
+    // never lapses to its nominal 1-turn expiry on its own. Unlike the old
+    // separate Garrison action this replaced (2026-08-19, user-directed
+    // merge), this is NOT cancelled by leaving a city -- Rest and Defend now
+    // persists anywhere; standing in one of this civ's own cities while
+    // channeling additionally grants that city's defensive bonuses (see
+    // cities.js's tickCity and ai.js's tickWallDefense/tickMageTowerDefense).
     if (turnCtx && civ.id === turnCtx.humanCivId) {
       for (const unit of civ.units) {
-        if (unit.channeling !== "garrison") continue;
-        if (!civ.cities.some((c) => c.x === unit.x && c.y === unit.y)) {
-          unit.channeling = null;
-          window.GameEngine.combat.clearCondition(unit, "defending");
-          continue;
-        }
+        if (unit.channeling !== "restAndDefend") continue;
         window.GameEngine.combat.setCondition(unit, "defending", { expiresAtTurn: (gameState.turnNumber || 0) + 1 });
       }
     }
@@ -1431,25 +1429,16 @@ window.GameEngine = window.GameEngine || {};
     // Shift-held "repeat for the next 3 turns" auto-repeat: main.js's
     // maybeScheduleAutoRepeat stamps unit.autoRepeat/city.autoRepeat =
     // {kind, turnsLeft} the moment the
-    // player Shift-clicks (or Shift-presses the matching key for) Rest and
-    // Defend, Gather More Resources, or Research. Re-fires that same action
-    // here, once per turn, decrementing until it runs out -- same "runs
-    // once per round without asking the player again" slot as the Garrison
-    // brace just above. Each engine call already self-gates on whether it's
-    // still valid (performRestAndDefend no-ops if the unit already acted
-    // this turn; applyResourceProduction/applyResearchBoost no-op on a
-    // queued build, an already-claimed turn, or -- for research -- nothing
-    // currently being researched), so a stale schedule just quietly does
-    // nothing rather than erroring.
+    // player Shift-clicks (or Shift-presses the matching key for) Gather
+    // More Resources or Research (Rest and Defend dropped out of this
+    // scheme 2026-08-19, user-directed -- it's channeled and persists on
+    // its own now, same slot as the Rest and Defend brace just above). Each
+    // engine call already self-gates on whether it's still valid
+    // (applyResourceProduction/applyResearchBoost no-op on a queued build,
+    // an already-claimed turn, or -- for research -- nothing currently
+    // being researched), so a stale schedule just quietly does nothing
+    // rather than erroring.
     if (turnCtx && civ.id === turnCtx.humanCivId) {
-      for (const unit of civ.units) {
-        if (!unit.autoRepeat || unit.autoRepeat.turnsLeft <= 0) continue;
-        if (unit.autoRepeat.kind === "restAndDefend") {
-          window.GameEngine.orders.performRestAndDefend(unit, gameState);
-        }
-        unit.autoRepeat.turnsLeft -= 1;
-        if (unit.autoRepeat.turnsLeft <= 0) unit.autoRepeat = null;
-      }
       for (const city of civ.cities) {
         if (!city.autoRepeat || city.autoRepeat.turnsLeft <= 0) continue;
         if (city.autoRepeat.kind === "resourceProduction") {

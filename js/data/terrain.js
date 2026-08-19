@@ -143,3 +143,11 @@ window.GameData.RIVER_YIELD_BONUS = { harvest: 1, coin: 1 };
 // panel can read one shared number instead of each hardcoding its own copy.
 window.GameData.RUIN_YIELD_BONUS = { lore: 2 };
 window.GameData.RUIN_LABEL = "Ancient Ruin";
+
+// Caves (2026-08-19, user-directed): also a tile FEATURE (tile.isCave), not
+// a RESOURCES entry, same reasoning as Ruin above -- placed by worldgen
+// (placeCaves), always in linked pairs (tile.caveLinkX/caveLinkY point at
+// the partner tile). No yield bonus of its own; the whole point is the
+// "Enter Cave" full-turn relocate action (see orders.js's performEnterCave),
+// not a passive worked-tile bonus.
+window.GameData.CAVE_LABEL = "Cave";

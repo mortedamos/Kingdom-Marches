@@ -291,7 +291,7 @@ window.GameData.UNITS = {
   // summon -- see ai.js's UTILITY_UNIT_MECHANICS and maybeElfDruidPlay).
   druid: {
     id: "druid", label: "Druid", symbol: "✦", category: "military", raceOnly: "elf",
-    attack: 3, defense: 3, movement: 2, visionRadius: 3, range: 2, siegePct: 0.1,
+    attack: 3, defense: 3, movement: 2, visionRadius: 3, range: 2, siegePct: 0.1, poisonChancePct: 0.10,
     canFoundCity: true, // additional settler option alongside the shared Pioneer -- see elf_druidism
     // canProspect: orders.js's contextMenuOptions/turns.js's Hunt Game/Farm
     // Soil channels gate purely on this flag, no race/unit-type
@@ -508,7 +508,7 @@ window.GameData.UNITS = {
   bog_witch: {
     id: "bog_witch", label: "Bog Witch", symbol: "✦", category: "military", raceOnly: "orc",
     attack: 5, defense: 3, movement: 2, visionRadius: 3, range: 2,
-    coinCost: 22,
+    coinCost: 22, poisonChancePct: 0.30,
     // Baked directly into the unit rather than a tech effect -- the curse is
     // inherent to the Bog Witch herself, always active the moment you have
     // one (Bog Witch tech only grants unlock_unit). Read by combat.js

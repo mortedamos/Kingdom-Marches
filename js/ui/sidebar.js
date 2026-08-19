@@ -460,6 +460,12 @@ window.UI = window.UI || {};
     const featureRows = [];
     if (resource) featureRows.push([resource.label, formatBonus(resource.bonus)]);
     if (tile.isRuin) featureRows.push([window.GameData.RUIN_LABEL, formatBonus(window.GameData.RUIN_YIELD_BONUS)]);
+    // Cave (2026-08-19, user-directed): deliberately never shows the linked
+    // destination here, even to the tile's owner -- per the feature's own
+    // design, where a cave leads is a surprise revealed only by actually
+    // using it (see orders.js's performEnterCave), not something the tile
+    // inspector should spoil in advance.
+    if (tile.isCave) featureRows.push([window.GameData.CAVE_LABEL, "Leads to an unknown destination"]);
     if (hasRiver) featureRows.push(["River", formatBonus(window.GameData.RIVER_YIELD_BONUS)]);
     if (tile.hasRoad) featureRows.push(["Road", "Connected"]);
     const featuresHtml = featureRows.length
@@ -677,12 +683,13 @@ window.UI = window.UI || {};
     if (heavyMetalAura) properties.push(`Heavy Metal Aura (+${heavyMetalAura.defenseBonus} defense, +${Math.round(heavyMetalAura.siegePctBonus * 100)}% siege, 5% heal/turn)`);
     const powerMetalAura = unit.conditions?.powerMetalAura;
     if (powerMetalAura) properties.push(`Power Metal Aura (+${powerMetalAura.attackBonus} attack, +${Math.round(powerMetalAura.firstStrikePctBonus * 100)}% first strike)`);
-    // Garrison reads the label differently even
-    // though it's the SAME "defending" condition underneath -- Garrison's
-    // whole point is that it does NOT lapse "until next turn" the way a
-    // plain Defend click does.
+    // A channeled Rest and Defend reads the label differently even though
+    // it's the SAME "defending" condition underneath as a plain one-off
+    // Defend (ai.js's performDefend, AI-only) -- Rest and Defend's whole
+    // point is that it does NOT lapse "until next turn" the way a one-off
+    // Defend does; it persists until cancelled or superseded.
     if (unit.conditions?.defending) {
-      properties.push(unit.channeling === "garrison" ? 'Garrisoned (x2 defense)' : 'Defending (x2 defense until next turn)');
+      properties.push(unit.channeling === "restAndDefend" ? 'Resting and Defending (x2 defense)' : 'Defending (x2 defense until next turn)');
     }
 
     // Veteran leveling (see combat.js's LEVELING section) -- permanent,
@@ -723,11 +730,11 @@ window.UI = window.UI || {};
         ${actionHintHtml("this unit")}`;
     }
 
-    // (Rest, Defend, Garrison, Cancel Garrison, Disband, Stop Order and
+    // (Rest and Defend, Cancel Rest and Defend, Disband, Stop Order and
     // Automate Actions all live on the ring now -- see this function's
     // "INFORMATION ONLY" note above. Their non-button signals are all still
     // here: Stop Order's is the "Order" row below, Automate's is "Intent",
-    // Garrison's is Properties' "Garrisoned (x2 defense)".)
+    // Rest and Defend's is Properties' "Resting and Defending (x2 defense)".)
 
     // Spectator-only: every unit in a spectator game is AI-controlled, so
     // ai.js stamps a human-readable currentMission on it each turn (see
@@ -853,9 +860,10 @@ window.UI = window.UI || {};
     };
     // One row per resource (icon + label, Income, Upkeep, Net[, Stock])
     // instead of the old "Income (H / C / L)" triple-value rows -- see the
-    // .economy-grid CSS doc comment for why. Net's per-cell negative
-    // highlight replaces the old whole-row highlight, same amber, now
-    // pinned to the actual offending resource instead of the whole row.
+    // .economy-grid CSS doc comment for why. The Net column was removed
+    // (2026-08-19, user-directed -- it was crowding the panel and text was
+    // overlapping); its per-cell negative-net highlight now lands on the
+    // Upkeep cell instead, still pinned to the actual offending resource.
     const RESOURCE_ROWS = [
       { key: "harvest", label: "Harvest", icon: "icon-harvest" },
       { key: "coin", label: "Coin", icon: "icon-coin" },
@@ -866,15 +874,13 @@ window.UI = window.UI || {};
           <div class="economy-grid-header"></div>
           <div class="economy-grid-header">Income</div>
           <div class="economy-grid-header">Upkeep</div>
-          <div class="economy-grid-header">Net</div>
           ${stock ? '<div class="economy-grid-header">Stock</div>' : ''}
           ${RESOURCE_ROWS.map(({ key, label, icon }) => {
             const negative = net[key] < 0;
             return `
           <div class="economy-res"><svg class="resource-icon"><use href="#${icon}"></use></svg>${label}</div>
           <div class="economy-val">${res[key].toFixed(1)}</div>
-          <div class="economy-val">${upkeep[key].toFixed(1)}</div>
-          <div class="economy-val${negative ? ' economy-negative' : ''}">${net[key].toFixed(1)}</div>
+          <div class="economy-val${negative ? ' economy-negative' : ''}">${upkeep[key].toFixed(1)}</div>
           ${stock ? `<div class="economy-val">${stock[key].toFixed(0)}</div>` : ''}`;
           }).join("")}
         </div>`
@@ -903,7 +909,8 @@ window.UI = window.UI || {};
           const idleTag = idle ? `<span class="idle-tag" title="Not producing anything">Idle</span> ` : '';
           return `<div class="stat-row">${tileLink(c.x, c.y, c.name, "city")}<span>${idleTag}pop ${c.population.toFixed(0)}</span></div>`;
         }).join("")}
-        <button class="action-btn view-tech-tree-btn" data-civ-id="${escapeHtml(civ.id)}">View Tech Tree</button>` : ''}
+        ${civ.id !== window.GameConfig.worldEncounters.monsters.civId
+          ? `<button class="action-btn view-tech-tree-btn" data-civ-id="${escapeHtml(civ.id)}">View Tech Tree</button>` : ''}` : ''}
       </div>`;
   }
 

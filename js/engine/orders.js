@@ -283,19 +283,48 @@ window.GameEngine = window.GameEngine || {};
     unit.gotoTarget = null;
   }
 
-  /** Rest and Defend: heals via unit.resting AND doubles defense until the
-   *  start of this unit's next turn via the "defending" condition -- see
-   *  combat.js's setCondition. A plain engine function so it can be
-   *  re-invoked automatically by turns.js's per-turn "Shift-held: repeat for
-   *  the next 3 turns" auto-repeat (see finishCivTurn), not just from a
-   *  direct player click. Returns false (no-op) if the unit already acted
-   *  this turn -- same guard the ring pill's own visibility uses. */
+  /** Enter Cave (2026-08-19, user-directed): a full turn action -- instantly
+   *  relocates the unit to its cave's linked partner tile (tile.caveLinkX/Y,
+   *  see worldgen.js's placeCaves) and ends its turn, no move or attack
+   *  after (same "the whole turn is spent arriving" restriction as Human
+   *  Teleportation/Dwarf Deep Gate). Fog of war around the new position is
+   *  handled by the normal per-turn visibility refresh, same as any other
+   *  move -- there's no special reveal-before-arrival: per the user's
+   *  design a cave is usable the moment a unit finds ONE end, and using it
+   *  reveals wherever the other end turns out to be. Returns false (no-op)
+   *  if the unit already acted this turn or isn't standing on a cave. */
+  function performEnterCave(unit, gameState) {
+    if (!unit || unit.usedThisTurn) return false;
+    const { map } = gameState;
+    const tile = map.tiles[unit.y * map.width + unit.x];
+    if (!tile || !tile.isCave) return false;
+    unit.automated = false;
+    unit.pendingIntent = null;
+    unit.gotoTarget = null;
+    unit.x = tile.caveLinkX;
+    unit.y = tile.caveLinkY;
+    unit.usedThisTurn = true;
+    return true;
+  }
+
+  /** Rest and Defend: heals via unit.resting AND doubles defense via the
+   *  "defending" condition -- see combat.js's setCondition. Channeled
+   *  (unit.channeling = "restAndDefend") so it persists automatically every
+   *  turn (see turns.js's finishCivTurn) until the unit is given a
+   *  different order, instead of lapsing after one turn -- merged with the
+   *  old separate Garrison action (2026-08-19, user-directed: same standing
+   *  brace, just no longer gated on standing in a city to start it; a unit
+   *  resting and defending IN one of this civ's own cities additionally
+   *  picks up that city's defensive bonuses -- see cities.js's tickCity and
+   *  ai.js's tickWallDefense/tickMageTowerDefense). Returns false (no-op) if
+   *  the unit already acted this turn -- same guard the ring pill's own
+   *  visibility uses. */
   function performRestAndDefend(unit, gameState) {
     if (!unit || unit.usedThisTurn) return false;
     unit.automated = false;
     unit.pendingIntent = null;
     unit.gotoTarget = null;
-    if (unit.channeling === "garrison") unit.channeling = null;
+    unit.channeling = "restAndDefend";
     unit.resting = true;
     window.GameEngine.combat.setCondition(unit, "defending", { expiresAtTurn: (gameState.turnNumber || 0) + 1 });
     unit.usedThisTurn = true;
@@ -846,8 +875,8 @@ window.GameEngine = window.GameEngine || {};
         options.push({ kind: "claimChannel", label: "Claim Gathered Resources" });
         options.push({ kind: "cancelChannel", label: `Cancel ${CHANNEL_LABELS[unit.channeling]}`, danger: true });
       } else if (!unit.usedThisTurn && !unit.channeling) {
-        // !unit.channeling excludes "garrison" -- see sidebar.js's matching
-        // gate for why.
+        // !unit.channeling excludes "restAndDefend" -- see sidebar.js's
+        // matching gate for why.
         const onVein = tile.resource === "gold" || tile.resource === "iron";
         const onGame = tile.resource === "game";
         const onFertile = tile.resource === "fertile";
@@ -1081,19 +1110,34 @@ window.GameEngine = window.GameEngine || {};
         options.push({ kind: "follow", label: "Follow..." });
       }
 
-      // Rest and Defend: one pill, both effects (heal via unit.resting, x2
-      // defense via the "defending" condition) apply together; see
-      // main.js's handleRestAndDefend. overlays.js's drawConditionBadges
-      // skips the resting icon whenever "defending" is also active so this
-      // shows exactly one badge, not two.
-      if (!unit.usedThisTurn) {
-        options.push({ kind: "restAndDefend", label: "Rest and Defend" });
+      // Enter Cave (2026-08-19, user-directed): a full turn action, any
+      // unit, any race -- caves are a universal terrain feature (see
+      // worldgen.js's placeCaves), not tech- or race-gated like Deep Gate.
+      // No destination picker needed: unlike Roots of the World/
+      // Teleportation/Deep Gate, a cave only ever leads to its ONE linked
+      // partner (tile.caveLinkX/Y), so there's nothing to choose. See
+      // performEnterCave below (this file) and main.js's handleEnterCave.
+      if (!unit.usedThisTurn && tile.isCave) {
+        options.push({ kind: "enterCave", label: "Enter Cave" });
       }
-      // Garrison -- sidebar.js's garrisonBtn/cancel-garrison-btn.
-      if (unit.channeling === "garrison") {
-        options.push({ kind: "cancelGarrison", label: "Cancel Garrison", danger: true });
-      } else if (!unit.usedThisTurn && !unit.channeling && civ.cities.some((c) => c.x === unit.x && c.y === unit.y)) {
-        options.push({ kind: "garrison", label: "Garrison" });
+
+      // Rest and Defend: one pill, both effects (heal via unit.resting, x2
+      // defense via the "defending" condition) apply together, and persist
+      // automatically every turn until cancelled or superseded by another
+      // order (2026-08-19, user-directed merge with the old separate
+      // Garrison action -- Garrison used to be the only one of the two that
+      // stood indefinitely, and required standing in a city to start; now
+      // Rest and Defend does the standing-indefinitely part everywhere, and
+      // additionally picks up a city's own defensive bonuses while standing
+      // in one of this civ's cities -- see cities.js's tickCity and ai.js's
+      // tickWallDefense/tickMageTowerDefense). See main.js's
+      // handleRestAndDefend/handleCancelRestAndDefend. overlays.js's
+      // drawConditionBadges skips the resting icon whenever "defending" is
+      // also active so this shows exactly one badge, not two.
+      if (unit.channeling === "restAndDefend") {
+        options.push({ kind: "cancelRestAndDefend", label: "Cancel Rest and Defend", danger: true });
+      } else if (!unit.usedThisTurn) {
+        options.push({ kind: "restAndDefend", label: "Rest and Defend" });
       }
       // Automate Actions -- sidebar.js's automateBtn. Same underlying
       // unit.automated flag/handler for every unit type -- Dire Wolf just
@@ -1409,6 +1453,7 @@ window.GameEngine = window.GameEngine || {};
     advanceSentryOrder,
     advanceFollowOrder,
     performRestAndDefend,
+    performEnterCave,
     plannedPath,
     contextMenuOptions,
     canCarryPassenger,

@@ -301,5 +301,9 @@ window.GameData.SPRITE_MANIFESTS = {
     frameWidth: 128, frameHeight: 128, layout: "horizontal",
     animations: { idle: { frames: [0, 1, 2, 3], fps: 2 } },
   },
+  "enhancement/cave": {
+    frameWidth: 128, frameHeight: 128, layout: "horizontal",
+    animations: { idle: { frames: [0, 1, 2, 3], fps: 2 } },
+  },
 
 };

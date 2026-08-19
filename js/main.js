@@ -315,6 +315,7 @@
     return `
       <h2 class="launch-title">Game Options</h2>
 
+      <div class="launch-grid">
       <div class="launch-section">
         <div class="launch-section-label">Mode</div>
         <label class="launch-row launch-row-check">
@@ -379,6 +380,7 @@
         <div class="launch-section-label">Audio</div>
         <button id="title-music-btn" class="launch-music-btn">♪ Play Title Music</button>
         <p class="launch-hint">In-game music and sound effect volumes are under the Audio menu once a game starts.</p>
+      </div>
       </div>
 
       <div class="launch-actions">
@@ -2131,24 +2133,26 @@
    *  Founding used to be reachable ONLY through the end-turn settler sweep,
    *  which meant a player who wanted a city right now had no way to ask for
    *  one -- the panel just told them to end their turn. */
-  /** Manual order supersedes automation/pathing/garrison (2026-08-06, user-
-   *  directed): any command the player issues to a unit ends whatever it
-   *  was doing on its own -- an Automate Actions proposal/toggle, a multi-
-   *  turn goto order, or a standing Garrison -- with no separate Stop
-   *  Order/Stop Automating/Cancel Garrison click needed first. Idempotent
-   *  (a plain unit with none of these set is untouched), so safe to call
-   *  unconditionally at the top of every order-issuing handler below. Stop
-   *  Order/Cancel Garrison themselves are deliberately NOT among those
-   *  callers -- each stays scoped to undoing just its own thing, same as
-   *  "Stop Automating" stays scoped to just automation. Only the "garrison"
-   *  channel value is cleared here -- a resource channel (hunting,
-   *  prospecting, ...) has its own forfeit-the-stash cancel path
-   *  (handleCancelChannel) and isn't touched by this generic helper. */
+  /** Manual order supersedes automation/pathing/Rest and Defend (2026-08-06,
+   *  user-directed): any command the player issues to a unit ends whatever
+   *  it was doing on its own -- an Automate Actions proposal/toggle, a
+   *  multi-turn goto order, or a standing Rest and Defend (formerly a
+   *  separate Garrison action; merged 2026-08-19, user-directed) -- with no
+   *  separate Stop Order/Stop Automating/Cancel Rest and Defend click needed
+   *  first. Idempotent (a plain unit with none of these set is untouched),
+   *  so safe to call unconditionally at the top of every order-issuing
+   *  handler below. Stop Order/Cancel Rest and Defend themselves are
+   *  deliberately NOT among those callers -- each stays scoped to undoing
+   *  just its own thing, same as "Stop Automating" stays scoped to just
+   *  automation. Only the "restAndDefend" channel value is cleared here --
+   *  a resource channel (hunting, prospecting, ...) has its own forfeit-
+   *  the-stash cancel path (handleCancelChannel) and isn't touched by this
+   *  generic helper. */
   function endAutomationAndGoto(unit) {
     unit.automated = false;
     unit.pendingIntent = null;
     unit.gotoTarget = null;
-    if (unit.channeling === "garrison") unit.channeling = null;
+    if (unit.channeling === "restAndDefend") unit.channeling = null;
     // Sentry / Follow -- same "any new order
     // supersedes a standing one" rule gotoTarget already gets here, so a
     // unit taken off Sentry/Follow by being given something else to do
@@ -2583,7 +2587,19 @@
     const queue = gameState && gameState.pendingKingdomEliminations;
     if (!queue) return;
     while (queue.length && queue[0] === humanCivId) queue.shift();
-    if (!queue.length || viewState.dialog) return;
+    if (!queue.length) return;
+    // All-AI Spectator (2026-08-19, user-directed): no human stake in any
+    // kingdom's survival, so the modal is just noise interrupting the watch.
+    // Still drained quietly to the console rather than dropped outright.
+    if (spectatorMode) {
+      while (queue.length) {
+        const civ = gameState.civs[queue.shift()];
+        if (!civ) continue;
+        console.log(`[spectator] ${window.GameData.getRace(civ.raceId).label} has been eliminated from the game.`);
+      }
+      return;
+    }
+    if (viewState.dialog) return;
     const civ = gameState.civs[queue.shift()];
     if (!civ) return; // defensive -- civ objects are never removed from gameState.civs
     const race = window.GameData.getRace(civ.raceId);
@@ -3465,16 +3481,19 @@
 
     // Keyboard-shortcut hints: a static badge on
     // the two pills that always have one, plus the Shift-held "next 3
-    // turns" prefix on all three auto-repeat-eligible pills (see
-    // maybeScheduleAutoRepeat -- Space/restAndDefend/city:resourceProduction/
-    // city:research all funnel through the same handler a click would).
+    // turns" prefix on the two remaining auto-repeat-eligible pills (see
+    // maybeScheduleAutoRepeat -- city:resourceProduction/city:research
+    // funnel through the same handler a click would). Rest and Defend
+    // dropped out of this Shift-repeat scheme (2026-08-19, user-directed) --
+    // now channeled and persists on its own every turn until cancelled, so
+    // a Shift-limited "next 3 turns" framing no longer applies to it.
     // Movement (arrow keys) has no single fixed pill to annotate this way --
     // "moveTo" only exists dynamically once a destination tile is clicked --
     // so it's left without a ring badge, a scoping call rather than an
     // oversight.
     for (const o of options) {
       if (o.kind === "restAndDefend" || o.kind === "city:resourceProduction") o.shortcut = "Space";
-      if (shiftHeld && (o.kind === "restAndDefend" || o.kind === "city:resourceProduction" || o.kind === "city:research")) {
+      if (shiftHeld && (o.kind === "city:resourceProduction" || o.kind === "city:research")) {
         o.label = `Next 3 turns: ${o.label}`;
       }
     }
@@ -3702,17 +3721,30 @@
     }
   }
 
+  /** Enter Cave (2026-08-19, user-directed) -- see orders.js's
+   *  performEnterCave for the actual relocate/turn-consuming logic; this is
+   *  just the sidebar/ring-menu's UI-side twin, same shape as
+   *  handleRestAndDefend below. */
+  function handleEnterCave() {
+    if (!humanCivId || !viewState.selectedUnit) return;
+    const unit = viewState.selectedUnit;
+    if (!window.GameEngine.orders.performEnterCave(unit, gameState)) return;
+    redraw();
+  }
+
   // Rest and Defend -- both effects apply: healUnit at end of turn
-  // via unit.resting (turns.js), AND doubled defense until the start of
-  // this unit's next turn via the "defending" condition (same
-  // expiresAtTurn convention ai.js's performDefend uses for the AI side).
-  // Only one badge shows for this (overlays.js's drawConditionBadges skips
-  // the resting icon whenever "defending" is also active).
+  // via unit.resting (turns.js), AND doubled defense via the "defending"
+  // condition (same expiresAtTurn convention ai.js's performDefend uses for
+  // the AI side). Only one badge shows for this (overlays.js's
+  // drawConditionBadges skips the resting icon whenever "defending" is also
+  // active). Channeled (see performRestAndDefend), so no Shift auto-repeat
+  // needed anymore -- it now persists on its own every turn until cancelled
+  // (2026-08-19, user-directed merge with the old separate Garrison
+  // action) -- see handleCancelRestAndDefend.
   function handleRestAndDefend() {
     if (!humanCivId || !viewState.selectedUnit) return;
     const unit = viewState.selectedUnit;
     if (!window.GameEngine.orders.performRestAndDefend(unit, gameState)) return;
-    maybeScheduleAutoRepeat(unit, "restAndDefend");
     redraw();
   }
 
@@ -3838,42 +3870,17 @@
     redraw();
   }
 
-  /** Garrison: the same x2-defense "defending"
-   *  condition Rest and Defend also sets, but CHANNELED -- started once, then
-   *  kept alive automatically every turn (see turns.js's finishCivTurn,
-   *  which re-applies the condition for any human unit with
-   *  unit.channeling === "garrison" so it never lapses on its own) instead
-   *  of asking the player to re-click Defend every single turn. Reuses the
-   *  unit.channeling field/isSpent exclusion the resource channels
-   *  (hunting, prospecting, ...) already use, with a distinct value and no
-   *  stash of its own. Only offered while standing in one of this civ's own
-   *  cities. Ends via Cancel Garrison (handleCancelGarrison) or any other
-   *  manual order (endAutomationAndGoto). */
-  function handleGarrisonUnit() {
+  /** Ends a standing Rest and Defend (see performRestAndDefend/handleRestAndDefend;
+   *  formerly a separate "Cancel Garrison", merged 2026-08-19, user-directed)
+   *  -- free, same as Cancel Channel/Cancel Hidden, since there's no stash to
+   *  forfeit and nothing irreversible about stepping down from a brace.
+   *  Drops the "defending" condition immediately rather than letting it
+   *  linger to its nominal expiry, so the bonus visibly ends the instant the
+   *  player asks it to. */
+  function handleCancelRestAndDefend() {
     if (!humanCivId || !viewState.selectedUnit) return;
     const unit = viewState.selectedUnit;
-    const civ = gameState.civs[humanCivId];
-    if (!civ || unit.civId !== humanCivId) return;
-    if (unit.usedThisTurn || unit.channeling) return;
-    if (!civ.cities.some((c) => c.x === unit.x && c.y === unit.y)) return;
-    endAutomationAndGoto(unit);
-    unit.channeling = "garrison";
-    window.GameEngine.combat.setCondition(unit, "defending", { expiresAtTurn: (gameState.turnNumber || 0) + 1 });
-    unit.usedThisTurn = true;
-    unit.resting = true;
-    redraw();
-  }
-
-  /** Ends a standing Garrison (see handleGarrisonUnit) -- free, same as
-   *  Cancel Channel/Cancel Hidden, since there's no stash to forfeit and
-   *  nothing irreversible about stepping down from a brace. Drops the
-   *  "defending" condition immediately rather than letting it linger to its
-   *  nominal expiry, so the bonus visibly ends the instant the player asks
-   *  it to. */
-  function handleCancelGarrison() {
-    if (!humanCivId || !viewState.selectedUnit) return;
-    const unit = viewState.selectedUnit;
-    if (unit.channeling !== "garrison") return;
+    if (unit.channeling !== "restAndDefend") return;
     unit.channeling = null;
     window.GameEngine.combat.clearCondition(unit, "defending");
     redraw();
@@ -4104,8 +4111,14 @@
       case "cancelHidden":
         handleCancelHidden();
         break;
+      case "enterCave":
+        handleEnterCave();
+        break;
       case "restAndDefend":
         handleRestAndDefend();
+        break;
+      case "cancelRestAndDefend":
+        handleCancelRestAndDefend();
         break;
       case "automate":
         handleToggleAutomate();
@@ -4114,12 +4127,6 @@
         // Sub-page, not an order -- keep the ring open on this unit's tile
         // and swap it for the picker (see renderRingMenu's buildRingPage).
         viewState.ringMenu = { x: menu.x, y: menu.y, subject: "unit", page: "levelUp" };
-        break;
-      case "garrison":
-        handleGarrisonUnit();
-        break;
-      case "cancelGarrison":
-        handleCancelGarrison();
         break;
       case "disband":
         handleDisbandUnit();

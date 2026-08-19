@@ -18,6 +18,7 @@ window.UI = window.UI || {};
   const MIN_ZOOM = window.GameConfig.view.minZoom;
   const MAX_ZOOM = window.GameConfig.view.maxZoom;
   const RUIN_ICON_SCALE = .75; // ruins read as a little bigger than a tile-fill resource icon (see per-resource iconScale in terrain.js)
+  const CAVE_ICON_SCALE = .75; // same treatment as Ruin -- caves reuse Ruin's old art 1:1 (see doc/art_style_guide.md's Ruin entry)
   const MOVE_ANIM_MS = window.GameConfig.view.moveAnimMs; // purely visual glide duration for unit movement
   // Very slight footstep bounce while a unit glides between tiles
   // (2026-08-18, user-requested) -- see getVisualPos's `bounce` field and
@@ -491,6 +492,27 @@ window.UI = window.UI || {};
           } else {
             deferredIcons.push(() => {
               ctx.fillStyle = "#b08060";
+              ctx.font = `${Math.max(8, ts * 0.36)}px monospace`;
+              ctx.fillText("?", screenX + ts / 2 - ts * 0.11, screenY + ts / 2 + ts * 0.11);
+            });
+          }
+        }
+
+        // Cave — same slot/sprite treatment as Ruin just above (reuses
+        // Ruin's old archway/portal art 1:1, see doc/art_style_guide.md).
+        // A tile is never both isRuin and isCave (worldgen's placeCaves
+        // skips isRuin tiles when picking eligible spots), so this can
+        // never double up with the block above.
+        if (tile.isCave) {
+          const caveSprite = window.UI.sprites.pick("enhancement/cave", tile);
+          if (caveSprite) {
+            const f = window.UI.sprites.currentFrame(caveSprite.manifest, "idle", tile);
+            const sz = ts * CAVE_ICON_SCALE;
+            const { boxX, boxY } = tileIconBox(screenX, screenY, ts, sz, x, y);
+            deferredIcons.push(() => ctx.drawImage(caveSprite.image, f.sx, f.sy, f.sw, f.sh, boxX, boxY, sz, sz));
+          } else {
+            deferredIcons.push(() => {
+              ctx.fillStyle = "#8080b0";
               ctx.font = `${Math.max(8, ts * 0.36)}px monospace`;
               ctx.fillText("?", screenX + ts / 2 - ts * 0.11, screenY + ts / 2 + ts * 0.11);
             });
@@ -2323,6 +2345,27 @@ window.UI = window.UI || {};
       } else {
         deferredIcons.push(() => {
           ctx.fillStyle = "#b08060";
+          ctx.font = `${Math.max(8, ts * 0.36)}px monospace`;
+          ctx.fillText("?", screenX + ts / 2 - ts * 0.11, screenY + ts / 2 + ts * 0.11);
+        });
+      }
+    }
+
+    if (snapshot.isCave) {
+      const caveSprite = window.UI.sprites.pick("enhancement/cave", snapshot);
+      if (caveSprite) {
+        const f = window.UI.sprites.currentFrame(caveSprite.manifest, "idle", snapshot);
+        const sz = ts * CAVE_ICON_SCALE;
+        const { boxX, boxY } = tileIconBox(screenX, screenY, ts, sz, x, y);
+        deferredIcons.push(() => {
+          const prevAlpha = ctx.globalAlpha;
+          ctx.globalAlpha = prevAlpha * 0.6;
+          ctx.drawImage(caveSprite.image, f.sx, f.sy, f.sw, f.sh, boxX, boxY, sz, sz);
+          ctx.globalAlpha = prevAlpha;
+        });
+      } else {
+        deferredIcons.push(() => {
+          ctx.fillStyle = "#8080b0";
           ctx.font = `${Math.max(8, ts * 0.36)}px monospace`;
           ctx.fillText("?", screenX + ts / 2 - ts * 0.11, screenY + ts / 2 + ts * 0.11);
         });

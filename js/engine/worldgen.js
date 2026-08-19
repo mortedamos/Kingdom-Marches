@@ -237,6 +237,7 @@ window.GameEngine = window.GameEngine || {};
           x, y, terrain: terrainId,
           resource: null, hasRoad: false, hasRiver: { n: false, s: false, e: false, w: false },
           isRuin: false, landmassId: -1,
+          isCave: false, caveLinkX: -1, caveLinkY: -1,
           ownerCivId: null, status: "neutral", contestedTurns: 0,
           tallMountainEligible: false,
         };
@@ -287,6 +288,9 @@ window.GameEngine = window.GameEngine || {};
 
     // --- Ruins (guaranteed minimum per landmass, land-only, never on water) ---
     placeRuins(tiles, width, height, rng, landmasses);
+
+    // --- Caves (1-2 linked pairs per map, land-only, never on water) ---
+    placeCaves(tiles, width, height, rng, landmasses);
 
     return { width, height, tiles, seed, landmasses };
   }
@@ -614,6 +618,60 @@ window.GameEngine = window.GameEngine || {};
         placedTiles.push(idx);
         placed++;
       }
+    }
+  }
+
+  /** Caves (2026-08-19, user-directed): 1-2 linked PAIRS per map, land-only
+   *  (never on water, same constraint as Ruins), reusing the same
+   *  min-spacing-via-rejection-sampling shape as placeRuins above. Unlike
+   *  Ruins, a cave's two tiles are stamped as a linked PAIR spanning the
+   *  whole map (not per-landmass) -- see js/engine/orders.js's
+   *  performEnterCave, which reads tile.caveLinkX/caveLinkY to know where a
+   *  unit standing on tile.isCave teleports to. A pair is deliberately
+   *  required to land far apart (at least a quarter of the map's diagonal)
+   *  so it reads as a real shortcut, not two adjacent tiles that happen to
+   *  be linked. */
+  function placeCaves(tiles, width, height, rng, landmasses) {
+    const PAIR_COUNT = rng() < 0.5 ? 1 : 2;
+    const MIN_LINK_DIST = Math.floor(Math.hypot(width, height) / 4);
+    const MIN_SPACING_FROM_OTHER_CAVES = 3;
+    const eligible = [];
+    for (const group of landmasses) {
+      for (const idx of group) {
+        if (!tiles[idx].isRuin && !tiles[idx].resource) eligible.push(idx);
+      }
+    }
+    const placedTiles = [];
+    const tooCloseToPlaced = (cx, cy) => placedTiles.some((pIdx) => {
+      const px = pIdx % width, py = Math.floor(pIdx / width);
+      return Math.max(Math.abs(px - cx), Math.abs(py - cy)) <= MIN_SPACING_FROM_OTHER_CAVES;
+    });
+    let pairsPlaced = 0;
+    let pairAttempts = 0;
+    while (pairsPlaced < PAIR_COUNT && pairAttempts < 60) {
+      pairAttempts++;
+      const idxA = eligible[Math.floor(rng() * eligible.length)];
+      const ax = idxA % width, ay = Math.floor(idxA / width);
+      if (tiles[idxA].isCave || tooCloseToPlaced(ax, ay)) continue;
+      let idxB = null;
+      for (let attempt = 0; attempt < 40; attempt++) {
+        const candidate = eligible[Math.floor(rng() * eligible.length)];
+        const bx = candidate % width, by = Math.floor(candidate / width);
+        if (tiles[candidate].isCave || candidate === idxA || tooCloseToPlaced(bx, by)) continue;
+        if (Math.max(Math.abs(bx - ax), Math.abs(by - ay)) < MIN_LINK_DIST) continue;
+        idxB = candidate;
+        break;
+      }
+      if (idxB === null) continue; // no far-enough partner found this attempt -- retry pair from scratch
+      const bx = idxB % width, by = Math.floor(idxB / width);
+      tiles[idxA].isCave = true;
+      tiles[idxA].caveLinkX = bx;
+      tiles[idxA].caveLinkY = by;
+      tiles[idxB].isCave = true;
+      tiles[idxB].caveLinkX = ax;
+      tiles[idxB].caveLinkY = ay;
+      placedTiles.push(idxA, idxB);
+      pairsPlaced++;
     }
   }
 

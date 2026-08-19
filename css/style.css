@@ -1747,29 +1747,46 @@ html, body {
 }
 /* --- Launch options modal (reuses .techtree-overlay for the backdrop) --- */
 .launch-options-modal {
-  /* 2026-08-07, user-directed: was a flat 460px cap, which read as narrow
-     and cramped on wider windows. max(50vw, 460px) grows past 460px once
-     the window is wide enough that half its width exceeds that (roughly
-     920px+ browser width) rather than pinning to 460px forever; the outer
-     min(..., 94vw) is the same overflow guard the original had, so a
-     narrow/mobile-width window still shrinks to fit instead of spilling
-     past the viewport edge. */
-  width: min(max(50vw, 460px), 94vw);
+  /* 2026-08-19, user-directed: widened again to fit the two-column
+     .launch-grid below without the cards feeling cramped -- the old
+     max(50vw, 460px) cap was sized for a single stacked column and left
+     two side-by-side cards squeezed. min(..., 94vw) is still the same
+     overflow guard, so a narrow/mobile-width window still shrinks to fit
+     instead of spilling past the viewport edge. */
+  width: min(max(64vw, 640px), 94vw);
   max-height: 88vh;
   overflow-y: auto;
 }
 .launch-title {
-  margin: 0 0 4px 0;
+  margin: 0 0 12px 0;
   font-family: "Cinzel", Georgia, serif;
   font-size: 20px;
   color: var(--accent);
   letter-spacing: 0.06em;
 }
-.launch-section {
-  padding: 14px 0;
-  border-bottom: 1px solid var(--border);
+/* Two-column layout (2026-08-19, user-directed): the modal used to stack
+   every section in one long column, which made it tall and scrolly with
+   overlapping-feeling hint text. grid-auto-flow: column + two explicit
+   rows fills column 1 top-to-bottom before starting column 2, so DOM order
+   [Mode, Single Player/Races in Play, World, Audio] lands as Mode/identity
+   on the left and World/Audio settings on the right. Whichever of Single
+   Player vs Races in Play is display:none (see startGame's spectator
+   toggle) simply isn't a grid item, so the other one slots into that same
+   left-column cell without a layout change. */
+.launch-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: repeat(2, auto);
+  grid-auto-flow: column;
+  gap: 14px 20px;
+  align-items: start;
 }
-.launch-section:last-of-type { border-bottom: none; }
+.launch-section {
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-panel-raised);
+}
 .launch-section-label {
   font-size: 11px;
   text-transform: uppercase;

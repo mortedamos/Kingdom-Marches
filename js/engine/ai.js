@@ -2331,16 +2331,17 @@ window.GameEngine = window.GameEngine || {};
     // fight. See ai.js's applyWebbed and overlays.js's "webbed" visual.
     if (unit.conditions?.webbed) movement = 0;
 
-    // Hidden: moving carefully to stay unseen costs 66% of movement, floored
-    // at 1 so a Hidden unit is slow, never fully immobile. Elf "Quick as a
-    // Shadow" (2026-07-22, previously unimplemented despite the tech's own
-    // wording -- "a hidden elf unit can move at full speed, unlike most
-    // hidden units") waives this entirely once known.
+    // Hidden: moving carefully to stay unseen halves movement, floored
+    // at 1 so a Hidden unit is slow, never fully immobile (2026-08-19,
+    // user-directed -- was a steeper 66% cut). Elf "Quick as a Shadow"
+    // (2026-07-22, previously unimplemented despite the tech's own wording
+    // -- "a hidden elf unit can move at full speed, unlike most hidden
+    // units") waives this entirely once known.
     if (unit.conditions?.hidden) {
       const movementCiv = civs?.[unit.civId];
       const bypassesHiddenPenalty = movementCiv?.raceId === "elf"
         && movementCiv.unlockedMechanics?.has("quick_as_a_shadow");
-      if (!bypassesHiddenPenalty) movement = Math.max(1, Math.round(movement * 0.34));
+      if (!bypassesHiddenPenalty) movement = Math.max(1, Math.round(movement * 0.5));
     }
 
     // Tech: Halfellow "Devoted Companions" -- carrying a passenger costs 25% movement.
@@ -2348,11 +2349,12 @@ window.GameEngine = window.GameEngine || {};
       const carrierCiv = civs?.[unit.civId];
       if (carrierCiv?.unlockedMechanics?.has("devoted_companions")) movement = Math.max(1, Math.round(movement * 0.75));
     }
-    // Halfellow "Riddle"/"Resource Heist": Befuddled caps movement at 1 --
-    // confused, not paralyzed, same floor-shape as Hidden's penalty above,
-    // just an absolute cap instead of a percentage. Applied last so nothing
-    // above can push a Befuddled unit back over the cap.
-    if (unit.conditions?.befuddled) movement = Math.min(movement, 1);
+    // Halfellow "Riddle"/"Resource Heist": Befuddled cuts movement to 25% of
+    // normal (2026-08-19, user-directed -- was a flat cap at 1), floored at
+    // 1 like Hidden's penalty above so a Befuddled unit is confused, not
+    // paralyzed. Applied last so nothing above can push a Befuddled unit
+    // back over the reduced budget.
+    if (unit.conditions?.befuddled) movement = Math.max(1, Math.round(movement * unit.conditions.befuddled.movementMult));
     return movement;
   }
 
@@ -4754,10 +4756,16 @@ window.GameEngine = window.GameEngine || {};
       if (civ.unlockedMechanics && civ.unlockedMechanics.has("dungeon_delve")
           && maybeDungeonDelvePlay(civ, unit, gameState, log)) continue;
 
-      // Treasure Chest: opportunistic open for an otherwise-idle unit that
-      // happens to already be standing on one. Race-agnostic, tech-free --
-      // see openTreasureChest above.
+      // Treasure Chest: opens one on the spot if already standing on it,
+      // otherwise curiosity-weighted pursuit of the nearest known chest.
+      // Race-agnostic, tech-free -- see openTreasureChest above.
       if (maybeOpenChestPlay(civ, unit, gameState, log)) continue;
+
+      // Caves: jumps through one on the spot if it's a real shortcut toward
+      // the front line, otherwise pursues a known cave when doing so would
+      // itself be a shortcut. Race-agnostic, tech-free, universal terrain
+      // feature -- see performEnterCave's player-facing twin in orders.js.
+      if (maybeCaveShortcutPlay(civ, unit, gameState, log)) continue;
 
       // Orc Dragon Riders: pick up or drop off a passenger when otherwise idle.
       // canCarryUnit is a formal PROPERTY (see combat.js getUnitProperty) --
@@ -4899,9 +4907,18 @@ window.GameEngine = window.GameEngine || {};
       // below exactly as if this civ had zero garrison desire.
       const canGarrison = unit.typeId !== "raptor" && unit.typeId !== "shadowsteed";
       if (canGarrison && onOwnCity && Math.random() < garrisonDesire) {
+        // Actually channels Rest and Defend now (2026-08-19, user-directed)
+        // rather than just setting unit.resting -- cities.js's
+        // advanceCityFill fill-rate bonus was tightened to require the
+        // real channel, not mere presence, so an AI that merely "rests"
+        // here without it would silently lose the economic payoff this
+        // whole heuristic exists to chase. See performRestAndDefend's
+        // player-facing twin in orders.js.
+        unit.channeling = "restAndDefend";
+        window.GameEngine.combat.setCondition(unit, "defending", { expiresAtTurn: (gameState.turnNumber || 0) + 1 });
         unit.resting = true;
         unit.usedThisTurn = true; // stay garrisoned and rest this turn
-        unit.currentMission = "Garrisoning home city (resting)";
+        unit.currentMission = "Resting and Defending home city";
         continue;
       }
 
@@ -4973,24 +4990,26 @@ window.GameEngine = window.GameEngine || {};
       pushTowardInfluenceFrontier(civ, unit, gameState, log);
       if (unit.usedThisTurn) continue;
 
-      // Human "Ramparts" AI support: Ramparts requires an explicitly
-      // Garrisoned unit (the same unit.channeling === "garrison" state the player's own
-      // Garrison button sets -- see main.js's handleGarrisonUnit), but no
-      // AI play ever sets that flag; reinforceHomeCity/
-      // maybeDefendCityUnderAttack above just leave a defender standing on
-      // the tile. Same x2 "defending" bonus as an ordinary Rest/Defend
-      // (see sidebar.js), just persistent and Ramparts-eligible, so there's
-      // no downside to a military unit that's ALREADY confirmed to have
-      // nothing better to do this turn (every branch above already
-      // fell through) garrisoning instead of just idling.
+      // Human "Ramparts" AI support: Ramparts requires a unit explicitly
+      // Resting and Defending (the same unit.channeling === "restAndDefend"
+      // state the player's own Rest and Defend button sets -- see main.js's
+      // handleRestAndDefend; formerly a separate Garrison action, merged
+      // 2026-08-19 user-directed), but no other AI play ever sets that
+      // flag; reinforceHomeCity/maybeDefendCityUnderAttack above just leave
+      // a defender standing on the tile. Same x2 "defending" bonus as an
+      // ordinary one-off Rest/Defend (see sidebar.js), just persistent and
+      // Ramparts-eligible, so there's no downside to a military unit that's
+      // ALREADY confirmed to have nothing better to do this turn (every
+      // branch above already fell through) resting and defending instead
+      // of just idling.
       if (civ.unlockedMechanics && civ.unlockedMechanics.has("ramparts")
           && window.GameData.getUnit(unit.typeId).category === "military"
           && civ.cities.some((c) => c.x === unit.x && c.y === unit.y)) {
-        unit.channeling = "garrison";
+        unit.channeling = "restAndDefend";
         window.GameEngine.combat.setCondition(unit, "defending", { expiresAtTurn: (gameState.turnNumber || 0) + 1 });
         unit.usedThisTurn = true;
         unit.resting = true;
-        unit.currentMission = "Garrisoned (Ramparts)";
+        unit.currentMission = "Resting and Defending (Ramparts)";
         continue;
       }
 
@@ -7485,32 +7504,192 @@ window.GameEngine = window.GameEngine || {};
     return { trapped: false, rewardType, amount: cfg.rewardAmount };
   }
 
-  /** Treasure Chest: opportunistic open for an otherwise-idle unit that
-   *  happens to already be standing on one. Doesn't path toward a known
-   *  chest elsewhere on the map -- this only ever fires for a unit that's
-   *  already there, same "take the easy win, don't go out of your way yet"
-   *  scope as this feature's first pass; a proper seek-a-chest play can
-   *  follow later the same way findNearbyUnclaimedGoldVein does for
-   *  Prospector's Claim. */
+  /** Finds the nearest known Treasure Chest tile (currently visible OR
+   *  remembered via tileMemory), within a reasonable search radius. Returns
+   *  {x,y,landmassId} or null. Mirrors findNearbyUnclaimedRuin above --
+   *  no claimed-by-other tracking needed since opening a chest is a single
+   *  instant action, not a channel another unit could be mid-way through. */
+  function findNearbyUnclaimedChest(civ, unit, gameState, options = {}) {
+    const { map } = gameState;
+    const SEARCH_RADIUS = 20;
+    const memory = (gameState.tileMemory && gameState.tileMemory[civ.id]) || {};
+    const unitTile = map.tiles[unit.y * map.width + unit.x];
+    const unitLandmassId = unitTile ? unitTile.landmassId : -1;
+    let best = null, bestDist = Infinity;
+    for (let dy = -SEARCH_RADIUS; dy <= SEARCH_RADIUS; dy++) {
+      for (let dx = -SEARCH_RADIUS; dx <= SEARCH_RADIUS; dx++) {
+        const x = unit.x + dx, y = unit.y + dy;
+        if (x < 0 || x >= map.width || y < 0 || y >= map.height) continue;
+        const idx = y * map.width + x;
+        const isChest = map.tiles[idx].resource === "chest" || (memory[idx] && memory[idx].resource === "chest");
+        if (!isChest) continue;
+        if (options.sameLandmassOnly && unitLandmassId >= 0 && map.tiles[idx].landmassId !== unitLandmassId) continue;
+        const dist = window.GameEngine.influence.chebyshev(unit.x, unit.y, x, y);
+        if (dist < bestDist) { bestDist = dist; best = { x, y, landmassId: map.tiles[idx].landmassId }; }
+      }
+    }
+    return best;
+  }
+
+  /** Treasure Chest: opens one immediately if the unit is already standing
+   *  on it; otherwise, curiosity-weighted, actively marches toward the
+   *  nearest known chest instead of waiting to stumble onto one (2026-08-19,
+   *  user-directed upgrade from the original opportunistic-only pass) --
+   *  same land-march-then-settle shape as maybeDungeonDelvePlay's Ruin
+   *  pursuit, minus the overseas-by-ship fallback since a chest isn't worth
+   *  detouring a whole voyage for. */
   function maybeOpenChestPlay(civ, unit, gameState, log) {
     if (unit.usedThisTurn || unit.channeling) return false;
     const { map } = gameState;
     const tile = map.tiles[unit.y * map.width + unit.x];
-    if (!tile || tile.resource !== "chest") return false;
-    const result = openTreasureChest(civ, unit, gameState);
-    if (!result) return false;
-    unit.currentMission = result.disarmed ? "Opened a chest -- found a trap, disarmed it"
-      : result.trapped ? "Opened a chest -- it was trapped!"
-      : `Opened a chest -- found ${result.rewardType}`;
-    // mapFragment has no `.amount` (see openTreasureChest) -- was logging
-    // "finds undefined mapFragment" before this special case, confirmed live
-    // via a headless playtest.
-    let outcome;
-    if (result.disarmed) outcome = " and disarms a trap inside it";
-    else if (result.trapped) outcome = " and springs a trap";
-    else if (result.rewardType === "mapFragment") outcome = " and finds a Map Fragment";
-    else outcome = ` and finds ${result.amount} ${result.rewardType}`;
-    log.push(`Treasure Chest: ${civ.id}'s ${describeUnit(unit)} opens a chest at (${unit.x},${unit.y})${outcome}`);
+    if (tile && tile.resource === "chest") {
+      const result = openTreasureChest(civ, unit, gameState);
+      if (!result) return false;
+      unit.currentMission = result.disarmed ? "Opened a chest -- found a trap, disarmed it"
+        : result.trapped ? "Opened a chest -- it was trapped!"
+        : `Opened a chest -- found ${result.rewardType}`;
+      // mapFragment has no `.amount` (see openTreasureChest) -- was logging
+      // "finds undefined mapFragment" before this special case, confirmed live
+      // via a headless playtest.
+      let outcome;
+      if (result.disarmed) outcome = " and disarms a trap inside it";
+      else if (result.trapped) outcome = " and springs a trap";
+      else if (result.rewardType === "mapFragment") outcome = " and finds a Map Fragment";
+      else outcome = ` and finds ${result.amount} ${result.rewardType}`;
+      log.push(`Treasure Chest: ${civ.id}'s ${describeUnit(unit)} opens a chest at (${unit.x},${unit.y})${outcome}`);
+      return true;
+    }
+
+    const race = window.GameData.getRace(civ.raceId);
+    const curiosity = race.curiosity ?? 0.5;
+    if (Math.random() >= curiosity) return false;
+
+    const chestSpot = findNearbyUnclaimedChest(civ, unit, gameState, { sameLandmassOnly: true });
+    if (!chestSpot) return false;
+    moveUnitToward(unit, chestSpot.x, chestSpot.y, map, gameState.civs);
+    if (chestSpot.x === unit.x && chestSpot.y === unit.y) {
+      // Arrived with movement to spare this turn -- open it right away
+      // instead of always burning a separate arrival turn.
+      const result = openTreasureChest(civ, unit, gameState);
+      if (!result) return false;
+      unit.currentMission = result.disarmed ? "Opened a chest -- found a trap, disarmed it"
+        : result.trapped ? "Opened a chest -- it was trapped!"
+        : `Opened a chest -- found ${result.rewardType}`;
+      let outcome;
+      if (result.disarmed) outcome = " and disarms a trap inside it";
+      else if (result.trapped) outcome = " and springs a trap";
+      else if (result.rewardType === "mapFragment") outcome = " and finds a Map Fragment";
+      else outcome = ` and finds ${result.amount} ${result.rewardType}`;
+      log.push(`Treasure Chest: ${civ.id}'s ${describeUnit(unit)} opens a chest at (${unit.x},${unit.y})${outcome}`);
+      return true;
+    }
+    unit.usedThisTurn = true;
+    unit.currentMission = `Marching to a Treasure Chest at (${chestSpot.x},${chestSpot.y})`;
+    log.push(`Treasure Chest: ${civ.id}'s ${describeUnit(unit)} heading to a chest at (${chestSpot.x},${chestSpot.y})`);
+    return true;
+  }
+
+  /** Nearest hostile landmark this civ can aim a cave shortcut at: the
+   *  nearest OTHER civ's city, omnisciently (not fog-gated) -- same
+   *  "world features are known map-wide" convention findNearbyUnclaimedRuin/
+   *  findNearbyUnclaimedChest above already use for their own targets.
+   *  Returns {x,y} or null (no other civs left). */
+  function nearestEnemyLandmark(civ, gameState, fromX, fromY) {
+    let best = null, bestDist = Infinity;
+    for (const other of Object.values(gameState.civs)) {
+      if (other.id === civ.id || other.eliminated) continue;
+      for (const city of other.cities) {
+        const d = window.GameEngine.influence.chebyshev(fromX, fromY, city.x, city.y);
+        if (d < bestDist) { bestDist = d; best = { x: city.x, y: city.y }; }
+      }
+    }
+    return best;
+  }
+
+  /** Every cave entrance on the map, as {x, y, linkX, linkY} pairs (one
+   *  entry per entrance, both ends of a pair each get their own entry
+   *  pointing at the other). Caves are a permanent worldgen feature (see
+   *  worldgen.js's placeCaves) with only 1-2 pairs per map, so a flat scan
+   *  is cheap -- no fog gating, same omniscient-world-feature convention as
+   *  nearestEnemyLandmark above. */
+  function allCaveEntrances(map) {
+    const entrances = [];
+    for (let idx = 0; idx < map.tiles.length; idx++) {
+      const t = map.tiles[idx];
+      if (t.isCave) entrances.push({ x: t.x, y: t.y, linkX: t.caveLinkX, linkY: t.caveLinkY });
+    }
+    return entrances;
+  }
+
+  /** Caves as a travel shortcut (2026-08-19, user-directed): "AI players
+   *  should know how to use caves when routing to their destination." Two
+   *  cases, mirroring maybeDungeonDelvePlay/maybeOpenChestPlay's own
+   *  "already there vs. still pursuing" shape:
+   *
+   *   ALREADY ON A CAVE: jump through (performEnterCave's engine twin,
+   *   inlined here) if the far side lands meaningfully closer
+   *   (CAVE_SHORTCUT_MARGIN) to the nearest enemy city than staying put --
+   *   a generic "closer to the action" proxy for "this cave leads somewhere
+   *   worth going" that doesn't need to know what the unit's actual current
+   *   task is.
+   *
+   *   NOT YET ON ONE: only walks toward a known cave if doing so is a
+   *   REAL shortcut -- entrance-then-jump distance to the nearest enemy
+   *   city must beat walking there directly, by the same margin. Prevents
+   *   idle units wandering cross-map to a cave that wouldn't actually help.
+   *
+   *  Deliberately race-agnostic and tech-free -- caves are a universal
+   *  terrain feature, unlike Dwarf-only Deep Gate. Returns true if it
+   *  consumed the unit's turn. */
+  const CAVE_SHORTCUT_MARGIN = 6;
+  function maybeCaveShortcutPlay(civ, unit, gameState, log) {
+    if (unit.usedThisTurn || unit.channeling) return false;
+    const { map } = gameState;
+    const target = nearestEnemyLandmark(civ, gameState, unit.x, unit.y);
+    if (!target) return false; // no other civs left -- nothing to route toward
+
+    const onCaveNow = map.tiles[unit.y * map.width + unit.x];
+    if (onCaveNow && onCaveNow.isCave) {
+      const distHere = window.GameEngine.influence.chebyshev(unit.x, unit.y, target.x, target.y);
+      const distViaLink = window.GameEngine.influence.chebyshev(onCaveNow.caveLinkX, onCaveNow.caveLinkY, target.x, target.y);
+      if (distHere - distViaLink < CAVE_SHORTCUT_MARGIN) return false; // not worth jumping
+      const fromX = unit.x, fromY = unit.y;
+      unit.x = onCaveNow.caveLinkX;
+      unit.y = onCaveNow.caveLinkY;
+      unit.usedThisTurn = true;
+      unit.currentMission = `Used a cave to jump from (${fromX},${fromY}) to (${unit.x},${unit.y})`;
+      log.push(`Cave: ${civ.id}'s ${describeUnit(unit)} enters a cave at (${fromX},${fromY}), emerging at (${unit.x},${unit.y})`);
+      return true;
+    }
+
+    const directDist = window.GameEngine.influence.chebyshev(unit.x, unit.y, target.x, target.y);
+    let best = null, bestDist = Infinity;
+    for (const entrance of allCaveEntrances(map)) {
+      const toEntrance = window.GameEngine.influence.chebyshev(unit.x, unit.y, entrance.x, entrance.y);
+      const fromLinkToTarget = window.GameEngine.influence.chebyshev(entrance.linkX, entrance.linkY, target.x, target.y);
+      const viaCave = toEntrance + fromLinkToTarget;
+      if (directDist - viaCave < CAVE_SHORTCUT_MARGIN) continue; // not enough of a shortcut to bother
+      if (viaCave < bestDist) { bestDist = viaCave; best = entrance; }
+    }
+    if (!best) return false;
+
+    if (best.x === unit.x && best.y === unit.y) return false; // defensive -- onCaveNow branch above already handles this case
+    moveUnitToward(unit, best.x, best.y, map, gameState.civs);
+    if (unit.x === best.x && unit.y === best.y) {
+      // Arrived with movement to spare this turn -- jump through right
+      // away instead of always burning a separate arrival turn (same
+      // optimization maybeDungeonDelvePlay/maybeOpenChestPlay use).
+      const fromX = unit.x, fromY = unit.y;
+      unit.x = best.linkX;
+      unit.y = best.linkY;
+      unit.usedThisTurn = true;
+      unit.currentMission = `Used a cave to jump from (${fromX},${fromY}) to (${unit.x},${unit.y})`;
+      log.push(`Cave: ${civ.id}'s ${describeUnit(unit)} enters a cave at (${fromX},${fromY}), emerging at (${unit.x},${unit.y})`);
+      return true;
+    }
+    unit.usedThisTurn = true;
+    unit.currentMission = `Heading to a cave at (${best.x},${best.y}) to shortcut toward (${target.x},${target.y})`;
+    log.push(`Cave: ${civ.id}'s ${describeUnit(unit)} heading to a cave at (${best.x},${best.y})`);
     return true;
   }
 
@@ -12020,12 +12199,20 @@ window.GameEngine = window.GameEngine || {};
     const { civs } = gameState;
     const log = [];
     for (const city of civ.cities) {
+      // Rest and Defend city bonus (2026-08-19, user-directed): a unit
+      // actively Resting and Defending in this city adds +25 percentage
+      // points to every wall's fire chance and +2 to its attack -- see
+      // cities.js's tickCity for this same channel's structure-heal/
+      // influence-gain siblings.
+      const restAndDefending = civ.units.some((u) => u.x === city.x && u.y === city.y && u.channeling === "restAndDefend");
+      const fireChance = WALL_DEFENSE_FIRE_CHANCE + (restAndDefending ? 0.25 : 0);
+      const attackBonus = restAndDefending ? 2 : 0;
       for (const s of city.structures) {
         if (!window.GameData.getBuilding(s.id).isWall) continue;
         // Halfellow "Unlock the Gate": suppressed the same as every other
         // special wall defense while active.
         if (window.GameEngine.combat.isWallDefenseSuppressed(s, gameState.turnNumber)) continue;
-        if (Math.random() >= WALL_DEFENSE_FIRE_CHANCE) continue;
+        if (Math.random() >= fireChance) continue;
         let target = null, targetCiv = null, bestDist = Infinity;
         for (const otherCiv of Object.values(civs)) {
           if (otherCiv.id === civ.id || otherCiv.eliminated) continue;
@@ -12038,7 +12225,7 @@ window.GameEngine = window.GameEngine || {};
         }
         if (!target) continue;
         const dmg = window.GameEngine.combat.mitigatedDamage(
-          tier.attack, window.GameEngine.combat.effectiveDefense(target, targetCiv, {}));
+          tier.attack + attackBonus, window.GameEngine.combat.effectiveDefense(target, targetCiv, {}));
         target.hp = Math.max(0, target.hp - dmg);
         window.GameEngine.combat.recordCombatEvent({
           ax: s.x, ay: s.y, atkUnit: { typeId: "wall_section" }, dx: target.x, dy: target.y, defUnit: target,
@@ -12074,9 +12261,16 @@ window.GameEngine = window.GameEngine || {};
     const { civs } = gameState;
     const log = [];
     for (const city of civ.cities) {
+      // Rest and Defend city bonus (2026-08-19, user-directed): see
+      // tickWallDefense's matching comment just above -- same +25
+      // percentage points fire chance / +2 attack while a unit is actively
+      // Resting and Defending in this city.
+      const restAndDefending = civ.units.some((u) => u.x === city.x && u.y === city.y && u.channeling === "restAndDefend");
+      const fireChance = MAGE_TOWER_FIRE_CHANCE + (restAndDefending ? 0.25 : 0);
+      const attackBonus = restAndDefending ? 2 : 0;
       for (const s of city.structures) {
         if (s.id !== "mage_college") continue;
-        if (Math.random() >= MAGE_TOWER_FIRE_CHANCE) continue;
+        if (Math.random() >= fireChance) continue;
         let target = null, targetCiv = null, bestDist = Infinity;
         for (const otherCiv of Object.values(civs)) {
           if (otherCiv.id === civ.id || otherCiv.eliminated) continue;
@@ -12089,7 +12283,7 @@ window.GameEngine = window.GameEngine || {};
         }
         if (!target) continue;
         const dmg = window.GameEngine.combat.mitigatedDamage(
-          MAGE_TOWER_ATTACK, window.GameEngine.combat.effectiveDefense(target, targetCiv, {}));
+          MAGE_TOWER_ATTACK + attackBonus, window.GameEngine.combat.effectiveDefense(target, targetCiv, {}));
         target.hp = Math.max(0, target.hp - dmg);
         window.GameEngine.combat.recordCombatEvent({
           ax: s.x, ay: s.y, atkUnit: { typeId: "wizard" }, dx: target.x, dy: target.y, defUnit: target,

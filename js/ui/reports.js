@@ -345,7 +345,11 @@ window.UI = window.UI || {};
 
   function renderAITechTrees(gameState) {
     _techTreesGameStateRef = gameState;
-    const civIds = Object.keys(gameState.civs);
+    // The "MONSTERS" pseudo-civ has no tech tree of its own -- excluded so
+    // it can't be picked here (2026-08-19, user-directed), same filter
+    // renderHistoryChart above uses to keep it off the history graphs.
+    const monsterCivId = window.GameConfig.worldEncounters.monsters.civId;
+    const civIds = Object.keys(gameState.civs).filter((civId) => civId !== monsterCivId);
     if (civIds.length === 0) {
       return `<h2>AI Tech Trees</h2><p><em>No active civs in this game.</em></p>`;
     }

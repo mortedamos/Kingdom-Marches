@@ -86,7 +86,7 @@ window.UI = window.UI || {};
     powerMetalAura: "Within a Troubadour's Power Metal performance: +2 Attack and +5% First Strike, refreshed every turn the aura still reaches it.",
     burning: "Aflame -- 1 damage at the start of every turn for 3 turns, unless standing on Coast, Ocean, or a river tile.",
     zombie: "A reanimated corpse fighting at a fraction of its living stats -- Undead's Raise Dead.",
-    befuddled: "Confused by a Halfellow Trouble Maker's Riddle -- Attack cut by 50% and Defense cut by 25% for a few turns.",
+    befuddled: "Confused by a Halfellow Trouble Maker's Riddle -- Attack, Movement, and Defense all cut by 75% for a few turns.",
     resting: "Standing down this turn to recover HP.",
     webbed: "Snared in webbing -- movement locked to zero for 1 turn, but it can still fight back at full strength if something is already adjacent.",
     poisoned: "Venom in its veins -- 1 damage at the start of every turn for 3 turns. Mechanically identical to Burning, just from a venomous source (e.g. the Marsh Adder) instead of fire.",

@@ -323,7 +323,7 @@ window.GameData.TECHS = {
     // building of its own -- filed there anyway per the user's explicit call.
     id: "ramparts", label: "Ramparts", category: "building", layer: 2, cost: 40,
     prereqs: ["archery"], raceOnly: "human",
-    description: "While a unit is Garrisoned in this city, the attack strength of this city's walls becomes the same as that unit.",
+    description: "While a unit is Resting and Defending in this city, the attack strength of this city's walls becomes the same as that unit.",
     costBreakdown: { lore: 28, coin: 12 },
     effects: [{ type: "unlock_mechanic", mechanic: "ramparts" }],
   },
@@ -600,19 +600,12 @@ window.GameData.TECHS = {
     costBreakdown: { lore: 20 },
     effects: [{ type: "terrain_movement_discount", terrain: "plains", value: 0.5 }],
   },
-  elf_dancing_upon_azure_waves: {
-    id: "elf_dancing_upon_azure_waves", label: "Dancing Upon Azure Waves", category: "civic", layer: 3, cost: 35,
-    prereqs: ["elf_whispering_waters"], raceOnly: "elf",
-    description: "Galleys gain +2 movement and +1 vision.",
-    costBreakdown: { coin: 20, lore: 15 },
-    effects: [{ type: "unit_stat_upgrade", unit: "galley", changes: { movement: 2, visionRadius: 1 } }],
-  },
   elf_gems_of_starlight: {
     id: "elf_gems_of_starlight", label: "Gems of Starlight", category: "civic", layer: 3, cost: 30,
     prereqs: [], raceOnly: "elf",
-    description: "+0.75 coin from Mountains.",
+    description: "+1 coin from Mountains.",
     costBreakdown: { coin: 20, lore: 10 },
-    effects: [{ type: "unlock_tile_bonus", terrain: "mountains", bonus: { coin: 0.75 } }],
+    effects: [{ type: "unlock_tile_bonus", terrain: "mountains", bonus: { coin: 1 } }],
   },
   elf_wind_from_distant_treetops: {
     id: "elf_wind_from_distant_treetops", label: "Wind From Distant Treetops", category: "civic", layer: 4, cost: 50,
@@ -834,9 +827,9 @@ window.GameData.TECHS = {
   elf_silverlight_steel: {
     id: "elf_silverlight_steel", label: "Silverlight Steel", category: "military", layer: 3, cost: 40,
     prereqs: ["elf_silverleaf_atelier"], raceOnly: "elf",
-    description: "Blade Dancers gain 10% Double Strike and 2% First Strike.",
+    description: "Blade Dancers gain 20% Double Strike and 5% First Strike.",
     costBreakdown: { coin: 22, lore: 18 },
-    effects: [{ type: "unit_stat_upgrade", unit: "blade_dancer", changes: { doubleStrikePct: 0.10, firstStrikePct: 0.02 } }],
+    effects: [{ type: "unit_stat_upgrade", unit: "blade_dancer", changes: { doubleStrikePct: 0.20, firstStrikePct: 0.05 } }],
   },
   elf_roots_of_the_world: {
     id: "elf_roots_of_the_world", label: "Roots of the World", category: "mystic", layer: 3, cost: 45,
@@ -916,7 +909,7 @@ window.GameData.TECHS = {
     effects: [{ type: "unlock_tile_bonus", terrain: "mountains", bonus: { coin: 0.75 } }],
   },
   dwarf_imported_goods: {
-    id: "dwarf_imported_goods", label: "Imported Goods", category: "civic", layer: 1, cost: 28,
+    id: "dwarf_imported_goods", label: "Imported Goods", category: "civic", layer: 2, cost: 28,
     prereqs: [], raceOnly: "dwarf",
     description: "+1 harvest per road tile within a city's radius, up to 8 road tiles per city.",
     costBreakdown: { coin: 18, lore: 10 },
@@ -1254,9 +1247,9 @@ window.GameData.TECHS = {
   orc_spoils_of_war: {
     id: "orc_spoils_of_war", label: "Spoils of War", category: "civic", layer: 2, cost: 40,
     prereqs: ["orc_warcraft"], raceOnly: "orc",
-    description: "When an Orc unit kills an enemy unit, gain +3 coin and +4 lore.",
+    description: "When an Orc unit kills an enemy unit, gain +9 coin and +12 lore.",
     costBreakdown: { lore: 30, coin: 10 },
-    effects: [{ type: "raid_kill_bonus", harvest: 0, coin: 3, lore: 4 }],
+    effects: [{ type: "raid_kill_bonus", harvest: 0, coin: 9, lore: 12 }],
   },
 
   // --- Layer 3 ---
@@ -1583,7 +1576,7 @@ window.GameData.TECHS = {
 
   // --- Layer 2 ---
   halfellow_hillside_harvest: {
-    id: "halfellow_hillside_harvest", label: "Hillside Harvest", category: "civic", layer: 2, cost: 20,
+    id: "halfellow_hillside_harvest", label: "Hillside Harvest", category: "civic", layer: 1, cost: 20,
     prereqs: ["halfellow_singing_hills"], raceOnly: "halfellow",
     description: "+0.5 harvest from Hills.",
     costBreakdown: { lore: 13, coin: 7 },
@@ -1682,9 +1675,9 @@ window.GameData.TECHS = {
   halfellow_ice_fishing: {
     id: "halfellow_ice_fishing", label: "Ice Fishing", category: "civic", layer: 3, cost: 40,
     prereqs: ["halfellow_riverfolk"], raceOnly: "halfellow",
-    description: "+0.35 harvest from Tundra.",
+    description: "+1 harvest from Tundra.",
     costBreakdown: { lore: 16, coin: 12, harvest: 12 },
-    effects: [{ type: "unlock_tile_bonus", terrain: "tundra", bonus: { harvest: 0.35 } }],
+    effects: [{ type: "unlock_tile_bonus", terrain: "tundra", bonus: { harvest: 1 } }],
   },
   // New (2026-08-17, user-directed): a Halfellow-only upgrade to the
   // universal "Farm Soil" channel (see turns.js's farming-channel block,
@@ -1842,7 +1835,7 @@ window.GameData.TECHS = {
   halfellow_riddle_game: {
     id: "halfellow_riddle_game", label: "The Riddle Game", category: "mystic", layer: 2, cost: 48,
     prereqs: ["halfellow_making_trouble"], raceOnly: "halfellow",
-    description: "Trouble Maker and Wanderer may pose a riddle to an enemy unit at range. A more curious race is more likely to resist and shrug it off; otherwise the target becomes Befuddled for 2 turns: -50% attack, 75% defense, movement capped at 1, 0% First Strike.",
+    description: "Trouble Maker and Wanderer may pose a riddle to an enemy unit at range. A more curious race is more likely to resist and shrug it off; otherwise the target becomes Befuddled for 2 turns: -75% attack, movement, and defense, 0% First Strike.",
     costBreakdown: { lore: 26, harvest: 22 },
     effects: [{ type: "unlock_mechanic", mechanic: "riddle" }],
   },

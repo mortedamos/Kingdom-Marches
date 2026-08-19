@@ -584,6 +584,7 @@ window.UI = window.UI || {};
     for (const id of window.GameData.RESOURCE_LIST)
       critical.push(() => loadVariants(`enhancement/resource_${id}`, `assets/enhancements/resource_${id}`));
     critical.push(() => loadVariants("enhancement/ruin", "assets/enhancements/ruin"));
+    critical.push(() => loadVariants("enhancement/cave", "assets/enhancements/cave"));
     // Civ-influence ambient tile overlay -- small non-animated per-race
     // flavor sprites (4-5 variants each, assets/enhancements/influence_
     // {raceId}_{1..5}.png) drawn on owned tiles to read as "occupied and

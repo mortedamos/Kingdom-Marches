@@ -63,11 +63,11 @@ window.GameConfig = {
   // stamp, and the only cost of forgetting is being told the wrong thing.
   build: {
     /** Local date this build was cut, YYYY-MM-DD. */
-    date: "2026-08-18",
+    date: "2026-08-19",
     /** Local time this build was cut, 24-hour HH:MM. */
-    time: "23:22",
+    time: "11:27",
     /** Monotonic build counter -- increment it, don't recompute it. */
-    number: 131,
+    number: 132,
   },
 
   // =========================================================================
@@ -240,9 +240,19 @@ window.GameConfig = {
      *  behavior exactly. */
     fillRateRadiusScale: 0.5,
 
-    /** Garrisoning a city speeds its fill-in by (industriousness * this).
-     *  0.5 means a max-industriousness civ gets +50%, a low one only +15%. */
+    /** A unit actively Resting and Defending in a city speeds its fill-in
+     *  by (industriousness * this) -- also the gate for this bonus existing
+     *  at all (2026-08-19, user-directed: was any military unit merely
+     *  standing there, regardless of orders; now requires the Rest and
+     *  Defend channel specifically). 0.5 means a max-industriousness civ
+     *  gets +50%, a low one only +15%. */
     garrisonFillMultRate: 0.5,
+
+    /** Flat additional fill-in speed bonus on top of garrisonFillMultRate's
+     *  industriousness-scaled one, while a unit is Resting and Defending in
+     *  the city (2026-08-19, user-directed) -- same "city influence gain
+     *  increased by 25%" bonus this channel grants. */
+    restAndDefendInfluenceBonus: 0.25,
 
     /** How strongly industriousness scales a city's influence output.
      *  Centered on 1.0 at industriousness 0.5: 0.7 at 0, 1.3 at 1.0. */
