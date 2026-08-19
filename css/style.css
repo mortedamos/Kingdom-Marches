@@ -538,6 +538,9 @@ html, body {
   padding-bottom: 3px;
   border-bottom: 1px solid var(--border);
 }
+.economy-grid-header:first-child {
+  text-align: left;
+}
 .economy-res {
   display: flex;
   align-items: center;
