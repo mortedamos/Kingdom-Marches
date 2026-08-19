@@ -1588,8 +1588,9 @@ window.UI = window.UI || {};
   }
 
   /** Same idea as wallOrientation above, for a bridge_section tile -- but a
-   *  bridge span (unlike a wall run) can also cross diagonally, since
-   *  cities.js's computeBridgePath allows any straight 8-directional line.
+   *  bridge span (unlike a wall run) can also cross diagonally, since each
+   *  segment is built toward its target one 8-directional step at a time
+   *  (see ai.js's advancePioneerBridgeBuild).
    *  Only ONE diagonal art asset is authored (a NW-SE run, top-left to
    *  bottom-right) -- an NE-SW run reuses it MIRRORED at draw time (see
    *  the Bridges draw pass's `flip` check below) rather than needing a

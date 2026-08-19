@@ -1018,6 +1018,30 @@ window.GameEngine = window.GameEngine || {};
     return scoreNextResearch(civ, racialWeights(civ));
   }
 
+  /** Local target-SELECTION heuristic for scanForBridgeTarget only -- a
+   *  straight 8-directional line from (x0,y0) to (x1,y1), returning the
+   *  water-tile count if every tile but the last is open water with no
+   *  existing structure and the last is ordinary passable land, else null.
+   *  Purely advisory: the actual build (advancePioneerBridgeBuild)
+   *  re-validates every segment fresh against live terrain immediately
+   *  before placing it via cities.js's canBuildBridgeSegment, so a stale or
+   *  wrong estimate here only ever costs the AI a wasted turn abandoning a
+   *  bad target, never a bridge segment landing on non-water (2026-08-19 --
+   *  see canBuildBridgeSegment's own doc comment for why the old design,
+   *  which trusted a path computed once at commit time, didn't have that
+   *  guarantee). */
+  function estimateBridgeSpan(map, x0, y0, x1, y1, spanCap) {
+    const steps = Math.max(Math.abs(x1 - x0), Math.abs(y1 - y0));
+    if (steps < 2) return null; // nothing but adjacent land -- not a bridge
+    if (steps - 1 > spanCap) return null;
+    for (let i = 1; i < steps; i++) {
+      const x = x0 + Math.round((x1 - x0) * i / steps), y = y0 + Math.round((y1 - y0) * i / steps);
+      const tile = map.tiles[y * map.width + x];
+      if (!window.GameData.TERRAIN[tile.terrain].isWater || tile.structure) return null;
+    }
+    return steps - 1;
+  }
+
   /** Shared scan behind both maybeBuildBridge (opportunistic fallback) and
    *  maybeReconnectByShortBridge (priority reconnect check) -- finds the
    *  best bridge target reachable from `pioneer` within `spanCap` water
@@ -1030,7 +1054,8 @@ window.GameEngine = window.GameEngine || {};
    *  a short span and only for a civ with real appetite for a fight (see the
    *  `weights.attack` scaling below), since a bridge onto an enemy's shore
    *  is effectively an invasion staging point, not idle infrastructure.
-   *  Returns { x, y, waterTiles } or null. */
+   *  Returns { x, y } (the far-shore landing tile the Pioneer will build
+   *  segment-by-segment toward -- see advancePioneerBridgeBuild) or null. */
   function scanForBridgeTarget(civ, pioneer, gameState, weights, spanCap, ownReconnectOnly) {
     const { map } = gameState;
     const here = map.tiles[pioneer.y * map.width + pioneer.x];
@@ -1044,16 +1069,16 @@ window.GameEngine = window.GameEngine || {};
       if (window.GameData.TERRAIN[tile.terrain].isWater) continue;
       if (tile.landmassId == null || tile.landmassId === ownLandmassId) continue;
       const x = idx % map.width, y = Math.floor(idx / map.width);
-      // Cheap pre-filter before the real (and pricier) path validation --
+      // Cheap pre-filter before the real (and pricier) span estimate --
       // Chebyshev distance is never SHORTER than the straight-line span
-      // computeBridgePath would need, so this only ever skips candidates
+      // estimateBridgeSpan would need, so this only ever skips candidates
       // that were going to fail anyway.
       if (window.GameEngine.influence.chebyshev(pioneer.x, pioneer.y, x, y) > spanCap + 2) continue;
-      const result = window.GameEngine.cities.computeBridgePath(map, pioneer, x, y);
-      if (!result.ok || result.waterTiles.length > spanCap) continue;
+      const waterCount = estimateBridgeSpan(map, pioneer.x, pioneer.y, x, y, spanCap);
+      if (waterCount == null) continue;
       const reconnectsOwnCity = civ.cities.some((c) => map.tiles[c.y * map.width + c.x].landmassId === tile.landmassId);
       if (ownReconnectOnly && !reconnectsOwnCity) continue;
-      let score = -result.waterTiles.length; // shorter spans preferred, all else equal
+      let score = -waterCount; // shorter spans preferred, all else equal
       if (reconnectsOwnCity) {
         score += 50;
       } else if (!Object.values(gameState.civs).some((oc) =>
@@ -1069,7 +1094,7 @@ window.GameEngine = window.GameEngine || {};
         // civ that's all-in on aggression.
         score += weights.attack * 6;
       }
-      if (score > bestScore) { bestScore = score; best = { x, y, waterTiles: result.waterTiles }; }
+      if (score > bestScore) { bestScore = score; best = { x, y }; }
     }
     if (!best || bestScore < 0) return null;
     return best;
@@ -1092,6 +1117,18 @@ window.GameEngine = window.GameEngine || {};
    * if it consumed the Pioneer's turn.
    */
   function maybeBuildBridge(civ, pioneer, gameState, weights, log) {
+    // Pioneer-only (2026-08-19, user-directed): maybeFoundCity's own
+    // idle-Wanderer/Druid fallback (used when a civ has zero actual
+    // Pioneers left) reuses this whole per-unit chain for settling, but
+    // bridge-building specifically is Pioneer-only -- same canBuildRoad
+    // flag orders.js's player-facing "Build Bridge..." ring option already
+    // gates on. A substituted non-Pioneer unit gets no bridge behavior
+    // here, and this also drops any stray _bridgeBuild a past bug might
+    // have left on one.
+    if (!window.GameData.getUnit(pioneer.typeId).canBuildRoad) {
+      delete pioneer._bridgeBuild;
+      return false;
+    }
     if (pioneer._bridgeBuild) return advancePioneerBridgeBuild(civ, pioneer, gameState, log);
 
     const building = window.GameData.getBuilding("bridge_section");
@@ -1102,7 +1139,7 @@ window.GameEngine = window.GameEngine || {};
     const best = scanForBridgeTarget(civ, pioneer, gameState, weights, maxSpan, false);
     if (!best) return false;
 
-    pioneer._bridgeBuild = { targetX: best.x, targetY: best.y, waterTiles: best.waterTiles, index: 0, turnsLeft: null };
+    pioneer._bridgeBuild = { targetX: best.x, targetY: best.y, turnsLeft: null };
     return advancePioneerBridgeBuild(civ, pioneer, gameState, log);
   }
 
@@ -1132,6 +1169,11 @@ window.GameEngine = window.GameEngine || {};
    * turn.
    */
   function maybeReconnectByShortBridge(civ, pioneer, gameState, weights, log) {
+    // Pioneer-only -- see maybeBuildBridge's own doc comment for why.
+    if (!window.GameData.getUnit(pioneer.typeId).canBuildRoad) {
+      delete pioneer._bridgeBuild;
+      return false;
+    }
     if (pioneer._bridgeBuild) return advancePioneerBridgeBuild(civ, pioneer, gameState, log);
     if (civ.cities.length < 2) return false; // nothing else of this civ's own to reconnect to
 
@@ -1142,7 +1184,7 @@ window.GameEngine = window.GameEngine || {};
     const best = scanForBridgeTarget(civ, pioneer, gameState, weights, RECONNECT_PRIORITY_SPAN, true);
     if (!best) return false;
 
-    pioneer._bridgeBuild = { targetX: best.x, targetY: best.y, waterTiles: best.waterTiles, index: 0, turnsLeft: null };
+    pioneer._bridgeBuild = { targetX: best.x, targetY: best.y, turnsLeft: null };
     return advancePioneerBridgeBuild(civ, pioneer, gameState, log);
   }
 
@@ -1151,20 +1193,43 @@ window.GameEngine = window.GameEngine || {};
    *  orders.js advanceGotoOrder buildBridge branch (bridge_section's
    *  coinCost charged when a segment STARTS, minBuildTurns real turns to
    *  finish it), just driven by the AI's own per-unit turn loop instead of
-   *  a persisted gotoTarget. Advances the Pioneer onto each segment as it
+   *  a persisted gotoTarget. Builds one segment at a time (2026-08-19 --
+   *  see cities.js's canBuildBridgeSegment doc comment): each call derives
+   *  the single adjacent tile that steps toward build.targetX/Y and
+   *  re-validates it fresh against live terrain right before committing,
+   *  rather than trusting a path computed once back when the target was
+   *  first chosen. Advances the Pioneer onto that segment once it
    *  completes, then makes the final ordinary move onto the real landing
-   *  tile once every segment is done. */
+   *  tile once it's adjacent. */
   function advancePioneerBridgeBuild(civ, pioneer, gameState, log) {
     const { map } = gameState;
     const build = pioneer._bridgeBuild;
-    if (build.index >= build.waterTiles.length) {
-      moveUnitToward(pioneer, build.targetX, build.targetY, map, gameState.civs);
+    if (pioneer.x === build.targetX && pioneer.y === build.targetY) {
+      delete pioneer._bridgeBuild; // already standing on the landing tile -- nothing left to do
+      return false;
+    }
+
+    const dx = Math.sign(build.targetX - pioneer.x), dy = Math.sign(build.targetY - pioneer.y);
+    const nx = pioneer.x + dx, ny = pioneer.y + dy;
+    const isFinalLandingStep = nx === build.targetX && ny === build.targetY;
+
+    if (isFinalLandingStep) {
+      const landTile = map.tiles[ny * map.width + nx];
+      const landTerrain = window.GameData.TERRAIN[landTile.terrain];
+      if (landTerrain.isWater || landTile.structure) { delete pioneer._bridgeBuild; return false; }
+      moveUnitToward(pioneer, nx, ny, map, gameState.civs);
       pioneer.usedThisTurn = true;
       pioneer.currentMission = `Crossing the new bridge to (${build.targetX},${build.targetY})`;
       log.push(`Pioneer at (${pioneer.x},${pioneer.y}) — bridge complete, heading to (${build.targetX},${build.targetY})`);
       if (pioneer.x === build.targetX && pioneer.y === build.targetY) delete pioneer._bridgeBuild;
       return true;
     }
+
+    if (!window.GameEngine.cities.canBuildBridgeSegment(map, pioneer, nx, ny)) {
+      delete pioneer._bridgeBuild; // target no longer reachable this way -- abandon rather than stall forever
+      return false;
+    }
+
     const building = window.GameData.getBuilding("bridge_section");
     if (build.turnsLeft == null) {
       civ.stockpile = civ.stockpile || { harvest: 0, coin: 0, lore: 0 };
@@ -1177,16 +1242,14 @@ window.GameEngine = window.GameEngine || {};
     }
     build.turnsLeft--;
     pioneer.usedThisTurn = true;
-    const seg = build.waterTiles[build.index];
-    pioneer.currentMission = `Building a bridge segment at (${seg.x},${seg.y})`;
+    pioneer.currentMission = `Building a bridge segment at (${nx},${ny})`;
     if (build.turnsLeft <= 0) {
-      window.GameEngine.cities.placeBridgeSegment(civ, map, seg.x, seg.y);
-      pioneer.x = seg.x; pioneer.y = seg.y;
-      build.index++;
+      window.GameEngine.cities.placeBridgeSegment(civ, map, nx, ny);
+      pioneer.x = nx; pioneer.y = ny;
       build.turnsLeft = null;
       window.GameEngine.turns.refreshVisibility(gameState);
     }
-    log.push(`Pioneer at (${pioneer.x},${pioneer.y}) — working on a bridge (segment ${build.index + 1}/${build.waterTiles.length})`);
+    log.push(`Pioneer at (${pioneer.x},${pioneer.y}) — working on a bridge toward (${build.targetX},${build.targetY})`);
     return true;
   }
 
@@ -1866,7 +1929,7 @@ window.GameEngine = window.GameEngine || {};
    *
    *  Bridges are the one deliberate exception: unlike a wall or building, a
    *  bridge is open to everyone crossing the water it spans, friend or
-   *  enemy alike (see cities.js's placeBridgeSpan) -- it's still fully
+   *  enemy alike (see cities.js's placeBridgeSegment) -- it's still fully
    *  attackable/destructible (combat.js's attackStructure), just never a
    *  movement obstacle. */
   function hasEnemyStructure(tile, civId) {
@@ -2037,7 +2100,7 @@ window.GameEngine = window.GameEngine || {};
    * for `.structure.isBridge` -- a completed bridge makes its otherwise-
    * IMPASSABLE water tile crossable for a LAND unit, at the same flat cost
    * and ROAD_MOVE_DISCOUNT a road tile gets (see cities.js's
-   * placeBridgeSpan; "counts as a road" is the whole point). Naval units
+   * placeBridgeSegment; "counts as a road" is the whole point). Naval units
    * never consult it at all -- a Galley's own moveCostNaval path below is
    * untouched by a bridge's presence, same as sailing under any other
    * bridge in real life.
@@ -4008,6 +4071,20 @@ window.GameEngine = window.GameEngine || {};
     if (civ.unlockedBuildings) {
       for (const bId of civ.unlockedBuildings) {
         const building = window.GameData.getBuilding(bId);
+        // Bridges (2026-08-19 bugfix): bridge_section sits in
+        // civ.unlockedBuildings purely so its cost model
+        // (window.GameData.getBuilding) is available once the "Bridges"
+        // tech is researched -- see that tech's own doc comment. It was
+        // never meant to reach this GENERIC city-building loop at all,
+        // which places its result via findStructureSlot's ordinary branch
+        // -- and isPlaceableTile explicitly REJECTS water tiles, so any
+        // bridge_section built this way landed on the city's own ring-1
+        // LAND tile instead of spanning water. A bridge is built one
+        // segment at a time by a Pioneer standing at the water's edge
+        // (orders.js's startBridgeOrder / ai.js's maybeBuildBridge), never
+        // by a city's build queue -- same reason walls, just below, are
+        // handled in their own dedicated section instead of this loop.
+        if (building.isBridge) continue;
         if (building.raceOnly && building.raceOnly !== civ.raceId) continue;
         if (window.GameEngine.cities.cityHasStructure(city, bId)) continue; // already built here
         if (!spareOpenTile) continue; // see landmassHasSpareOpenTile above

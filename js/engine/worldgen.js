@@ -76,11 +76,57 @@ window.GameEngine = window.GameEngine || {};
     };
   }
 
+  /** Per-worldType tuning for the water-threshold/elevation-frequency logic
+   *  just below (see WORLD_TYPES' own doc comment). "continent" is the
+   *  original, unparametrized behavior (WATER_REDUCTION 0.3, elevation
+   *  scale 0.07) -- every other entry is defined relative to it so a design
+   *  tweak to continent's own numbers propagates sensibly rather than
+   *  silently decoupling the four types. */
+  const WORLD_TYPE_CONFIG = {
+    // waterMode "reduce": same empirical-percentile technique as the
+    // original code -- shrink THIS map's own old-cutoff water count by a
+    // fraction, rather than targeting an absolute tile count, so it stays
+    // robust to a given seed's actual noise distribution.
+    continent: { elevationScale: 0.07, elevationOctaves: 4, waterMode: "reduce", waterReduction: 0.3 },
+    // "+15% water tiles from current" (2026-08-19, user-directed): current
+    // == continent's own resulting water count (oldWaterCount * 0.7), so
+    // the equivalent single reduction fraction is 1 - 0.7*1.15.
+    normal: { elevationScale: 0.07, elevationOctaves: 4, waterMode: "reduce", waterReduction: 1 - 0.7 * 1.15 },
+    // Islands need BOTH more water AND smaller, more numerous landmasses --
+    // reduce alone would just shrink the same few continents, not fragment
+    // them. waterMode "fraction" targets an absolute share of the whole
+    // map instead of a relative reduction (a single continent's worth of
+    // land pushed that low would read as "one small landmass", not
+    // "archipelago"). elevationScale more than triples the noise frequency
+    // AND elevationOctaves drops from 4 to 2 -- fewer octaves means less of
+    // the low-frequency "continent-shaped" component that otherwise still
+    // dominates the overall land layout even at a higher base frequency
+    // (found via testing: scale alone still produced an occasional
+    // 200+-tile landmass every few seeds, because octaves 3-4 kept adding
+    // back broad, low-frequency structure on top of the higher-frequency
+    // detail). With just 2 octaves at this frequency, high ground breaks
+    // into many separate small bumps instead of one connected shape --
+    // enforceMinimumLandmassSize's existing 13-tile floor (one city plus a
+    // spare open tile) then does the rest of the "1-2 cities each" sizing
+    // for free.
+    islands: { elevationScale: 0.30, elevationOctaves: 2, waterMode: "fraction", waterFraction: 0.72 },
+    // waterMode "none": every tile skips the ocean/coast branch entirely
+    // (see LAND_CUT/OCEAN_CUT below) and falls through to the ordinary
+    // land classification, so this reuses the whole Tundra/Mountains/Hills/
+    // climate pipeline as-is rather than needing a separate "convert water
+    // to land" pass after the fact.
+    noWater: { elevationScale: 0.07, elevationOctaves: 4, waterMode: "none" },
+  };
+
   /**
    * Generates a full map. Returns { width, height, tiles, seed }.
    * tiles is a flat array of tile objects, index = y*width + x.
+   * worldType selects one of WORLD_TYPE_CONFIG's keys (default "continent",
+   * today's original behavior, unchanged) -- see main.js's Game Options
+   * "World Type" slider.
    */
-  function generateMap(width, height, seed) {
+  function generateMap(width, height, seed, worldType) {
+    const typeConfig = WORLD_TYPE_CONFIG[worldType] || WORLD_TYPE_CONFIG.continent;
     const rng = makeRng(seed);
     const elevationNoise = makeValueNoise(rng);
     const moistureNoise = makeValueNoise(rng); // independent gradient set
@@ -95,7 +141,7 @@ window.GameEngine = window.GameEngine || {};
     for (let y = 0; y < height; y++) {
       for (let x = 0; x < width; x++) {
         const idx = y * width + x;
-        elevArr[idx] = elevationNoise(x, y, 0.07, 4, 0.55);
+        elevArr[idx] = elevationNoise(x, y, typeConfig.elevationScale, typeConfig.elevationOctaves, 0.55);
         moistArr[idx] = moistureNoise(x, y, 0.06, 3, 0.55);
         // Base temperature from latitude, plus a low-frequency noise offset so
         // the tundra boundary is irregular rather than a straight horizontal line.
@@ -108,26 +154,38 @@ window.GameEngine = window.GameEngine || {};
       }
     }
 
-    // --- Reduce total water (Ocean+Coast) below the fixed cutoffs
+    // --- Water (Ocean+Coast) share, relative to the fixed cutoffs
     // (0.415/0.455) -- empirical-percentile technique, same as the rest of
     // this file: measure what this map's actual water count would be under
-    // those fixed cutoffs, then find the elevation values that leave only a
-    // WATER_REDUCTION-sized fraction of that, preserving the existing
+    // those fixed cutoffs, then find the elevation values that leave only
+    // the worldType's own target fraction of that, preserving the existing
     // ocean:coast SPLIT. Per-map percentile target rather than a fixed
     // constant, same reasoning as why mountainThresh/hillThresh/etc. aren't
-    // fixed constants either.
+    // fixed constants either. See WORLD_TYPE_CONFIG for what each type
+    // actually targets.
     const OLD_OCEAN_CUT = 0.415, OLD_LAND_CUT = 0.455;
-    const WATER_REDUCTION = 0.3;
     const allElevsAsc = Array.from(elevArr).sort((a, b) => a - b);
     const oldWaterRank = allElevsAsc.findIndex((e) => e >= OLD_LAND_CUT);
     const oldWaterCount = oldWaterRank === -1 ? allElevsAsc.length : oldWaterRank;
     const oldOceanRank = allElevsAsc.findIndex((e) => e >= OLD_OCEAN_CUT);
     const oldOceanCount = oldOceanRank === -1 ? oldWaterCount : oldOceanRank;
     const oceanShareOfWater = oldWaterCount > 0 ? oldOceanCount / oldWaterCount : 0.5;
-    const newWaterCount = Math.round(oldWaterCount * (1 - WATER_REDUCTION));
-    const newOceanCount = Math.round(newWaterCount * oceanShareOfWater);
-    const LAND_CUT = allElevsAsc[newWaterCount] ?? OLD_LAND_CUT;
-    const OCEAN_CUT = allElevsAsc[newOceanCount] ?? OLD_OCEAN_CUT;
+
+    let LAND_CUT, OCEAN_CUT;
+    if (typeConfig.waterMode === "none") {
+      // Every real elevation value is >= 0 after the noise remap (see
+      // makeValueNoise's octaveNoise) -- a cutoff below that never matches,
+      // so every tile falls through to the ordinary land classification.
+      LAND_CUT = -1;
+      OCEAN_CUT = -1;
+    } else {
+      const newWaterCount = typeConfig.waterMode === "fraction"
+        ? Math.round(allElevsAsc.length * typeConfig.waterFraction)
+        : Math.round(oldWaterCount * (1 - typeConfig.waterReduction));
+      const newOceanCount = Math.round(newWaterCount * oceanShareOfWater);
+      LAND_CUT = allElevsAsc[newWaterCount] ?? OLD_LAND_CUT;
+      OCEAN_CUT = allElevsAsc[newOceanCount] ?? OLD_OCEAN_CUT;
+    }
 
     // --- TUNDRA stays a pure latitude/temperature rule, kept at the poles
     // rather than equalized like the other land types below. Checked FIRST

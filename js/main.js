@@ -219,6 +219,20 @@
   }
 
   const RACE_LIST = window.GameData.RACE_LIST;
+  // Game Options "World Type" slider (2026-08-19): index -> worldgen.js's
+  // WORLD_TYPE_CONFIG key, plus the label shown next to the slider.
+  // "Continent" sits in the middle at index 2 (the default) since it's the
+  // original, unparametrized generation behavior every other type is
+  // defined relative to -- see worldgen.js's own doc comment.
+  const WORLD_TYPE_SLIDER_VALUES = ["islands", "normal", "continent", "noWater"];
+  const WORLD_TYPE_LABELS = { islands: "Islands", normal: "Normal", continent: "Continent", noWater: "No Water" };
+  const WORLD_TYPE_HINTS = {
+    islands: "Many small islands scattered across open water, each usually room for 1-2 cities.",
+    normal: "About 15% more water than Continent.",
+    continent: "The default world shape -- a handful of large landmasses.",
+    noWater: "No ocean or coast at all -- one unbroken landmass.",
+  };
+  const WORLD_TYPE_DEFAULT_INDEX = WORLD_TYPE_SLIDER_VALUES.indexOf("continent");
   // Pacing experiment (2026-07-12): ~20% fewer tiles than the previous
   // 65x40 (2600) -- forces civs closer together for faster contact/
   // conflict. Same aspect ratio, scaled by sqrt(0.8). See
@@ -354,6 +368,14 @@
       <div class="launch-section">
         <div class="launch-section-label">World</div>
         <label class="launch-row">
+          <span>World Type</span>
+          <span class="launch-row-slider">
+            <input type="range" id="world-type-slider" min="0" max="${WORLD_TYPE_SLIDER_VALUES.length - 1}" step="1" value="${WORLD_TYPE_DEFAULT_INDEX}">
+            <span id="world-type-label">${WORLD_TYPE_LABELS[WORLD_TYPE_SLIDER_VALUES[WORLD_TYPE_DEFAULT_INDEX]]}</span>
+          </span>
+        </label>
+        <p class="launch-hint" id="world-type-hint">${WORLD_TYPE_HINTS[WORLD_TYPE_SLIDER_VALUES[WORLD_TYPE_DEFAULT_INDEX]]}</p>
+        <label class="launch-row">
           <span>Game Speed</span>
           <span class="launch-row-slider">
             <input type="range" id="game-speed-slider" min="50" max="150" step="5" value="100">
@@ -430,6 +452,15 @@
       const isSpectator = e.target.checked;
       $("single-player-section").style.display = isSpectator ? "none" : "block";
       $("spectator-race-section").style.display = isSpectator ? "block" : "none";
+    });
+
+    // World Type slider: same "label moves live, value only actually
+    // applies at Start Game" pattern as Game Speed/Max Monsters below --
+    // see startGame's worldType read.
+    $("world-type-slider").addEventListener("input", (e) => {
+      const worldType = WORLD_TYPE_SLIDER_VALUES[parseInt(e.target.value, 10)];
+      $("world-type-label").textContent = WORLD_TYPE_LABELS[worldType];
+      $("world-type-hint").textContent = WORLD_TYPE_HINTS[worldType];
     });
 
     // Game Speed slider: the percentage label moves live as the slider is
@@ -939,6 +970,7 @@
     const opponentCount = parseInt($("opponent-count").value, 10);
     applyGameSpeed(parseInt($("game-speed-slider").value, 10));
     const monsterCapPerKingdom = parseInt($("monster-cap-slider").value, 10);
+    const worldType = WORLD_TYPE_SLIDER_VALUES[parseInt($("world-type-slider").value, 10)];
     const seedInput = $("seed-input").value.trim();
     const seed = seedInput ? (parseInt(seedInput, 10) || hashStringToSeed(seedInput)) : Math.floor(Math.random() * 1e9);
     if (spectatorMode) console.log(`[spectator] map seed: ${seed}`);
@@ -955,7 +987,7 @@
       humanCivId = humanRace.toUpperCase();
     }
 
-    gameState = createNewGame(racesInPlay, seed, monsterCapPerKingdom);
+    gameState = createNewGame(racesInPlay, seed, monsterCapPerKingdom, worldType);
     // createNewGame leaves visibility empty -- without this, nothing is
     // visible (full fog) until the first End Turn runs beginRound.
     window.GameEngine.turns.refreshVisibility(gameState);
@@ -1163,9 +1195,9 @@
     return Math.abs(h);
   }
 
-  function createNewGame(raceIds, seed, monsterCapPerKingdom) {
+  function createNewGame(raceIds, seed, monsterCapPerKingdom, worldType) {
     const { width: mapWidth, height: mapHeight } = mapSizeForCivCount(raceIds.length);
-    const map = window.GameEngine.worldgen.generateMap(mapWidth, mapHeight, seed);
+    const map = window.GameEngine.worldgen.generateMap(mapWidth, mapHeight, seed, worldType);
     const MIN_STARTING_ISLAND_SIZE = 8;
     // A civ that starts on a landmass smaller than this gets a free Galley
     // in place of its second starting Scout (see the starting-unit loop
@@ -3816,23 +3848,26 @@
   }
 
   /** Build Bridge: same tile-placement mechanism as Follow/Teleport above,
-   *  but the slots are every currently-EXPLORED, currently-legal bridge
-   *  landing tile (cities.js's computeBridgePath, straight line back to the
-   *  Pioneer, all water but the landing tile itself, under config.js's
-   *  bridges.maxSpan) -- picking one commits via orders.js's
-   *  startBridgeOrder, which then drives itself forward one segment at a
-   *  time every turn (see advanceGotoOrder's buildBridge branch) until the
-   *  whole span is built or it's cancelled/blocked. */
+   *  but the slots are the unit's own (up to 8) adjacent water tiles with
+   *  no existing structure (cities.js's canBuildBridgeSegment) -- one
+   *  segment at a time, same shape as Build Road Here (2026-08-19: replaces
+   *  the old whole-span-up-front design). Picking one commits via orders.js's
+   *  startBridgeOrder, which spends this segment's build turns (see
+   *  advanceGotoOrder's buildBridge branch); reaching further across the
+   *  water is a separate "Build Bridge..." order issued again once the
+   *  Pioneer is standing on the new segment. */
   function startBridgePlacement(unit) {
     if (!humanCivId || unit.usedThisTurn || unit.channeling) return;
     const civ = gameState.civs[humanCivId];
     if (!civ) return;
-    const explored = gameState.explored[civ.id] || new Set();
     const { map } = gameState;
     const slots = [];
-    for (const idx of explored) {
-      const x = idx % map.width, y = Math.floor(idx / map.width);
-      if (window.GameEngine.cities.computeBridgePath(map, unit, x, y).ok) slots.push({ x, y });
+    for (let dy = -1; dy <= 1; dy++) {
+      for (let dx = -1; dx <= 1; dx++) {
+        if (dx === 0 && dy === 0) continue;
+        const x = unit.x + dx, y = unit.y + dy;
+        if (window.GameEngine.cities.canBuildBridgeSegment(map, unit, x, y)) slots.push({ x, y });
+      }
     }
     if (!slots.length) return;
     endAutomationAndGoto(unit);
@@ -4975,8 +5010,8 @@
   // createNewGame/runTurn code paths so AI-vs-AI games run identically to a
   // real spectator game, just without the UI/render loop.
   window.__sim = {
-    newGame(raceIds, seed, monsterCapPerKingdom) {
-      gameState = createNewGame(raceIds, seed, monsterCapPerKingdom);
+    newGame(raceIds, seed, monsterCapPerKingdom, worldType) {
+      gameState = createNewGame(raceIds, seed, monsterCapPerKingdom, worldType);
       window.GameEngine.turns.refreshVisibility(gameState);
       return gameState;
     },

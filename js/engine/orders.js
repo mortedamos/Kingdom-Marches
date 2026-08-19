@@ -261,20 +261,15 @@ window.GameEngine = window.GameEngine || {};
     advanceGotoOrder(unit, gameState);
   }
 
-  /** Build Bridge: validates the whole span up front (cities.js's
-   *  computeBridgePath -- straight line, all water but the landing tile,
-   *  under the configured max span) and, if legal, commits to it as a
-   *  gotoTarget carrying the precomputed segment list. False if the span
-   *  is no longer legal (the picker's own slots should already guarantee
-   *  this, but the player could in principle sit on the confirmation for a
-   *  while as the map changes around them). */
+  /** Build Bridge: one segment at a time (2026-08-19), same shape as Build
+   *  Road Here -- (x,y) must be immediately adjacent to the unit's own
+   *  tile and open water (cities.js's canBuildBridgeSegment). False if no
+   *  longer legal (the picker's own slots should already guarantee this,
+   *  but the player could in principle sit on the confirmation for a while
+   *  as the map changes around them). */
   function startBridgeOrder(unit, gameState, x, y) {
-    const result = window.GameEngine.cities.computeBridgePath(gameState.map, unit, x, y);
-    if (!result.ok) return false;
-    unit.gotoTarget = {
-      x, y, buildBridge: true,
-      bridgeWaterTiles: result.waterTiles, bridgeIndex: 0, bridgeTurnsLeft: null,
-    };
+    if (!window.GameEngine.cities.canBuildBridgeSegment(gameState.map, unit, x, y)) return false;
+    unit.gotoTarget = { x, y, buildBridge: true, bridgeTurnsLeft: null };
     advanceGotoOrder(unit, gameState);
     return true;
   }
@@ -383,49 +378,41 @@ window.GameEngine = window.GameEngine || {};
         }
       }
     } else if (target.buildBridge) {
-      // Unlike a road segment (instant, free, one per turn), each bridge
-      // segment costs Coin up front and takes bridge_section.minBuildTurns
-      // real turns, same pacing as a wall -- see cities.js's
-      // placeBridgeSegment/computeBridgePath and this feature's own design
-      // notes (2026-08-18). The Pioneer is committed to it (usedThisTurn)
-      // for every one of those turns, same as any other channeled action.
+      // One segment at a time (2026-08-19), same "pick an adjacent tile,
+      // commit to it" shape as Build Road Here -- target.x/y IS the single
+      // water tile itself (cities.js's canBuildBridgeSegment already
+      // guaranteed it's adjacent when startBridgeOrder set this up). Unlike
+      // a road segment (instant, free, one per turn), it costs Coin up
+      // front and takes bridge_section.minBuildTurns real turns, same
+      // pacing as a wall -- see cities.js's placeBridgeSegment. The Pioneer
+      // is committed to it (usedThisTurn) for every one of those turns,
+      // same as any other channeled action. Building the next segment
+      // beyond this one is a separate "Build Bridge..." order the player
+      // issues again once they're standing on this one.
       if (!unit.usedThisTurn) {
-        const idx = target.bridgeIndex || 0;
-        const waterTiles = target.bridgeWaterTiles;
-        if (idx < waterTiles.length) {
-          const seg = waterTiles[idx];
-          if (target.bridgeTurnsLeft == null) {
-            const building = window.GameData.getBuilding("bridge_section");
-            const civ = civs[unit.civId];
-            civ.stockpile = civ.stockpile || { harvest: 0, coin: 0, lore: 0 };
-            if (civ.stockpile.coin < building.coinCost) {
-              unit.gotoTarget = null;
-              unit.currentMission = "Bridge halted — not enough Coin";
-              return;
-            }
-            civ.stockpile.coin -= building.coinCost;
-            target.bridgeTurnsLeft = building.minBuildTurns;
+        if (target.bridgeTurnsLeft == null) {
+          const building = window.GameData.getBuilding("bridge_section");
+          const civ = civs[unit.civId];
+          civ.stockpile = civ.stockpile || { harvest: 0, coin: 0, lore: 0 };
+          if (civ.stockpile.coin < building.coinCost) {
+            unit.gotoTarget = null;
+            unit.currentMission = "Bridge halted — not enough Coin";
+            return;
           }
-          target.bridgeTurnsLeft--;
-          unit.usedThisTurn = true;
-          progressed = true;
-          if (target.bridgeTurnsLeft <= 0) {
-            window.GameEngine.cities.placeBridgeSegment(civs[unit.civId], map, seg.x, seg.y);
-            // Advance the Pioneer onto the span it just finished -- the
-            // next segment (or the final land tile) is only reachable from
-            // there, and pathfinding a water tile that only became
-            // passable this instant would be redundant with just placing
-            // it there directly (same "set position directly" convention
-            // the road loop above already uses per-tile).
-            unit.x = seg.x; unit.y = seg.y;
-            target.bridgeIndex = idx + 1;
-            target.bridgeTurnsLeft = null;
-            window.GameEngine.turns.refreshVisibility(gameState);
-          }
-        } else {
-          // Every water segment is done -- the last step, onto the real
-          // landing tile, is just an ordinary move.
-          progressed = moveTo(unit, gameState, target.x, target.y, unit.civId);
+          civ.stockpile.coin -= building.coinCost;
+          target.bridgeTurnsLeft = building.minBuildTurns;
+        }
+        target.bridgeTurnsLeft--;
+        unit.usedThisTurn = true;
+        progressed = true;
+        if (target.bridgeTurnsLeft <= 0) {
+          window.GameEngine.cities.placeBridgeSegment(civs[unit.civId], map, target.x, target.y);
+          // Advance the Pioneer onto the segment it just finished -- same
+          // "set position directly" convention the road loop above already
+          // uses per-tile.
+          unit.x = target.x; unit.y = target.y;
+          unit.gotoTarget = null;
+          window.GameEngine.turns.refreshVisibility(gameState);
         }
       }
     } else {
@@ -843,10 +830,11 @@ window.GameEngine = window.GameEngine || {};
         // Build Bridge: only offered standing right at the water's edge
         // (same "gains the action once adjacent to water" gating the
         // feature was designed around), opening main.js's tile-placement
-        // picker for the landing point (see startBridgePlacement) rather
-        // than committing to a single pre-picked tile the way Build Road
-        // Here does -- a bridge's whole span has to be validated together
-        // (cities.js's computeBridgePath), not tile-by-tile.
+        // picker (see startBridgePlacement) to choose WHICH adjacent water
+        // tile to build the next segment on -- same one-tile-at-a-time
+        // shape as Build Road Here otherwise (cities.js's
+        // canBuildBridgeSegment), just needing a picker at all since the
+        // target isn't the unit's own tile.
         if (baseUnit.canBuildRoad && isAdjacentToWater(gameState.map, unit.x, unit.y)) {
           options.push({ kind: "buildBridge", label: "Build Bridge..." });
         }

@@ -514,20 +514,23 @@ html, body {
    old "Income (H / C / L)" triple-value rows, which forced the player to
    hold a legend in their head and parse three numbers out of one string.
    One row per resource with its own icon instead. economy-grid-stock adds
-   a 4th value column when a stockpile figure is known; the plain
-   .economy-grid stays 3 columns (Income/Upkeep/Net) otherwise. Column
+   a 3rd value column when a stockpile figure is known; the plain
+   .economy-grid stays 2 value columns (Income/Upkeep) otherwise. Column
    count is small and fixed either way, so this is shorter top-to-bottom
    than the 4 rows it replaces despite showing the same data plus icons --
    see input.js's own history of sidebar content pushing End Turn off the
-   bottom of a 280px-wide panel. */
+   bottom of a 280px-wide panel. Column count here must track the number
+   of header/row cells sidebar.js actually emits -- a mismatch leaves the
+   header row short a cell, which shifts every row after it over by one
+   column instead of wrapping to a new line. */
 .economy-grid {
   display: grid;
-  grid-template-columns: 1fr repeat(3, minmax(30px, 1fr));
+  grid-template-columns: 1fr repeat(2, minmax(30px, 1fr));
   gap: 3px 4px;
   align-items: center;
 }
 .economy-grid.economy-grid-stock {
-  grid-template-columns: 1fr repeat(4, minmax(26px, 1fr));
+  grid-template-columns: 1fr repeat(3, minmax(26px, 1fr));
 }
 .economy-grid-header {
   color: var(--text-dim);

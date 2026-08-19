@@ -597,8 +597,8 @@ window.UI = window.UI || {};
     // separately-authored horizontal asset kept drifting to a different
     // band width than vertical (2026-08-18, user-directed). "diagonal"
     // covers both diagonal directions the same way (mirrored, not
-    // rotated, since bridges can also run diagonally per
-    // cities.js's computeBridgePath -- see bridgeOrientation()).
+    // rotated, since bridges can also run diagonally -- see
+    // ai.js's advancePioneerBridgeBuild/bridgeOrientation()).
     const bridgeBuildingIds = inPlayBuildingIds.filter(
       (id) => window.GameData.BUILDINGS[id].isBridge
     );

@@ -456,58 +456,35 @@ window.GameEngine = window.GameEngine || {};
     return true;
   }
 
-  /** Straight-line chain of tiles from (x0,y0) to (x1,y1), one step per
-   *  tile of Chebyshev distance (8-directional, same movement model as
-   *  everything else in this game) -- does NOT include the starting tile,
-   *  matching pathfinding.js's own "steps from, but not including, start"
-   *  convention. The last entry is always exactly (x1,y1). */
-  function straightLineTiles(x0, y0, x1, y1) {
-    const steps = Math.max(Math.abs(x1 - x0), Math.abs(y1 - y0));
-    const tiles = [];
-    for (let i = 1; i <= steps; i++) {
-      tiles.push({ x: x0 + Math.round((x1 - x0) * i / steps), y: y0 + Math.round((y1 - y0) * i / steps) });
-    }
-    return tiles;
-  }
-
   /**
-   * Validates a bridge span from `unit`'s current tile to a chosen landing
-   * tile (tx,ty) -- see main.js's startBridgePlacement (the ring-menu "Build
-   * Bridge..." picker) and orders.js's startBridgeOrder. The whole span is
-   * checked as ONE straight 8-directional line (straightLineTiles): every
-   * tile but the last must be open water with no existing structure of
-   * ANY civ's (a bridge can't overlap another bridge, friendly or not --
-   * two spans crossing at an angle would need real intersection handling
-   * this doesn't attempt), and the last tile must be ordinary passable land,
-   * not water, not another civ's city. Requires at least one water tile in
-   * between -- "bridging" straight onto adjacent land is just walking.
-   * Length is capped at config.js's bridges.maxSpan. Returns
-   * { ok: true, waterTiles } (the segments an actual build needs, i.e.
-   * every tile except the final land one) or { ok: false }.
-   */
-  function computeBridgePath(map, unit, tx, ty) {
-    if (tx < 0 || tx >= map.width || ty < 0 || ty >= map.height) return { ok: false };
-    const line = straightLineTiles(unit.x, unit.y, tx, ty);
-    if (line.length < 2) return { ok: false }; // nothing but adjacent land -- not a bridge
-    if (line.length - 1 > window.GameConfig.bridges.maxSpan) return { ok: false };
-    const waterTiles = line.slice(0, -1);
-    for (const { x, y } of waterTiles) {
-      const tile = map.tiles[y * map.width + x];
-      if (!TERRAIN[tile.terrain].isWater) return { ok: false };
-      if (tile.structure) return { ok: false }; // no overlapping an existing bridge/structure
-    }
-    const landTile = map.tiles[ty * map.width + tx];
-    const landTerrain = TERRAIN[landTile.terrain];
-    if (landTerrain.isWater || landTerrain.moveCostLand === window.GameData.IMPASSABLE) return { ok: false };
-    if (landTile.structure) return { ok: false };
-    return { ok: true, waterTiles };
+   * True if (x,y) is a legal one-tile bridge segment target for `unit` --
+   * immediately adjacent (8-directional) to the unit's own tile, in bounds,
+   * open water, and not already occupied by a structure of ANY civ's (a
+   * bridge can't overlap another bridge, friendly or not). Bridges are
+   * built one segment at a time, the same "pick an adjacent tile, commit to
+   * it" shape as Build Road Here, rather than validating a whole multi-tile
+   * span up front (retired 2026-08-19 -- the old whole-span design let an
+   * AI Pioneer commit to a span turns before actually placing its far
+   * segments, and a segment placed that late never got re-checked against
+   * the live tile it was landing on). See main.js's startBridgePlacement
+   * (the ring-menu "Build Bridge..." picker, which offers every tile this
+   * passes for) and orders.js's startBridgeOrder. */
+  function canBuildBridgeSegment(map, unit, x, y) {
+    if (x < 0 || x >= map.width || y < 0 || y >= map.height) return false;
+    if (x === unit.x && y === unit.y) return false;
+    if (Math.abs(x - unit.x) > 1 || Math.abs(y - unit.y) > 1) return false;
+    const tile = map.tiles[y * map.width + x];
+    if (!TERRAIN[tile.terrain].isWater) return false;
+    if (tile.structure) return false;
+    return true;
   }
 
-  /** Places one completed bridge segment at (x,y) -- the per-segment finish
-   *  of a multi-turn span (see orders.js's advanceGotoOrder buildBridge
+  /** Places one completed bridge segment at (x,y) -- the finish of a single
+   *  multi-turn segment build (see orders.js's advanceGotoOrder buildBridge
    *  branch). A bridge belongs to the CIV, not to any one city (unlike
    *  every other structure -- see findStructureAt's own doc comment),
-   *  since a span can run far from the nearest city on either shore. */
+   *  since a chain of segments can run far from the nearest city on either
+   *  shore. */
   function placeBridgeSegment(civ, map, x, y) {
     const building = window.GameData.getBuilding("bridge_section");
     const record = { id: "bridge_section", x, y, hp: building.maxHp, maxHp: building.maxHp };
@@ -519,7 +496,7 @@ window.GameEngine = window.GameEngine || {};
 
   /** True if `tile` counts as a road for connectivity/yield/movement
    *  purposes -- either the ordinary hasRoad stamp, or a completed bridge
-   *  section (see placeBridgeSpan). Every "counts as a road" system in the
+   *  section (see placeBridgeSegment). Every "counts as a road" system in the
    *  game (found-city connectivity, per-tile yield bonuses, road-count tech
    *  effects) reads through this one check rather than hasRoad directly, so
    *  a bridge never needs to separately re-implement each of them. */
@@ -1536,7 +1513,7 @@ window.GameEngine = window.GameEngine || {};
     findStructureAt,
     destroyStructure,
     tileCountsAsRoad,
-    computeBridgePath,
+    canBuildBridgeSegment,
     placeBridgeSegment,
     RING1_SLOT_COUNT: ADJACENT_OFFSETS.length,
     RING2_SLOT_COUNT: RING2_OFFSETS.length,

@@ -65,9 +65,9 @@ window.GameConfig = {
     /** Local date this build was cut, YYYY-MM-DD. */
     date: "2026-08-19",
     /** Local time this build was cut, 24-hour HH:MM. */
-    time: "13:57",
+    time: "16:39",
     /** Monotonic build counter -- increment it, don't recompute it. */
-    number: 137,
+    number: 138,
   },
 
   // =========================================================================
@@ -333,11 +333,16 @@ window.GameConfig = {
   // BRIDGES  (js/data/buildings.js's bridge_section, js/engine/cities.js)
   // =========================================================================
   bridges: {
-    /** Longest straight-line stretch of open water a single bridge project
-     *  can span, in tiles (see cities.js's computeBridgePath) -- keeps a
-     *  Pioneer from queueing an absurd deep-ocean crossing that would tie
-     *  it up for dozens of turns. A narrow strait or river mouth easily
-     *  fits well under this; a genuine ocean gap between landmasses won't. */
+    /** Longest straight-line stretch of open water the AI will consider
+     *  bridging toward a far shore, in tiles (see ai.js's
+     *  scanForBridgeTarget/estimateBridgeSpan) -- keeps a Pioneer from
+     *  committing to an absurd deep-ocean crossing that would tie it up for
+     *  dozens of turns, one segment at a time. A narrow strait or river
+     *  mouth easily fits well under this; a genuine ocean gap between
+     *  landmasses won't. The player isn't bound by this at all -- Build
+     *  Bridge is a manual one-segment-at-a-time action (cities.js's
+     *  canBuildBridgeSegment), so a human can keep extending one as far as
+     *  they're willing to spend the turns and Coin on. */
     maxSpan: 8,
   },
 

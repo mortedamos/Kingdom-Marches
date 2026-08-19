@@ -551,9 +551,9 @@ window.GameData.TECHS = {
   elf_nature_provides: {
     id: "elf_nature_provides", label: "Nature Provides", category: "civic", layer: 1, cost: 18,
     prereqs: [], raceOnly: "elf",
-    description: "+0.5 harvest from Forest.",
+    description: "+1 harvest from Forest.",
     costBreakdown: { lore: 12, coin: 6 },
-    effects: [{ type: "unlock_tile_bonus", terrain: "forest", bonus: { harvest: 0.5 } }],
+    effects: [{ type: "unlock_tile_bonus", terrain: "forest", bonus: { harvest: 1 } }],
   },
   elf_murmuring_of_leaves: {
     id: "elf_murmuring_of_leaves", label: "The Murmuring of Leaves", category: "civic", layer: 1, cost: 16,
@@ -582,9 +582,9 @@ window.GameData.TECHS = {
   elf_whispering_waters: {
     id: "elf_whispering_waters", label: "Whispering Waters", category: "civic", layer: 2, cost: 20,
     prereqs: [], raceOnly: "elf",
-    description: "+0.5 lore from river.",
+    description: "+0.5 lore and +0.5 harvest from river.",
     costBreakdown: { lore: 14, coin: 6 },
-    effects: [{ type: "unlock_feature_bonus", feature: "river", bonus: { lore: 0.5 } }],
+    effects: [{ type: "unlock_feature_bonus", feature: "river", bonus: { lore: 0.5, harvest: 0.5 } }],
   },
   elf_reverie_of_sunset: {
     id: "elf_reverie_of_sunset", label: "Reverie of Sunset", category: "civic", layer: 2, cost: 28,

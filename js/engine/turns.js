@@ -652,6 +652,35 @@ window.GameEngine = window.GameEngine || {};
       }
     }
 
+    // One-time cleanup (2026-08-19 bugfix): a since-fixed AI bug let a
+    // city's generic build-queue place bridge_section like any other
+    // building, via cities.js's placeStructure -- which pushes into
+    // city.structures (a bridge legitimately built by a Pioneer instead
+    // goes through placeBridgeSegment, which pushes into civ.bridges, a
+    // completely different array) -- onto the city's own LAND ring tile
+    // (see ai.js's chooseBuildAction, which now excludes building.isBridge
+    // from that loop). A bridge can only ever be legitimate water
+    // (cities.js's canBuildBridgeSegment already guarantees that for every
+    // NEW Pioneer-built placement), so any bridge_section record found
+    // sitting on non-water terrain here -- in EITHER array -- predates
+    // that fix and is quietly removed rather than left cluttering a city's
+    // ring tile (or the map generally) forever.
+    for (const s of (civ.bridges || []).slice()) {
+      const tile = map.tiles[s.y * map.width + s.x];
+      if (tile && !window.GameData.TERRAIN[tile.terrain].isWater) {
+        window.GameEngine.cities.destroyStructure(gameState, s.x, s.y);
+      }
+    }
+    for (const city of civ.cities.slice()) {
+      for (const s of city.structures.slice()) {
+        if (s.id !== "bridge_section") continue;
+        const tile = map.tiles[s.y * map.width + s.x];
+        if (tile && !window.GameData.TERRAIN[tile.terrain].isWater) {
+          window.GameEngine.cities.destroyStructure(gameState, s.x, s.y);
+        }
+      }
+    }
+
     // Bridges: same Burning tick as city structures just above (a bridge
     // can catch fire from Fireball's now-indiscriminate blast, same as any
     // other structure -- see combat.js's applyFireballBlast), but read from
