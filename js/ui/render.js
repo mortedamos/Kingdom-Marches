@@ -1632,13 +1632,17 @@ window.UI = window.UI || {};
     const diag = nwse || nesw;
     if (horiz && !vert && !diag) return "horizontal";
     if (vert && !horiz && !diag) return "vertical";
-    // Both diagonals present at once (a true X junction) is vanishingly
-    // rare for a single straight-line bridge span -- picks whichever
-    // direction matched first, same "good enough, not pursued further
-    // unless it looks wrong in practice" acceptance wallOrientation's own
-    // node case already establishes for its own rare double-axis case.
-    if (nwse && !horiz && !vert) return "diagonal_nwse";
-    if (nesw && !horiz && !vert) return "diagonal_nesw";
+    // Both diagonals present at once (a real junction where the span bends
+    // -- e.g. one neighbor NE, another SE, same "V" shape a Pioneer's
+    // greedy one-tile-at-a-time stepping easily produces, see
+    // advancePioneerBridgeBuild) must fall through to "node": nwse/nesw
+    // each only need ONE matching neighbor, so without the other's
+    // exclusion here a genuine bend picked whichever axis happened to be
+    // checked first and rendered as a plain straight diagonal instead of
+    // the octagonal junction piece (2026-08-19 bugfix -- confirmed against
+    // a save with exactly this bend at one tile).
+    if (nwse && !nesw && !horiz && !vert) return "diagonal_nwse";
+    if (nesw && !nwse && !horiz && !vert) return "diagonal_nesw";
     return "node";
   }
 
