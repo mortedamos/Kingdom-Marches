@@ -2161,6 +2161,21 @@ window.GameEngine = window.GameEngine || {};
     const originHasRiver = !!(originTile?.hasRiver
       && (originTile.hasRiver.n || originTile.hasRiver.s || originTile.hasRiver.e || originTile.hasRiver.w));
     let cost = originBridge ? 1 : landCostForTerrain(originTerrain, mods, originHasRiver, unit?.typeId);
+    // Stranded-on-impassable-terrain safety net (2026-08-19 bugfix): a land
+    // unit can never MOVE onto Mountains/deep water (the destination check
+    // just above already guarantees that), but a cave can legitimately
+    // link to one anyway -- worldgen.js's placeCaves doesn't currently
+    // exclude Mountains from eligible tiles, and performEnterCave
+    // teleports there with no passability check at all, same as it always
+    // has for any linked tile. Once a unit is actually standing on one
+    // (only reachable this way), leaving it charged the SAME IMPASSABLE
+    // cost this terrain uses to block entering, so cost came back Infinity
+    // for literally every direction and the unit could never take a
+    // single step again. Falls back to the same flat plains-like base
+    // cost 1 a bridge/road origin already gets -- there's nothing
+    // meaningful to discount FROM impassable terrain, same reasoning the
+    // bridge-origin branch above already established.
+    if (cost === window.GameData.IMPASSABLE) cost = 1;
     if (originTile?.hasRoad || originBridge) cost = Math.max(0.5, cost - ROAD_MOVE_DISCOUNT);
     return cost;
   }

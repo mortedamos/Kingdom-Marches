@@ -696,7 +696,20 @@ window.GameEngine = window.GameEngine || {};
     const eligible = [];
     for (const group of landmasses) {
       for (const idx of group) {
-        if (!tiles[idx].isRuin && !tiles[idx].resource) eligible.push(idx);
+        const t = tiles[idx];
+        // Mountains is technically part of a landmass (findLandmasses
+        // groups by "not water", not by "actually walkable" -- see its own
+        // doc comment), but genuinely IMPASSABLE for ordinary land
+        // movement. A cave linking there was still a legal placement, and
+        // performEnterCave has no passability check of its own (a cave is
+        // meant to bypass terrain rules) -- so a unit that used one
+        // arrived somewhere it could never take a single step away from
+        // again, since leaving Mountains costs the same IMPASSABLE value
+        // that blocks ever entering it (2026-08-19 bugfix; see
+        // ai.js's getMoveCost for the runtime safety net that also covers
+        // any cave already placed on Mountains in an existing save).
+        if (t.terrain === "mountains") continue;
+        if (!t.isRuin && !t.resource) eligible.push(idx);
       }
     }
     const placedTiles = [];
