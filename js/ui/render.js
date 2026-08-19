@@ -426,7 +426,7 @@ window.UI = window.UI || {};
         } else if (tile.terrain === "desert" || tile.terrain === "tundra") {
           overlays.drawWindWisp(ctx, tile, screenX, screenY, ts, now);
         } else if (tile.terrain === "swamp") {
-          overlays.drawSwampFrog(ctx, tile, screenX, screenY, ts, now);
+          overlays.drawSwampSnake(ctx, tile, screenX, screenY, ts, now);
         } else if (tile.terrain === "forest") {
           overlays.drawForestBird(ctx, tile, screenX, screenY, ts, now);
         }

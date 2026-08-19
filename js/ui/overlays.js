@@ -1327,91 +1327,109 @@ window.UI = window.UI || {};
   // Cycle/active timing (2026-08-19, user-directed: "way too many frogs and
   // birds" -- the original 10-11s cycle with a ~36-38% active window meant
   // a large fraction of every visible swamp/forest tile showed one at once.
-  // Stretched the cycle and cut the active window down to a ~5% duty cycle
-  // instead -- roughly a 7x rarer sighting per tile -- so a critter reads
-  // as a rare, worth-noticing event, not ambient population.
-  const FROG_CYCLE_MS = 32000;
-  const FROG_ACTIVE_MS = 1700;
-  const FROG_HOP_COUNT = 2;
-  const FROG_COLOR = "#5f8f4a";
-  const FROG_COLOR_DARK = "#3f6a34";
+  // Stretched the cycle and cut the active window down to a ~5-8% duty
+  // cycle instead -- so a critter reads as a rare, worth-noticing event,
+  // not ambient population.
+  const SNAKE_CYCLE_MS = 32000;
+  const SNAKE_ACTIVE_MS = 2600;
+  const SNAKE_LEG_COUNT = 2;
+  const SNAKE_COLOR = "#4a6b3a";
 
-  /** One small frog silhouette (2026-08-19, user-directed redesign -- the
-   *  original plain ellipse-plus-eye-bumps "read as a bouncing slime ball,
-   *  not a frog"): a single wide-haunched, narrow-snouted shield outline
-   *  (bezier, not a circle/ellipse) so the silhouette itself reads as
-   *  squat and directional even at tiny render size, plus two small dark
-   *  eye dots close together near the front -- the cheapest, most legible
-   *  "this has a face" cue at this scale. `squash` < 1 flattens it (mid-hop
-   *  crouch), > 1 stretches it tall (mid-air). */
-  function drawFrogGlyph(ctx, x, y, size, squash) {
+  /** One small slithering snake (2026-08-19, user-directed -- replaces the
+   *  frog entirely: "frogs still reading like blobs... just focus on a
+   *  simple snake"). A single stroked polyline approximating a sine wave
+   *  along the body (segments, not a smooth curve -- invisible at this
+   *  render size, cheap to compute) plus a small round head at the leading
+   *  end. `wavePhase` drives the traveling ripple along the body (lateral
+   *  undulation, same principle a real snake's crawl uses) independent of
+   *  how far it's actually traveled this frame -- a snake's body keeps
+   *  rippling continuously, not just while translating. Drawn pre-rotated
+   *  to `angle` (the current direction of travel) around (cx,cy), its own
+   *  center. */
+  function drawSnakeGlyph(ctx, cx, cy, length, angle, wavePhase, thickness) {
     ctx.save();
-    ctx.translate(x, y);
-    ctx.scale(1 + (1 - squash) * 0.5, squash);
-    ctx.fillStyle = FROG_COLOR;
+    ctx.translate(cx, cy);
+    ctx.rotate(angle);
+    ctx.strokeStyle = SNAKE_COLOR;
+    ctx.lineWidth = thickness;
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+    const SEGMENTS = 14;
+    const WAVE_FREQ = 2.4; // wave cycles along the body's length
+    const amp = thickness * 1.4;
     ctx.beginPath();
-    ctx.moveTo(0, size * 0.55);
-    ctx.bezierCurveTo(size * 0.95, size * 0.5, size * 0.85, -size * 0.05, size * 0.45, -size * 0.35);
-    ctx.bezierCurveTo(size * 0.3, -size * 0.58, -size * 0.3, -size * 0.58, -size * 0.45, -size * 0.35);
-    ctx.bezierCurveTo(-size * 0.85, -size * 0.05, -size * 0.95, size * 0.5, 0, size * 0.55);
-    ctx.fill();
-    ctx.fillStyle = FROG_COLOR_DARK;
+    for (let i = 0; i <= SEGMENTS; i++) {
+      const u = i / SEGMENTS;
+      const x = (u - 0.5) * length;
+      const y = Math.sin(u * Math.PI * 2 * WAVE_FREQ + wavePhase) * amp;
+      if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+    // Head: a small round cap at the leading (u=1) end, same color, no
+    // separate eye detail -- invisible at this scale anyway.
+    const headX = length * 0.5;
+    const headY = Math.sin(Math.PI * 2 * WAVE_FREQ + wavePhase) * amp;
+    ctx.fillStyle = SNAKE_COLOR;
     ctx.beginPath();
-    ctx.ellipse(-size * 0.22, -size * 0.38, size * 0.15, size * 0.15, 0, 0, Math.PI * 2);
-    ctx.ellipse(size * 0.22, -size * 0.38, size * 0.15, size * 0.15, 0, 0, Math.PI * 2);
+    ctx.arc(headX, headY, thickness * 0.7, 0, Math.PI * 2);
     ctx.fill();
     ctx.restore();
   }
 
-  /** Swamp ground clutter: a tiny frog that appears now and then and hops
-   *  between 3 stable-random spots within the tile (tileClutterSeed) before
-   *  vanishing again for the rest of the cycle. Each hop is a brief crouch
-   *  (squash) then a parabolic leap (arc height + horizontal ease) to the
-   *  next spot, not a smooth slide -- reads as hopping, not gliding.
-   *  Reduced motion: shown sitting still at its first spot for the same
-   *  occasional window, rather than skipped entirely -- a still frog is a
-   *  meaningful static rendering the way a still grass tuft is (unlike the
-   *  wind wisp above, which is pure motion with no static equivalent). */
-  function drawSwampFrog(ctx, tile, screenX, screenY, ts, now) {
+  /** Swamp ground clutter: a tiny snake that appears now and then and
+   *  slithers between 3 stable-random spots within the tile
+   *  (tileClutterSeed) before vanishing again for the rest of the cycle --
+   *  a continuous glide (ease in/out), oriented along its current direction
+   *  of travel, with the body's ripple (drawSnakeGlyph's wavePhase) always
+   *  animating even between legs so it never looks like it stops
+   *  undulating. Reduced motion: shown resting at its first spot, body
+   *  wave frozen at phase 0, rather than skipped entirely -- a still snake
+   *  is a meaningful static rendering the way a still grass tuft is (unlike
+   *  the wind wisp above, which is pure motion with no static equivalent). */
+  function drawSwampSnake(ctx, tile, screenX, screenY, ts, now) {
     const seed = tileClutterSeed(tile);
-    const t = (now + seed[3] * FROG_CYCLE_MS) % FROG_CYCLE_MS;
-    if (t > FROG_ACTIVE_MS) return;
+    const t = (now + seed[3] * SNAKE_CYCLE_MS) % SNAKE_CYCLE_MS;
+    if (t > SNAKE_ACTIVE_MS) return;
+    const length = ts * 0.32;
+    const thickness = ts * 0.05;
     const spots = [
-      { x: 0.22 + seed[0] * 0.2, y: 0.58 + seed[1] * 0.2 },
-      { x: 0.48 + seed[2] * 0.2, y: 0.32 + seed[3] * 0.22 },
-      { x: 0.68 + seed[1] * 0.16, y: 0.6 + seed[0] * 0.18 },
+      { x: 0.2 + seed[0] * 0.18, y: 0.6 + seed[1] * 0.2 },
+      { x: 0.5 + seed[2] * 0.2 - 0.1, y: 0.35 + seed[3] * 0.22 },
+      { x: 0.75 + seed[1] * 0.14, y: 0.6 + seed[0] * 0.2 },
     ];
-    const size = ts * 0.08; // shrunk slightly (2026-08-19, user-directed)
     const reduced = window.UI.motion && window.UI.motion.isReduced();
     if (reduced) {
-      drawFrogGlyph(ctx, screenX + spots[0].x * ts, screenY + spots[0].y * ts, size, 1);
+      const dx = spots[1].x - spots[0].x, dy = spots[1].y - spots[0].y;
+      drawSnakeGlyph(ctx, screenX + spots[0].x * ts, screenY + spots[0].y * ts, length, Math.atan2(dy, dx), 0, thickness);
       return;
     }
-    const hopMs = FROG_ACTIVE_MS / FROG_HOP_COUNT;
-    const hopIdx = Math.min(FROG_HOP_COUNT - 1, Math.floor(t / hopMs));
-    const hopP = (t - hopIdx * hopMs) / hopMs;
-    const from = spots[hopIdx];
-    const to = spots[(hopIdx + 1) % spots.length];
-    const CROUCH_FRAC = 0.22; // brief pause before leaping, same idea as a real hop's wind-up
-    let px, py, squash, lift;
-    if (hopP < CROUCH_FRAC) {
-      px = from.x; py = from.y;
-      squash = 1 - (hopP / CROUCH_FRAC) * 0.35; // crouch down just before leaping
-      lift = 0;
-    } else {
-      const leapP = (hopP - CROUCH_FRAC) / (1 - CROUCH_FRAC);
-      const ease = leapP < 0.5 ? 2 * leapP * leapP : 1 - Math.pow(-2 * leapP + 2, 2) / 2;
-      px = from.x + (to.x - from.x) * ease;
-      py = from.y + (to.y - from.y) * ease;
-      lift = Math.sin(leapP * Math.PI) * size * 1.1;
-      squash = 1 + Math.sin(leapP * Math.PI) * 0.3; // stretches tall at the peak of the leap
-    }
-    drawFrogGlyph(ctx, screenX + px * ts, screenY + py * ts - lift, size, squash);
+    const p = t / SNAKE_ACTIVE_MS;
+    // Fades in/out at the edges of its visible window, same softness as drawWindWisp.
+    const alpha = Math.min(1, p * 6) * Math.min(1, (1 - p) * 6);
+    const legMs = SNAKE_ACTIVE_MS / SNAKE_LEG_COUNT;
+    const legIdx = Math.min(SNAKE_LEG_COUNT - 1, Math.floor(t / legMs));
+    const legP = (t - legIdx * legMs) / legMs;
+    const ease = legP < 0.5 ? 2 * legP * legP : 1 - Math.pow(-2 * legP + 2, 2) / 2;
+    const from = spots[legIdx];
+    const to = spots[(legIdx + 1) % spots.length];
+    const px = from.x + (to.x - from.x) * ease;
+    const py = from.y + (to.y - from.y) * ease;
+    const angle = Math.atan2(to.y - from.y, to.x - from.x);
+    const wavePhase = now / 90 + seed[2] * 10;
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    drawSnakeGlyph(ctx, screenX + px * ts, screenY + py * ts, length, angle, wavePhase, thickness);
+    ctx.restore();
   }
 
-  // Same rarity fix as the frog timing above (2026-08-19, user-directed).
+  // Same rarity fix as the snake timing above (2026-08-19, user-directed).
+  // ACTIVE_MS bumped up from the original 2000 to give the villager-style
+  // walk-pause-walk movement below room to read as deliberate rather than
+  // frantic (see drawForestBird's own doc comment).
   const BIRD_CYCLE_MS = 34000;
-  const BIRD_ACTIVE_MS = 2000;
+  const BIRD_ACTIVE_MS = 3200;
+  const BIRD_LEG_COUNT = 2;
+  const BIRD_PAUSE_FRAC = 0.18; // brief perch/hover pause before continuing to the next spot
   const BIRD_COLOR = "#2e2b26";
 
   /** One small bird silhouette: two wing strokes curving up from a shared
@@ -1430,35 +1448,60 @@ window.UI = window.UI || {};
   }
 
   /** Forest ground clutter: a tiny bird that appears now and then and
-   *  wanders a short weaving flight path within the tile (a Lissajous-style
-   *  wander, not a hop -- it's airborne, not grounded) before vanishing
-   *  again for the rest of the cycle, wings flapping continuously while
-   *  visible. Reduced motion: shown perched still (wings folded, no flap)
-   *  at the tile center for the same occasional window, same "still is a
-   *  meaningful static rendering" reasoning as drawSwampFrog above. */
+   *  moves around the tile the way a villager NPC does (2026-08-19, user-
+   *  directed redesign -- was a continuous Lissajous-curve wander that both
+   *  looped too fast and never really went anywhere): walk -- er, fly -- to
+   *  one of 3 stable-random spots within the tile (tileClutterSeed), pause
+   *  briefly there (a small idle hover-bob, not a dead stop), then move on
+   *  to the next spot, before vanishing again for the rest of the cycle.
+   *  Wings flap continuously throughout, at a slowed rate (also user-
+   *  directed) that reads as an unhurried, steady wingbeat rather than the
+   *  original's fast flutter. Reduced motion: shown perched still (wings
+   *  folded, no flap) at its first spot for the same occasional window,
+   *  same "still is a meaningful static rendering" reasoning as
+   *  drawSwampSnake above. */
   function drawForestBird(ctx, tile, screenX, screenY, ts, now) {
     const seed = tileClutterSeed(tile);
     const t = (now + seed[2] * BIRD_CYCLE_MS) % BIRD_CYCLE_MS;
     if (t > BIRD_ACTIVE_MS) return;
     const size = ts * 0.08;
+    const spots = [
+      { x: 0.18 + seed[0] * 0.2, y: 0.22 + seed[1] * 0.22 },
+      { x: 0.42 + seed[2] * 0.22, y: 0.5 + seed[3] * 0.2 },
+      { x: 0.68 + seed[1] * 0.2, y: 0.26 + seed[0] * 0.24 },
+    ];
     const reduced = window.UI.motion && window.UI.motion.isReduced();
     if (reduced) {
-      drawBirdGlyph(ctx, screenX + ts * 0.5, screenY + ts * 0.42, size, 0);
+      drawBirdGlyph(ctx, screenX + spots[0].x * ts, screenY + spots[0].y * ts, size, 0);
       return;
     }
     const p = t / BIRD_ACTIVE_MS;
     // Fades in/out at the edges of its visible window rather than popping
     // in/out abruptly, same "catches your eye" softness as drawWindWisp.
     const alpha = Math.min(1, p * 6) * Math.min(1, (1 - p) * 6);
-    const cx = 0.3 + seed[0] * 0.4, cy = 0.28 + seed[1] * 0.3;
-    const ampX = ts * (0.16 + seed[2] * 0.08), ampY = ts * (0.1 + seed[3] * 0.06);
-    const wanderT = p * Math.PI * 2 * 1.6 + seed[3] * Math.PI * 2;
-    const x = screenX + cx * ts + Math.sin(wanderT) * ampX;
-    const y = screenY + cy * ts + Math.sin(wanderT * 2 + 1.3) * ampY;
-    const flap = 0.5 + 0.5 * Math.sin(now / 55 + seed[0] * 10);
+    const legMs = BIRD_ACTIVE_MS / BIRD_LEG_COUNT;
+    const legIdx = Math.min(BIRD_LEG_COUNT - 1, Math.floor(t / legMs));
+    const legP = (t - legIdx * legMs) / legMs;
+    const from = spots[legIdx];
+    const to = spots[(legIdx + 1) % spots.length];
+    let px, py;
+    if (legP < BIRD_PAUSE_FRAC) {
+      px = from.x;
+      py = from.y;
+    } else {
+      const flyP = (legP - BIRD_PAUSE_FRAC) / (1 - BIRD_PAUSE_FRAC);
+      const ease = flyP < 0.5 ? 2 * flyP * flyP : 1 - Math.pow(-2 * flyP + 2, 2) / 2;
+      px = from.x + (to.x - from.x) * ease;
+      py = from.y + (to.y - from.y) * ease;
+    }
+    // Small idle bob while paused/perched -- still reads as alive, not frozen.
+    const bob = legP < BIRD_PAUSE_FRAC ? Math.sin(now / 260 + seed[0] * 6) * size * 0.15 : 0;
+    // Wingbeat slowed (2026-08-19, user-directed -- was now/55, a fast
+    // flutter) to an unhurried, steady rate.
+    const flap = 0.5 + 0.5 * Math.sin(now / 220 + seed[0] * 10);
     ctx.save();
     ctx.globalAlpha = alpha;
-    drawBirdGlyph(ctx, x, y, size, flap);
+    drawBirdGlyph(ctx, screenX + px * ts, screenY + py * ts + bob, size, flap);
     ctx.restore();
   }
 
@@ -1470,7 +1513,7 @@ window.UI = window.UI || {};
     hasActiveQuip, hasActiveFloatingText, getActiveCombatAnims, getActiveAreaEffects, getActiveDeathEffects,
     getUnitShakeOffset, drawConditionVisualEffects, drawConditionBadges, drawChannelStashLabel, drawIdleCityBadge,
     drawLevelUpGlowBehind, drawLevelUpSparkles, drawFlameEffect, drawChestSparkle, drawResourceGlint,
-    drawGrassClutter, drawWindWisp, drawSwampFrog, drawForestBird,
+    drawGrassClutter, drawWindWisp, drawSwampSnake, drawForestBird,
     hexToRgba, drawHatch, drawConstructionSite, auraInfoForUnit, drawTileScoreOverlay,
     ATTACK_ANIM_MS, SLASH_ANIM_MS, AREA_EFFECT_ANIM_MS, AREA_EFFECT_COLORS, DEATH_EFFECT_ANIM_MS,
     // Exported so the Knowledge Base's Conditions page can read the same
