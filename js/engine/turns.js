@@ -44,6 +44,16 @@ window.GameEngine = window.GameEngine || {};
           structureAt.set(s.y * map.width + s.x, { id: s.id, raceId: c.raceId });
         }
       }
+      // Bridges (2026-08-19 bugfix): the one structure type that doesn't
+      // belong to any city (cities.js's findStructureAt doc comment) --
+      // tracked on civ.bridges instead of city.structures, which this loop
+      // otherwise only reads. Without this a bridge's tile snapshot always
+      // came back structure:null, so a bridge vanished from view the
+      // instant its tile left current vision instead of rendering in its
+      // last-known state like every other structure already does.
+      for (const s of c.bridges || []) {
+        structureAt.set(s.y * map.width + s.x, { id: s.id, raceId: c.raceId });
+      }
     }
 
     for (const civ of Object.values(civs)) {
@@ -208,6 +218,11 @@ window.GameEngine = window.GameEngine || {};
         for (const s of city.structures) {
           structureAt.set(s.y * map.width + s.x, { id: s.id, raceId: c.raceId });
         }
+      }
+      // Bridges -- see refreshVisibility's own identical addition for why
+      // civ.bridges needs its own pass separate from city.structures.
+      for (const s of c.bridges || []) {
+        structureAt.set(s.y * map.width + s.x, { id: s.id, raceId: c.raceId });
       }
     }
 

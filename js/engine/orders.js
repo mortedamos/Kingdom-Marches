@@ -296,6 +296,18 @@ window.GameEngine = window.GameEngine || {};
     unit.automated = false;
     unit.pendingIntent = null;
     unit.gotoTarget = null;
+    // Clear every standing order, not just gotoTarget (2026-08-19 bugfix):
+    // the ring menu offers Enter Cave regardless of unit.channeling/sentry/
+    // followTarget (a unit Resting and Defending -- or Mining, Fishing,
+    // etc. -- ON a cave tile still sees the option), and unlike every one
+    // of those, channeling in particular never auto-invalidates on its own
+    // for restAndDefend (see turns.js's "persists anywhere" handling) --
+    // so a unit that entered a cave while channeling arrived at the far
+    // side still marked channeling, which made it look permanently spent
+    // and unable to take a fresh order on any later turn.
+    unit.channeling = null;
+    unit.sentry = false;
+    unit.followTarget = null;
     unit.x = tile.caveLinkX;
     unit.y = tile.caveLinkY;
     unit.usedThisTurn = true;
