@@ -995,34 +995,24 @@ window.GameEngine = window.GameEngine || {};
     return scoreNextResearch(civ, racialWeights(civ));
   }
 
-  /**
-   * AI "when to build a bridge": called from the same idle-Pioneer fallback
-   * chain findNearestDisconnectedCity feeds (see maybeFoundCity's own call
-   * site) -- tries to either continue an already-started span
-   * (pioneer._bridgeBuild, so a Pioneer doesn't abandon a half-finished
-   * bridge for some other idea next turn) or start a new one toward the
-   * nearest DIFFERENT landmass reachable within config.js's bridges.maxSpan.
-   * Only commits when there's an actual reason to: reconnecting one of this
-   * civ's own cities scores far higher than reaching an unclaimed landmass
-   * with room to expand, which in turn beats a landmass already fully
-   * claimed by someone else -- that last case only clears the bar for a
-   * short span and only for a civ with real appetite for a fight (see the
-   * `weights.attack` scaling below), since a bridge onto an enemy's shore is
-   * effectively an invasion staging point, not idle infrastructure. Returns
-   * true if it consumed the Pioneer's turn.
-   */
-  function maybeBuildBridge(civ, pioneer, gameState, weights, log) {
-    if (pioneer._bridgeBuild) return advancePioneerBridgeBuild(civ, pioneer, gameState, log);
-
-    const building = window.GameData.getBuilding("bridge_section");
-    civ.stockpile = civ.stockpile || { harvest: 0, coin: 0, lore: 0 };
-    if (civ.stockpile.coin < building.coinCost) return false;
-
+  /** Shared scan behind both maybeBuildBridge (opportunistic fallback) and
+   *  maybeReconnectByShortBridge (priority reconnect check) -- finds the
+   *  best bridge target reachable from `pioneer` within `spanCap` water
+   *  tiles. When `ownReconnectOnly` is true, only considers landmasses that
+   *  already hold one of this civ's own cities (the priority path never
+   *  wants anything else). Scoring: reconnecting one of this civ's own
+   *  cities scores far higher than reaching an unclaimed landmass with room
+   *  to expand, which in turn beats a landmass already fully claimed by
+   *  someone else -- that last case only clears the `bestScore >= 0` bar for
+   *  a short span and only for a civ with real appetite for a fight (see the
+   *  `weights.attack` scaling below), since a bridge onto an enemy's shore
+   *  is effectively an invasion staging point, not idle infrastructure.
+   *  Returns { x, y, waterTiles } or null. */
+  function scanForBridgeTarget(civ, pioneer, gameState, weights, spanCap, ownReconnectOnly) {
     const { map } = gameState;
     const here = map.tiles[pioneer.y * map.width + pioneer.x];
-    if (window.GameData.TERRAIN[here.terrain].isWater) return false;
+    if (window.GameData.TERRAIN[here.terrain].isWater) return null;
     const ownLandmassId = here.landmassId;
-    const maxSpan = window.GameConfig.bridges.maxSpan;
     const explored = gameState.explored[civ.id] || new Set();
 
     let best = null, bestScore = -Infinity;
@@ -1035,12 +1025,14 @@ window.GameEngine = window.GameEngine || {};
       // Chebyshev distance is never SHORTER than the straight-line span
       // computeBridgePath would need, so this only ever skips candidates
       // that were going to fail anyway.
-      if (window.GameEngine.influence.chebyshev(pioneer.x, pioneer.y, x, y) > maxSpan + 2) continue;
+      if (window.GameEngine.influence.chebyshev(pioneer.x, pioneer.y, x, y) > spanCap + 2) continue;
       const result = window.GameEngine.cities.computeBridgePath(map, pioneer, x, y);
-      if (!result.ok) continue;
+      if (!result.ok || result.waterTiles.length > spanCap) continue;
+      const reconnectsOwnCity = civ.cities.some((c) => map.tiles[c.y * map.width + c.x].landmassId === tile.landmassId);
+      if (ownReconnectOnly && !reconnectsOwnCity) continue;
       let score = -result.waterTiles.length; // shorter spans preferred, all else equal
-      if (civ.cities.some((c) => map.tiles[c.y * map.width + c.x].landmassId === tile.landmassId)) {
-        score += 50; // reconnects one of this civ's own cities
+      if (reconnectsOwnCity) {
+        score += 50;
       } else if (!Object.values(gameState.civs).some((oc) =>
           oc.cities.some((c) => map.tiles[c.y * map.width + c.x].landmassId === tile.landmassId))) {
         score += 10; // unclaimed landmass -- room to expand onto
@@ -1050,13 +1042,82 @@ window.GameEngine = window.GameEngine || {};
         // want one and only across a short span -- weights.attack ranges
         // ~0.3 (passive) to ~1.5 (aggressive, see racialWeights), so this
         // bonus alone clears the bestScore>=0 gate below for at most a
-        // 1-tile strait at the passive end, up to the full maxSpan for a
+        // 1-tile strait at the passive end, up to the full spanCap for a
         // civ that's all-in on aggression.
         score += weights.attack * 6;
       }
       if (score > bestScore) { bestScore = score; best = { x, y, waterTiles: result.waterTiles }; }
     }
-    if (!best || bestScore < 0) return false;
+    if (!best || bestScore < 0) return null;
+    return best;
+  }
+
+  /**
+   * AI "when to build a bridge": called from the same idle-Pioneer fallback
+   * chain findNearestDisconnectedCity feeds (see maybeFoundCity's own call
+   * site) -- tries to either continue an already-started span
+   * (pioneer._bridgeBuild, so a Pioneer doesn't abandon a half-finished
+   * bridge for some other idea next turn) or start a new one toward the
+   * nearest DIFFERENT landmass reachable within config.js's bridges.maxSpan.
+   * See scanForBridgeTarget for the scoring that decides whether a candidate
+   * is worth it at all. A SHORT reconnection to one of this civ's own cities
+   * is handled earlier and more assertively by maybeReconnectByShortBridge,
+   * so by the time a pioneer falls through to here that easy case has
+   * usually already been claimed -- this fallback mainly covers longer
+   * reconnections, unclaimed-landmass expansion, and (rarely) an aggressive
+   * invasion span, once the pioneer has nothing better to do. Returns true
+   * if it consumed the Pioneer's turn.
+   */
+  function maybeBuildBridge(civ, pioneer, gameState, weights, log) {
+    if (pioneer._bridgeBuild) return advancePioneerBridgeBuild(civ, pioneer, gameState, log);
+
+    const building = window.GameData.getBuilding("bridge_section");
+    civ.stockpile = civ.stockpile || { harvest: 0, coin: 0, lore: 0 };
+    if (civ.stockpile.coin < building.coinCost) return false;
+
+    const maxSpan = window.GameConfig.bridges.maxSpan;
+    const best = scanForBridgeTarget(civ, pioneer, gameState, weights, maxSpan, false);
+    if (!best) return false;
+
+    pioneer._bridgeBuild = { targetX: best.x, targetY: best.y, waterTiles: best.waterTiles, index: 0, turnsLeft: null };
+    return advancePioneerBridgeBuild(civ, pioneer, gameState, log);
+  }
+
+  /** How short a reconnecting bridge to one of this civ's own cities has to
+   *  be to jump the queue ahead of ordinary settling -- see
+   *  maybeReconnectByShortBridge. Deliberately tighter than
+   *  config.js's bridges.maxSpan (the cap for any bridge at all): a 7-8 tile
+   *  reconnection is still worthwhile but not worth interrupting a good local
+   *  settle site for, so it's left to the ordinary maybeBuildBridge fallback
+   *  instead. */
+  const RECONNECT_PRIORITY_SPAN = 6;
+
+  /**
+   * Priority check, tried BEFORE ordinary settle-site evaluation (see
+   * maybeFoundCity's own call site): if this civ already has a city on a
+   * DIFFERENT landmass reachable by a short (<= RECONNECT_PRIORITY_SPAN
+   * tile) bridge from this pioneer, start (or continue) that bridge right
+   * now rather than letting the pioneer keep founding cities elsewhere --
+   * a short, obvious reconnection is valuable enough that it shouldn't have
+   * to wait for the pioneer to run out of good settle sites first. Longer
+   * reconnections (up to bridges.maxSpan) are still picked up
+   * opportunistically by the ordinary maybeBuildBridge fallback later in the
+   * chain. Also doubles as the one guaranteed check-in for an already
+   * in-progress build regardless of its kind (pioneer._bridgeBuild), so a
+   * mid-span Pioneer can never get redirected into founding a city instead
+   * of finishing what it started. Returns true if it consumed the Pioneer's
+   * turn.
+   */
+  function maybeReconnectByShortBridge(civ, pioneer, gameState, weights, log) {
+    if (pioneer._bridgeBuild) return advancePioneerBridgeBuild(civ, pioneer, gameState, log);
+    if (civ.cities.length < 2) return false; // nothing else of this civ's own to reconnect to
+
+    const building = window.GameData.getBuilding("bridge_section");
+    civ.stockpile = civ.stockpile || { harvest: 0, coin: 0, lore: 0 };
+    if (civ.stockpile.coin < building.coinCost) return false;
+
+    const best = scanForBridgeTarget(civ, pioneer, gameState, weights, RECONNECT_PRIORITY_SPAN, true);
+    if (!best) return false;
 
     pioneer._bridgeBuild = { targetX: best.x, targetY: best.y, waterTiles: best.waterTiles, index: 0, turnsLeft: null };
     return advancePioneerBridgeBuild(civ, pioneer, gameState, log);
@@ -1259,6 +1320,13 @@ window.GameEngine = window.GameEngine || {};
       }
       pioneer._lastIdleX = pioneer.x;
       pioneer._lastIdleY = pioneer.y;
+
+      // A short, obvious reconnection to one of this civ's own cities on
+      // another landmass jumps the queue ahead of ordinary settling -- see
+      // maybeReconnectByShortBridge's own doc comment. This also guarantees
+      // an already in-progress bridge of ANY kind gets its turn here before
+      // the pioneer can be redirected into founding a city instead.
+      if (maybeReconnectByShortBridge(civ, pioneer, gameState, weights, log)) continue;
 
       // Determine whether this pioneer should embark on a waiting galley instead
       // of continuing to settle on the current island.  Triggered when:
