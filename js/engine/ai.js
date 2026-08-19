@@ -1004,11 +1004,14 @@ window.GameEngine = window.GameEngine || {};
    * nearest DIFFERENT landmass reachable within config.js's bridges.maxSpan.
    * Only commits when there's an actual reason to: reconnecting one of this
    * civ's own cities scores far higher than reaching an unclaimed landmass
-   * with room to expand, which in turn beats a landmass nobody could
-   * productively use (already fully claimed by someone else). Returns true
-   * if it consumed the Pioneer's turn.
+   * with room to expand, which in turn beats a landmass already fully
+   * claimed by someone else -- that last case only clears the bar for a
+   * short span and only for a civ with real appetite for a fight (see the
+   * `weights.attack` scaling below), since a bridge onto an enemy's shore is
+   * effectively an invasion staging point, not idle infrastructure. Returns
+   * true if it consumed the Pioneer's turn.
    */
-  function maybeBuildBridge(civ, pioneer, gameState, log) {
+  function maybeBuildBridge(civ, pioneer, gameState, weights, log) {
     if (pioneer._bridgeBuild) return advancePioneerBridgeBuild(civ, pioneer, gameState, log);
 
     const building = window.GameData.getBuilding("bridge_section");
@@ -1041,7 +1044,16 @@ window.GameEngine = window.GameEngine || {};
       } else if (!Object.values(gameState.civs).some((oc) =>
           oc.cities.some((c) => map.tiles[c.y * map.width + c.x].landmassId === tile.landmassId))) {
         score += 10; // unclaimed landmass -- room to expand onto
-      } // else: fully claimed by someone else already -- only the base -length score, rarely worth it
+      } else {
+        // Fully claimed by someone else already: still worth a shot as an
+        // invasion staging bridge, but only for a civ with the aggression to
+        // want one and only across a short span -- weights.attack ranges
+        // ~0.3 (passive) to ~1.5 (aggressive, see racialWeights), so this
+        // bonus alone clears the bestScore>=0 gate below for at most a
+        // 1-tile strait at the passive end, up to the full maxSpan for a
+        // civ that's all-in on aggression.
+        score += weights.attack * 6;
+      }
       if (score > bestScore) { bestScore = score; best = { x, y, waterTiles: result.waterTiles }; }
     }
     if (!best || bestScore < 0) return false;
@@ -1308,13 +1320,14 @@ window.GameEngine = window.GameEngine || {};
           // maybeEnvoyPlay's doc comment. Tried before the road-connector/
           // wander fallbacks below since it's genuinely productive, not
           // just "less random."
-        } else if (maybeBuildBridge(civ, pioneer, gameState, log)) {
+        } else if (maybeBuildBridge(civ, pioneer, gameState, weights, log)) {
           // See maybeBuildBridge's own doc comment -- either continuing an
           // already-started span, or a fresh one worth starting (reconnects
-          // this civ's own territory, or reaches unclaimed land to expand
-          // onto). Tried before the plain road-connector fallback below
-          // since findNearestDisconnectedCity's own road-only BFS can never
-          // find a path across water in the first place.
+          // this civ's own territory, reaches unclaimed land to expand onto,
+          // or -- for a sufficiently aggressive civ -- stakes out a short
+          // invasion span onto an enemy-held landmass). Tried before the
+          // plain road-connector fallback below since findNearestDisconnectedCity's
+          // own road-only BFS can never find a path across water in the first place.
         } else {
           // Nothing left to settle and nothing remembered either: before
           // falling back to a purely random walk, check whether any of this
