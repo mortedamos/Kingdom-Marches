@@ -1331,7 +1331,7 @@ window.UI = window.UI || {};
   // cycle instead -- so a critter reads as a rare, worth-noticing event,
   // not ambient population.
   const SNAKE_CYCLE_MS = 32000;
-  const SNAKE_ACTIVE_MS = 2600;
+  const SNAKE_ACTIVE_MS = 6000;
   const SNAKE_LEG_COUNT = 2;
   const SNAKE_COLOR = "#4a6b3a";
 
