@@ -311,6 +311,15 @@ window.GameEngine = window.GameEngine || {};
     unit.x = tile.caveLinkX;
     unit.y = tile.caveLinkY;
     unit.usedThisTurn = true;
+    // Zero, not left alone (2026-08-19 bugfix): whatever movement the unit
+    // had left over from walking to the entrance belongs to a trip that no
+    // longer exists once it's instantly on the far side of the map -- "no
+    // move after" (this function's own doc comment) means exactly that,
+    // not "carry over whatever was left." Left non-zero, a unit that
+    // reached the entrance with movement to spare could immediately walk
+    // again from the EXIT this same turn, covering far more ground in one
+    // turn than any normal move ever could.
+    unit.movesRemaining = 0;
     return true;
   }
 
@@ -436,12 +445,34 @@ window.GameEngine = window.GameEngine || {};
         }
       }
     } else {
+      // Captured BEFORE moveTo/spendMovement can lazily fill in a fresh
+      // budget from null -- exactly 0 here means the unit already spent
+      // every point of movement earlier this same turn (e.g. walking to a
+      // cave entrance, then Entering it, which now explicitly zeroes
+      // movesRemaining -- see performEnterCave), as opposed to null,
+      // which means it hasn't moved yet and moveTo is about to compute a
+      // full budget. Read below (2026-08-19 bugfix) to tell "no movement
+      // left THIS turn" apart from "pathfinding found no route at all".
+      const hadNoMovesLeft = unit.movesRemaining === 0;
       // moveTo does its own canCommand check -- passing the unit's own
       // civId as `humanCivId` there is safe (not a security hole): a
       // gotoTarget is only ever SET through human-triggered UI code in the
       // first place, so this is just reusing moveTo's existing signature,
       // not bypassing a real permission check.
       progressed = moveTo(unit, gameState, target.x, target.y, unit.civId);
+      if (!progressed && hadNoMovesLeft) {
+        // Not actually blocked -- there was simply no budget left to try
+        // with. Leave gotoTarget exactly as it is (this same function
+        // runs again next turn, after movesRemaining resets to a fresh
+        // budget, and picks up the walk from here) instead of cancelling
+        // an otherwise perfectly reachable destination as though the path
+        // itself were the problem. Without this, clicking "Move to This
+        // Tile" the same turn a unit exhausted its movement (most often
+        // right after Entering a Cave) silently did nothing AND discarded
+        // the order, instead of queuing it to actually start next turn.
+        unit.currentMission = `Moving to (${target.x},${target.y}) next turn — no movement left this turn`;
+        return;
+      }
     }
 
     if (unit.x === target.x && unit.y === target.y) {
