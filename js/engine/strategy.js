@@ -91,7 +91,11 @@ window.GameEngine = window.GameEngine || {};
     return best ? best.id : null;
   }
 
-  /** This civ's current share of claimable land (0..1) and whether it's leading. */
+  /** This civ's current share of claimable land (0..1) and whether it's
+   *  leading. Exported (2026-08-19, user-directed) so ai.js's chooseStrategy
+   *  can also read it every turn -- to react immediately once a civ nears
+   *  VICTORY_SHARE_THRESHOLD outright, rather than waiting for this
+   *  module's own every-8-turns doctrine recompute. */
   function landStanding(civ, gameState) {
     const { counts, totalClaimable } = window.GameEngine.influence.countTerritory(gameState);
     const myShare = totalClaimable > 0 ? (counts[civ.id] || 0) / totalClaimable : 0;
@@ -316,5 +320,5 @@ window.GameEngine = window.GameEngine || {};
     return target.prereqs.some((p) => isAncestorOf(techId, p, seen));
   }
 
-  window.GameEngine.strategy = { computeDoctrine, getDoctrine, isAncestorOf };
+  window.GameEngine.strategy = { computeDoctrine, getDoctrine, isAncestorOf, landStanding };
 })();

@@ -927,6 +927,65 @@ window.UI = window.UI || {};
     }
   }
 
+  /** Single flame tongue, a teardrop silhouette (round base, pointed tip)
+   *  with a vertical gradient from a dark orange base through orange-red to
+   *  a pale yellow tip -- drawn pointing straight up before the caller's own
+   *  rotate/translate/scale, so lean and flutter are just transform calls,
+   *  not separate path math per flame. */
+  function drawFlameTongue(ctx, size) {
+    const grad = ctx.createLinearGradient(0, size * 0.5, 0, -size * 0.55);
+    grad.addColorStop(0, "rgba(200,40,10,0.92)");
+    grad.addColorStop(0.45, "rgba(255,110,20,0.95)");
+    grad.addColorStop(0.8, "rgba(255,190,50,0.95)");
+    grad.addColorStop(1, "rgba(255,235,140,0.85)");
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    ctx.moveTo(0, size * 0.5);
+    ctx.bezierCurveTo(size * 0.42, size * 0.15, size * 0.3, -size * 0.25, 0, -size * 0.55);
+    ctx.bezierCurveTo(-size * 0.3, -size * 0.25, -size * 0.42, size * 0.15, 0, size * 0.5);
+    ctx.fill();
+  }
+
+  /** Burning (2026-08-19, user-requested): a real flickering-flame effect
+   *  on top of the existing orange tint (see drawConditionVisualEffects'
+   *  own BURNING_TINT_COLOR flicker) -- that tint alone reads as "tinted",
+   *  this is what actually reads as "on fire". 3 flame tongues clustered
+   *  along the top edge of the box, each with its own phase offset (from
+   *  conditionEffectPhase, which works for a structure record exactly the
+   *  same as a unit -- both are just plain objects it can cache
+   *  `_effectPhase` on) so a screen full of burning things doesn't flicker
+   *  in lockstep. Works for both units (called from render.js's unit loop)
+   *  and structures (render.js's Structures loop) via the same generic
+   *  {ctx, entity, boxX, boxY, boxSize, now} shape drawLevelUpSparkles
+   *  above uses -- callers just need entity.conditions.burning (unit) or
+   *  entity.burning (structure) truthy before calling this. */
+  function drawFlameEffect(ctx, entity, boxX, boxY, boxSize, now) {
+    const phase = conditionEffectPhase(entity);
+    const reduced = window.UI.motion && window.UI.motion.isReduced();
+    const baseX = boxX + boxSize / 2;
+    const baseY = boxY + boxSize * 0.12;
+    const flames = [
+      { dx: -0.22, scale: 0.62, speed: 1.0, offset: 0 },
+      { dx: 0, scale: 0.8, speed: 1.25, offset: 1.7 },
+      { dx: 0.24, scale: 0.55, speed: 0.85, offset: 3.4 },
+    ];
+    for (const f of flames) {
+      const t = now / 130 * f.speed + phase * 3 + f.offset;
+      // Reduced motion: park each flame at a fixed mid-flicker lean/height
+      // instead of animating -- still reads as "on fire", just not moving.
+      const lean = reduced ? 0.15 : 0.3 * Math.sin(t);
+      const heightFlicker = reduced ? 1 : 0.85 + 0.25 * Math.sin(t * 1.7 + 0.6);
+      const alpha = reduced ? 0.85 : 0.75 + 0.2 * Math.sin(t * 2.3);
+      const size = boxSize * 0.34 * f.scale * heightFlicker;
+      ctx.save();
+      ctx.globalAlpha = Math.max(0.4, Math.min(1, alpha));
+      ctx.translate(baseX + boxSize * f.dx, baseY);
+      ctx.rotate(lean);
+      drawFlameTongue(ctx, size);
+      ctx.restore();
+    }
+  }
+
   /**
    * Small status badges -- one per active unit.conditions entry with a
    * mapped icon (see CONDITION_ICONS), plus a "carrying a passenger" badge
@@ -1258,6 +1317,137 @@ window.UI = window.UI || {};
     ctx.restore();
   }
 
+  // --- Ambient wildlife (2026-08-19, user-requested) -------------------
+  // Same "occasional, not constant" cadence as drawWindWisp above -- most
+  // of a long cycle draws nothing, the creature is only present for a
+  // shorter active window within it, offset per-tile by tileClutterSeed so
+  // a whole swamp/forest doesn't populate in unison. Live tiles only (see
+  // render.js's caller, same reasoning as ground clutter/chest sparkle).
+
+  const FROG_CYCLE_MS = 10000;
+  const FROG_ACTIVE_MS = 3600;
+  const FROG_HOP_COUNT = 3;
+  const FROG_COLOR = "#5f8f4a";
+  const FROG_COLOR_DARK = "#3f6a34";
+
+  /** One small squat frog silhouette: a flattened body ellipse plus two
+   *  tiny eye bumps on top -- reads fine at the small size this renders at
+   *  without any interior linework. `squash` < 1 flattens it (mid-hop
+   *  crouch), > 1 stretches it tall (mid-air). */
+  function drawFrogGlyph(ctx, x, y, size, squash) {
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.scale(1 + (1 - squash) * 0.5, squash);
+    ctx.fillStyle = FROG_COLOR;
+    ctx.beginPath();
+    ctx.ellipse(0, 0, size, size * 0.68, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = FROG_COLOR_DARK;
+    ctx.beginPath();
+    ctx.ellipse(-size * 0.35, -size * 0.5, size * 0.16, size * 0.16, 0, 0, Math.PI * 2);
+    ctx.ellipse(size * 0.35, -size * 0.5, size * 0.16, size * 0.16, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  /** Swamp ground clutter: a tiny frog that appears now and then and hops
+   *  between 3 stable-random spots within the tile (tileClutterSeed) before
+   *  vanishing again for the rest of the cycle. Each hop is a brief crouch
+   *  (squash) then a parabolic leap (arc height + horizontal ease) to the
+   *  next spot, not a smooth slide -- reads as hopping, not gliding.
+   *  Reduced motion: shown sitting still at its first spot for the same
+   *  occasional window, rather than skipped entirely -- a still frog is a
+   *  meaningful static rendering the way a still grass tuft is (unlike the
+   *  wind wisp above, which is pure motion with no static equivalent). */
+  function drawSwampFrog(ctx, tile, screenX, screenY, ts, now) {
+    const seed = tileClutterSeed(tile);
+    const t = (now + seed[3] * FROG_CYCLE_MS) % FROG_CYCLE_MS;
+    if (t > FROG_ACTIVE_MS) return;
+    const spots = [
+      { x: 0.22 + seed[0] * 0.2, y: 0.58 + seed[1] * 0.2 },
+      { x: 0.48 + seed[2] * 0.2, y: 0.32 + seed[3] * 0.22 },
+      { x: 0.68 + seed[1] * 0.16, y: 0.6 + seed[0] * 0.18 },
+    ];
+    const size = ts * 0.1;
+    const reduced = window.UI.motion && window.UI.motion.isReduced();
+    if (reduced) {
+      drawFrogGlyph(ctx, screenX + spots[0].x * ts, screenY + spots[0].y * ts, size, 1);
+      return;
+    }
+    const hopMs = FROG_ACTIVE_MS / FROG_HOP_COUNT;
+    const hopIdx = Math.min(FROG_HOP_COUNT - 1, Math.floor(t / hopMs));
+    const hopP = (t - hopIdx * hopMs) / hopMs;
+    const from = spots[hopIdx];
+    const to = spots[(hopIdx + 1) % spots.length];
+    const CROUCH_FRAC = 0.22; // brief pause before leaping, same idea as a real hop's wind-up
+    let px, py, squash, lift;
+    if (hopP < CROUCH_FRAC) {
+      px = from.x; py = from.y;
+      squash = 1 - (hopP / CROUCH_FRAC) * 0.35; // crouch down just before leaping
+      lift = 0;
+    } else {
+      const leapP = (hopP - CROUCH_FRAC) / (1 - CROUCH_FRAC);
+      const ease = leapP < 0.5 ? 2 * leapP * leapP : 1 - Math.pow(-2 * leapP + 2, 2) / 2;
+      px = from.x + (to.x - from.x) * ease;
+      py = from.y + (to.y - from.y) * ease;
+      lift = Math.sin(leapP * Math.PI) * size * 1.1;
+      squash = 1 + Math.sin(leapP * Math.PI) * 0.3; // stretches tall at the peak of the leap
+    }
+    drawFrogGlyph(ctx, screenX + px * ts, screenY + py * ts - lift, size, squash);
+  }
+
+  const BIRD_CYCLE_MS = 11000;
+  const BIRD_ACTIVE_MS = 4200;
+  const BIRD_COLOR = "#2e2b26";
+
+  /** One small bird silhouette: two wing strokes curving up from a shared
+   *  center point, a classic distant-bird "seagull M" shape -- reads fine
+   *  at tiny size with no body/head detail needed. `flap` in [0,1] is how
+   *  raised the wingtips are (0 = flat/gliding, 1 = fully raised). */
+  function drawBirdGlyph(ctx, x, y, size, flap) {
+    ctx.strokeStyle = BIRD_COLOR;
+    ctx.lineWidth = Math.max(1, size * 0.22);
+    ctx.lineCap = "round";
+    ctx.beginPath();
+    ctx.moveTo(x - size, y + size * 0.35 * flap);
+    ctx.quadraticCurveTo(x - size * 0.32, y - size * 0.7 * flap, x, y);
+    ctx.quadraticCurveTo(x + size * 0.32, y - size * 0.7 * flap, x + size, y + size * 0.35 * flap);
+    ctx.stroke();
+  }
+
+  /** Forest ground clutter: a tiny bird that appears now and then and
+   *  wanders a short weaving flight path within the tile (a Lissajous-style
+   *  wander, not a hop -- it's airborne, not grounded) before vanishing
+   *  again for the rest of the cycle, wings flapping continuously while
+   *  visible. Reduced motion: shown perched still (wings folded, no flap)
+   *  at the tile center for the same occasional window, same "still is a
+   *  meaningful static rendering" reasoning as drawSwampFrog above. */
+  function drawForestBird(ctx, tile, screenX, screenY, ts, now) {
+    const seed = tileClutterSeed(tile);
+    const t = (now + seed[2] * BIRD_CYCLE_MS) % BIRD_CYCLE_MS;
+    if (t > BIRD_ACTIVE_MS) return;
+    const size = ts * 0.08;
+    const reduced = window.UI.motion && window.UI.motion.isReduced();
+    if (reduced) {
+      drawBirdGlyph(ctx, screenX + ts * 0.5, screenY + ts * 0.42, size, 0);
+      return;
+    }
+    const p = t / BIRD_ACTIVE_MS;
+    // Fades in/out at the edges of its visible window rather than popping
+    // in/out abruptly, same "catches your eye" softness as drawWindWisp.
+    const alpha = Math.min(1, p * 6) * Math.min(1, (1 - p) * 6);
+    const cx = 0.3 + seed[0] * 0.4, cy = 0.28 + seed[1] * 0.3;
+    const ampX = ts * (0.16 + seed[2] * 0.08), ampY = ts * (0.1 + seed[3] * 0.06);
+    const wanderT = p * Math.PI * 2 * 1.6 + seed[3] * Math.PI * 2;
+    const x = screenX + cx * ts + Math.sin(wanderT) * ampX;
+    const y = screenY + cy * ts + Math.sin(wanderT * 2 + 1.3) * ampY;
+    const flap = 0.5 + 0.5 * Math.sin(now / 55 + seed[0] * 10);
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    drawBirdGlyph(ctx, x, y, size, flap);
+    ctx.restore();
+  }
+
   window.UI.overlays = {
     tick,
     updateCombatAnims, updateAreaEffects, updateQuipBubbles, updateFloatingTexts, updateDeathEffects,
@@ -1265,8 +1455,8 @@ window.UI = window.UI || {};
     drawQuipBubble, drawFloatingTexts, drawDeathEffects, drawDeathEffectAt,
     hasActiveQuip, hasActiveFloatingText, getActiveCombatAnims, getActiveAreaEffects, getActiveDeathEffects,
     getUnitShakeOffset, drawConditionVisualEffects, drawConditionBadges, drawChannelStashLabel, drawIdleCityBadge,
-    drawLevelUpGlowBehind, drawLevelUpSparkles, drawChestSparkle, drawResourceGlint,
-    drawGrassClutter, drawWindWisp,
+    drawLevelUpGlowBehind, drawLevelUpSparkles, drawFlameEffect, drawChestSparkle, drawResourceGlint,
+    drawGrassClutter, drawWindWisp, drawSwampFrog, drawForestBird,
     hexToRgba, drawHatch, drawConstructionSite, auraInfoForUnit, drawTileScoreOverlay,
     ATTACK_ANIM_MS, SLASH_ANIM_MS, AREA_EFFECT_ANIM_MS, AREA_EFFECT_COLORS, DEATH_EFFECT_ANIM_MS,
     // Exported so the Knowledge Base's Conditions page can read the same

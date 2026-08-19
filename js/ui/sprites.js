@@ -165,6 +165,28 @@ window.UI = window.UI || {};
     registry[key] = { variants };
   }
 
+  /** Same registry shape as loadVariants (a single-entry `variants` array,
+   *  so pick() doesn't need to know which loader populated a given key) but
+   *  WITHOUT the _1.._6 guessing pass -- one fetch of `${basePath}.png`,
+   *  nothing else (2026-08-19, user-directed: bridges/walls/buildings never
+   *  actually ship numbered variants, so loadVariants' 6-attempt probe on
+   *  every single one of them was just 404 noise on every load, multiplied
+   *  across every race in play). Still honors an optional same-named .json
+   *  manifest override, same as loadVariants. Skips silently (registry
+   *  entry left unset) if the file doesn't exist -- callers already treat a
+   *  missing registry entry as "no art shipped yet, fall back". */
+  async function loadSingle(key, basePath) {
+    if (registry[key]) return;
+    let image;
+    try {
+      image = await loadImage(`${basePath}.png`);
+    } catch {
+      return;
+    }
+    const jsonManifest = await loadManifestJson(`${basePath}.json`);
+    registry[key] = { variants: [{ image, manifest: jsonManifest || resolveManifest(key, image), variantNumber: null }] };
+  }
+
   // Cities may also ship as separate, fully-rendered per-population-tier
   // images (assets/cities/${raceId}_city_{1..6}.png -- e.g. orc_city_1.png
   // through orc_city_6.png) rather than one shared spritesheet with named
@@ -507,9 +529,17 @@ window.UI = window.UI || {};
     // Units with no raceOnly (Pioneer, Scout, Galley) may additionally ship
     // race-specific art -- assets/units/{raceId}_{unitId}.png -- looked up
     // via pickUnit() in preference to the shared art above. Race-locked
-    // units skip this: they only ever belong to one race already.
+    // units skip this: they only ever belong to one race already. Wandering
+    // Monster units (basilisk, frost_lynx, ...) also have no raceOnly --
+    // they belong to the neutral MONSTER pseudo-civ, not any kingdom -- but
+    // were wrongly falling into this "universal unit" bucket too, which had
+    // the loader guessing assets/units/{raceId}_{monsterUnitId}.png (e.g.
+    // dwarf_frost_lynx_2.png) for every kingdom in play, on top of every
+    // monster type; excluded explicitly (2026-08-19, user-directed) -- a
+    // monster unit's own (non-race-prefixed) art still loads fine via
+    // inPlayUnitIds' plain loadVariants(`unit/${id}`, ...) above.
     const universalUnitIds = inPlayUnitIds.filter(
-      (id) => !window.GameData.UNITS[id].raceOnly
+      (id) => !window.GameData.UNITS[id].raceOnly && !window.GameData.MONSTER_UNIT_IDS.has(id)
     );
     for (const unitId of universalUnitIds) {
       const tier = STARTING_UNIT_IDS.includes(unitId) ? critical : background;
@@ -522,14 +552,15 @@ window.UI = window.UI || {};
       critical.push(() => loadCityTiers(id));
     }
     // Buildings (race-specific) and the universal wall_section -- single
-    // static image per id, no population-driven tiering, so the ordinary
-    // variant loader is enough (see art style guide §13). None of these can
-    // exist the instant a game starts, so they're all background.
+    // static image per id, no population-driven tiering, and (2026-08-19,
+    // user-directed) no numbered variants either -- just the one shipped
+    // file, via loadSingle rather than loadVariants' _1.._6 probe. None of
+    // these can exist the instant a game starts, so they're all background.
     const inPlayBuildingIds = window.GameData.BUILDING_LIST.filter(
       (id) => !window.GameData.BUILDINGS[id].raceOnly || racesInPlay.includes(window.GameData.BUILDINGS[id].raceOnly)
     );
     for (const id of inPlayBuildingIds)
-      background.push(() => loadVariants(`building/${id}`, `assets/buildings/${id}`));
+      background.push(() => loadSingle(`building/${id}`, `assets/buildings/${id}`));
     // isWall buildings (wall_section) may additionally ship optional
     // race-specific art -- assets/buildings/{raceId}_{buildingId}.png --
     // looked up via pickBuilding() in preference to the shared art above.
@@ -547,9 +578,11 @@ window.UI = window.UI || {};
     const WALL_ORIENTATIONS = ["horizontal", "vertical", "node"];
     for (const buildingId of universalBuildingIds) {
       for (const raceId of racesInPlay) {
-        background.push(() => loadVariants(`building/${buildingId}/${raceId}`, `assets/buildings/${raceId}_${buildingId}`));
+        // loadSingle (2026-08-19, user-directed): one wall graphic per
+        // kingdom, no numbered variants to probe for.
+        background.push(() => loadSingle(`building/${buildingId}/${raceId}`, `assets/buildings/${raceId}_${buildingId}`));
         for (const orientation of WALL_ORIENTATIONS) {
-          background.push(() => loadVariants(
+          background.push(() => loadSingle(
             `building/${buildingId}/${raceId}/${orientation}`,
             `assets/buildings/${raceId}_${buildingId}_${orientation}`
           ));
@@ -572,9 +605,11 @@ window.UI = window.UI || {};
     const BRIDGE_ORIENTATIONS = ["vertical", "diagonal", "node"];
     for (const buildingId of bridgeBuildingIds) {
       for (const raceId of racesInPlay) {
-        background.push(() => loadVariants(`building/${buildingId}/${raceId}`, `assets/buildings/${raceId}_${buildingId}`));
+        // loadSingle (2026-08-19, user-directed): one bridge graphic,
+        // already shipped -- no numbered variants to probe for.
+        background.push(() => loadSingle(`building/${buildingId}/${raceId}`, `assets/buildings/${raceId}_${buildingId}`));
         for (const orientation of BRIDGE_ORIENTATIONS) {
-          background.push(() => loadVariants(
+          background.push(() => loadSingle(
             `building/${buildingId}/${raceId}/${orientation}`,
             `assets/buildings/${raceId}_${buildingId}_${orientation}`
           ));

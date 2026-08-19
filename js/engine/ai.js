@@ -550,12 +550,35 @@ window.GameEngine = window.GameEngine || {};
     const cityLossTaper = cityDelta < 0 ? Math.max(0, 1 + cityDelta * 0.25) : 1;
     if (cityGateShortfall > 0) scores.settle += cityGateShortfall * 10 * cityLossTaper;
 
+    // Closing out an influence victory (2026-08-19, user-directed): once
+    // this civ's own land share is within 10% of VICTORY_SHARE_THRESHOLD
+    // (relative -- 90% of the way there, e.g. 27% share against a 30%
+    // threshold), reacted to every turn here rather than waiting on
+    // strategy.js's own every-8-turn doctrine recompute, since a civ this
+    // close to winning shouldn't sit on the news for over a week of turns.
+    // Push hard toward settling (more cities = more claimable-land
+    // footprint = the fastest way to close the remaining gap) and pull back
+    // from picking fights (aggression/military) that risk losing ground or
+    // getting bogged down in a war instead of just finishing the game --
+    // still allowed to win the focus if a real threat is actually pressing
+    // (this only multiplies down, it doesn't zero them out).
+    const victoryThreshold = window.GameConfig.victory.shareThreshold;
+    const { myShare } = window.GameEngine.strategy.landStanding(civ, gameState);
+    const nearVictory = myShare >= victoryThreshold * 0.9;
+    if (nearVictory) {
+      scores.settle += 20;
+      scores.aggression *= 0.5;
+      scores.military *= 0.7;
+    }
+
     const focus = Object.entries(scores).reduce((a, b) => b[1] > a[1] ? b : a)[0];
 
     const losingCitiesNote = cityDelta < 0 ? ` (lost ${-cityDelta} more than founded recently — falling back)` : "";
     const reasons = {
       explore:    `only ${cityCount} cit${cityCount === 1 ? 'y' : 'ies'}, need to scout`,
-      settle:     (cityGateShortfall > 0
+      settle:     (nearVictory
+        ? `closing in on victory (${Math.round(myShare * 100)}% land share) -- founding more cities to seal it`
+        : cityGateShortfall > 0
         ? `need ${cityGateShortfall} more cit${cityGateShortfall === 1 ? 'y' : 'ies'} to unlock further research`
         : `expanding to ${cityCount + 1} cities`) + losingCitiesNote,
       tech:       hasResearch ? `advancing ${civ.currentResearch}` : `no research active`,

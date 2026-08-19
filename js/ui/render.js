@@ -425,6 +425,10 @@ window.UI = window.UI || {};
           overlays.drawGrassClutter(ctx, tile, x, y, screenX, screenY, ts, now);
         } else if (tile.terrain === "desert" || tile.terrain === "tundra") {
           overlays.drawWindWisp(ctx, tile, screenX, screenY, ts, now);
+        } else if (tile.terrain === "swamp") {
+          overlays.drawSwampFrog(ctx, tile, screenX, screenY, ts, now);
+        } else if (tile.terrain === "forest") {
+          overlays.drawForestBird(ctx, tile, screenX, screenY, ts, now);
         }
 
         // River — composited stub overlay, drawn UNDER roads (see
@@ -772,6 +776,12 @@ window.UI = window.UI || {};
             ctx.textBaseline = "middle";
             ctx.fillText(building.symbol || "▪", screenX + ts / 2, screenY + ts / 2 - ts * 0.03);
           }
+          // Burning (2026-08-19, user-requested): same flame-tongue effect
+          // as burning units (see overlays.js's drawFlameEffect) -- s.burning
+          // is a plain field, not a .conditions container (structures have
+          // no such container of their own, see ai.js's applyBurning).
+          if (s.burning) overlays.drawFlameEffect(ctx, s, screenX, screenY, ts, now);
+
           // HP bar (only when damaged) -- always tile-relative, independent
           // of whether a sprite or the placeholder was drawn above.
           if (s.hp < s.maxHp) {
@@ -1020,6 +1030,7 @@ window.UI = window.UI || {};
       }
       ctx.restore();
       overlays.drawConditionVisualEffects(ctx, unit, unitSprite, boxX, boxY, boxSize, now);
+      if (unit.conditions?.burning) overlays.drawFlameEffect(ctx, unit, boxX, boxY, boxSize, now);
 
       // HP bar
       if (unit.hp != null && unit.maxHp && unit.hp < unit.maxHp) {
