@@ -481,12 +481,12 @@ html, body {
   overflow-y: auto;
   padding: 14px;
 }
-.sidebar.race-human     { border-image-source: url("../assets/img/sidebar-gilding-human.svg"); }
-.sidebar.race-elf       { border-image-source: url("../assets/img/sidebar-gilding-elf.svg"); }
-.sidebar.race-dwarf     { border-image-source: url("../assets/img/sidebar-gilding-dwarf.svg"); }
-.sidebar.race-orc       { border-image-source: url("../assets/img/sidebar-gilding-orc.svg"); }
-.sidebar.race-undead    { border-image-source: url("../assets/img/sidebar-gilding-undead.svg"); }
-.sidebar.race-halfellow { border-image-source: url("../assets/img/sidebar-gilding-halfellow.svg"); }
+.sidebar.race-human, .game-dialog-victory.race-human         { border-image-source: url("../assets/img/sidebar-gilding-human.svg"); }
+.sidebar.race-elf, .game-dialog-victory.race-elf             { border-image-source: url("../assets/img/sidebar-gilding-elf.svg"); }
+.sidebar.race-dwarf, .game-dialog-victory.race-dwarf         { border-image-source: url("../assets/img/sidebar-gilding-dwarf.svg"); }
+.sidebar.race-orc, .game-dialog-victory.race-orc             { border-image-source: url("../assets/img/sidebar-gilding-orc.svg"); }
+.sidebar.race-undead, .game-dialog-victory.race-undead       { border-image-source: url("../assets/img/sidebar-gilding-undead.svg"); }
+.sidebar.race-halfellow, .game-dialog-victory.race-halfellow { border-image-source: url("../assets/img/sidebar-gilding-halfellow.svg"); }
 .sidebar.race-spectator { border-image-source: url("../assets/img/sidebar-gilding-spectator.svg"); }
 .panel h2 {
   margin: 0 0 12px 0;
@@ -1749,6 +1749,79 @@ html, body {
    gold fill already does for the recommended one. */
 .game-dialog-danger { background: #d9695f; border-color: #d9695f; color: #1a1a1a; }
 .game-dialog-danger:hover { background: #e07d73; }
+
+/* Victory stats screen (2026-08-20, user-directed): a grander, more
+   ceremonial treatment than the plain utilitarian dialogs above -- wider
+   modal, display-face title with a glow, and the same per-kingdom gilded
+   border-image the sidebar uses (see the .sidebar.race-* rules above --
+   .game-dialog-victory.race-<raceId> is set by main.js's redraw() the same
+   way sidebar.js sets .sidebar's race-* class, keyed off the WINNING civ's
+   raceId, not the human player's). border-radius has no effect once
+   border-image-source is set (same as the sidebar), so it's omitted here
+   rather than left in as dead weight. */
+.game-dialog-victory {
+  width: min(600px, 92vw);
+  border-width: 18px;
+  border-style: solid;
+  border-image-slice: 20;
+  border-image-repeat: round;
+  text-align: center;
+}
+.victory-title {
+  font-family: "Cinzel", Georgia, serif;
+  font-size: 40px;
+  font-weight: 900;
+  letter-spacing: 2px;
+  margin: 4px 0 2px 0;
+  color: var(--accent);
+  text-shadow: 0 0 18px rgba(201, 168, 87, 0.55), 0 2px 2px rgba(0, 0, 0, 0.6);
+}
+.victory-subtitle {
+  font-family: "Cinzel", Georgia, serif;
+  font-size: 15px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  margin: 0 0 16px 0;
+}
+.victory-divider {
+  height: 1px;
+  margin: 14px 0;
+  background: linear-gradient(90deg, transparent, var(--accent), transparent);
+}
+.game-dialog-victory .stat-row { font-size: 15px; padding: 6px 0; text-align: left; }
+.game-dialog-victory .stat-row span:last-child { color: var(--accent); }
+.victory-rivals-label {
+  font-family: "Cinzel", Georgia, serif;
+  font-size: 13px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  text-align: left;
+  margin: 0 0 8px 0;
+}
+.victory-rivals-list { display: flex; flex-direction: column; gap: 4px; }
+.victory-rival-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 0;
+  font-size: 13px;
+  text-align: left;
+}
+.victory-rival-swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex: none;
+  box-shadow: 0 0 4px rgba(0, 0, 0, 0.5);
+}
+.victory-rival-label { flex: 1; color: var(--text-main); }
+.victory-rival-status { color: var(--text-dim); font-variant-numeric: tabular-nums; }
+.victory-rival-eliminated .victory-rival-label { color: var(--text-dim); text-decoration: line-through; }
+.victory-rival-eliminated .victory-rival-status { color: #d9695f; }
+.game-dialog-victory .game-dialog-actions { justify-content: center; margin-top: 18px; }
+.game-dialog-victory .game-dialog-primary { padding: 10px 28px; font-size: 14px; letter-spacing: 0.5px; }
 
 /* AI turn-processing banner (2026-08-04, user-directed): End Turn used to
    resolve the whole round in one blocking synchronous pass with nothing

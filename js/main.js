@@ -2593,12 +2593,20 @@
    *  time since the game was created (gameState.startedAt), total turns,
    *  the winning civ's current military power (same flat sum-of-unitPower
    *  metric turns.js's recordHistory already uses for the Report screen's
-   *  line graph), influence level (territory share %, same computation as
-   *  the Kingdom tab's own Territory Share stat), and unit kills/losses
-   *  (civ.unitsKilled/unitsLostInBattle, tallied at every real combat death
-   *  in the game -- see ai.js's otherCivRemoveDeadUnit). */
+   *  line graph), influence level (territory share % alongside the
+   *  territorial-victory threshold it's being measured against -- see
+   *  turns.js's VICTORY_SHARE_THRESHOLD -- added 2026-08-20 so a win by
+   *  elimination or a narrow territorial win both read the same number the
+   *  same way), unit kills/losses (civ.unitsKilled/unitsLostInBattle,
+   *  tallied at every real combat death in the game -- see ai.js's
+   *  otherCivRemoveDeadUnit), and every rival kingdom's own standing
+   *  (2026-08-20) -- territory share if still in the game, or "Eliminated"
+   *  if not (civ.eliminated), skipping the wandering-monsters pseudo-civ
+   *  (window.GameConfig.worldEncounters.monsters.civId) since it's never
+   *  treated as a real kingdom anywhere else in the UI either. */
   function openVictoryStatsDialog(winnerCivId) {
     const civ = gameState.civs[winnerCivId];
+    const race = window.GameData.getRace(civ.raceId);
     const elapsedMs = Date.now() - (gameState.startedAt || Date.now());
     const totalSeconds = Math.max(0, Math.floor(elapsedMs / 1000));
     const hours = Math.floor(totalSeconds / 3600);
@@ -2607,11 +2615,25 @@
     const timeTaken = hours > 0 ? `${hours}h ${minutes}m ${seconds}s` : `${minutes}m ${seconds}s`;
     const militaryPower = Math.round(civ.units.reduce((sum, u) => sum + window.GameData.unitPower(u.typeId), 0));
     const { counts, totalClaimable } = window.GameEngine.influence.countTerritory(gameState);
-    const influenceLevel = `${(((counts[winnerCivId] || 0) / totalClaimable) * 100).toFixed(1)}%`;
+    const sharePct = (civId) => totalClaimable > 0 ? ((counts[civId] || 0) / totalClaimable) * 100 : 0;
+    const thresholdPct = window.GameEngine.turns.VICTORY_SHARE_THRESHOLD * 100;
+    const influenceLevel = `${sharePct(winnerCivId).toFixed(1)}% / ${thresholdPct.toFixed(1)}%`;
+    const monsterCivId = window.GameConfig.worldEncounters.monsters.civId;
+    const rivals = Object.values(gameState.civs)
+      .filter((c) => c.id !== winnerCivId && c.id !== monsterCivId)
+      .map((c) => {
+        const r = window.GameData.getRace(c.raceId);
+        return {
+          label: r.label, color: r.color, eliminated: !!c.eliminated,
+          territoryPct: `${sharePct(c.id).toFixed(1)}%`,
+        };
+      });
     viewState.dialog = {
       kind: "victoryStats",
+      raceId: civ.raceId, raceLabel: race.label,
       timeTaken, totalTurns: gameState.turnNumber || 0, militaryPower, influenceLevel,
       unitKills: civ.unitsKilled || 0, unitsLost: civ.unitsLostInBattle || 0,
+      rivals,
       onReturnToTitle: handleReturnToTitle,
     };
     redraw();
@@ -3505,6 +3527,14 @@
       if (viewState.dialog !== lastRenderedDialog) {
         const modal = $("game-dialog-modal");
         modal.innerHTML = window.UI.dialog.render(viewState.dialog);
+        // Victory stats gets the grander treatment plus the winning
+        // kingdom's own gilded border (2026-08-20, user-directed) -- same
+        // race-<raceId> class convention sidebar.js uses for the sidebar's
+        // border, see style.css's ".sidebar.race-*"/".game-dialog-victory.
+        // race-*" rules. Every other dialog kind keeps the plain base class.
+        modal.className = viewState.dialog.kind === "victoryStats"
+          ? `techtree-modal game-dialog-modal game-dialog-victory race-${viewState.dialog.raceId}`
+          : "techtree-modal game-dialog-modal";
         lastRenderedDialog = viewState.dialog;
         wireDialogButtons(viewState.dialog);
         // Confirm-action sfx: fires once, right

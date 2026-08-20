@@ -19,7 +19,7 @@
  *   { kind: "confirmAutomatedAction", unitLabel, actionLabel, onConfirm(), onDecline() }
  *   { kind: "attackNotice", unitLabel, onGoTo(), onSkip() }
  *   { kind: "gameOver", turnsSurvived, citiesFounded, citiesLost, techsResearched, onReturnToTitle() }
- *   { kind: "victoryStats", timeTaken, totalTurns, militaryPower, influenceLevel, unitKills, unitsLost, onReturnToTitle() }
+ *   { kind: "victoryStats", raceId, raceLabel, timeTaken, totalTurns, militaryPower, influenceLevel, unitKills, unitsLost, rivals: [{label,color,eliminated,territoryPct}], onReturnToTitle() }
  *
  * Every kind rendered here needs a matching branch in main.js's
  * wireDialogButtons -- the markup below only names the buttons, it doesn't
@@ -234,14 +234,31 @@ window.UI = window.UI || {};
       // Shown right after the "Victory!" message is dismissed (see main.js's
       // showVictorySequence) -- same single-exit shape as gameOver below,
       // just for the winning side's stats instead of the losing side's.
+      // Given the .game-dialog-victory/race-<raceId> classes by main.js's
+      // redraw() (not here -- this function only returns innerHTML, it has
+      // no access to the modal element itself) for the grander styling and
+      // the per-kingdom gilded border -- see style.css's ".game-dialog-
+      // victory" block and the .sidebar.race-* rules it piggybacks on.
+      const rivalRows = (dialog.rivals || []).map((r) => `
+        <div class="victory-rival-row${r.eliminated ? " victory-rival-eliminated" : ""}">
+          <span class="victory-rival-swatch" style="background:${escapeHtml(r.color)}"></span>
+          <span class="victory-rival-label">${escapeHtml(r.label)}</span>
+          <span class="victory-rival-status">${r.eliminated ? "Eliminated" : `${escapeHtml(r.territoryPct)} territory`}</span>
+        </div>`).join("");
       return `
-        <h2>Victory!</h2>
+        <h2 class="victory-title">Victory!</h2>
+        <p class="victory-subtitle">The ${escapeHtml(dialog.raceLabel)} Reign Supreme</p>
+        <div class="victory-divider"></div>
         <div class="stat-row"><span>Total Time Taken</span><span>${escapeHtml(dialog.timeTaken)}</span></div>
         <div class="stat-row"><span>Total Turns</span><span>${dialog.totalTurns}</span></div>
         <div class="stat-row"><span>Military Power</span><span>${dialog.militaryPower}</span></div>
-        <div class="stat-row"><span>Influence Level</span><span>${dialog.influenceLevel}</span></div>
+        <div class="stat-row"><span>Influence Level</span><span>${escapeHtml(dialog.influenceLevel)}</span></div>
         <div class="stat-row"><span>Unit Kills</span><span>${dialog.unitKills}</span></div>
         <div class="stat-row"><span>Units Lost in Battle</span><span>${dialog.unitsLost}</span></div>
+        ${rivalRows ? `
+        <div class="victory-divider"></div>
+        <p class="victory-rivals-label">Rival Kingdoms</p>
+        <div class="victory-rivals-list">${rivalRows}</div>` : ""}
         <div class="game-dialog-actions">
           <button class="menu-dropdown-btn game-dialog-primary" id="game-dialog-ok-btn">Return to Title Screen</button>
         </div>`;
