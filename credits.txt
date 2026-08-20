@@ -4,36 +4,38 @@ By Shawn Nicolen
 https://www.linkedin.com/in/shawn-nicolen/
 
 ## Artificial Intelligence Disclaimer
-This project is a way for me to learn game development techniques. Some elements were created with AI. Should it become feasable to do so, the plan us to replace AI elements with human created art and music.
+This project is a way for me to learn Ai tools and game development techniques. Therefore, some elements were created with AI. 
+Should it become feasible, the plan us to replace AI elements with human created art and music.
 
 ## Sound Effects
 
-Pixelbay
+### Pixelbay
 https://pixabay.com/
 
-Sonniss GameAudioGDC
+### Sonniss GameAudioGDC
 https://sonniss.com/gameaudiogdc/
 
-Super Dialogue Audio Pack V1
+### Super Dialogue Audio Pack V1
 Produced by Dillon Becker (https://dillonbecker.com)
 Licensed under Attribution 4.0 International
 https://creativecommons.org/licenses/by/4.0/
 
 ## Music
 
-Suno.ai
+### Suno.ai
 
 ## Art
 
-Google Gemini
+### Google Gemini
 
 ## Fonts
 
-Cinzel by The Cinzel Project Authors, licensed under the SIL Open Font
-License 1.1 
+### Cinzel
+by The Cinzel Project Authors
+Licensed under the SIL Open Font License 1.1 
 https://openfontlicense.org/open-font-license-official-text/
 
-## Game Design
+## Game Director
 
 Shawn Nicolen
 
@@ -44,6 +46,6 @@ Josh Peekstock
 
 ## Copyright
 
-Kingdom Marches
+### Kingdom Marches
 Copyright © 2026 by Shawn Nicolen. 
 All Rights Reserved.
