@@ -1068,6 +1068,16 @@ window.GameEngine = window.GameEngine || {};
         options.push({ kind: "fireball", label: "Fireball!" });
       }
 
+      // Dwarf "Bombardment": same standalone tile-placement shape as
+      // Fireball! just above -- Bombard's ONLY offensive option (see
+      // units.js's noOrdinaryAttack), so this is unconditional on the
+      // mechanic being unlocked at all rather than gated behind a second
+      // tech the way Fireball is behind Battle Mage -- owning a Bombard
+      // already implies dwarf_bombardment is researched.
+      if (unit.typeId === "bombard" && !unit.usedThisTurn) {
+        options.push({ kind: "bombardment", label: "Bombardment" });
+      }
+
       // Halfellow "Riddle"/"Resource Heist"/"Unlock the Gate": ONE pill each,
       // over their own candidate list. Riddle is the worst of the old
       // pill-per-target offenders -- it's RANGED (scales with Boomerang), so
@@ -1098,6 +1108,20 @@ window.GameEngine = window.GameEngine || {};
             && !window.GameEngine.ai.druidHasLiveSummon(civ, unit, "shadowsteed")) {
           options.push({ kind: "summonShadowsteed", label: "Summon Shadowsteed" });
         }
+      }
+
+      // Elf "Nature's Fury": ONE pill for both directions, same "one kind
+      // string, main.js's handler infers direction off the unit's own
+      // typeId" shape as Roots of the World/Teleportation above (see
+      // ai.js's performDireBearTransform). A Dire Bear otherwise has no
+      // ring-menu access to any Druid-only action above -- combat + Revert
+      // only, per elf_natures_fury.
+      if (!unit.usedThisTurn && civ.unlockedMechanics?.has("natures_fury")
+          && (unit.typeId === "druid" || unit.typeId === "dire_bear")) {
+        options.push({
+          kind: "direBearForm",
+          label: unit.typeId === "druid" ? "Become Dire Bear" : "Revert to Druid",
+        });
       }
 
       // Orc "Bog Spirit": same "hand off to main.js's tile-placement mode"
@@ -1220,7 +1244,11 @@ window.GameEngine = window.GameEngine || {};
     // This Tile" against an occupied tile paths to the closest reachable
     // approach (see pathfinding.js), which reads correctly as "advance on
     // it" rather than opening nothing at all.
-    const target = attackTargetAt(unit, gameState, x, y, humanCivId);
+    // Dwarf "Bombardment": Bombard has no ordinary attack at all (see
+    // units.js's noOrdinaryAttack) -- skip this branch entirely so a click
+    // on an in-range enemy never offers a normal "Attack" pill; its only
+    // offense is the Bombardment pill below.
+    const target = baseUnit.noOrdinaryAttack ? null : attackTargetAt(unit, gameState, x, y, humanCivId);
     if (target) {
       const preview = previewOrder(unit, gameState, x, y, humanCivId);
       if (preview.kind === "attack") {

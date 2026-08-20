@@ -4406,6 +4406,13 @@
             // inconsistent with the other two summon flows.
             window.GameEngine.turns.refreshVisibility(gameState);
           }
+        } else if (kind === "direBearForm") {
+          // Elf "Nature's Fury": single click, no placement mode needed --
+          // ai.js's performDireBearTransform picks the direction off the
+          // unit's own typeId, same "one kind string" shape as Roots of the
+          // World/Teleportation just below.
+          const civ = gameState.civs[humanCivId];
+          if (civ) window.GameEngine.ai.performDireBearTransform(civ, unit, gameState);
         } else if (kind === "teleport") {
           // The only TWO-stage targeted action: pick who moves, then (via
           // startTeleportPlacement) where they land.
@@ -4419,6 +4426,8 @@
             (target) => window.GameEngine.ai.performPlayerNaturesGrace(civ, unit, target, gameState));
         } else if (kind === "fireball") {
           startFireballPlacement(unit);
+        } else if (kind === "bombardment") {
+          startBombardmentPlacement(unit);
         } else if (kind === "riddle") {
           const civ = gameState.civs[humanCivId];
           startTargetSelection("Riddle",
@@ -4580,6 +4589,39 @@
       onPick: (slot) => {
         viewState.placement = null;
         if (slot) window.GameEngine.ai.performPlayerFireball(civ, caster, slot.x, slot.y, gameState);
+        redraw();
+      },
+    };
+    redraw();
+  }
+
+  /** Dwarf "Bombardment": same tile-placement shape as Fireball! just
+   *  above -- Bombard's ONLY offense (see units.js's noOrdinaryAttack), so
+   *  this is unconditional rather than gated behind a second tech. The
+   *  picked tile becomes the TOP-LEFT corner of the 2x2 blast (see
+   *  combat.js's applyBombardBlast), not a center -- same convention
+   *  orders.js's ring pill/ai.js's scoreBombardBlast use. */
+  function startBombardmentPlacement(caster) {
+    if (!humanCivId) return;
+    const civ = gameState.civs[humanCivId];
+    if (!civ) return;
+    const { map } = gameState;
+    const range = 3; // BOMBARDMENT_RANGE, ai.js
+    const slots = [];
+    for (let dy = -range; dy <= range; dy++) {
+      for (let dx = -range; dx <= range; dx++) {
+        const x = caster.x + dx, y = caster.y + dy;
+        if (x < 0 || x >= map.width || y < 0 || y >= map.height) continue;
+        if (window.GameEngine.influence.chebyshev(caster.x, caster.y, x, y) > range) continue;
+        slots.push({ x, y });
+      }
+    }
+    viewState.placement = {
+      slots,
+      label: "Bombardment",
+      onPick: (slot) => {
+        viewState.placement = null;
+        if (slot) window.GameEngine.ai.performPlayerBombardment(civ, caster, slot.x, slot.y, gameState);
         redraw();
       },
     };

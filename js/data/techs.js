@@ -566,13 +566,6 @@ window.GameData.TECHS = {
     costBreakdown: { lore: 16 },
     effects: [{ type: "unlock_tile_bonus", terrain: "forest", bonus: { lore: 0.5 } }],
   },
-  elf_architecture_of_light_and_air: {
-    id: "elf_architecture_of_light_and_air", label: "Architecture of Light and Air", category: "civic", layer: 1, cost: 20,
-    prereqs: [], raceOnly: "elf",
-    description: "+2 lore per building constructed in a city (walls don't count).",
-    costBreakdown: { lore: 14, coin: 6 },
-    effects: [{ type: "building_count_bonus", bonus: { lore: 2 } }],
-  },
   // Halves the flat RESOURCE_EXHAUSTION_CHANCE (5%->2%) for this civ's
   // Ruin/Gold Vein/Iron Vein/Fish Shoal/Game/Fertile Soil channels -- see
   // turns.js's resourceExhaustionChanceFor.
@@ -590,13 +583,6 @@ window.GameData.TECHS = {
     costBreakdown: { lore: 14, coin: 6 },
     effects: [{ type: "unlock_feature_bonus", feature: "river", bonus: { lore: 0.5, harvest: 0.5 } }],
   },
-  elf_reverie_of_sunset: {
-    id: "elf_reverie_of_sunset", label: "Reverie of Sunset", category: "civic", layer: 2, cost: 28,
-    prereqs: ["elf_architecture_of_light_and_air"], raceOnly: "elf",
-    description: "+8 lore from any tile with a ruin covered by elven influence.",
-    costBreakdown: { lore: 20, coin: 8 },
-    effects: [{ type: "unlock_feature_bonus", feature: "ruin", bonus: { lore: 8 } }],
-  },
   elf_longstrider: {
     id: "elf_longstrider", label: "Longstrider", category: "civic", layer: 2, cost: 20,
     prereqs: [], raceOnly: "elf",
@@ -606,7 +592,7 @@ window.GameData.TECHS = {
   },
   elf_gems_of_starlight: {
     id: "elf_gems_of_starlight", label: "Gems of Starlight", category: "civic", layer: 3, cost: 30,
-    prereqs: [], raceOnly: "elf",
+    prereqs: ["elf_silverleaf_atelier"], raceOnly: "elf",
     description: "+1 coin from Mountains.",
     costBreakdown: { coin: 20, lore: 10 },
     effects: [{ type: "unlock_tile_bonus", terrain: "mountains", bonus: { coin: 1 } }],
@@ -637,16 +623,13 @@ window.GameData.TECHS = {
   elf_aelderwatch: {
     id: "elf_aelderwatch", label: "Aelderwatch", category: "building", layer: 1, cost: 20,
     prereqs: [], raceOnly: "elf",
-    description: "Unlocks the Treetop Watch. The city this building is adjacent to gains +2 vision radius.",
+    description: "Unlocks the Treetop Watch. The city this building is adjacent to gains +5 vision radius.",
     costBreakdown: { coin: 12, lore: 8 },
     effects: [{ type: "unlock_building", building: "treetop_watch" }],
   },
-  // Moved L2 -> L1; attack 1 -> 2. Prereq
-  // elf_hunters_soul (L2) stays put -- one-layer inversion, same "move the
-  // layer only" policy as Human's Palace Charter/Invisibility/Fireball.
   elf_treetop_snipers: {
     id: "elf_treetop_snipers", label: "Treetop Snipers", category: "building", layer: 1, cost: 40,
-    prereqs: ["elf_aelderwatch", "elf_hunters_soul"], raceOnly: "elf",
+    prereqs: ["elf_aelderwatch", "elf_watching_hunting"], raceOnly: "elf",
     description: "50% chance each turn an elf wall attacks an enemy unit within range 2 for 2 attack.",
     costBreakdown: { coin: 24, lore: 16 },
     effects: [{ type: "unlock_mechanic", mechanic: "treetop_snipers" }],
@@ -662,14 +645,14 @@ window.GameData.TECHS = {
   // (L3) stays put -- one-layer inversion, same policy as above.
   elf_silverleaf_atelier: {
     id: "elf_silverleaf_atelier", label: "Silverleaf Atelier", category: "building", layer: 2, cost: 35,
-    prereqs: ["elf_architecture_of_light_and_air", "elf_gems_of_starlight"], raceOnly: "elf",
+    prereqs: [], raceOnly: "elf",
     description: "Unlocks the Silverleaf Atelier (+10% coin and +10% lore, this city only).",
     costBreakdown: { coin: 20, lore: 15 },
     effects: [{ type: "unlock_building", building: "silverleaf_atelier" }],
   },
   elf_altar_of_ages: {
     id: "elf_altar_of_ages", label: "Altar of Ages", category: "building", layer: 3, cost: 50,
-    prereqs: ["elf_druidism", "elf_reverie_of_sunset"], raceOnly: "elf",
+    prereqs: ["elf_druidism"], raceOnly: "elf",
     description: "Unlocks the Altar of Ages. All elf units created in this city gain an extra 25% XP.",
     costBreakdown: { lore: 32, coin: 18 },
     effects: [
@@ -793,6 +776,24 @@ window.GameData.TECHS = {
       { type: "unlock_mechanic", mechanic: "first_frost_of_autumn" },
     ],
   },
+  // Same shape as elf_first_frost_of_autumn --
+  // poisonChancePct is a per-unit data field (see ai.js's applyPoisoned/
+  // baseMonster.poisonChancePct on Marsh Adder), not a hardcoded constant.
+  elf_poisonous_extracts: {
+    id: "elf_poisonous_extracts", label: "Poisonous Extracts", category: "military", layer: 3, cost: 34,
+    prereqs: [], raceOnly: "elf",
+    description: "Elf unit attacks have a 10% chance to inflict the Poison condition on the target.",
+    costBreakdown: { lore: 22, coin: 12 },
+    effects: [
+      { type: "unit_stat_upgrade", unit: "ranger", changes: { poisonChancePct: 0.10 } },
+      { type: "unit_stat_upgrade", unit: "blade_dancer", changes: { poisonChancePct: 0.10 } },
+      { type: "unit_stat_upgrade", unit: "druid", changes: { poisonChancePct: 0.10 } },
+      { type: "unit_stat_upgrade", unit: "raptor", changes: { poisonChancePct: 0.10 } },
+      { type: "unit_stat_upgrade", unit: "shadowsteed", changes: { poisonChancePct: 0.10 } },
+      { type: "unit_stat_upgrade", unit: "awakened_oak", changes: { poisonChancePct: 0.10 } },
+      { type: "unlock_mechanic", mechanic: "poisonous_extracts" },
+    ],
+  },
   elf_hunters_soul: {
     id: "elf_hunters_soul", label: "Hunter's Soul", category: "military", layer: 2, cost: 38,
     prereqs: ["elf_watching_hunting"], raceOnly: "elf",
@@ -866,8 +867,25 @@ window.GameData.TECHS = {
       { type: "unlock_mechanic", mechanic: "shadow_steed_summon" },
     ],
   },
+  // Unlocks "dire_bear" via unlock_unit purely for cost/tech-layer lookup
+  // purposes (unitBuildCost/unitMaxHP), same convention as Raptor/
+  // Shadowsteed -- cityBuildable: false (units.js) strips it back out of
+  // every build menu regardless; the ONLY way to ever field one is an
+  // existing Druid transforming in place (see ai.js's
+  // performDireBearTransform/maybeElfDruidPlay and orders.js's
+  // contextMenuOptions "direBearForm" pill).
+  elf_natures_fury: {
+    id: "elf_natures_fury", label: "Nature's Fury", category: "mystic", layer: 5, cost: 95,
+    prereqs: ["elf_sanctuary_under_green_boughs", "elf_beast_sight"], raceOnly: "elf",
+    description: "The Druid may embrace the power of nature and become a Dire Bear (a full-turn action), trading its healing/summoning/city-founding kit for a hulking combat form -- same name, same veteran bonuses, HP carried over as a percentage of max HP. A Dire Bear may likewise spend a full turn to revert to Druid form. Neither form can be built by cities or summoned; a Dire Bear also still counts as a Druid for the purposes of the civ's Raptor/Shadowsteed summon capacity.",
+    costBreakdown: { lore: 55, coin: 25, harvest: 15 },
+    effects: [
+      { type: "unlock_unit", unit: "dire_bear" },
+      { type: "unlock_mechanic", mechanic: "natures_fury" },
+    ],
+  },
   elf_the_living_forest: {
-    id: "elf_the_living_forest", label: "The Living Forest", category: "mystic", layer: 5, cost: 95,
+    id: "elf_the_living_forest", label: "The Living Forest", category: "mystic", layer: 4, cost: 95,
     prereqs: ["elf_druidism", "elf_sanctuary_under_green_boughs"], raceOnly: "elf",
     description: "Unlocks the Awakened Oak, a living, walking tree and the elves' own siege unit -- rare, but meant to be fielded in numbers rather than as a single centerpiece.",
     costBreakdown: { harvest: 30, lore: 40, coin: 20 },
@@ -927,14 +945,14 @@ window.GameData.TECHS = {
     effects: [{ type: "unlock_mechanic", mechanic: "dwarven_mining" }],
   },
   dwarf_quarry: {
-    id: "dwarf_quarry", label: "Quarry", category: "civic", layer: 2, cost: 20,
+    id: "dwarf_quarry", label: "Quarry", category: "civic", layer: 1, cost: 20,
     prereqs: ["dwarf_stonecunning"], raceOnly: "dwarf",
     description: "+0.75 coin from Hills.",
     costBreakdown: { coin: 13, lore: 7 },
     effects: [{ type: "unlock_tile_bonus", terrain: "hills", bonus: { coin: 0.75 } }],
   },
   dwarf_deep_lore: {
-    id: "dwarf_deep_lore", label: "Deep Lore", category: "civic", layer: 2, cost: 20,
+    id: "dwarf_deep_lore", label: "Deep Lore", category: "mystic", layer: 1, cost: 20,
     prereqs: ["dwarf_stonecunning"], raceOnly: "dwarf",
     description: "+0.75 lore from Mountains.",
     costBreakdown: { lore: 12, coin: 8 },
@@ -946,6 +964,16 @@ window.GameData.TECHS = {
     description: "All Mountain tiles anywhere on the map, as well as Hill tiles immediately adjacent to a Mountain tile, are always revealed -- no fog of war on those tiles at all.",
     costBreakdown: { lore: 12, coin: 8 },
     effects: [{ type: "unlock_mechanic", mechanic: "mountains_on_the_horizon" }],
+  },
+  // No explicit prereq requested -- same "just the layer gate" default as
+  // several other L3 Dwarf techs with no natural single prerequisite (e.g.
+  // dwarf_stonebreaker).
+  dwarf_passages_in_stone: {
+    id: "dwarf_passages_in_stone", label: "Passages in Stone", category: "civic", layer: 3, cost: 40,
+    prereqs: [], raceOnly: "dwarf",
+    description: "All Caves, and the area in a radius of 2 around those caves, are always revealed -- no fog of war on those tiles at all.",
+    costBreakdown: { lore: 24, coin: 16 },
+    effects: [{ type: "unlock_mechanic", mechanic: "passages_in_stone" }],
   },
   dwarf_prospectors_claim: {
     id: "dwarf_prospectors_claim", label: "Prospector's Claim", category: "civic", layer: 2, cost: 26,
@@ -1058,9 +1086,24 @@ window.GameData.TECHS = {
   dwarf_arquebus_engineering: {
     id: "dwarf_arquebus_engineering", label: "Arquebus Engineering", category: "military", layer: 3, cost: 40,
     prereqs: ["dwarf_thunder_from_stone"], raceOnly: "dwarf",
-    description: "Musketeer gains +1 range, +1 attack, and First Strike 2.5%.",
+    description: "Musketeer gains +1 range and +1 attack.",
     costBreakdown: { coin: 26, lore: 14 },
-    effects: [{ type: "unit_stat_upgrade", unit: "musketeer", changes: { range: 1, attack: 1, firstStrikePct: 0.025 } }],
+    effects: [{ type: "unit_stat_upgrade", unit: "musketeer", changes: { range: 1, attack: 1 } }],
+  },
+  // Unlocks "bombard" via unlock_unit purely for cost/tech-layer lookup
+  // purposes (unitBuildCost/unitMaxHP) -- same convention as every other
+  // unlock_unit tech. Bombard IS normally cityBuildable (unlike Raptor/
+  // Shadowsteed/Dire Bear), so this is also the real, only way a Dwarf
+  // civ ever fields one.
+  dwarf_bombardment: {
+    id: "dwarf_bombardment", label: "Bombardment", category: "military", layer: 4, cost: 80,
+    prereqs: ["dwarf_arquebus_engineering"], raceOnly: "dwarf",
+    description: "Unlocks the Bombard, a powerful ranged cannon. Rather than a normal attack, the Bombard may target any tile within range as a full-turn \"Bombardment\" action: every unit and structure in the resulting 2x2 area takes damage, allies included.",
+    costBreakdown: { coin: 50, lore: 30 },
+    effects: [
+      { type: "unlock_unit", unit: "bombard" },
+      { type: "unlock_mechanic", mechanic: "bombardment" },
+    ],
   },
   dwarf_heavy_metal: {
     id: "dwarf_heavy_metal", label: "Heavy Metal", category: "mystic", layer: 3, cost: 58,
@@ -1244,16 +1287,19 @@ window.GameData.TECHS = {
     // (see combat.js's effectiveFirstStrikePct) -- this +0.02 stacks on top
     // of Wolf Rider's baked-in base (see units.js) rather than replacing it.
     // 0.015 -> 0.02.
-    description: "Wolf Rider gains 2% First Strike and increased attack and movement.",
+    description: "Wolf Rider gains 2% First Strike and increased attack and movement. Raider also gains +1 movement.",
     costBreakdown: { lore: 17, coin: 7 },
-    effects: [{ type: "unit_stat_upgrade", unit: "wolf_rider", changes: { firstStrikePct: 0.02, attack: 2, movement: 1 } }],
+    effects: [
+      { type: "unit_stat_upgrade", unit: "wolf_rider", changes: { firstStrikePct: 0.02, attack: 2, movement: 1 } },
+      { type: "unit_stat_upgrade", unit: "raider", changes: { movement: 1 } },
+    ],
   },
   orc_spoils_of_war: {
     id: "orc_spoils_of_war", label: "Spoils of War", category: "civic", layer: 2, cost: 40,
     prereqs: ["orc_warcraft"], raceOnly: "orc",
-    description: "When an Orc unit kills an enemy unit, gain +9 coin and +12 lore.",
+    description: "When an Orc unit kills an enemy unit, gain +12 coin and +12 lore.",
     costBreakdown: { lore: 30, coin: 10 },
-    effects: [{ type: "raid_kill_bonus", harvest: 0, coin: 9, lore: 12 }],
+    effects: [{ type: "raid_kill_bonus", harvest: 0, coin: 12, lore: 12 }],
   },
 
   // --- Layer 3 ---
@@ -1269,7 +1315,7 @@ window.GameData.TECHS = {
   // project_campaign_of_terror_fix / project_pairwise_balance_human_orc_halfellow
   // memory for the investigation this grew out of.
   orc_pillage_and_loot: {
-    id: "orc_pillage_and_loot", label: "Pillage and Loot", category: "civic", layer: 3, cost: 40,
+    id: "orc_pillage_and_loot", label: "Pillage and Loot", category: "civic", layer: 4, cost: 40,
     prereqs: ["orc_spoils_of_war"], raceOnly: "orc",
     description: "An Orc unit standing within an enemy city's radius has a 2-tile (Chebyshev) radius around itself which removes any filled-in enemy influence from those tiles -- cutting off their yield immediately and fully stripping the tile after 3 turns of sustained suppression -- and generates +1 harvest, +1 coin, and +1 lore for EACH tile where influence was actually suppressed this turn. Lasts until the unit moves to a new tile (the effect moves with it), leaves the enemy city's radius, or is killed. Does not stack with other Orc units on the same tile.",
     costBreakdown: { lore: 26, coin: 14 },
@@ -1310,6 +1356,30 @@ window.GameData.TECHS = {
     costBreakdown: { lore: 38 },
     effects: [{ type: "unlock_mechanic", mechanic: "malefic_malediction" }],
   },
+  // New per-unit data fields introduced here: befuddledChancePct and
+  // curseChancePct, same generic on-hit-chance convention as
+  // poisonChancePct/frozenChancePct/burnChancePct -- see ai.js's
+  // applyOrcCombatMechanics for where they're actually rolled. curseChancePct
+  // reuses Malefic Malediction's own debuff shape (-50% attack, -50%
+  // movement, 5 turns) -- since Malefic Malediction is a required prereq
+  // here and already applies that same curse unconditionally on every
+  // landed Bog Witch hit, this specific clause is currently redundant in
+  // practice (curse already always lands once both techs are known); kept
+  // as authored since the tech's own wording asks for it, and it stops
+  // being redundant if Malefic Malediction's own unconditional application
+  // is ever reworked.
+  orc_afflictions_of_anguish: {
+    id: "orc_afflictions_of_anguish", label: "Afflictions of Anguish", category: "mystic", layer: 4, cost: 65,
+    prereqs: ["orc_bog_witch", "orc_malefic_malediction"], raceOnly: "orc",
+    description: "Bog Witch gains +1 vision. Her attacks gain a 20% chance to inflict Poison, 25% chance to inflict Befuddled, 25% chance to Curse (the same debuff Malefic Malediction already applies), and +10% chance to inflict Frozen.",
+    costBreakdown: { lore: 45, coin: 20 },
+    effects: [
+      { type: "unit_stat_upgrade", unit: "bog_witch", changes: {
+        visionRadius: 1, poisonChancePct: 0.20, befuddledChancePct: 0.25, curseChancePct: 0.25, frozenChancePct: 0.10,
+      } },
+      { type: "unlock_mechanic", mechanic: "afflictions_of_anguish" },
+    ],
+  },
   orc_bog_spirit: {
     id: "orc_bog_spirit", label: "Bog Spirit", category: "mystic", layer: 3, cost: 40,
     prereqs: ["orc_bog_witch"], raceOnly: "orc",
@@ -1326,24 +1396,51 @@ window.GameData.TECHS = {
       { type: "unlock_mechanic", mechanic: "wisp_summon" },
     ],
   },
+  // 2026-08-20 redesign, user-directed: was a hardcoded Scout/Dragon
+  // ranged-only + Goblin Miscreant melee-always 100% special case; now a
+  // flat +10% burnChancePct on every Orc combat unit's attacks, any hit,
+  // any range -- see ai.js's applyOrcCombatMechanics for the matching
+  // engine-side generic-gate change.
   orc_burn_it_all_down: {
     id: "orc_burn_it_all_down", label: "Burn It All Down", category: "military", layer: 3, cost: 35,
     prereqs: [], raceOnly: "orc",
-    description: "Ranged attacks (not adjacent melee) from a Scout or a Dragon set their target ablaze: the Burning condition deals 1 damage at the start of the burning unit's turn for 3 turns, unless it's currently on Coast, Ocean, or a river tile. Goblin Miscreant's melee attacks ignite too, having no ranged option of its own.",
+    description: "All Orc units' attacks gain a 10% chance to inflict the Burning condition on the target: 1 damage at the start of the burning unit's turn for 3 turns, unless it's currently on Coast, Ocean, or a river tile.",
     costBreakdown: { lore: 22, coin: 13 },
     effects: [
-      // burnChancePct: same per-unit data field
-      // as Fireball's own burnChancePct above, replacing ai.js's previous
-      // unconditional "every qualifying hit ignites". 1.0 preserves this
-      // tech's existing behavior exactly.
-      { type: "unit_stat_upgrade", unit: "scout", changes: { burnChancePct: 1.0 } },
-      { type: "unit_stat_upgrade", unit: "dragon", changes: { burnChancePct: 1.0 } },
-      { type: "unit_stat_upgrade", unit: "goblin_miscreant", changes: { burnChancePct: 1.0 } },
+      { type: "unit_stat_upgrade", unit: "scout", changes: { burnChancePct: 0.10 } },
+      { type: "unit_stat_upgrade", unit: "raider", changes: { burnChancePct: 0.10 } },
+      { type: "unit_stat_upgrade", unit: "goblin_miscreant", changes: { burnChancePct: 0.10 } },
+      { type: "unit_stat_upgrade", unit: "impaler", changes: { burnChancePct: 0.10 } },
+      { type: "unit_stat_upgrade", unit: "dire_wolf", changes: { burnChancePct: 0.10 } },
+      { type: "unit_stat_upgrade", unit: "wolf_rider", changes: { burnChancePct: 0.10 } },
+      { type: "unit_stat_upgrade", unit: "bog_witch", changes: { burnChancePct: 0.10 } },
+      { type: "unit_stat_upgrade", unit: "battering_ram", changes: { burnChancePct: 0.10 } },
+      { type: "unit_stat_upgrade", unit: "ogre", changes: { burnChancePct: 0.10 } },
+      { type: "unit_stat_upgrade", unit: "dragon", changes: { burnChancePct: 0.10 } },
       { type: "unlock_mechanic", mechanic: "burn_it_all_down" },
     ],
   },
+  // unit_stat_upgrade REPLACES a non-additive field (burnChancePct/
+  // poisonChancePct) rather than adding to it -- see tech.js's
+  // unit_stat_upgrade handler. Since orc_burn_it_all_down is a REQUIRED
+  // prereq here (always researched first), the burnChancePct values below
+  // are the COMBINED total (Burn It All Down's own 0.10 baseline + this
+  // tech's stated bonus), not just this tech's own increment, so the two
+  // techs' effects actually stack instead of one silently overwriting the
+  // other: Raider 0.10+0.10=0.20, Goblin Miscreant 0.10+0.20=0.30.
+  orc_pyromania: {
+    id: "orc_pyromania", label: "Pyromania", category: "military", layer: 4, cost: 60,
+    prereqs: ["orc_burn_it_all_down"], raceOnly: "orc",
+    description: "Raider gains +1 attack and +10% chance to inflict Burning (on top of Burn It All Down's own 10%). Goblin Miscreant gains +20% chance to inflict Burning (on top of Burn It All Down's own 10%) and +10% chance to inflict Poison.",
+    costBreakdown: { lore: 30, coin: 20, harvest: 10 },
+    effects: [
+      { type: "unit_stat_upgrade", unit: "raider", changes: { attack: 1, burnChancePct: 0.20 } },
+      { type: "unit_stat_upgrade", unit: "goblin_miscreant", changes: { burnChancePct: 0.30, poisonChancePct: 0.10 } },
+      { type: "unlock_mechanic", mechanic: "pyromania" },
+    ],
+  },
   orc_wasteland_riders: {
-    id: "orc_wasteland_riders", label: "Wasteland Riders", category: "military", layer: 3, cost: 24,
+    id: "orc_wasteland_riders", label: "Wasteland Riders", category: "military", layer: 2, cost: 24,
     prereqs: ["orc_forced_march"], raceOnly: "orc",
     // Civ-wide, not unit-restricted, same fix
     // and same reasoning as orc_forced_march above.
@@ -1371,19 +1468,19 @@ window.GameData.TECHS = {
 
   // --- Layer 4 ---
   orc_the_old_ways: {
-    id: "orc_the_old_ways", label: "The Old Ways", category: "civic", layer: 4, cost: 50,
+    id: "orc_the_old_ways", label: "The Old Ways", category: "mystic", layer: 1, cost: 50,
     prereqs: [], raceOnly: "orc",
     description: "+0.5 Lore from Swamp.",
     costBreakdown: { lore: 50 },
     effects: [{ type: "unlock_tile_bonus", terrain: "swamp", bonus: { lore: 0.5 } }],
   },
   orc_honor_the_dead: {
-    id: "orc_honor_the_dead", label: "Honor the Dead", category: "civic", layer: 4, cost: 55,
+    id: "orc_honor_the_dead", label: "Honor the Dead", category: "civic", layer: 2, cost: 55,
     prereqs: [], raceOnly: "orc",
-    description: "When an Orc unit dies, gain +5 lore. Orc units have a 50% chance to resist being raised from the dead (if an Orc unit is slain by an Undead unit, only a 50% chance the Undead civ turns it into a zombie under its control).",
+    description: "When an Orc unit dies, gain +30 lore. Orc units have a 50% chance to resist being raised from the dead (if an Orc unit is slain by an Undead unit, only a 50% chance the Undead civ turns it into a zombie under its control).",
     costBreakdown: { lore: 45, harvest: 10 },
     effects: [
-      { type: "death_lore_bonus", value: 5 },
+      { type: "death_lore_bonus", value: 30 },
       { type: "raise_dead_resistance", value: 0.5 },
     ],
   },

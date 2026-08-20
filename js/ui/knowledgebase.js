@@ -305,7 +305,11 @@ window.UI = window.UI || {};
    *  unitConditionLinksHtml, so it isn't listed twice on the same page. */
   function availableActionsFor(unit) {
     const actions = [];
-    if (unit.attack > 0) actions.push("Attack");
+    // Dwarf "Bombardment": Bombard has no ordinary attack at all (see
+    // units.js's noOrdinaryAttack/ai.js's considerAttackOrGarrison guard)
+    // -- its only offense is the standalone Bombardment blast.
+    if (unit.noOrdinaryAttack) actions.push("Bombardment");
+    else if (unit.attack > 0) actions.push("Attack");
     if (unit.movement > 0) actions.push("Move");
     if (unit.canFoundCity) actions.push("Found a City");
     if (unit.canBuildRoad) actions.push("Build Roads");

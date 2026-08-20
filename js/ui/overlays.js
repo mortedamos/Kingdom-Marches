@@ -32,6 +32,8 @@ window.UI = window.UI || {};
   const FLOAT_TEXT_FADE_OUT_MS = 500; // quick fade-out at the very end; everything between is full opacity
   const DEATH_EFFECT_ANIM_MS = 1300; // puff-of-smoke-resolving-into-a-skull, total lifetime
   const DEATH_SMOKE_COUNT = 6; // number of drifting smoke puffs per death
+  const MUZZLE_SMOKE_ANIM_MS = 450; // gunpowder-weapon muzzle puff, total lifetime -- quick, punchy
+  const MUZZLE_SMOKE_COUNT = 4; // number of drifting puffs per shot
 
   // Condition badges: a small icon per active
   // entry in unit.conditions (see combat.js's setCondition/tickConditions),
@@ -72,6 +74,14 @@ window.UI = window.UI || {};
    */
   let activeCombatAnims = [];
 
+  /** Directional muzzle-smoke puffs (Musketeer/Bombard attacks -- see
+   *  units.js's `muzzleSmoke` flag). Populated from the SAME drained
+   *  recordCombatEvent stream activeCombatAnims itself uses, not a
+   *  separate queue: any attacker flagged `muzzleSmoke` gets one of these
+   *  in addition to its ordinary slash/glyph anim, no new call sites
+   *  needed at any of ai.js's several recordCombatEvent spots. */
+  let activeMuzzleSmoke = [];
+
   function updateCombatAnims(now) {
     const newEvents = window.GameEngine.combat.drainCombatEvents();
     for (const evt of newEvents) {
@@ -80,10 +90,11 @@ window.UI = window.UI || {};
       const mount = window.GameEngine.combat.shadowsteedMount(evt.atkUnit);
       const attackChars = evt.attackChars || window.GameData.getAttackChars(mount ? mount.typeId : evt.atkUnit.typeId);
       const isRanged = Math.max(Math.abs(dxg), Math.abs(dyg)) > 1;
+      const nx = dxg / len, ny = dyg / len;
       activeCombatAnims.push({
         ...evt,
         start: now,
-        nx: dxg / len, ny: dyg / len,
+        nx, ny,
         ampScale: 0.75 + Math.random() * 0.5,
         freq: 2.5 + Math.random() * 2.5,
         phase: Math.random() * Math.PI * 2,
@@ -92,9 +103,30 @@ window.UI = window.UI || {};
         slashRot: (Math.random() - 0.5) * 0.5,
         isRanged,
       });
+      // atkUnit is sometimes a lightweight synthetic object (wall_section/
+      // mage_tower's own recordCombatEvent calls) rather than a real
+      // GameData.UNITS entry -- direct lookup instead of getUnit(), which
+      // throws on an unknown id.
+      const atkBase = window.GameData.UNITS[evt.atkUnit?.typeId];
+      if (atkBase?.muzzleSmoke) {
+        const baseAngle = Math.atan2(ny, nx);
+        const puffs = [];
+        for (let i = 0; i < MUZZLE_SMOKE_COUNT; i++) {
+          puffs.push({
+            angle: baseAngle + (Math.random() - 0.5) * 0.9, // forward cone, not a full circle
+            dist: 0.10 + Math.random() * 0.22,
+            size: 0.14 + Math.random() * 0.10,
+            delay: Math.random() * 0.15,
+          });
+        }
+        activeMuzzleSmoke.push({ x: evt.ax, y: evt.ay, start: now, puffs });
+      }
     }
     if (activeCombatAnims.length) {
       activeCombatAnims = activeCombatAnims.filter((a) => now - a.start < ATTACK_ANIM_MS);
+    }
+    if (activeMuzzleSmoke.length) {
+      activeMuzzleSmoke = activeMuzzleSmoke.filter((m) => now - m.start < MUZZLE_SMOKE_ANIM_MS);
     }
   }
 
@@ -323,6 +355,9 @@ window.UI = window.UI || {};
   }
   function getActiveDeathEffects() {
     return activeDeathEffects;
+  }
+  function getActiveMuzzleSmoke() {
+    return activeMuzzleSmoke;
   }
 
   /** Runs every per-frame queue drain in one call -- the single entry point
@@ -644,6 +679,48 @@ window.UI = window.UI || {};
     for (const e of activeDeathEffects) {
       const px = e.x * ts + offsetX + ts / 2, py = e.y * ts + offsetY + ts / 2;
       drawDeathEffectAt(ctx, e, px, py, ts, now);
+    }
+  }
+
+  /**
+   * Directional muzzle-smoke puff (Musketeer/Bombard firing -- see
+   * units.js's `muzzleSmoke` flag), drawn at an already-projected screen
+   * point -- same "shared point-based draw, each renderer supplies its own
+   * projection" split as drawCombatSlashAt/drawDeathEffectAt. A handful of
+   * grey puffs (pre-angled toward the target in updateCombatAnims, a
+   * forward cone rather than radiating in every direction like the death
+   * effect's puffs) drift outward and fade, quick and punchy.
+   */
+  function drawMuzzleSmokeAt(ctx, e, px, py, ts, now) {
+    const elapsed = now - e.start;
+    if (elapsed > MUZZLE_SMOKE_ANIM_MS) return;
+    const t = elapsed / MUZZLE_SMOKE_ANIM_MS;
+
+    ctx.save();
+    for (const p of e.puffs) {
+      const pt = Math.min(1, Math.max(0, (t - p.delay) / (1 - p.delay)));
+      if (pt <= 0) continue;
+      const ease = 1 - (1 - pt) * (1 - pt);
+      const dist = p.dist * ts * ease * 2.2;
+      const size = p.size * ts * (0.5 + 0.6 * ease);
+      const alpha = (1 - pt) * 0.6;
+      const cx = px + Math.cos(p.angle) * dist;
+      const cy = py + Math.sin(p.angle) * dist;
+      ctx.globalAlpha = Math.max(0, alpha);
+      ctx.fillStyle = "#c9c9c9";
+      ctx.beginPath();
+      ctx.arc(cx, cy, Math.max(1, size), 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  /** 2D-only: projects every active muzzle-smoke puff via the affine
+   *  offsetX/offsetY/ts tile grid, then draws it with drawMuzzleSmokeAt. */
+  function drawMuzzleSmoke(ctx, offsetX, offsetY, ts, now) {
+    for (const e of activeMuzzleSmoke) {
+      const px = e.x * ts + offsetX + ts / 2, py = e.y * ts + offsetY + ts / 2;
+      drawMuzzleSmokeAt(ctx, e, px, py, ts, now);
     }
   }
 
@@ -1510,7 +1587,9 @@ window.UI = window.UI || {};
     updateCombatAnims, updateAreaEffects, updateQuipBubbles, updateFloatingTexts, updateDeathEffects,
     drawAreaEffects, drawAreaEffectBox, drawCombatSlashes, drawCombatSlashAt,
     drawQuipBubble, drawFloatingTexts, drawDeathEffects, drawDeathEffectAt,
+    drawMuzzleSmoke, drawMuzzleSmokeAt,
     hasActiveQuip, hasActiveFloatingText, getActiveCombatAnims, getActiveAreaEffects, getActiveDeathEffects,
+    getActiveMuzzleSmoke,
     getUnitShakeOffset, drawConditionVisualEffects, drawConditionBadges, drawChannelStashLabel, drawIdleCityBadge,
     drawLevelUpGlowBehind, drawLevelUpSparkles, drawFlameEffect, drawChestSparkle, drawResourceGlint,
     drawGrassClutter, drawWindWisp, drawSwampSnake, drawForestBird,

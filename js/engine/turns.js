@@ -108,6 +108,24 @@ window.GameEngine = window.GameEngine || {};
             || (revealForest && map.tiles[i].terrain === "forest")
             || (revealSea && (map.tiles[i].terrain === "ocean" || map.tiles[i].terrain === "coast"))) visible.add(i);
       }
+      // Dwarf "Passages in Stone": every Cave tile, plus a 2-tile
+      // (Chebyshev) radius around each one, always revealed -- same
+      // reveal-mechanic shape as Mountains on the Horizon above, just
+      // keyed to tile.isCave with a radius instead of a single-terrain
+      // match (and the Hills-adjacent-to-Mountains follow-up pass).
+      if (civ.unlockedMechanics && civ.unlockedMechanics.has("passages_in_stone")) {
+        for (let i = 0; i < map.tiles.length; i++) {
+          if (!map.tiles[i].isCave) continue;
+          const cx = i % map.width, cy = Math.floor(i / map.width);
+          for (let dy = -2; dy <= 2; dy++) {
+            for (let dx = -2; dx <= 2; dx++) {
+              const nx = cx + dx, ny = cy + dy;
+              if (nx < 0 || nx >= map.width || ny < 0 || ny >= map.height) continue;
+              visible.add(ny * map.width + nx);
+            }
+          }
+        }
+      }
       // Mountains on the Horizon also reveals any Hills tile immediately
       // adjacent (8-neighbor) to a Mountain tile -- the foothills leading up
       // to a peak are visible from the peak itself, same reasoning as the

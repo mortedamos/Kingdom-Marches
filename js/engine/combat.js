@@ -1650,6 +1650,53 @@ window.GameEngine = window.GameEngine || {};
     return hits;
   }
 
+  /**
+   * Dwarf "Bombardment" (see ai.js's performDwarfBombardment): same
+   * standalone-targeted-blast shape as Human's Fireball just above, but a
+   * 2x2 area (not 3x3) and anchored differently -- a 2x2 block has no
+   * single center tile, so per the tech's own design the TARGETED tile is
+   * the block's top-left corner: (centerX, centerY), (centerX+1, centerY),
+   * (centerX, centerY+1), (centerX+1, centerY+1). Unlike Fireball, unit
+   * and structure damage are computed SEPARATELY: structure hits go
+   * through effectiveAttack's own isSiege context so Bombard's siegePct
+   * (its whole identity as a wall-breaker) actually applies, the same way
+   * it would on an ordinary attack against a structure -- Fireball's own
+   * blast never had a siegePct-bearing caster worth the same treatment
+   * when it was written, so it didn't need this distinction. Indiscriminate
+   * like Fireball: the caster's own civ is just as exposed as anyone else.
+   */
+  function applyBombardBlast(casterUnit, casterCiv, centerX, centerY, gameState) {
+    const { map, civs } = gameState;
+    const atkUnit = effectiveAttack(casterUnit, casterCiv, {});
+    const atkStruct = effectiveAttack(casterUnit, casterCiv, { isSiege: true });
+    const hits = [];
+    for (let dy = 0; dy <= 1; dy++) {
+      for (let dx = 0; dx <= 1; dx++) {
+        const x = centerX + dx, y = centerY + dy;
+        if (x < 0 || x >= map.width || y < 0 || y >= map.height) continue;
+        for (const otherCiv of Object.values(civs)) {
+          if (otherCiv.eliminated) continue;
+          const hitUnit = otherCiv.units.find((u) => u.x === x && u.y === y);
+          if (hitUnit) {
+            const dmg = mitigatedDamage(atkUnit, effectiveDefense(hitUnit, otherCiv, {}));
+            hitUnit.hp -= dmg;
+            // Hidden: an AoE blast isn't "aimed," so it can still catch a
+            // Hidden unit by accident -- being hit this way reveals it.
+            revealHidden(hitUnit, gameState.turnNumber || 0);
+            hits.push({ kind: "unit", x, y, damage: dmg, civId: otherCiv.id, typeId: hitUnit.typeId, unit: hitUnit });
+          }
+        }
+        const structFound = window.GameEngine.cities.findStructureAt(gameState, x, y);
+        if (structFound) {
+          const dmg = mitigatedDamage(atkStruct, 0);
+          structFound.record.hp -= dmg;
+          hits.push({ kind: "structure", x, y, damage: dmg, civId: structFound.civ.id, id: structFound.record.id, record: structFound.record });
+        }
+      }
+    }
+    return hits;
+  }
+
   window.GameEngine.combat = {
     roll3d6,
     damageRoll,
@@ -1684,6 +1731,7 @@ window.GameEngine = window.GameEngine || {};
     attackStructure,
     applySplashDamage,
     applyFireballBlast,
+    applyBombardBlast,
     cityDefenseValue,
     cityMaxHp,
     cityAttackWinProbability,

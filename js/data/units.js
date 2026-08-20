@@ -269,8 +269,8 @@ window.GameData.UNITS = {
     // (ai.js's UTILITY_UNIT_MECHANICS taper, `relevantMechanics.length * 7
     // * 0.6^owned`) is entirely stat-independent by design.
     id: "wizard", label: "Wizard", symbol: "🧙‍♂️", category: "military", raceOnly: "human",
-    attack: 2, defense: 3, movement: 2, visionRadius: 3, range: 2, burnChancePct: 0.05, frozenChancePct: 0.05, 
-    coinCost: 35, attackChars: ["⚡", "❄️", "🔥", "☄", "✨"], doubleStrikePct: 0.1, biggerPct: .1,
+    attack: 2, defense: 3, movement: 2, visionRadius: 3, range: 2, burnChancePct: 0.1, frozenChancePct: 0.1, 
+    coinCost: 35, attackChars: ["⚡", "❄️", "🔥", "☄", "✨"], biggerPct: .1,
   },
 
   // --- ELF full roster (see techs.js) ---
@@ -341,10 +341,22 @@ window.GameData.UNITS = {
   // the Titan.
   awakened_oak: {
     id: "awakened_oak", label: "Awakened Oak", symbol: "♣", category: "military", raceOnly: "elf",
-    attack: 11, defense: 11, movement: 3, visionRadius: 3, siegePct: 1.5,
-    coinCost: 65, biggerPct: 1.0, attackChars: ["🌳", "💥"],
+    attack: 10, defense: 10, movement: 3, visionRadius: 3, siegePct: 2.0,
+    coinCost: 65, biggerPct: 1.0, attackChars: ["🌳", "𖣂", "🌿", "🫚"],
     rare: true, neverExplores: true,
     nameSpecial: true, // a living tree, not a person -- see unit-names.js
+  },
+  // elf_natures_fury: not spawned or built on its own -- only ever reached
+  // by an existing Druid transforming in place (see ai.js's "Become Dire
+  // Bear"/"Revert to Druid" ring-menu actions), so cityBuildable: false the
+  // same way Raptor/Shadowsteed are, but WITHOUT their noUpkeep/nameSpecial
+  // flags -- a Dire Bear is the same standing unit as the Druid it came
+  // from, same name, same upkeep.
+  dire_bear: {
+    id: "dire_bear", label: "Dire Bear", symbol: "🐻", category: "military", raceOnly: "elf",
+    attack: 9, defense: 13, movement: 3, visionRadius: 3, siegePct: 0.50,
+    attackChars: ["𓆩", "彡"], biggerPct: .7, doubleStrikePct: 0.1,
+    cityBuildable: false,
   },
 
   skeleton: {
@@ -438,6 +450,12 @@ window.GameData.UNITS = {
     id: "musketeer", label: "Musketeer", symbol: "⌐", category: "military", raceOnly: "dwarf",
     attack: 4, defense: 3, movement: 2, visionRadius: 3, range: 2,
     coinCost: 22, attackChars: ["💥", "●"],
+    // muzzleSmoke: a directional puff-of-smoke overlay drawn at the
+    // attacker's own tile, biased toward its target -- see overlays.js's
+    // updateMuzzleSmoke/drawMuzzleSmokeAt. Generic per-unit data flag (same
+    // convention as attackChars) rather than a hardcoded typeId check, so
+    // any future gunpowder/cannon unit just needs this flag, no new code.
+    muzzleSmoke: true,
   },
   // Pinnacle unit -- a slow, near-indestructible city-crusher rather than a
   // fast/flying flagship. 2026-07-15 redesign (replacing an earlier
@@ -461,6 +479,22 @@ window.GameData.UNITS = {
     coinCost: 60, biggerPct: 1.2, attackChars: ["🪨", "💥"],
     veryRare: true, neverExplores: true, siegeTarget: true,
     nameSpecial: true, // a construct, not a person -- see unit-names.js
+  },
+  // dwarf_bombardment: a squat, mortar-shaped bombard (think Mons Meg/Tsar
+  // Cannon, not a long field cannon) -- deliberately has NO ordinary attack
+  // action at all (`noOrdinaryAttack: true`, checked by orders.js's
+  // contextMenuOptions and ai.js's turn dispatch/considerAttackOrGarrison).
+  // Its only offense is "Bombardment," a standalone targeted 2x2-area blast
+  // -- see ai.js's performDwarfBombardment/combat.js's applyBombardBlast,
+  // same "own action, not a ride-on-attack passive" shape as Human's
+  // Fireball!. `attack` still feeds that blast's damage math even though
+  // the unit never throws a normal punch with it.
+  bombard: {
+    id: "bombard", label: "Bombard", symbol: "⛰", category: "military", raceOnly: "dwarf", range: 3,
+    attack: 9, defense: 4, movement: 2, visionRadius: 3, siegePct: 2.75, siegeAtRange: true,
+    attackChars: ["⚫️", "💥"], biggerPct: .6, burnChancePct: 0.5,
+    noOrdinaryAttack: true, neverExplores: true, muzzleSmoke: true,
+    nameSpecial: true, // a machine, not a person -- see unit-names.js
   },
 
   // --- ORC full roster (redesigned tree, no stubs -- see techs.js) ---
@@ -508,7 +542,7 @@ window.GameData.UNITS = {
   bog_witch: {
     id: "bog_witch", label: "Bog Witch", symbol: "✦", category: "military", raceOnly: "orc",
     attack: 5, defense: 3, movement: 2, visionRadius: 3, range: 2,
-    coinCost: 22, poisonChancePct: 0.30,
+    coinCost: 22, poisonChancePct: 0.5,
     // Baked directly into the unit rather than a tech effect -- the curse is
     // inherent to the Bog Witch herself, always active the moment you have
     // one (Bog Witch tech only grants unlock_unit). Read by combat.js
@@ -531,13 +565,13 @@ window.GameData.UNITS = {
   wisp: {
     id: "wisp", label: "Wisp", symbol: "◌", category: "military", raceOnly: "orc",
     attack: 1, defense: 0, movement: 1, visionRadius: 6, flying: false,
-    restrictedToTerrain: "swamp", burnChancePct: 0.20,
+    restrictedToTerrain: "swamp", burnChancePct: 0.10, frozenChancePct: 0.10, 
     coinCost: 15, attackChars: ["🔥"], biggerPct: -0.3,
     cityBuildable: false, noUpkeep: true, nameSpecial: true, // a spirit, not a person
   },
   battering_ram: {
     id: "battering_ram", label: "Battering Ram", symbol: "⚙", category: "military", raceOnly: "orc",
-    attack: 7, defense: 5, movement: 2, visionRadius: 2, siegePct: 2.0,
+    attack: 7, defense: 6, movement: 2, visionRadius: 2, siegePct: 2.0,
     coinCost: 30, biggerPct: .5, attackChars: ["💥"],
     nameSpecial: true, // a machine, not a person -- see unit-names.js
   },
@@ -548,9 +582,9 @@ window.GameData.UNITS = {
   },
 
   dragon: {
-    id: "dragon", label: "Dragon", symbol: "D", category: "military", raceOnly: "orc",
-    attack: 11, defense: 8, movement: 4, visionRadius: 5, flying: true, range: 2, siegePct: 1.00,
-    coinCost: 55, biggerPct: 1.0, attackChars: ["🔥"], rare: true,
+    id: "dragon", label: "Dragon", symbol: "🐉", category: "military", raceOnly: "orc",
+    attack: 10, defense: 8, movement: 4, visionRadius: 5, flying: true, range: 2, siegePct: 1.00, burnChancePct: 0.50,
+    coinCost: 55, biggerPct: 1.0, attackChars: ["🔥", "💥", "彡"], rare: true,
     nameSpecial: true, // a beast, not a person -- see unit-names.js
   },
 
@@ -582,27 +616,27 @@ window.GameData.UNITS = {
   // applyPoisoned/applyWebbed and overlays.js's "poisoned"/"webbed" visuals.
   boar_sounder: {
     id: "boar_sounder", label: "Boar Sounder", symbol: "🐗", category: "military",
-    attack: 4, defense: 3, movement: 2, visionRadius: 3, restrictedToTerrain: "plains",
+    attack: 3, defense: 2, movement: 2, visionRadius: 3, restrictedToTerrain: "plains",
     coinCost: 12, attackChars: ["𓄏"],
     cityBuildable: false, noUpkeep: true, nameSpecial: true, neverExplores: true,
   },
   dire_spider: {
     id: "dire_spider", label: "Dire Spider", symbol: "🕷", category: "military",
-    attack: 3, defense: 3, movement: 2, visionRadius: 3, restrictedToTerrain: "forest",
+    attack: 3, defense: 2, movement: 2, visionRadius: 4, restrictedToTerrain: "forest",
     webChancePct: 0.7,
     coinCost: 12, attackChars: ["🕸️", "𓆩"],
     cityBuildable: false, noUpkeep: true, nameSpecial: true, neverExplores: true,
   },
   highland_griffin: {
     id: "highland_griffin", label: "Highland Griffin", symbol: "🦅", category: "military",
-    attack: 4, defense: 2, movement: 3, visionRadius: 4, flying: true,
+    attack: 3, defense: 2, movement: 3, visionRadius: 4, flying: true,
     coinCost: 16, attackChars: ["彡"],
     cityBuildable: false, noUpkeep: true, nameSpecial: true, neverExplores: true,
   },
   basilisk: {
     id: "basilisk", label: "Basilisk", symbol: "🦎", category: "military",
-    attack: 4, defense: 3, movement: 2, visionRadius: 2, restrictedToTerrain: "desert", 
-    coinCost: 14, attackChars: ["𓆩"],
+    attack: 3, defense: 2, movement: 2, visionRadius: 2, restrictedToTerrain: "desert", 
+    coinCost: 14, attackChars: ["𓆩"], frozenChancePct: 0.20,
     cityBuildable: false, noUpkeep: true, nameSpecial: true, neverExplores: true,
   },
   marsh_adder: {
@@ -613,14 +647,14 @@ window.GameData.UNITS = {
     // condition key/visual, since a venomous snake inflicting fire damage
     // reads wrong -- see ai.js's applyPoisoned and overlays.js's "poisoned"
     // visual.
-    poisonChancePct: 0.30,
+    poisonChancePct: 0.20,
     coinCost: 12, attackChars: ["𓆩"],
     cityBuildable: false, noUpkeep: true, nameSpecial: true, neverExplores: true,
   },
   frost_lynx: {
     id: "frost_lynx", label: "Frost Lynx", symbol: "🐆", category: "military",
     attack: 4, defense: 3, movement: 3, visionRadius: 4, restrictedToTerrain: "tundra",
-    frozenChancePct: 0.30,
+    frozenChancePct: 0.20,
     coinCost: 14, attackChars: ["𓆩"],
     cityBuildable: false, noUpkeep: true, nameSpecial: true, neverExplores: true,
   },

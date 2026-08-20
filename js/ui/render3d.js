@@ -2810,6 +2810,18 @@ window.UI = window.UI || {};
       overlays.drawCombatSlashAt(ctx, a, sa.x, sa.y, sd.x, sd.y, Math.max(1, ts), now);
     }
 
+    // Muzzle smoke (Musketeer/Bombard firing -- see units.js's
+    // muzzleSmoke flag) -- each puff's own tile projected individually,
+    // same reasoning as the combat-slash/death-effect loops here.
+    for (const m of overlays.getActiveMuzzleSmoke()) {
+      const y = cellHeight(map, Math.max(0, Math.min(map.width - 1, m.x)), Math.max(0, Math.min(map.height - 1, m.y))) + AURA_Y_LIFT + 0.004;
+      const wx = worldX({ mapWidth: map.width }, m.x) + TILE / 2, wz = worldZ({ mapHeight: map.height }, m.y) + TILE / 2;
+      const s = worldToScreen(canvas, wx, y, wz);
+      if (!s) continue;
+      const ts = localPixelScale(canvas, wx, y, wz);
+      overlays.drawMuzzleSmokeAt(ctx, m, s.x, s.y, Math.max(1, ts), now);
+    }
+
     for (const { unit, screenX, screenY, ts } of quipQueue) overlays.drawQuipBubble(ctx, unit, screenX, screenY, Math.max(1, ts), now);
     for (const { unit, screenX, screenY, ts } of floatQueue) overlays.drawFloatingTexts(ctx, unit, screenX, screenY, Math.max(1, ts), now);
 

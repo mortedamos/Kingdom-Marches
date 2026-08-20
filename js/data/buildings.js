@@ -67,7 +67,7 @@ window.GameData.BUILDINGS = {
   // a city-wide healing grove (see techs.js's elf_* building techs) ----------
   treetop_watch: {
     id: "treetop_watch", label: "Treetop Watch", symbol: "◬", raceOnly: "elf",
-    coinCost: 20, maxHp: 22, visionRadiusBonus: 2,
+    coinCost: 20, maxHp: 22, visionRadiusBonus: 5,
   },
   silverleaf_atelier: {
     id: "silverleaf_atelier", label: "Silverleaf Atelier", symbol: "☾", raceOnly: "elf",

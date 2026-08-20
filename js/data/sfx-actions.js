@@ -43,7 +43,7 @@ window.GameData.SFX_SPECIAL_ACTIONS = {
   pioneer: ["found", "build_road"],
   galley: ["carry"],
   wizard: ["fireball", "teleport"],
-  druid: ["found", "heal", "blink", "summon_raptor", "summon_shadowsteed"],
+  druid: ["found", "heal", "blink", "summon_raptor", "summon_shadowsteed", "become_dire_bear"],
   shadowsteed: ["carry"],
   goblin_miscreant: ["ignite"],
   bog_witch: ["curse", "summon_wisp"],
@@ -54,6 +54,16 @@ window.GameData.SFX_SPECIAL_ACTIONS = {
   // riddle is shared with wanderer above (both can cast it), the other
   // three are Trouble Maker's own.
   trouble_maker: ["riddle", "resource_heist", "unlock_the_gate", "set_trap"],
+  // Elf "Nature's Fury": the Druid<->Dire Bear transform, both directions
+  // (see ai.js's performDireBearTransform) -- distinct in-code mechanics,
+  // same inclusion bar as druid's own summon/blink entries above.
+  dire_bear: ["revert_to_druid"],
+  // Dwarf "Bombardment": Bombard's only offense (see ai.js's
+  // performDwarfBombardment) -- note it also gets an auto "attack" row
+  // below (attack: 9 > 0) even though it never actually performs one;
+  // harmless orphan row, same shape Wizard's real "attack" stat has
+  // alongside its own Fireball! special action.
+  bombard: ["bombardment"],
 };
 
 /** Every action a given unit type should have sfx for: attack (only if the

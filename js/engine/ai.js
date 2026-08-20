@@ -3776,7 +3776,7 @@ window.GameEngine = window.GameEngine || {};
         },
         dwarf: {
           frontline: ["foehammer"], ranged: ["musketeer"], support: ["troubadour"],
-          siege: ["runeforged_titan"],
+          siege: ["runeforged_titan"], bombard: ["bombard"],
         },
         orc: {
           frontline: ["raider"], defensive: ["impaler"], skirmish: ["wolf_rider"],
@@ -3790,7 +3790,13 @@ window.GameEngine = window.GameEngine || {};
       const RACE_UNIT_RATIO = {
         elf:       { ranged: 0.5, shock: 0.2, siege: 0.3 },
         human:     { frontline: 0.25, shock: 0.25, ranged: 0.15, siege: 0.15, support: 0.20 },
-        dwarf:     { frontline: 0.35, ranged: 0.25, support: 0.20, siege: 0.20 },
+        // Rebalanced for Bombard's own dedicated slot (2026-08-20): trimmed
+        // frontline/ranged/support/siege to make room rather than just
+        // appending a 5th share on top of the old total. Runeforged Titan's
+        // own "siege" share shrinks a bit more than the others since it's
+        // veryRare/pinnacle already (see buildUnitOption's premium rate) --
+        // Bombard is a regular, repeatedly-fieldable siege option instead.
+        dwarf:     { frontline: 0.30, ranged: 0.20, support: 0.15, siege: 0.15, bombard: 0.20 },
         orc:       { frontline: 0.25, defensive: 0.15, skirmish: 0.15, ranged: 0.15, siege: 0.10, heavy: 0.10, capstone: 0.10 },
         halfellow: { frontline: 0.25, skirmish: 0.30, standing: 0.25, support: 0.20 },
       };
@@ -4001,7 +4007,10 @@ window.GameEngine = window.GameEngine || {};
           // this shortage reliably outcompetes garrison/offense picks
           // rather than just hoping the flat utility credit gets there.
           if (unitId === "druid" && civ.unlockedMechanics.has("shadow_steed_summon")) {
-            const liveDruids = civ.units.filter((u) => u.typeId === "druid").length;
+            // elf_natures_fury: a Dire Bear is still "a Druid" for this
+            // headcount -- it doesn't need replacing just because it's
+            // temporarily wearing its other form (see performDireBearTransform).
+            const liveDruids = civ.units.filter((u) => u.typeId === "druid" || u.typeId === "dire_bear").length;
             const spareCapacity = civ.units.some((d) => d.typeId === "druid" && !druidHasLiveSummon(civ, d, "shadowsteed"));
             if (liveDruids > 0 && !spareCapacity) utilityScore += DRUID_SHORTAGE_BONUS;
           }
@@ -4659,6 +4668,16 @@ window.GameEngine = window.GameEngine || {};
       // below threshold), and a ranged attack never draws a counter, so this
       // only ever fires when it's actually a good trade -- exploring is
       // still the default, just no longer at the cost of an easy kill.
+      // Dwarf "Bombardment": tried before the ordinary combat dispatch --
+      // Bombard has no other offense (noOrdinaryAttack, see units.js and
+      // considerAttackOrGarrison's own guard). Deliberately does NOT
+      // `continue` on failure the way Scout's branch does just below --
+      // with nothing worth bombarding this turn, the unit should still be
+      // free to reposition via whatever generic movement logic the rest
+      // of this dispatch cascade falls through to (it just never reaches
+      // an "attack" step, since that's guarded off above).
+      if (unit.typeId === "bombard" && maybeBombardStrike(civ, unit, gameState, log)) continue;
+
       if (unit.typeId === "scout") {
         if (considerAttackOrGarrison(civ, unit, gameState, weights, difficulty, log)) continue;
         exploreWith(unit, gameState, log);
@@ -5486,6 +5505,139 @@ window.GameEngine = window.GameEngine || {};
     }
     if (!best || bestScore < FIREBALL_MIN_TARGETS) return false;
     return performWizardFireball(civ, unit, best.x, best.y, gameState, log);
+  }
+
+  // How far a Bombard's Bombardment can reach -- matches the unit's own
+  // `range` (units.js), same convention as siegeAtRange units generally.
+  const BOMBARDMENT_RANGE = 3;
+
+  /**
+   * Dwarf "Bombardment": Bombard's ONLY offensive action -- it has no
+   * ordinary attack at all (`noOrdinaryAttack` on the unit, see units.js
+   * and this file's turn-dispatch/considerAttackOrGarrison guards). Same
+   * standalone-targeted-blast shape as performWizardFireball, but the
+   * blast is combat.js's applyBombardBlast (2x2, target = top-left
+   * corner) instead of Fireball's 3x3, and burnChancePct is read as
+   * per-unit data (units.js's bombard.burnChancePct: 0.5) rather than a
+   * hardcoded module constant, matching Elf Poisonous Extracts/Dwarf's own
+   * later conventions instead of Fireball's older FIREBALL_IGNITE_CHANCE.
+   */
+  function performDwarfBombardment(civ, caster, tx, ty, gameState, log) {
+    if (caster.usedThisTurn) return false;
+    const hits = window.GameEngine.combat.applyBombardBlast(caster, civ, tx, ty, gameState);
+    const igniteChance = window.GameEngine.combat.getUnitProperty(caster, civ, "burnChancePct", 0);
+    let ignited = 0;
+    for (const hit of hits) {
+      if (igniteChance > 0 && Math.random() < igniteChance) {
+        ignited++;
+        if (hit.kind === "unit") applyBurning(hit.unit, "unit", gameState);
+        else if (hit.kind === "structure") applyBurning(hit.record, "structure", gameState);
+      }
+      if (hit.kind === "unit" && hit.unit.hp <= 0) otherCivRemoveDeadUnit(gameState.civs, hit.unit, civ.id);
+    }
+    // Own attack-side visual: Bombardment never goes through the ordinary
+    // attack path (noOrdinaryAttack), so without this the Bombard would
+    // have no muzzle flash/travel glyph of its own at all -- only the
+    // impact bursts below. recordCombatEvent drives BOTH the existing
+    // generic traveling-attackChars glyph (already race/unit-agnostic) AND
+    // (via units.js's muzzleSmoke flag) the new directional smoke puff --
+    // see overlays.js's updateCombatAnims. defUnit: null since this is an
+    // area target, not a single unit -- same convention attackStructure/
+    // attackCity's own recordCombatEvent calls already use.
+    window.GameEngine.combat.recordCombatEvent({
+      ax: caster.x, ay: caster.y, atkUnit: caster, dx: tx, dy: ty, defUnit: null,
+    });
+    // A separate radius-0 burst per tile the blast actually covers (mirrors
+    // performWizardFireball's own per-tile spawnAreaEffect loop), sized to
+    // the 2x2 footprint rather than Fireball's 3x3.
+    const { map } = gameState;
+    for (let dy = 0; dy <= 1; dy++) {
+      for (let dx = 0; dx <= 1; dx++) {
+        const x = tx + dx, y = ty + dy;
+        if (x < 0 || x >= map.width || y < 0 || y >= map.height) continue;
+        window.GameEngine.combat.spawnAreaEffect(x, y, 0, "fireball");
+      }
+    }
+    window.SfxSystem.playAction(civ.raceId, caster.typeId, "bombardment", tx, ty);
+    log.push(`Bombardment: ${civ.id}'s Bombard blasts (${tx},${ty}), hitting ${hits.length} target(s), igniting ${ignited}`);
+    // Indiscriminate blast, same as Fireball -- the caster itself can be
+    // caught in its own radius since the 2x2 area can include the caster's
+    // own tile if it fires at (or adjacent to) itself.
+    if (caster.hp <= 0) {
+      log.push(`Bombardment: ${civ.id}'s Bombard is consumed by its own blast`);
+      return true;
+    }
+    caster.usedThisTurn = true;
+    caster.currentMission = `Bombard (${tx},${ty})`;
+    return true;
+  }
+
+  /** Direct player-invoked Bombardment -- same "manual ring click + tile
+   *  pick already IS the confirmation" shape as performPlayerFireball. */
+  function performPlayerBombardment(civ, bombard, tx, ty, gameState) {
+    currentTurnNumber = gameState.turnNumber || 0;
+    currentGameStateRef = gameState;
+    const log = [];
+    const ok = performDwarfBombardment(civ, bombard, tx, ty, gameState, log);
+    if (log.length) appendAIActionLog(gameState, civ.id, log);
+    return ok;
+  }
+
+  // Same "must clear a minimum net score" gate as Fireball's own
+  // FIREBALL_MIN_TARGETS -- a Bombardment spent on a single isolated
+  // enemy is a worse trade than the unit just holding position and
+  // waiting for a better cluster.
+  const BOMBARDMENT_MIN_TARGETS = 1;
+  const BOMBARDMENT_ALLY_RISK_WEIGHT = 1.5;
+
+  /** Dry-run of how a Bombardment anchored at (cx, cy) (top-left corner of
+   *  the 2x2 area) would net out -- same shape as scoreFireballBlast, just
+   *  over combat.js's 2x2 footprint instead of a 3x3 centered one. */
+  function scoreBombardBlast(cx, cy, casterUnit, civs, casterCivId, gameState) {
+    const { map } = gameState;
+    let enemy = 0, allied = 0;
+    for (let dy = 0; dy <= 1; dy++) {
+      for (let dx = 0; dx <= 1; dx++) {
+        const x = cx + dx, y = cy + dy;
+        if (x < 0 || x >= map.width || y < 0 || y >= map.height) continue;
+        for (const otherCiv of Object.values(civs)) {
+          if (otherCiv.eliminated) continue;
+          if (!otherCiv.units.some((u) => u.x === x && u.y === y && !u.conditions?.hidden)) continue;
+          if (otherCiv.id === casterCivId) allied++; else enemy++;
+        }
+        const struct = window.GameEngine.cities.findStructureAt(gameState, x, y);
+        if (struct) { if (struct.civ.id === casterCivId) allied++; else enemy++; }
+      }
+    }
+    return enemy - allied * BOMBARDMENT_ALLY_RISK_WEIGHT;
+  }
+
+  /**
+   * Dwarf "Bombardment" AI: scans every currently-visible top-left anchor
+   * within BOMBARDMENT_RANGE for the 2x2 block that nets the best score,
+   * and fires if it clears BOMBARDMENT_MIN_TARGETS. This is the Bombard's
+   * ONLY offensive option (see noOrdinaryAttack) -- called unconditionally
+   * for every Bombard's turn, not gated behind a mechanic check the way
+   * Fireball is behind "fireball_splash", since Bombardment is simply what
+   * researching dwarf_bombardment (which is required to ever own a Bombard
+   * at all) grants. Returns true if it consumed the turn.
+   */
+  function maybeBombardStrike(civ, unit, gameState, log) {
+    const { map, civs } = gameState;
+    const visible = gameState.visibility[civ.id] || new Set();
+    let best = null, bestScore = -Infinity;
+    for (let dy = -BOMBARDMENT_RANGE; dy <= BOMBARDMENT_RANGE; dy++) {
+      for (let dx = -BOMBARDMENT_RANGE; dx <= BOMBARDMENT_RANGE; dx++) {
+        const x = unit.x + dx, y = unit.y + dy;
+        if (x < 0 || x >= map.width || y < 0 || y >= map.height) continue;
+        if (window.GameEngine.influence.chebyshev(unit.x, unit.y, x, y) > BOMBARDMENT_RANGE) continue;
+        if (!visible.has(y * map.width + x)) continue;
+        const score = scoreBombardBlast(x, y, unit, civs, civ.id, gameState);
+        if (score > bestScore) { bestScore = score; best = { x, y }; }
+      }
+    }
+    if (!best || bestScore < BOMBARDMENT_MIN_TARGETS) return false;
+    return performDwarfBombardment(civ, unit, best.x, best.y, gameState, log);
   }
 
   const FROZEN_DURATION = 3;
@@ -8254,6 +8406,55 @@ window.GameEngine = window.GameEngine || {};
     resolveMonsterAttack(monsterCiv, monster, unit, gameState, log);
   }
 
+  // elf_natures_fury: how far from a Druid/Dire Bear an enemy has to be
+  // seen before transforming (either direction) is worth considering.
+  const DIRE_BEAR_THREAT_RADIUS = 3;
+
+  /** Any visible, non-Hidden enemy unit within `radius` of `unit` -- scoped
+   *  to one unit's own position, unlike detectThreat's civ/city-radius
+   *  scan above. Used to decide whether elf_natures_fury's Dire Bear swap
+   *  is worth the whole turn it costs, in either direction. */
+  function enemyUnitNearby(civ, unit, gameState, radius) {
+    const { map, civs } = gameState;
+    const visible = gameState.visibility[civ.id] || new Set();
+    for (const other of Object.values(civs)) {
+      if (other.id === civ.id || other.eliminated) continue;
+      for (const eu of other.units) {
+        if (eu.conditions?.hidden || eu.carriedBy) continue;
+        if (!visible.has(eu.y * map.width + eu.x)) continue;
+        if (window.GameEngine.influence.chebyshev(unit.x, unit.y, eu.x, eu.y) <= radius) return true;
+      }
+    }
+    return false;
+  }
+
+  /** Elf "Nature's Fury": swaps `unit` in place between Druid and Dire Bear
+   *  form -- same unit instance, so name/level/levelBonuses/conditions all
+   *  carry over automatically (they're keyed off the instance, not the
+   *  type); only typeId/maxHp change here. HP is preserved as a fraction of
+   *  max HP across the swap, same convention Undead's Raise Dead uses for
+   *  the reverse case (see combat.js). A full-turn action either way, same
+   *  as every other Druid full-turn play (Roots of the World, summons) --
+   *  see orders.js's contextMenuOptions "direBearForm" pill for the
+   *  player-facing trigger and maybeElfDruidPlay below for the AI one. */
+  function performDireBearTransform(civ, unit, gameState, log) {
+    if (unit.usedThisTurn) return false;
+    if (!civ.unlockedMechanics || !civ.unlockedMechanics.has("natures_fury")) return false;
+    const fromDruid = unit.typeId === "druid";
+    const fromBear = unit.typeId === "dire_bear";
+    if (!fromDruid && !fromBear) return false;
+    const toTypeId = fromDruid ? "dire_bear" : "druid";
+    const toBase = window.GameData.getUnit(toTypeId);
+    const hpFrac = unit.maxHp > 0 ? unit.hp / unit.maxHp : 1;
+    window.SfxSystem.playAction(civ.raceId, unit.typeId, fromDruid ? "become_dire_bear" : "revert_to_druid", unit.x, unit.y);
+    unit.typeId = toTypeId;
+    unit.maxHp = window.GameData.unitMaxHP(toBase.attack || 0, toBase.defense || 0, toTypeId);
+    unit.hp = Math.max(1, Math.round(unit.maxHp * hpFrac));
+    unit.usedThisTurn = true;
+    if (log) log.push(`${describeUnit(unit)} ${fromDruid ? "becomes a Dire Bear" : "reverts to Druid form"}.`);
+    return true;
+  }
+
   /**
    * Elf Druid AI: proactively considers its full kit on top of the purely
    * defensive flee trigger (attemptDruidTeleport, checked earlier in
@@ -8265,11 +8466,29 @@ window.GameEngine = window.GameEngine || {};
    *      One per Druid, not a civ-wide cap.
    *   3. Start a Shadowsteed summon, same one-per-Druid shape.
    *   4. Roots of the World expansion play -- see maybeRootsExpansion.
+   *   5. elf_natures_fury: become a Dire Bear, last priority -- only when
+   *      nothing above applied AND an enemy is actually nearby. A Dire Bear
+   *      (a separate typeId, handled at the top of this same function)
+   *      reverts back the moment nothing is nearby, so it can go back to
+   *      1-4 above.
    * All are gated on the relevant tech actually being researched.
-   * Returns true if it consumed the Druid's turn.
+   * Returns true if it consumed the unit's turn.
    */
   function maybeElfDruidPlay(civ, unit, gameState, weights, difficulty, log) {
-    if (unit.typeId !== "druid" || !civ.unlockedMechanics) return false;
+    if (!civ.unlockedMechanics) return false;
+    if (unit.typeId === "dire_bear") {
+      // Combat + Revert only while transformed (no Nature's Grace/summons/
+      // Roots of the World -- those all check typeId === "druid" and so
+      // already can't fire for a Bear). Revert as soon as it's safe again;
+      // while an enemy is nearby, fall through (return false) to the
+      // ordinary attack/move dispatch further down the turn cascade instead
+      // -- a Dire Bear is meant to fight, not sit idle waiting to revert.
+      if (civ.unlockedMechanics.has("natures_fury") && !enemyUnitNearby(civ, unit, gameState, DIRE_BEAR_THREAT_RADIUS)) {
+        return performDireBearTransform(civ, unit, gameState, log);
+      }
+      return false;
+    }
+    if (unit.typeId !== "druid") return false;
 
     // A pending Roots of the World found-city commitment (see
     // maybeCompleteRootsExpansion) always takes priority over starting
@@ -8290,6 +8509,18 @@ window.GameEngine = window.GameEngine || {};
 
     if (civ.unlockedMechanics.has("roots_of_the_world")
         && maybeRootsExpansion(civ, unit, gameState, log)) return true;
+
+    // elf_natures_fury "Become Dire Bear": last priority -- only worth
+    // trading this Druid's whole turn for a combat form when nothing more
+    // immediately useful was on offer above AND a fight actually looks
+    // close. Skipped while already badly hurt (same 0.4 threshold the
+    // roots_of_the_world flee check above uses) -- fleeing is still the
+    // right answer for a Druid in real danger, not committing to a
+    // transform that can't itself move or attack this turn.
+    if (civ.unlockedMechanics.has("natures_fury") && unit.hp >= unit.maxHp * 0.4
+        && enemyUnitNearby(civ, unit, gameState, DIRE_BEAR_THREAT_RADIUS)) {
+      return performDireBearTransform(civ, unit, gameState, log);
+    }
 
     return false;
   }
@@ -11463,6 +11694,12 @@ window.GameEngine = window.GameEngine || {};
    *   can't bypass range/visibility rules.
    */
   function considerAttackOrGarrison(civ, unit, gameState, weights, difficulty, log, opts = {}) {
+    // Dwarf "Bombardment": Bombard has no ordinary attack at all -- its
+    // whole offense is the standalone Bombardment blast (see
+    // maybeBombardStrike, tried earlier in the turn dispatch). Guard here
+    // too so no other call site can accidentally walk it into a normal
+    // attack.
+    if (window.GameData.getUnit(unit.typeId).noOrdinaryAttack) return false;
     const { map, civs } = gameState;
     const visible = gameState.visibility[civ.id] || new Set();
     const range = window.GameEngine.combat.effectiveRange(unit, civ);
@@ -11667,24 +11904,13 @@ window.GameEngine = window.GameEngine || {};
           ? ` [odds ${Math.round(bestWinProb * 100)}%, ${bestCoalitionShift > 0 ? "emboldened" : "wary"} by allies]`
           : ""));
 
-      // Orc "Burn It All Down": a Scout or Dragon's RANGED hit (dist > 1 --
-      // adjacent melee doesn't count, per the tech's own wording) sets the
-      // target ablaze. Goblin Miscreant is a deliberate exception
-      //: its MELEE attacks also ignite the
-      // target, adjacent or not -- it has no ranged option at all, so the
-      // ranged-only restriction would otherwise just exclude it entirely.
-      // Same landed-hit guard First Frost of Autumn uses just below --
-      // nothing to ignite if the attack never connected.
-      const isRangedFirebrand = (unit.typeId === "scout" || unit.typeId === "dragon")
-        && window.GameEngine.influence.chebyshev(unit.x, unit.y, bestTarget.x, bestTarget.y) > 1;
-      const isMeleeGoblinFirebrand = unit.typeId === "goblin_miscreant";
-      // burnChancePct: chance to ignite is now
-      // per-unit data, same convention as siegePct/doubleStrikePct -- see
-      // orc_burn_it_all_down's unit_stat_upgrade effects -- rather than
-      // always igniting on every qualifying hit.
+      // Orc "Burn It All Down" (2026-08-20 redesign, user-directed): was a
+      // hardcoded Scout/Dragon-ranged-only + Goblin-Miscreant-melee-always
+      // special case; now fully generic -- ANY Orc unit's landed hit rolls
+      // its own burnChancePct, same shape as Elf's Poisonous Extracts
+      // (applyElfCombatMechanics) rather than a unit-type/range gate.
       const burnItAllDownChance = window.GameEngine.combat.getUnitProperty(unit, civ, "burnChancePct", 0);
-      if ((isRangedFirebrand || isMeleeGoblinFirebrand)
-          && civ.unlockedMechanics && civ.unlockedMechanics.has("burn_it_all_down")
+      if (civ.unlockedMechanics && civ.unlockedMechanics.has("burn_it_all_down")
           && !result.fullNegated && !result.fullMissed
           && burnItAllDownChance > 0 && Math.random() < burnItAllDownChance) {
         applyBurning(bestTarget, "unit", gameState);
@@ -12595,6 +12821,35 @@ window.GameEngine = window.GameEngine || {};
       window.SfxSystem.playAction(attackerCiv.raceId, "bog_witch", "curse", defenderUnit.x, defenderUnit.y);
       window.GameEngine.combat.spawnAreaEffect(defenderUnit.x, defenderUnit.y, 0, "curse");
     }
+    // Orc "Afflictions of Anguish"/"Pyromania": generic on-hit chances,
+    // same shape as Elf's Poisonous Extracts (applyElfCombatMechanics) --
+    // per-unit data field, rolled once per landed hit, gated behind
+    // whichever tech actually grants that unit its non-zero value. Poison
+    // is shared by both techs (Bog Witch via Afflictions, Goblin Miscreant
+    // via Pyromania), so it checks either mechanic; Befuddled/Curse/Frozen
+    // are Afflictions-only.
+    if (!result.fullNegated && !result.fullMissed && attackerCiv.unlockedMechanics) {
+      if (attackerCiv.unlockedMechanics.has("afflictions_of_anguish") || attackerCiv.unlockedMechanics.has("pyromania")) {
+        const poisonChance = window.GameEngine.combat.getUnitProperty(attackerUnit, attackerCiv, "poisonChancePct", 0);
+        if (poisonChance > 0 && Math.random() < poisonChance) applyPoisoned(defenderUnit, gameState);
+      }
+      if (attackerCiv.unlockedMechanics.has("afflictions_of_anguish")) {
+        const befuddleChance = window.GameEngine.combat.getUnitProperty(attackerUnit, attackerCiv, "befuddledChancePct", 0);
+        if (befuddleChance > 0 && Math.random() < befuddleChance) {
+          window.GameEngine.combat.applyBefuddled(defenderUnit, turn);
+        }
+        const curseChance = window.GameEngine.combat.getUnitProperty(attackerUnit, attackerCiv, "curseChancePct", 0);
+        if (curseChance > 0 && Math.random() < curseChance) {
+          setCondition(defenderUnit, "curse", { attackMult: 0.5, moveMult: 0.5, expiresAtTurn: turn + CURSE_DURATION });
+          window.SfxSystem.playAction(attackerCiv.raceId, attackerUnit.typeId, "curse", defenderUnit.x, defenderUnit.y);
+          window.GameEngine.combat.spawnAreaEffect(defenderUnit.x, defenderUnit.y, 0, "curse");
+        }
+        const freezeChance = window.GameEngine.combat.getUnitProperty(attackerUnit, attackerCiv, "frozenChancePct", 0);
+        if (freezeChance > 0 && Math.random() < freezeChance) {
+          setCondition(defenderUnit, "frozen", { attackMult: 0.75, expiresAtTurn: turn + FROZEN_DURATION });
+        }
+      }
+    }
     // Violent Momentum: the attacker gets +2 movement, +10% First Strike and
     // +10% Double Strike next turn if this hit actually killed the defender.
     if (attackerCiv.unlockedMechanics && attackerCiv.unlockedMechanics.has("violent_momentum")
@@ -12615,17 +12870,28 @@ window.GameEngine = window.GameEngine || {};
    *  elf_first_frost_of_autumn's unit_stat_upgrade effects, not a hardcoded
    *  module constant. */
   function applyElfCombatMechanics(attackerUnit, attackerCiv, defenderUnit, defenderCiv, result, gameState) {
-    if (!attackerCiv.unlockedMechanics || !attackerCiv.unlockedMechanics.has("first_frost_of_autumn")) return;
-    const chance = window.GameEngine.combat.getUnitProperty(attackerUnit, attackerCiv, "frozenChancePct", 0);
-    if (chance <= 0) return;
+    if (!attackerCiv.unlockedMechanics) return;
     // A landed hit only -- mirrors Malefic Malediction's fullNegated/
     // fullMissed guard (a Flying-evasion miss or Invulnerability-negated hit
-    // never connected, so there's nothing to freeze).
+    // never connected, so there's nothing to freeze/poison).
     if (result.fullNegated || result.fullMissed) return;
-    if (Math.random() >= chance) return;
-    window.GameEngine.combat.setCondition(defenderUnit, "frozen", {
-      attackMult: 0.75, expiresAtTurn: (gameState.turnNumber || 0) + FROZEN_DURATION,
-    });
+    if (attackerCiv.unlockedMechanics.has("first_frost_of_autumn")) {
+      const chance = window.GameEngine.combat.getUnitProperty(attackerUnit, attackerCiv, "frozenChancePct", 0);
+      if (chance > 0 && Math.random() < chance) {
+        window.GameEngine.combat.setCondition(defenderUnit, "frozen", {
+          attackMult: 0.75, expiresAtTurn: (gameState.turnNumber || 0) + FROZEN_DURATION,
+        });
+      }
+    }
+    // elf_poisonous_extracts -- same shape as First Frost above, reusing
+    // applyPoisoned (Marsh Adder's venom) rather than inventing a second
+    // "poisoned" condition setter.
+    if (attackerCiv.unlockedMechanics.has("poisonous_extracts")) {
+      const chance = window.GameEngine.combat.getUnitProperty(attackerUnit, attackerCiv, "poisonChancePct", 0);
+      if (chance > 0 && Math.random() < chance) {
+        applyPoisoned(defenderUnit, gameState);
+      }
+    }
   }
 
   /**
@@ -12862,6 +13128,7 @@ window.GameEngine = window.GameEngine || {};
     performPlayerNaturesGrace,
     hasRangedLineOfSight,
     performPlayerFireball,
+    performPlayerBombardment,
     performPlayerRiddle,
     performPlayerResourceHeist,
     performPlayerUnlockTheGate,
@@ -12879,6 +13146,7 @@ window.GameEngine = window.GameEngine || {};
     startDruidSummon,
     performPlayerDruidSummon,
     druidHasLiveSummon,
+    performDireBearTransform,
     isValidWispSummonTile,
     performPlayerBogWitchSummon,
     wispCapReached,
