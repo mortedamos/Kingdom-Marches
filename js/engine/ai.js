@@ -2021,15 +2021,14 @@ window.GameEngine = window.GameEngine || {};
     return true;
   }
 
-  // A road tile discounts the cost to LEAVE it by 0.5, stacking with any
-  // terrain/tech discount. Floored at 0.5 like every other discount here, so
-  // a road can never drive a step to zero cost (see moveUnitToward's
-  // separate +1 movement bonus for starting a turn on a road, which stacks
-  // with this). Applies when LEAVING a road tile, not arriving: walking a
-  // chain of road tiles is discounted the whole way, but stepping off rough
-  // terrain onto a road doesn't discount that step -- the road pays off
-  // starting with the NEXT step.
-  const ROAD_MOVE_DISCOUNT = 0.5;
+  // A road tile flattens the cost to LEAVE it to a flat 0.25, REGARDLESS of
+  // the terrain underneath -- not a discount off the terrain's own cost (see
+  // moveUnitToward's separate +1 movement bonus for starting a turn on a
+  // road, which stacks with this). Applies when LEAVING a road tile, not
+  // arriving: walking a chain of road tiles is flat-rate the whole way, but
+  // stepping off rough terrain onto a road doesn't discount that step -- the
+  // road pays off starting with the NEXT step.
+  const ROAD_MOVE_COST = 0.25;
 
   /**
    * Effective LAND movement cost of `terrain` under `mods` (a unit's
@@ -2091,7 +2090,7 @@ window.GameEngine = window.GameEngine || {};
    *     the tile it's leaving.
    *   - COST ("how much movement does this step use?") is charged for
    *     LEAVING the ORIGIN tile -- moving out of Forest costs 2 no matter
-   *     what you're stepping onto; the road discount (ROAD_MOVE_DISCOUNT)
+   *     what you're stepping onto; the road flat rate (ROAD_MOVE_COST)
    *     works the same way.
    *
    * Callers derive originTerrain/originTile from whichever tile the unit is
@@ -2102,9 +2101,9 @@ window.GameEngine = window.GameEngine || {};
    *
    * `destTile` (optional, the raw tile object for destTerrain) is read only
    * for `.structure.isBridge` -- a completed bridge makes its otherwise-
-   * IMPASSABLE water tile crossable for a LAND unit, at the same flat cost
-   * and ROAD_MOVE_DISCOUNT a road tile gets (see cities.js's
-   * placeBridgeSegment; "counts as a road" is the whole point). Naval units
+   * IMPASSABLE water tile crossable for a LAND unit, at the same flat
+   * ROAD_MOVE_COST a road tile gets (see cities.js's placeBridgeSegment;
+   * "counts as a road" is the whole point). Naval units
    * never consult it at all -- a Galley's own moveCostNaval path below is
    * untouched by a bridge's presence, same as sailing under any other
    * bridge in real life.
@@ -2145,19 +2144,20 @@ window.GameEngine = window.GameEngine || {};
     const destBridge = !!destTile?.structure?.isBridge;
     if (!destBridge && landCostForTerrain(destTerrain, mods) === window.GameData.IMPASSABLE) return window.GameData.IMPASSABLE;
 
-    // It can -- charge for leaving the origin. Road discount applies AFTER
-    // every terrain/tech discount landCostForTerrain already folded in, then
-    // the SAME 0.5 floor is re-applied to the combined result -- otherwise a
-    // tile already floored to 0.5 by tech discounts would drop to 0 once the
-    // road discount also lands on it, instead of holding at the shared floor.
-    // A bridge ORIGIN can't go through landCostForTerrain at all (its real
-    // terrain underneath is water, permanently IMPASSABLE for a land unit --
-    // there'd be nothing to discount FROM), so it gets the same flat plains-
-    // like base cost 1 a road tile effectively starts from.
+    // It can -- charge for leaving the origin. A road (or bridge) origin
+    // overrides every terrain/tech discount landCostForTerrain already
+    // folded in with one flat ROAD_MOVE_COST, regardless of the terrain
+    // underneath -- so a road across Forest or Hills costs exactly the same
+    // as a road across Plains.
     const originBridge = !!originTile?.structure?.isBridge;
+    // A road (or bridge, which counts as one -- see cities.js's
+    // tileCountsAsRoad) origin short-circuits straight to the flat rate,
+    // regardless of what's underneath -- there's no terrain cost to even
+    // compute.
+    if (originTile?.hasRoad || originBridge) return ROAD_MOVE_COST;
     const originHasRiver = !!(originTile?.hasRiver
       && (originTile.hasRiver.n || originTile.hasRiver.s || originTile.hasRiver.e || originTile.hasRiver.w));
-    let cost = originBridge ? 1 : landCostForTerrain(originTerrain, mods, originHasRiver, unit?.typeId);
+    let cost = landCostForTerrain(originTerrain, mods, originHasRiver, unit?.typeId);
     // Stranded-on-impassable-terrain safety net (2026-08-19 bugfix): a land
     // unit can never MOVE onto Mountains/deep water (the destination check
     // just above already guarantees that), but a cave can legitimately
@@ -2169,11 +2169,9 @@ window.GameEngine = window.GameEngine || {};
     // cost this terrain uses to block entering, so cost came back Infinity
     // for literally every direction and the unit could never take a
     // single step again. Falls back to the same flat plains-like base
-    // cost 1 a bridge/road origin already gets -- there's nothing
-    // meaningful to discount FROM impassable terrain, same reasoning the
-    // bridge-origin branch above already established.
+    // cost 1 the old bridge-origin case used to get -- there's nothing
+    // meaningful to discount FROM impassable terrain.
     if (cost === window.GameData.IMPASSABLE) cost = 1;
-    if (originTile?.hasRoad || originBridge) cost = Math.max(0.5, cost - ROAD_MOVE_DISCOUNT);
     return cost;
   }
 
@@ -2401,10 +2399,10 @@ window.GameEngine = window.GameEngine || {};
     // -- universal and tech-independent, unlike
     // the tiered terrain bonuses above, so it stacks on top of them rather
     // than competing in the same "best of" comparison. Pairs with
-    // getMoveCost's ROAD_MOVE_DISCOUNT (roads also discounting the cost to
-    // leave them by 0.5, on top of any terrain/tech discount, floored at
-    // 0.5) -- together a road network both starts a unit's turn with extra
-    // movement AND makes every road tile along the route cheaper to cross.
+    // getMoveCost's ROAD_MOVE_COST (roads also flattening the cost to leave
+    // them to 0.25 regardless of terrain) -- together a road network both
+    // starts a unit's turn with extra movement AND makes every road tile
+    // along the route cheap to cross.
     if (startTile?.hasRoad) movement += 1;
 
     // Tech: Orc "Violent Momentum" -- +2 movement for a unit that killed an
@@ -4916,6 +4914,15 @@ window.GameEngine = window.GameEngine || {};
       }
       if (!nearActiveCombat && maybeEscortTitan(civ, unit, gameState, log)) continue;
 
+      // Human "Rally to the Walls": right at the boundary of the
+      // economic-side-mission tier below (Dwarf Mining/Ruin Delve/Treasure
+      // Chest) -- a Human unit about to fall into one of those instead
+      // breaks off to defend a city or structure under attack, but combat
+      // positioning and ordinary exploring/patrolling elsewhere in the
+      // cascade are untouched. See maybeHumanDefendStructure's doc comment.
+      if (civ.raceId === "human"
+          && maybeHumanDefendStructure(civ, unit, gameState, nearActiveCombat, log)) continue;
+
       // Dwarf Mining: an otherwise-idle Dwarf unit (nothing better to fight
       // or defend) pursues/protects a Gold or Iron Vein instead of falling
       // through to generic explore/patrol. Dwarf-only proactive AI play --
@@ -6041,9 +6048,21 @@ window.GameEngine = window.GameEngine || {};
     const memory = (gameState.tileMemory && gameState.tileMemory[civ.id]) || {};
     // Any unit type can hold a delve claim since 2026-08-14 (see
     // doc/world_encounters_design.md) -- was u.typeId === "wizard"-only.
+    // Keyed on unit.channeling === "delving", not _ritualTurns (2026-08-20
+    // bugfix): _ritualTurns only reaches 1 during turns.js's once-per-turn
+    // channeling tick, which runs AFTER this whole civ's AI dispatch loop
+    // already processed every unit for the turn -- a unit that just started
+    // delving THIS turn still reads _ritualTurns 0 for every other unit
+    // still to be dispatched, so it didn't look claimed yet and a second
+    // unit could be sent to march onto (or start delving on) the very same
+    // Ruin the first one just claimed. channeling is set synchronously the
+    // instant a delve starts (see this function's own caller,
+    // maybeDungeonDelvePlay), closing that same-turn race -- same pattern
+    // findNearbyUnclaimedGoldVein's own claimedByOther already uses
+    // (u.channeling === "mining").
     const claimedByOther = new Set(
       civ.units
-        .filter((u) => u !== unit && (u._ritualTurns || 0) >= 1)
+        .filter((u) => u !== unit && u.channeling === "delving")
         .map((u) => `${u.x},${u.y}`)
     );
     const unitTile = map.tiles[unit.y * map.width + unit.x];
@@ -7383,12 +7402,26 @@ window.GameEngine = window.GameEngine || {};
     return ok;
   }
 
+  // Wisp "bad memories": a Bog Witch won't summon a replacement Wisp
+  // anywhere near where the civ's last one was actually killed (see
+  // otherCivRemoveDeadUnit's civ.lastWispDeathTile stamp) -- whatever got it
+  // there is presumably still a threat. Purely combat deaths; the "Wisp-cap
+  // disbands never route through otherCivRemoveDeadUnit" exemption already
+  // documented there means a Wisp culled for exceeding the cap doesn't
+  // poison the next summon's candidates.
+  const WISP_DEATH_AVOIDANCE_RADIUS = 8;
+
   /** Orc "Bog Spirit" Wisp summon target: any swamp tile the civ has EVER
    *  explored (gameState.explored, not necessarily currently visible),
    *  unoccupied by any unit and not sitting under an enemy wall/building/
    *  city. Mirrors isValidTeleportTile's shape but restricted to swamp
    *  terrain specifically -- a Wisp can never leave swamp (see units.js's
-   *  restrictedToTerrain), so nowhere else is a legal place to land one. */
+   *  restrictedToTerrain), so nowhere else is a legal place to land one.
+   *  Also excludes anywhere within WISP_DEATH_AVOIDANCE_RADIUS of the civ's
+   *  last Wisp death (see civ.lastWispDeathTile) -- shared by both the AI's
+   *  own pick (maybeOrcBogWitchPlay) and the player's manual placement UI
+   *  (main.js's startWispSummonPlacement), since both build their candidate
+   *  list through this one function. */
   function isValidWispSummonTile(gameState, civId, x, y) {
     const { map, civs } = gameState;
     if (x < 0 || x >= map.width || y < 0 || y >= map.height) return false;
@@ -7397,6 +7430,8 @@ window.GameEngine = window.GameEngine || {};
     if (Object.values(civs).some((c) => c.units.some((u) => u.x === x && u.y === y))) return false;
     if (hasEnemyStructure(tile, civId)) return false;
     if (hasEnemyCity(civs, x, y, civId)) return false;
+    const lastDeath = civs[civId]?.lastWispDeathTile;
+    if (lastDeath && window.GameEngine.influence.chebyshev(x, y, lastDeath.x, lastDeath.y) < WISP_DEATH_AVOIDANCE_RADIUS) return false;
     return true;
   }
 
@@ -9961,6 +9996,68 @@ window.GameEngine = window.GameEngine || {};
       ? `Used a Deep Gate to rush to the defense of ${target.name} at (${target.x},${target.y}), under attack`
       : `Rushing to defend ${target.name} at (${target.x},${target.y}), under attack`;
     log.push(`Rush to defend: ${civ.id}'s ${describeUnit(unit)} heads to defend ${target.name} at (${target.x},${target.y})`);
+    return true;
+  }
+
+  /** Human "structure under attack" detection: like findCityUnderAttack, but
+   *  also counts an enemy near any of the city's OWN structures (wall
+   *  sections, Treetop Watch, etc. -- city.structures, which can sit on
+   *  different tiles than the city center) as the city being under attack,
+   *  not just an enemy near the city tile itself. See
+   *  maybeHumanDefendStructure. */
+  function findHumanStructureUnderAttack(civ, unit, gameState) {
+    const { map, civs } = gameState;
+    const visible = gameState.visibility[civ.id] || new Set();
+    const unitTile = map.tiles[unit.y * map.width + unit.x];
+    const unitLandmassId = unitTile ? unitTile.landmassId : -1;
+    let best = null, bestDist = Infinity;
+    for (const city of civ.cities) {
+      const cityTile = map.tiles[city.y * map.width + city.x];
+      if (unitLandmassId >= 0 && cityTile && cityTile.landmassId !== unitLandmassId) continue;
+      const threatSpots = [{ x: city.x, y: city.y }, ...city.structures.map((s) => ({ x: s.x, y: s.y }))];
+      let underAttack = false;
+      for (const other of Object.values(civs)) {
+        if (other.id === civ.id || other.eliminated) continue;
+        for (const eu of other.units) {
+          if (eu.conditions?.hidden) continue;
+          if (!visible.has(eu.y * map.width + eu.x)) continue;
+          if (threatSpots.some((spot) => window.GameEngine.influence.chebyshev(spot.x, spot.y, eu.x, eu.y) <= CITY_UNDER_ATTACK_RANGE)) {
+            underAttack = true; break;
+          }
+        }
+        if (underAttack) break;
+      }
+      if (!underAttack) continue;
+      const d = window.GameEngine.influence.chebyshev(unit.x, unit.y, city.x, city.y);
+      if (d < bestDist) { bestDist = d; best = city; }
+    }
+    return best;
+  }
+
+  /** Human "Rally to the Walls": an otherwise-idle Human military unit that
+   *  would next fall into an economic side-mission (Ruin Delving, overseas
+   *  resource-seeking, etc. -- the Dwarf Mining/Ruin Delve/Treasure Chest
+   *  tier right after this function's own call site) instead abandons that
+   *  pursuit and rushes to defend a city whose tile OR any of its own
+   *  structures is under attack right now -- see
+   *  findHumanStructureUnderAttack. Deliberately checked only at this one
+   *  slot in the cascade, NOT earlier alongside the Dwarf/Halfellow
+   *  maybeDefendCityUnderAttack -- unlike that mechanic, this one only
+   *  preempts resource-gathering pursuits, not combat positioning or
+   *  ordinary exploring/patrolling further down. Returns false (caller
+   *  falls through to the economic-mission tier as normal) if the unit is
+   *  mid-fight or no structure qualifies. */
+  function maybeHumanDefendStructure(civ, unit, gameState, nearActiveCombat, log) {
+    if (nearActiveCombat) return false; // finish the fight it's already in first
+    const target = findHumanStructureUnderAttack(civ, unit, gameState);
+    if (!target) return false;
+    if (unit.x === target.x && unit.y === target.y) return false; // already there
+    const usedGate = moveUnitTowardSmart(civ, unit, target.x, target.y, gameState);
+    unit.usedThisTurn = true;
+    unit.currentMission = usedGate
+      ? `Used a Deep Gate to abandon the search for resources and defend ${target.name} at (${target.x},${target.y}), under attack`
+      : `Abandoning the search for resources to defend ${target.name} at (${target.x},${target.y}), under attack`;
+    log.push(`Rally to the Walls: ${civ.id}'s ${describeUnit(unit)} breaks off resource-gathering to defend ${target.name} at (${target.x},${target.y})`);
     return true;
   }
 
@@ -12778,6 +12875,9 @@ window.GameEngine = window.GameEngine || {};
       window.SfxSystem.playAction(civ.raceId, deadUnit.typeId, "death", deadUnit.x, deadUnit.y, DEATH_SFX_DELAY_MS);
       window.GameEngine.deathFx.spawnDeathEffect(deadUnit.x, deadUnit.y);
       civ.units = civ.units.filter((u) => u !== deadUnit);
+      // See WISP_DEATH_AVOIDANCE_RADIUS/isValidWispSummonTile: the next
+      // Bog Witch summon steers clear of wherever this one fell.
+      if (deadUnit.typeId === "wisp") civ.lastWispDeathTile = { x: deadUnit.x, y: deadUnit.y };
       maybeSpawnDeathChest(deadUnit, currentGameStateRef);
       // Victory-stats tallies (2026-08-19, user-directed): every combat
       // death in the game funnels through this one chokepoint (see this
