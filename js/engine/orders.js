@@ -1229,12 +1229,9 @@ window.GameEngine = window.GameEngine || {};
       }
     }
 
-    // Found City Here: offered on a remote tile whenever the site is
-    // otherwise valid, ignoring the road-connectivity check (skipRoadCheck)
-    // -- clicking it is what decides whether that check still applies, via
-    // main.js's confirm-a-road-first modal.
+    // Found City Here: offered on a remote tile whenever the site is valid.
     if (baseUnit.canFoundCity && !unit.usedThisTurn
-        && window.GameEngine.cities.canFoundCityAt(gameState.map, gameState.civs, x, y, civ.raceId, { skipRoadCheck: true }).ok) {
+        && window.GameEngine.cities.canFoundCityAt(gameState.map, gameState.civs, x, y, civ.raceId).ok) {
       options.push({ kind: "foundCityHere", label: "Found City Here" });
     }
 

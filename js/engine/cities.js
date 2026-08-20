@@ -504,40 +504,8 @@ window.GameEngine = window.GameEngine || {};
     return !!(tile.hasRoad || tile.structure?.isBridge);
   }
 
-  /**
-   * BFS through road tiles from (x,y); returns true if a city belonging to
-   * civId is reachable via an unbroken chain of road tiles.
-   */
-  function isRoadConnected(x, y, civId, civs, map) {
-    const civ = civs[civId];
-    if (!civ || civ.cities.length === 0) return true; // first city — no connection needed
-    const visited = new Set();
-    const queue = [{ x, y }];
-    while (queue.length > 0) {
-      const { x: cx, y: cy } = queue.shift();
-      const idx = cy * map.width + cx;
-      if (visited.has(idx)) continue;
-      visited.add(idx);
-      // City tiles are implicit road endpoints — they don't need a road stamp
-      // on them to complete a connection. Check BEFORE the road requirement so
-      // the pioneer doesn't have to separately build road at the city itself.
-      if (civ.cities.some((c) => c.x === cx && c.y === cy)) return true;
-      if (!tileCountsAsRoad(map.tiles[idx])) continue; // only road (or bridge) tiles can extend the search
-      for (let dy = -1; dy <= 1; dy++) {
-        for (let dx = -1; dx <= 1; dx++) {
-          if (dx === 0 && dy === 0) continue;
-          const nx = cx + dx, ny = cy + dy;
-          if (nx >= 0 && nx < map.width && ny >= 0 && ny < map.height) {
-            queue.push({ x: nx, y: ny });
-          }
-        }
-      }
-    }
-    return false;
-  }
-
   /** Whether a tile is a legal founding site -- city founding addendum §2 */
-  function canFoundCityAt(map, civs, x, y, founderRaceId, { skipRoadCheck = false, emergencyFound = false } = {}) {
+  function canFoundCityAt(map, civs, x, y, founderRaceId, { emergencyFound = false } = {}) {
     if (x < 0 || x >= map.width || y < 0 || y >= map.height) return { ok: false, reason: "out of bounds" };
     const tile = map.tiles[y * map.width + x];
     const terrain = TERRAIN[tile.terrain];
@@ -556,32 +524,6 @@ window.GameEngine = window.GameEngine || {};
         const dist = window.GameEngine.influence.chebyshev(x, y, city.x, city.y);
         if (dist < minSpacing) {
           return { ok: false, reason: `too close to ${city.name} (${dist} < ${minSpacing})` };
-        }
-      }
-    }
-
-    // Road connectivity: required when founding a 2nd+ city on the same landmass.
-    // Cross-island founding (different landmassId) is exempt — you can't road-connect
-    // across open water. Coastal tiles are also exempt: a pioneer arriving by sea can
-    // found a harbour city without first laying a road back to it.
-    if (!skipRoadCheck && founderCiv && founderCiv.cities.length > 0) {
-      const thisTile = map.tiles[y * map.width + x];
-      const sameLandmass = founderCiv.cities.some((c) => {
-        const ct = map.tiles[c.y * map.width + c.x];
-        return ct.landmassId >= 0 && ct.landmassId === thisTile.landmassId;
-      });
-      if (sameLandmass && !isRoadConnected(x, y, founderCivId, civs, map)) {
-        // Coastal tiles may be founded without road connectivity
-        let isCoastal = false;
-        for (let dy = -1; dy <= 1 && !isCoastal; dy++) {
-          for (let dx = -1; dx <= 1 && !isCoastal; dx++) {
-            const nx = x + dx, ny = y + dy;
-            if (nx < 0 || nx >= map.width || ny < 0 || ny >= map.height) continue;
-            if (TERRAIN[map.tiles[ny * map.width + nx].terrain].isWater) isCoastal = true;
-          }
-        }
-        if (!isCoastal) {
-          return { ok: false, reason: "must connect to an existing city by road first" };
         }
       }
     }
@@ -1483,7 +1425,6 @@ window.GameEngine = window.GameEngine || {};
   window.GameEngine.cities = {
     createCity,
     canFoundCityAt,
-    isRoadConnected,
     tickCity,
     isProducingResources,
     resourceProductionPreview,

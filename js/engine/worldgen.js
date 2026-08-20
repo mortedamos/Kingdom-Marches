@@ -330,8 +330,9 @@ window.GameEngine = window.GameEngine || {};
     let landmasses = findLandmasses(tiles, width, height);
     landmasses = enforceMinimumLandmassSize(tiles, landmasses, 13);
 
-    // Stamp landmassId onto each tile so road-connectivity checks can detect
-    // cross-island founding (which is exempt from the road-connection requirement).
+    // Stamp landmassId onto each tile so island/mainland logic (e.g. ai.js
+    // restricting a pioneer's settle search to its own landmass) can tell
+    // which tiles are reachable on foot from which.
     for (let lmIdx = 0; lmIdx < landmasses.length; lmIdx++) {
       for (const tileIdx of landmasses[lmIdx]) {
         tiles[tileIdx].landmassId = lmIdx;

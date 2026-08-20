@@ -1246,9 +1246,13 @@
         unlockedUnits: new Set(),
         unlockedBuildings: new Set(),
         civicInfluenceBonus: 0, radiusBonus: 0, usedCityNames: [],
-        // Every kingdom starts able to afford its own starting-tech unit
-        // immediately -- see config.js's units.startingCoin.
-        stockpile: { harvest: 0, coin: window.GameConfig.units.startingCoin, lore: 0 },
+        // Every kingdom starts with a flat stockpile of all three resources --
+        // see config.js's units.startingHarvest/startingCoin/startingLore.
+        stockpile: {
+          harvest: window.GameConfig.units.startingHarvest,
+          coin: window.GameConfig.units.startingCoin,
+          lore: window.GameConfig.units.startingLore,
+        },
       };
       // LEVEL 0: every layer-0 tech for this race is auto-completed for free
       // at creation -- computed dynamically (by layer, not a hardcoded id
@@ -2378,13 +2382,10 @@
     openFoundCityDialog(civ, unit, () => redraw());
   }
 
-  /** "Found City Here" on a remote tile: if the
-   *  site is already road-connected (or exempt -- see cities.js's
-   *  canFoundCityAt), founds immediately; otherwise asks whether to build a
-   *  road there first, since a new city must be road-connected to found. A
-   *  "yes" answer starts the SAME buildRoad goto order Build Road to This
-   *  Tile would, just tagged foundCity so advanceGotoOrder (orders.js) flags
-   *  the unit on arrival instead of leaving it idle at the destination. */
+  /** "Found City Here" on a remote tile: sends the unit there via the
+   *  same goto order Move to This Tile would, tagged foundCity so
+   *  advanceGotoOrder (orders.js) flags the unit on arrival instead of
+   *  leaving it idle at the destination. */
   function handleFoundCityHere(x, y) {
     if (!humanCivId || !viewState.selectedUnit) return;
     const unit = viewState.selectedUnit;
@@ -2392,24 +2393,11 @@
     if (!civ || unit.civId !== humanCivId) return;
     if (!window.GameData.getUnit(unit.typeId).canFoundCity) return;
     endAutomationAndGoto(unit);
-    if (window.GameEngine.cities.canFoundCityAt(gameState.map, gameState.civs, x, y, civ.raceId).ok) {
-      startFoundCityGoto(unit, x, y, false);
-      return;
-    }
-    viewState.dialog = {
-      kind: "confirm",
-      title: "Road Needed",
-      text: "New cities must be connected to other cities by a road. Would you like to build a road to this spot?",
-      confirmLabel: "Yes",
-      onAnswer: (ok) => {
-        if (ok) startFoundCityGoto(unit, x, y, true);
-      },
-    };
-    redraw();
+    startFoundCityGoto(unit, x, y);
   }
 
-  function startFoundCityGoto(unit, x, y, buildRoad) {
-    window.GameEngine.orders.startGotoOrder(unit, gameState, x, y, buildRoad, { foundCity: true });
+  function startFoundCityGoto(unit, x, y) {
+    window.GameEngine.orders.startGotoOrder(unit, gameState, x, y, false, { foundCity: true });
     if (viewState.selection) {
       viewState.selection.x = unit.x;
       viewState.selection.y = unit.y;

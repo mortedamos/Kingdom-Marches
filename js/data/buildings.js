@@ -208,10 +208,9 @@ window.GameData.BUILDINGS = {
   // action but built one segment at a time, same pacing as a wall. Unlike
   // a wall, a bridge is deliberately NOT a movement obstacle to anyone,
   // friend or enemy (see ai.js's hasEnemyStructure) -- it's a crossing, not
-  // a fortification -- and it "counts as a road" for city-founding
-  // connectivity, movement discount, and road-count tech effects (see
-  // cities.js's tileCountsAsRoad). Exact same cost/build-time as a Wall
-  // section, user-directed (2026-08-18).
+  // a fortification -- and it "counts as a road" for movement discount and
+  // road-count tech effects (see cities.js's tileCountsAsRoad). Exact same
+  // cost/build-time as a Wall section, user-directed (2026-08-18).
   bridge_section: {
     id: "bridge_section", label: "Bridge", symbol: "═", isBridge: true,
     coinCost: 11, maxHp: 40, defense: 8,

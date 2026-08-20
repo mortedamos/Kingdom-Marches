@@ -1262,12 +1262,14 @@ window.GameEngine = window.GameEngine || {};
 
   /** Which of civ's own cities (if any) aren't yet reachable from the rest
    *  through its road network -- BFS out from the civ's first city through
-   *  road tiles (city tiles count as connection points, same convention as
-   *  cities.js's isRoadConnected), then any city never reached is
-   *  "disconnected." Returns the nearest disconnected city to (fromX,fromY),
-   *  or null if the civ has fewer than 2 cities or every city is already
-   *  connected -- used by maybeFoundCity so an idle Pioneer with nothing
-   *  left to settle builds a connecting road instead of wandering. */
+   *  road tiles (city tiles count as connection points, same convention
+   *  cities.js's tileCountsAsRoad-based checks use elsewhere), then any city
+   *  never reached is "disconnected." Returns the nearest disconnected city
+   *  to (fromX,fromY), or null if the civ has fewer than 2 cities or every
+   *  city is already connected -- used by maybeFoundCity so an idle Pioneer
+   *  with nothing left to settle builds a connecting road instead of
+   *  wandering (roads still carry yield bonuses; founding no longer requires
+   *  them). */
   function findNearestDisconnectedCity(civ, gameState, fromX, fromY) {
     if (civ.cities.length < 2) return null;
     const { map } = gameState;
@@ -1512,15 +1514,10 @@ window.GameEngine = window.GameEngine || {};
       }
 
       if (candidate.x === pioneer.x && candidate.y === pioneer.y) {
-        // At destination — attempt to found (canFoundCityAt includes road check).
-        // Elf Druid: a Druid founding a city never needs road connectivity,
-        // unlike the Pioneer/Wanderer this same loop also handles -- its
-        // bond with the land runs deeper than infrastructure. Mirrors the
-        // skipRoadCheck already used for the
-        // overseas/emergency-settle paths elsewhere in this file.
+        // At destination — attempt to found.
         const check = window.GameEngine.cities.canFoundCityAt(
           gameState.map, gameState.civs, pioneer.x, pioneer.y, civ.raceId,
-          { emergencyFound: !!candidate.emergency, skipRoadCheck: pioneer.typeId === "druid" });
+          { emergencyFound: !!candidate.emergency });
         if (check.ok) {
           // Escort gate: founding a defenseless city in contested land is
           // exactly how the founding/razing treadmill starts. Holds off
@@ -1827,7 +1824,7 @@ window.GameEngine = window.GameEngine || {};
         const tile = map.tiles[y * map.width + x];
         // Only consider sites on the same landmass as the pioneer
         if (pioneerLandmassId >= 0 && tile.landmassId !== pioneerLandmassId) continue;
-        const check = window.GameEngine.cities.canFoundCityAt(map, civs, x, y, civ.raceId, { skipRoadCheck: true });
+        const check = window.GameEngine.cities.canFoundCityAt(map, civs, x, y, civ.raceId);
         if (!check.ok) continue;
         const dist = window.GameEngine.influence.chebyshev(pioneer.x, pioneer.y, x, y);
         const terrain = window.GameData.TERRAIN[tile.terrain];
@@ -1918,7 +1915,7 @@ window.GameEngine = window.GameEngine || {};
           if (x < 0 || x >= map.width || y < 0 || y >= map.height) continue;
           const tile = map.tiles[y * map.width + x];
           if (pioneerLandmassId >= 0 && tile.landmassId !== pioneerLandmassId) continue;
-          const check = window.GameEngine.cities.canFoundCityAt(map, civs, x, y, civ.raceId, { skipRoadCheck: true });
+          const check = window.GameEngine.cities.canFoundCityAt(map, civs, x, y, civ.raceId);
           if (check.ok) return { x, y };
         }
       }
@@ -2811,7 +2808,7 @@ window.GameEngine = window.GameEngine || {};
         for (let dx = -SEARCH; dx <= SEARCH; dx++) {
           const x = city.x + dx, y = city.y + dy;
           if (x < 0 || x >= map.width || y < 0 || y >= map.height) continue;
-          const check = window.GameEngine.cities.canFoundCityAt(map, civs, x, y, civ.raceId, { skipRoadCheck: true });
+          const check = window.GameEngine.cities.canFoundCityAt(map, civs, x, y, civ.raceId);
           if (check.ok && !window.GameData.TERRAIN[map.tiles[y * map.width + x].terrain].isWater) return true;
         }
       }
@@ -7001,7 +6998,7 @@ window.GameEngine = window.GameEngine || {};
       const x = idx % map.width, y = Math.floor(idx / map.width);
       if (map.tiles[idx].terrain !== "forest") continue;
       if (window.GameEngine.influence.chebyshev(unit.x, unit.y, x, y) < ROOTS_EXPANSION_MIN_DIST) continue;
-      const check = window.GameEngine.cities.canFoundCityAt(map, civs, x, y, civ.raceId, { skipRoadCheck: true });
+      const check = window.GameEngine.cities.canFoundCityAt(map, civs, x, y, civ.raceId);
       if (!check.ok) continue;
       const score = computeTileCityScore(civ, gameState, x, y);
       if (score > bestScore) { bestScore = score; best = { x, y }; }
@@ -7029,7 +7026,7 @@ window.GameEngine = window.GameEngine || {};
     if (!target) return false;
     if (unit.x !== target.x || unit.y !== target.y) { delete unit._wantsFoundCityAt; return false; }
     const { map, civs } = gameState;
-    const check = window.GameEngine.cities.canFoundCityAt(map, civs, target.x, target.y, civ.raceId, { skipRoadCheck: true });
+    const check = window.GameEngine.cities.canFoundCityAt(map, civs, target.x, target.y, civ.raceId);
     const score = check.ok ? computeTileCityScore(civ, gameState, target.x, target.y) : -Infinity;
     delete unit._wantsFoundCityAt;
     if (civ.cities.length >= 6 || !check.ok || score < 5) {

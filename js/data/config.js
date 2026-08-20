@@ -65,9 +65,9 @@ window.GameConfig = {
     /** Local date this build was cut, YYYY-MM-DD. */
     date: "2026-08-19",
     /** Local time this build was cut, 24-hour HH:MM. */
-    time: "22:22",
+    time: "22:50",
     /** Monotonic build counter -- increment it, don't recompute it. */
-    number: 153,
+    number: 154,
   },
 
   // =========================================================================
@@ -286,12 +286,15 @@ window.GameConfig = {
     upkeepSplitMagical: { harvest: 0.50, coin: 0.25, lore: 0.25 },
     magicalUnitIds: ["wizard", "bog_witch", "dragon", "paladin"],
 
-    /** Coin every civ starts the game with (main.js's civ-creation loop) --
-     *  exactly covers every race's own starting-tech unit (Spearguard,
-     *  Ranger, FoeHammer, Raider, Wanderer, Skeleton all coinCost: 15), so
-     *  a kingdom can build its first defender turn 1 instead of waiting on
-     *  a few turns of production first. */
-    startingCoin: 15,
+    /** Harvest/coin/lore every civ starts the game with (main.js's
+     *  civ-creation loop) -- user-directed flat 30 across all three
+     *  resources (2026-08-19). Covers every race's own starting-tech unit
+     *  (Spearguard, Ranger, FoeHammer, Raider, Wanderer, Skeleton all
+     *  coinCost: 15) with room to spare, so a kingdom can build its first
+     *  defender turn 1 instead of waiting on a few turns of production first. */
+    startingHarvest: 30,
+    startingCoin: 30,
+    startingLore: 30,
 
     /** Compounding premium per tech-tree layer -- exponent is the raw
      *  layer, so Level 0 (layer: 0, techs.js's pioneer_infrastructure/
