@@ -7,6 +7,7 @@ https://www.linkedin.com/in/shawn-nicolen/
 This project is a way for me to learn game development techniques. Some elements were created with AI. Should it become feasable to do so, the plan us to replace AI elements with human created art and music.
 
 ## Sound Effects
+
 Pixelbay
 https://pixabay.com/
 
@@ -19,24 +20,30 @@ Licensed under Attribution 4.0 International
 https://creativecommons.org/licenses/by/4.0/
 
 ## Music
+
 Suno.ai
 
 ## Art
+
 Google Gemini
 
 ## Fonts
+
 Cinzel by The Cinzel Project Authors, licensed under the SIL Open Font
 License 1.1 
 https://openfontlicense.org/open-font-license-official-text/
 
 ## Game Design
+
 Shawn Nicolen
 
 ## Special Thanks
+
 Russ Van Ness
 Josh Peekstock
 
 ## Copyright
+
 Kingdom Marches
 Copyright © 2026 by Shawn Nicolen. 
 All Rights Reserved.
