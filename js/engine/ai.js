@@ -4609,11 +4609,51 @@ window.GameEngine = window.GameEngine || {};
         continue;
       }
 
-      // Human "Teleportation": a badly hurt Wizard near danger blinks to safety
-      // rather than fighting on. Simple defensive trigger, not offensive use.
-      if (unit.typeId === "wizard" && civ.unlockedMechanics && civ.unlockedMechanics.has("teleportation")
-          && unit.hp < unit.maxHp * 0.4 && attemptWizardTeleport(civ, unit, gameState, log)) {
-        continue;
+      // Human "Teleportation": a badly hurt Wizard near danger blinks to
+      // safety rather than fighting on -- then (2026-08-20 fix, user-
+      // reported: a fled Wizard kept re-blinking every single turn
+      // forever, never actually healing, since the raw hp<40% check alone
+      // can't tell "still in danger" apart from "already safe, just still
+      // hurt") settles into Rest and Defend once it's genuinely clear of
+      // danger, stays there until fully healed, then teleports back
+      // toward wherever it's actually needed instead of trudging back at
+      // ordinary movement speed -- see maybeWizardReturnFromRest.
+      // `_fledToHeal` is a transient per-instance flag marking "still in
+      // this recovery cycle," which is what lets the two states be told
+      // apart across turns (unit.resting/channeling both reset every turn
+      // start, so neither can carry this on its own).
+      if (unit.typeId === "wizard" && civ.unlockedMechanics && civ.unlockedMechanics.has("teleportation")) {
+        if (unit._fledToHeal) {
+          if (unit.hp >= unit.maxHp) {
+            unit._fledToHeal = false;
+            if (maybeWizardReturnFromRest(civ, unit, gameState, log)) {
+              // performWizardTeleport stamps a generic "Blinked away" --
+              // overwrite with a more specific label now that we know WHY,
+              // same "customize after calling a shared helper" convention
+              // other branches in this cascade already use.
+              unit.currentMission = "Healed up, blinked back to the fight";
+              continue;
+            }
+            // Fully healed but nothing worth returning to yet -- fall
+            // through to the normal cascade below like any other idle unit.
+          } else if (!recentlyDamaged && !enemyUnitNearby(civ, unit, gameState, WIZARD_DANGER_RADIUS)) {
+            unit.channeling = "restAndDefend";
+            window.GameEngine.combat.setCondition(unit, "defending", { expiresAtTurn: (gameState.turnNumber || 0) + 1 });
+            unit.resting = true;
+            unit.usedThisTurn = true;
+            unit.currentMission = "Resting and Defending (recovering from a blink)";
+            continue;
+          } else {
+            // Danger caught up (or it took a hit) despite fleeing -- treat
+            // this as a fresh flee decision below rather than forcing
+            // another rest attempt into a tile that isn't safe after all.
+            unit._fledToHeal = false;
+          }
+        }
+        if (unit.hp < unit.maxHp * 0.4 && attemptWizardTeleport(civ, unit, gameState, log)) {
+          unit._fledToHeal = true;
+          continue;
+        }
       }
 
       // Human "Invisibility": same defensive trigger as Teleportation, but
@@ -5796,6 +5836,11 @@ window.GameEngine = window.GameEngine || {};
     return true;
   }
 
+  // How close a visible enemy has to be before a fled, still-recovering
+  // Wizard considers itself unsafe to keep Resting and Defending -- see the
+  // wizard dispatch block's `_fledToHeal` handling.
+  const WIZARD_DANGER_RADIUS = 4;
+
   /**
    * Defensive trigger: a badly hurt Wizard blinks itself to the safest
    * remembered tile (anywhere explored, not just currently visible) as far
@@ -5817,6 +5862,44 @@ window.GameEngine = window.GameEngine || {};
       const nearestEnemyDist = enemyPositions.reduce((min, eu) =>
         Math.min(min, window.GameEngine.influence.chebyshev(x, y, eu.x, eu.y)), Infinity);
       if (nearestEnemyDist > bestDist) { bestDist = nearestEnemyDist; best = { x, y }; }
+    }
+    if (!best) return false;
+    return performWizardTeleport(civ, unit, unit, best.x, best.y, gameState, log);
+  }
+
+  /**
+   * Human "Teleportation": the other half of the flee-and-recover cycle
+   * (see the wizard dispatch block above, `_fledToHeal`) -- once a fled
+   * Wizard has fully healed, blink it back toward wherever the fighting
+   * actually is, rather than leaving it to trudge back at ordinary
+   * movement speed or sit resting forever with nothing to do. Same
+   * "farthest from every enemy" scan attemptWizardTeleport uses, just
+   * inverted (closest, not farthest) and restricted to currently VISIBLE
+   * tiles (not everything ever explored) -- "where it's needed" means
+   * somewhere relevant right now, not a stale memory. Stays out of true
+   * melee range of the nearest enemy (a Wizard has no business blinking
+   * itself onto or next to one) but otherwise gets as close to the action
+   * as it legally can. Returns false (no turn spent) if there's no visible
+   * enemy at all -- nothing to return to, so the caller just lets the
+   * unit fall through to the normal idle cascade instead.
+   */
+  function maybeWizardReturnFromRest(civ, unit, gameState, log) {
+    const { map, civs } = gameState;
+    const visible = gameState.visibility[civ.id] || new Set();
+    const enemyPositions = [];
+    for (const other of Object.values(civs)) {
+      if (other.id === civ.id || other.eliminated) continue;
+      for (const eu of other.units) if (!eu.conditions?.hidden) enemyPositions.push(eu);
+    }
+    if (!enemyPositions.length) return false;
+    let best = null, bestDist = Infinity;
+    for (const idx of visible) {
+      const x = idx % map.width, y = Math.floor(idx / map.width);
+      if (!isValidTeleportTile(gameState, x, y, unit)) continue;
+      const nearestEnemyDist = enemyPositions.reduce((min, eu) =>
+        Math.min(min, window.GameEngine.influence.chebyshev(x, y, eu.x, eu.y)), Infinity);
+      if (nearestEnemyDist <= 1) continue;
+      if (nearestEnemyDist < bestDist) { bestDist = nearestEnemyDist; best = { x, y }; }
     }
     if (!best) return false;
     return performWizardTeleport(civ, unit, unit, best.x, best.y, gameState, log);

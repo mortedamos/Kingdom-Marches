@@ -354,7 +354,7 @@ window.GameData.UNITS = {
   // from, same name, same upkeep.
   dire_bear: {
     id: "dire_bear", label: "Dire Bear", symbol: "🐻", category: "military", raceOnly: "elf",
-    attack: 9, defense: 13, movement: 3, visionRadius: 3, siegePct: 0.50,
+    attack: 9, defense: 13, movement: 3, visionRadius: 2, siegePct: 0.50,
     attackChars: ["𓆩", "彡"], biggerPct: .7, doubleStrikePct: 0.1,
     cityBuildable: false,
   },
