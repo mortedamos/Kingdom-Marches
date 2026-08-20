@@ -197,7 +197,7 @@ window.GameData.BUILDINGS = {
     // what actually governs everywhere -- every race builds a wall in
     // exactly 3 turns. cityDefensePerWall (see combat.js's
     // cityDefenseValue) is a separate, additional defense bonus per wall.
-    coinCost: 11, maxHp: 40, defense: 8,
+    coinCost: 11, maxHp: 30, defense: 8,
     minBuildTurns: 3,
   },
 
@@ -213,7 +213,7 @@ window.GameData.BUILDINGS = {
   // cost/build-time as a Wall section, user-directed (2026-08-18).
   bridge_section: {
     id: "bridge_section", label: "Bridge", symbol: "═", isBridge: true,
-    coinCost: 11, maxHp: 40, defense: 8,
+    coinCost: 11, maxHp: 30, defense: 8,
     minBuildTurns: 3,
   },
 };

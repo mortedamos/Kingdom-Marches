@@ -65,9 +65,9 @@ window.GameConfig = {
     /** Local date this build was cut, YYYY-MM-DD. */
     date: "2026-08-20",
     /** Local time this build was cut, 24-hour HH:MM. */
-    time: "17:43",
+    time: "18:02",
     /** Monotonic build counter -- increment it, don't recompute it. */
-    number: 158,
+    number: 159,
   },
 
   // =========================================================================
@@ -213,11 +213,11 @@ window.GameConfig = {
      *  progress; each time that crosses fillThreshold, one random unfilled
      *  offset within the current radius fills. Filled tiles are never lost.
      *
-     *  At the current values that's ~3.4 turns/tile at industriousness 0.3
-     *  (Orc) down to ~1.9 at 1.0 (Halfellow). */
+     *  At the current values that's ~2.5 turns/tile at industriousness 0.3
+     *  (Orc) down to ~1.5 at 1.0 (Halfellow). */
     fillThreshold: 3,
-    fillRateBase: 0.75,
-    fillRatePerIndustriousness: 0.9,
+    fillRateBase: 0.9,
+    fillRatePerIndustriousness: 1.08,
 
     /** How much the fill rate above scales with the city's CURRENT radius:
      *  the per-turn rate is multiplied by (1 + (influenceRadius - 1) * this).
@@ -234,10 +234,12 @@ window.GameConfig = {
      *  At 1.0 the rate scales exactly with radius, making time-per-RING
      *  constant (the fully-compensated case). 0.5 is the deliberate middle:
      *  it roughly halves the deceleration without removing the brake
-     *  entirely -- a Human (industriousness 0.7) city reaches a full radius 4
-     *  in ~94 turns instead of ~178, with per-ring times of ~17/23/26/28
-     *  turns instead of ~17/35/52/70. Set to 0 to restore the old flat
-     *  behavior exactly. */
+     *  entirely -- a Human (industriousness 0.7) city used to reach a full
+     *  radius 4 in ~94 turns instead of ~178, with per-ring times of
+     *  ~17/23/26/28 turns instead of ~17/35/52/70 (both figures ~17% faster
+     *  since fillRateBase/fillRatePerIndustriousness's own 2026-08-20 speed-up
+     *  -- ratios between rings are unaffected, only absolute turn counts).
+     *  Set to 0 to restore the old flat behavior exactly. */
     fillRateRadiusScale: 0.5,
 
     /** A unit actively Resting and Defending in a city speeds its fill-in

@@ -269,7 +269,7 @@ window.GameData.UNITS = {
     // (ai.js's UTILITY_UNIT_MECHANICS taper, `relevantMechanics.length * 7
     // * 0.6^owned`) is entirely stat-independent by design.
     id: "wizard", label: "Wizard", symbol: "🧙‍♂️", category: "military", raceOnly: "human",
-    attack: 2, defense: 3, movement: 2, visionRadius: 3, range: 2, burnChancePct: 0.1, frozenChancePct: 0.1, 
+    attack: 3, defense: 2, movement: 2, visionRadius: 3, range: 2, burnChancePct: 0.1, frozenChancePct: 0.1, 
     coinCost: 35, attackChars: ["⚡", "❄️", "🔥", "☄", "✨"], biggerPct: .1,
   },
 
@@ -281,8 +281,8 @@ window.GameData.UNITS = {
   },
   blade_dancer: {
     id: "blade_dancer", label: "Blade Dancer", symbol: "⚔", category: "military", raceOnly: "elf",
-    attack: 5, defense: 3, movement: 2, visionRadius: 3, firstStrikePct: 0.09,
-    coinCost: 16, attackChars: ["🗡", "⚔"], doubleStrikePct: 0.1,
+    attack: 5, defense: 3, movement: 2, visionRadius: 3, firstStrikePct: 0.1,
+    coinCost: 16, attackChars: ["🗡", "⚔"], doubleStrikePct: 0.15,
   },
   // Utility/caster unit, deliberately unremarkable in raw stats (same
   // convention as Human's Wizard, which this mirrors exactly -- its real
@@ -291,7 +291,7 @@ window.GameData.UNITS = {
   // summon -- see ai.js's UTILITY_UNIT_MECHANICS and maybeElfDruidPlay).
   druid: {
     id: "druid", label: "Druid", symbol: "✦", category: "military", raceOnly: "elf",
-    attack: 3, defense: 3, movement: 2, visionRadius: 3, range: 2, siegePct: 0.1, poisonChancePct: 0.10,
+    attack: 3, defense: 3, movement: 2, visionRadius: 3, range: 2, siegePct: 0.10, poisonChancePct: 0.10,
     canFoundCity: true, // additional settler option alongside the shared Pioneer -- see elf_druidism
     // canProspect: orders.js's contextMenuOptions/turns.js's Hunt Game/Farm
     // Soil channels gate purely on this flag, no race/unit-type
@@ -438,7 +438,7 @@ window.GameData.UNITS = {
   // --- DWARF full roster (redesigned tree, no stubs -- see techs.js) ---
   foehammer: {
     id: "foehammer", label: "FoeHammer", symbol: "⚔", category: "military", raceOnly: "dwarf",
-    attack: 4, defense: 4, movement: 2, visionRadius: 2, attackChars: ["⛏", "🔨"],
+    attack: 4, defense: 3, movement: 2, visionRadius: 2, attackChars: ["⛏", "🔨"],
     coinCost: 15,
   },
   troubadour: {
@@ -475,8 +475,8 @@ window.GameData.UNITS = {
     // High defense is load-bearing: near-indestructible to an ordinary
     // attacker, so Resilient Spirit/Unyielding's death-save shouldn't fire
     // on a hit against a full-health Titan.
-    attack: 10, defense: 17, movement: 2, visionRadius: 2, siegePct: 3.50,
-    coinCost: 60, biggerPct: 1.2, attackChars: ["🪨", "💥"],
+    attack: 10, defense: 18, movement: 2, visionRadius: 2, siegePct: 3.50,
+    coinCost: 60, biggerPct: 1.2, attackChars: ["🪨", "💥", "👊"],
     veryRare: true, neverExplores: true, siegeTarget: true,
     nameSpecial: true, // a construct, not a person -- see unit-names.js
   },
