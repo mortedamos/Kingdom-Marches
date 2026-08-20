@@ -550,6 +550,25 @@ window.UI = window.UI || {};
       </div>`;
   }
 
+  /** ", N turns left" for a timed condition (combat.js's setCondition/
+   *  tickConditions -- every condition with a finite duration stores
+   *  expiresAtTurn, cleared once gameState.turnNumber reaches it), or ""
+   *  for an event-cleared condition (no expiresAtTurn) or one that's
+   *  refreshed indefinitely turn after turn (e.g. Rest and Defend's own
+   *  "defending" condition -- see its own dedicated properties.push below,
+   *  which deliberately doesn't call this: a live countdown on something
+   *  that never actually runs out would just be misleading). 2026-08-19,
+   *  user-directed: "for effects like flight that have a limited duration
+   *  there should be a counter... so the player knows how many rounds are
+   *  left" -- appended inline to each condition's own descriptive text
+   *  rather than a separate line, so it reads as part of the same effect. */
+  function turnsLeftSuffix(condition, gameState) {
+    if (!condition || condition.expiresAtTurn == null || !gameState) return "";
+    const remaining = condition.expiresAtTurn - (gameState.turnNumber || 0);
+    if (remaining <= 0) return "";
+    return `, ${remaining} turn${remaining === 1 ? "" : "s"} left`;
+  }
+
   function renderUnitPanel(unit, civs, viewState, gameState) {
     const civ = civs[unit.civId];
     const race = window.GameData.getRace(civ.raceId);
@@ -672,26 +691,48 @@ window.UI = window.UI || {};
     // tickConditions. Shown alongside properties since both answer "what can
     // this unit currently do," just with different lifetimes.
     const curse = unit.conditions?.curse;
-    if (curse) properties.push(`Cursed (${Math.round((1 - curse.attackMult) * 100)}% attack, ${Math.round((1 - curse.moveMult) * 100)}% move)`);
+    if (curse) properties.push(`Cursed (${Math.round((1 - curse.attackMult) * 100)}% attack, ${Math.round((1 - curse.moveMult) * 100)}% move${turnsLeftSuffix(curse, gameState)})`);
     const frozen = unit.conditions?.frozen;
-    if (frozen) properties.push(`Frozen (0 movement, ${Math.round((1 - frozen.attackMult) * 100)}% attack)`);
+    if (frozen) properties.push(`Frozen (0 movement, ${Math.round((1 - frozen.attackMult) * 100)}% attack${turnsLeftSuffix(frozen, gameState)})`);
     const killMomentum = unit.conditions?.killMomentum;
     if (killMomentum) {
       properties.push(`Violent Momentum (+${killMomentum.moveBonus} movement`
         + (killMomentum.firstStrikePctBonus ? `, +${Math.round(killMomentum.firstStrikePctBonus * 100)}% first strike` : '')
         + (killMomentum.doubleStrikePctBonus ? `, +${Math.round(killMomentum.doubleStrikePctBonus * 100)}% double strike` : '')
+        + turnsLeftSuffix(killMomentum, gameState)
         + ')');
     }
     const flightGrant = unit.conditions?.flying;
-    if (flightGrant && flightGrant.moveBonus) properties.push(`Granted Flight (+${flightGrant.moveBonus} movement, +${flightGrant.visionBonus} vision)`);
-    if (unit.conditions?.hidden) properties.push('Hidden');
-    if (unit.conditions?.forcedVisible) properties.push('Forced Visible (cannot re-Hide yet)');
+    if (flightGrant && flightGrant.moveBonus) properties.push(`Granted Flight (+${flightGrant.moveBonus} movement, +${flightGrant.visionBonus} vision${turnsLeftSuffix(flightGrant, gameState)})`);
+    const hiddenCond = unit.conditions?.hidden;
+    if (hiddenCond) {
+      // No surrounding parens elsewhere in this string (unlike every other
+      // condition here) -- turnsLeftSuffix's leading ", " reads oddly
+      // stuck directly onto "Hidden" with nothing before it, so this wraps
+      // it in its own parens instead: "Hidden (3 turns left)".
+      const suffix = turnsLeftSuffix(hiddenCond, gameState);
+      properties.push(`Hidden${suffix ? ` (${suffix.slice(2)})` : ''}`);
+    }
+    const forcedVisibleCond = unit.conditions?.forcedVisible;
+    if (forcedVisibleCond) properties.push(`Forced Visible (cannot re-Hide yet${turnsLeftSuffix(forcedVisibleCond, gameState)})`);
     const crusadeAura = unit.conditions?.crusadeAura;
-    if (crusadeAura) properties.push(`Crusade Aura (+${crusadeAura.attackBonus} attack, +${crusadeAura.defenseBonus} defense, +${Math.round(crusadeAura.siegePctBonus * 100)}% siege)`);
+    if (crusadeAura) properties.push(`Crusade Aura (+${crusadeAura.attackBonus} attack, +${crusadeAura.defenseBonus} defense, +${Math.round(crusadeAura.siegePctBonus * 100)}% siege${turnsLeftSuffix(crusadeAura, gameState)})`);
     const heavyMetalAura = unit.conditions?.heavyMetalAura;
-    if (heavyMetalAura) properties.push(`Heavy Metal Aura (+${heavyMetalAura.defenseBonus} defense, +${Math.round(heavyMetalAura.siegePctBonus * 100)}% siege, 5% heal/turn)`);
+    if (heavyMetalAura) properties.push(`Heavy Metal Aura (+${heavyMetalAura.defenseBonus} defense, +${Math.round(heavyMetalAura.siegePctBonus * 100)}% siege, 5% heal/turn${turnsLeftSuffix(heavyMetalAura, gameState)})`);
     const powerMetalAura = unit.conditions?.powerMetalAura;
-    if (powerMetalAura) properties.push(`Power Metal Aura (+${powerMetalAura.attackBonus} attack, +${Math.round(powerMetalAura.firstStrikePctBonus * 100)}% first strike)`);
+    if (powerMetalAura) properties.push(`Power Metal Aura (+${powerMetalAura.attackBonus} attack, +${Math.round(powerMetalAura.firstStrikePctBonus * 100)}% first strike${turnsLeftSuffix(powerMetalAura, gameState)})`);
+    // Befuddled/Webbed/Poisoned/Burning (2026-08-19): these four previously
+    // had a map-tile badge (overlays.js's CONDITION_ICONS) but no sidebar
+    // text at all -- same turnsLeftSuffix treatment as every condition
+    // above now applies here too.
+    const befuddled = unit.conditions?.befuddled;
+    if (befuddled) properties.push(`Befuddled (${Math.round((1 - befuddled.attackMult) * 100)}% attack, ${Math.round((1 - befuddled.defenseMult) * 100)}% defense, ${Math.round((1 - befuddled.movementMult) * 100)}% movement${turnsLeftSuffix(befuddled, gameState)})`);
+    const webbed = unit.conditions?.webbed;
+    if (webbed) properties.push(`Webbed (0 movement${turnsLeftSuffix(webbed, gameState)})`);
+    const poisoned = unit.conditions?.poisoned;
+    if (poisoned) properties.push(`Poisoned (-1 HP/turn${turnsLeftSuffix(poisoned, gameState)})`);
+    const burning = unit.conditions?.burning;
+    if (burning) properties.push(`Burning (-1 HP/turn${turnsLeftSuffix(burning, gameState)})`);
     // A channeled Rest and Defend reads the label differently even though
     // it's the SAME "defending" condition underneath as a plain one-off
     // Defend (ai.js's performDefend, AI-only) -- Rest and Defend's whole

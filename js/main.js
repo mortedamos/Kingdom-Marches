@@ -2990,6 +2990,17 @@
   // didn't ask to look) or to the post-hoc notice (that attack already
   // happened -- see its own offerAttackNotice call, which passes no delay).
   const ATTACK_NOTICE_GO_TO_DELAY_MS = 1000;
+  // Post-attack pause (2026-08-19, user-directed): separate from the delay
+  // above, which only ever ran BEFORE the hit landed (letting the camera
+  // settle on "Go To", nothing at all on "Skip"). Once an AI attack against
+  // the player actually resolves -- win, lose, or off-screen -- processBatch
+  // used to immediately move on to the next AI unit's turn with zero pause,
+  // so the floating damage number/HP bar change from the hit that just
+  // landed was gone before the player had a chance to actually look at it.
+  // Applied after EVERY attack-notice dismissal, "Go To" or "Skip" alike,
+  // and to the post-hoc (already-happened) notice too -- see both call
+  // sites below.
+  const ATTACK_RESULT_PAUSE_MS = 1000;
 
   function offerAttackNotice(notice, onDone, { goToDelayMs = 0 } = {}) {
     viewState.dialog = {
@@ -3143,7 +3154,11 @@
           const attackerBaseUnit = window.GameData.getUnit(steppedUnit.typeId);
           offerAttackNotice(
             { x: targetUnit.x, y: targetUnit.y, label: steppedUnit.name || attackerBaseUnit.label },
-            () => { resolvePendingAIAttack(gameState.civs[steppedUnit.civId], steppedUnit); processBatch(); },
+            () => {
+              resolvePendingAIAttack(gameState.civs[steppedUnit.civId], steppedUnit);
+              redraw();
+              setTimeout(processBatch, ATTACK_RESULT_PAUSE_MS);
+            },
             { goToDelayMs: ATTACK_NOTICE_GO_TO_DELAY_MS },
           );
           return;
@@ -3160,7 +3175,7 @@
           // offerAttackNotice for the dialog itself.
           centerViewOn(notice.x, notice.y);
           redraw();
-          offerAttackNotice(notice, processBatch);
+          offerAttackNotice(notice, () => setTimeout(processBatch, ATTACK_RESULT_PAUSE_MS));
           return;
         }
       } while (!stepResult.steppedCivId || stepResult.steppedCivId === announcedCivId || stepResult.steppedCivId === humanCivId);
