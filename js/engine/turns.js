@@ -1515,32 +1515,6 @@ window.GameEngine = window.GameEngine || {};
       }
     }
 
-    // Shift-held "repeat for the next 3 turns" auto-repeat: main.js's
-    // maybeScheduleAutoRepeat stamps unit.autoRepeat/city.autoRepeat =
-    // {kind, turnsLeft} the moment the
-    // player Shift-clicks (or Shift-presses the matching key for) Gather
-    // More Resources or Research (Rest and Defend dropped out of this
-    // scheme 2026-08-19, user-directed -- it's channeled and persists on
-    // its own now, same slot as the Rest and Defend brace just above). Each
-    // engine call already self-gates on whether it's still valid
-    // (applyResourceProduction/applyResearchBoost no-op on a queued build,
-    // an already-claimed turn, or -- for research -- nothing currently
-    // being researched), so a stale schedule just quietly does nothing
-    // rather than erroring.
-    if (turnCtx && civ.id === turnCtx.humanCivId) {
-      for (const city of civ.cities) {
-        if (!city.autoRepeat || city.autoRepeat.turnsLeft <= 0) continue;
-        if (city.autoRepeat.kind === "resourceProduction") {
-          window.GameEngine.cities.applyResourceProduction(city, civ, gameState);
-        } else if (city.autoRepeat.kind === "research") {
-          const result = window.GameEngine.cities.applyResearchBoost(city, civ, gameState);
-          if (result?.completed) civ.lastCompletedTech = result.techId;
-        }
-        city.autoRepeat.turnsLeft -= 1;
-        if (city.autoRepeat.turnsLeft <= 0) city.autoRepeat = null;
-      }
-    }
-
     // Automate Actions: same lifecycle slot as
     // the goto-order continuation just above, and for the same reason -- a
     // fresh usedThisTurn/movesRemaining budget must exist before an

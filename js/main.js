@@ -63,11 +63,8 @@
   let lastRenderedDialog = null;
   let lastRenderedRingKey = null;
 
-  // See setupGlobalShortcuts. shiftHeld drives both the ring menu's "Next 3
-  // turns: " label prefix and whether a shortcut/pill click schedules an
-  // auto-repeat (see maybeScheduleAutoRepeat); panKeys is which of WASD are
-  // currently held, read every animation-loop frame for continuous panning.
-  let shiftHeld = false;
+  // See setupGlobalShortcuts. panKeys is which of WASD are currently held,
+  // read every animation-loop frame for continuous panning.
   const panKeys = new Set();
 
   // Dialog kinds that ask "are you sure you want to do this?" -- see
@@ -1343,6 +1340,14 @@
     const gameState = {
       map, civs, turnNumber: 0, visibility: {}, explored: {}, tileMemory: {},
       turnOrder, turnStepIndex: 0, seed, aiActionLog: [],
+      // Victory-stats screen's "Total Time Taken" (2026-08-19, user-
+      // directed) -- real wall-clock time, not active-play time; a save
+      // reloaded later just resumes counting from whenever the game was
+      // first created, same as a save file's own age would read. Plain
+      // JSON.stringify-able number, so savegame.js's generic round-trip
+      // preserves it with no special-casing needed (see that file's own
+      // doc comment on what DOES need special handling).
+      startedAt: Date.now(),
       // Game Options "Max Monsters" slider:
       // per-game override of config.js's worldEncounters.monsters.
       // perKingdomCap -- see ai.js's maybeSpawnMonster/seedInitialMonsters,
@@ -2193,20 +2198,6 @@
     unit.followTarget = null;
   }
 
-  /** Shift-held "repeat for the next 3 turns":
-   *  called by handleRestAndDefend/handleResourceProduction/
-   *  handleCityResearch right after each has successfully applied its
-   *  action once, normally. Holding Shift at the moment the action is
-   *  chosen -- a ring click or the matching keyboard shortcut, both funnel
-   *  through the same handler -- arms it to fire again automatically at the
-   *  start of each of the next 3 turns; see turns.js's finishCivTurn, which
-   *  reads and decrements this same field. A plain (non-Shift) invocation
-   *  always clears any previous schedule, so re-choosing the action by hand
-   *  is how the player turns auto-repeat back off. */
-  function maybeScheduleAutoRepeat(entity, kind) {
-    entity.autoRepeat = shiftHeld ? { kind, turnsLeft: 3 } : null;
-  }
-
   const SHORTCUT_OVERLAY_IDS = [
     "launch-options-overlay", "credits-overlay", "techtree-overlay",
     "reports-overlay", "game-dialog-overlay", "keyboard-shortcuts-overlay",
@@ -2250,29 +2241,14 @@
    *  General: WASD and the arrow keys both pan the map, mapped onto the same
    *  panKeys entries, continuous, applied every
    *  animation-loop frame while held -- see startAnimationLoop's panKeys
-   *  read; Shift arms the "next 3 turns" auto-repeat on Rest and Defend/
-   *  Gather More Resources/Research (see maybeScheduleAutoRepeat) and
-   *  prefixes their ring-menu labels (see renderRingMenu); M toggles the
-   *  same master mute both the title screen's and the in-game Audio menu's
-   *  mute controls use. Unit context: Space = Rest and Defend (or End Turn
-   *  when nothing is selected and there's nothing left to do this turn --
-   *  see the Space handler's own comment). City context: Space = Gather
-   *  More Resources; C = Spread Culture, then jump to the next idle city. */
+   *  read; M toggles the same master mute both the title screen's and the
+   *  in-game Audio menu's mute controls use. Unit context: Space = Rest and
+   *  Defend (or End Turn when nothing is selected and there's nothing left
+   *  to do this turn -- see the Space handler's own comment). City context:
+   *  Space = Gather More Resources; C = Spread Culture, then jump to the
+   *  next idle city. */
   function setupGlobalShortcuts() {
     function handleGlobalKeydown(e) {
-      if (e.key === "Shift") {
-        if (!shiftHeld) {
-          shiftHeld = true;
-          if (viewState && viewState.ringMenu) redraw();
-        }
-        return;
-      }
-      // Sync from the event's own modifier flag, not just the tracked
-      // Shift keydown/keyup pair above -- a real held-Shift-then-press
-      // always agrees with both, but this is the one source of truth that
-      // can't drift (a keyup swallowed by another element, a synthetic/
-      // chorded event that never sent its own separate "Shift" keydown).
-      shiftHeld = e.shiftKey;
       if (isTypingTarget(document.activeElement)) return;
 
       // M: global mute toggle -- works even before a game has started (the
@@ -2353,15 +2329,32 @@
         return;
       }
 
+      // Q: make the selected unit quip on demand (2026-08-19, user-
+      // directed) -- unlike every other quips.js trigger, this one isn't
+      // gated behind maybeQuip's 5% roll or a real action decision point;
+      // it's a deliberate "say something" press, so it goes straight to
+      // getRandomQuip and shows the bubble unconditionally via
+      // spawnQuipText. Uses the "move" action pool specifically -- per
+      // quips.js's own data-file doc comment, that's the one pool defined
+      // for every unit type that can move at all, so it's the closest
+      // thing to a universal "just talk" line this data model has.
+      if (key === "q") {
+        if (viewState.selectedUnit && viewState.selectedUnit.civId === humanCivId) {
+          const unit = viewState.selectedUnit;
+          const unitCiv = gameState.civs[unit.civId];
+          const text = window.GameData.getRandomQuip(unitCiv.raceId, unit.typeId, "move");
+          if (text) {
+            window.GameEngine.quips.spawnQuipText(unit, text);
+            redraw();
+          }
+        }
+        return;
+      }
+
     }
     document.addEventListener("keydown", handleGlobalKeydown);
 
     document.addEventListener("keyup", (e) => {
-      if (e.key === "Shift") {
-        shiftHeld = false;
-        if (viewState && viewState.ringMenu) redraw();
-        return;
-      }
       const key = e.key.toLowerCase();
       const ARROW_TO_PAN_KEY = { arrowup: "w", arrowdown: "s", arrowleft: "a", arrowright: "d" };
       const panKey = ARROW_TO_PAN_KEY[key] || (key === "w" || key === "a" || key === "s" || key === "d" ? key : null);
@@ -2371,7 +2364,7 @@
     // Held keys must not survive a tab switch/alt-tab -- there's no keyup
     // event once focus leaves the page, so without this a key released
     // while the browser wasn't focused would pan forever.
-    window.addEventListener("blur", () => { panKeys.clear(); shiftHeld = false; });
+    window.addEventListener("blur", () => { panKeys.clear(); });
   }
 
   function handleFoundCity() {
@@ -2520,16 +2513,108 @@
     if (humanLost) {
       openGameOverDialog(gameState.civs[humanCivId]);
     } else if (victoryResult) {
-      clearInterval(autoplayTimer);
       const text = victoryResult.type === "elimination"
         ? `${victoryResult.winner} has conquered all rivals!`
         : `${victoryResult.winner} has achieved territorial dominance! (${(victoryResult.share * 100).toFixed(0)}% of the map)`;
-      viewState.dialog = { kind: "message", title: "Victory!", text };
-      // Switches music to the winning race's victory theme --
-      // <race>_victory_#.mp3, falls back to that race's
-      // normal theme if it doesn't have one yet (see music.js's resolveCurrent).
-      window.MusicSystem.notifyVictory(gameState.civs[victoryResult.winner].raceId);
+      showVictorySequence(victoryResult.winner, text);
     }
+  }
+
+  /** Full victory presentation (2026-08-19, user-directed): stops autoplay
+   *  and switches music immediately -- the win is real the instant this is
+   *  called, regardless of how long the player takes to click through what
+   *  follows -- then announces every still-queued kingdom elimination
+   *  BEFORE the "Victory!" message (see announceEliminationsThen's own doc
+   *  comment for why: an elimination that wins the game would otherwise
+   *  visually leapfrog ahead of its own "X has been eliminated" notice),
+   *  then the message itself, then the stats screen (openVictoryStatsDialog).
+   *  Fireworks start now and run continuously through both the message and
+   *  the stats screen -- there's no explicit stop call anywhere in this
+   *  chain because the only way out is Return to Title, a full page
+   *  reload (handleReturnToTitle), which tears down everything for free. */
+  function showVictorySequence(winnerCivId, text) {
+    clearInterval(autoplayTimer);
+    // Switches music to the winning race's victory theme --
+    // <race>_victory_#.mp3, falls back to that race's
+    // normal theme if it doesn't have one yet (see music.js's resolveCurrent).
+    window.MusicSystem.notifyVictory(gameState.civs[winnerCivId].raceId);
+    window.UI.fireworks.start();
+    announceEliminationsThen(() => {
+      viewState.dialog = {
+        kind: "message", title: "Victory!", text,
+        onDismiss: () => openVictoryStatsDialog(winnerCivId),
+      };
+      redraw();
+    });
+  }
+
+  /** Drains gameState.pendingKingdomEliminations one entry at a time,
+   *  chained via the "message" dialog's own onDismiss hook, before calling
+   *  `showVictory` -- same source queue and skip-human's-own-elimination
+   *  rule as checkPendingKingdomEliminations' per-redraw draining (that
+   *  function still runs too, for the ordinary mid-game case where an
+   *  elimination DOESN'T end the game; by the time it next runs here it
+   *  just finds this queue already empty and no-ops). Recurses one entry
+   *  at a time rather than looping, since each notice has to actually be
+   *  SEEN (dismissed) before the next one shows. */
+  function announceEliminationsThen(showVictory) {
+    const queue = gameState.pendingKingdomEliminations;
+    if (queue) {
+      while (queue.length && queue[0] === humanCivId) queue.shift();
+    }
+    if (!queue || !queue.length) { showVictory(); return; }
+    // All-AI Spectator: no human stake in any kingdom's survival, same
+    // "log it, don't modal it" treatment checkPendingKingdomEliminations
+    // already gives the ordinary mid-game case -- drain the rest of the
+    // queue quietly rather than interrupting the win with a chain of
+    // notices nobody needs to individually dismiss.
+    if (spectatorMode) {
+      while (queue.length) {
+        const c = gameState.civs[queue.shift()];
+        if (!c) continue;
+        console.log(`[spectator] ${window.GameData.getRace(c.raceId).label} has been eliminated from the game.`);
+      }
+      showVictory();
+      return;
+    }
+    const civId = queue.shift();
+    const civ = gameState.civs[civId];
+    if (!civ) { announceEliminationsThen(showVictory); return; }
+    const race = window.GameData.getRace(civ.raceId);
+    viewState.dialog = {
+      kind: "message", title: "Kingdom Eliminated",
+      text: `${race.label} has been eliminated from the game!`,
+      onDismiss: () => announceEliminationsThen(showVictory),
+    };
+    redraw();
+  }
+
+  /** Victory stats screen (2026-08-19, user-directed): total real-world
+   *  time since the game was created (gameState.startedAt), total turns,
+   *  the winning civ's current military power (same flat sum-of-unitPower
+   *  metric turns.js's recordHistory already uses for the Report screen's
+   *  line graph), influence level (territory share %, same computation as
+   *  the Kingdom tab's own Territory Share stat), and unit kills/losses
+   *  (civ.unitsKilled/unitsLostInBattle, tallied at every real combat death
+   *  in the game -- see ai.js's otherCivRemoveDeadUnit). */
+  function openVictoryStatsDialog(winnerCivId) {
+    const civ = gameState.civs[winnerCivId];
+    const elapsedMs = Date.now() - (gameState.startedAt || Date.now());
+    const totalSeconds = Math.max(0, Math.floor(elapsedMs / 1000));
+    const hours = Math.floor(totalSeconds / 3600);
+    const minutes = Math.floor((totalSeconds % 3600) / 60);
+    const seconds = totalSeconds % 60;
+    const timeTaken = hours > 0 ? `${hours}h ${minutes}m ${seconds}s` : `${minutes}m ${seconds}s`;
+    const militaryPower = Math.round(civ.units.reduce((sum, u) => sum + window.GameData.unitPower(u.typeId), 0));
+    const { counts, totalClaimable } = window.GameEngine.influence.countTerritory(gameState);
+    const influenceLevel = `${(((counts[winnerCivId] || 0) / totalClaimable) * 100).toFixed(1)}%`;
+    viewState.dialog = {
+      kind: "victoryStats",
+      timeTaken, totalTurns: gameState.turnNumber || 0, militaryPower, influenceLevel,
+      unitKills: civ.unitsKilled || 0, unitsLost: civ.unitsLostInBattle || 0,
+      onReturnToTitle: handleReturnToTitle,
+    };
+    redraw();
   }
 
   /** Human defeat announcement -- see
@@ -2585,16 +2670,11 @@
     if (humanLost) {
       openGameOverDialog(gameState.civs[humanCivId]);
     } else {
-      clearInterval(autoplayTimer);
       // Same plain-civId text finishRoundBookkeeping's own elimination-type
       // victory branch uses ("HUMAN has conquered all rivals!", not the
       // prettier race label) -- this is that exact same message, just shown
       // sooner, so it should read identically either way it gets triggered.
-      viewState.dialog = {
-        kind: "message", title: "Victory!",
-        text: `${victoryResult.winner} has conquered all rivals!`,
-      };
-      window.MusicSystem.notifyVictory(gameState.civs[victoryResult.winner].raceId);
+      showVictorySequence(victoryResult.winner, `${victoryResult.winner} has conquered all rivals!`);
     }
   }
 
@@ -2606,10 +2686,16 @@
    *  picked up again next redraw() rather than lost.
    *
    *  Checked AFTER checkImmediateVictory at this function's one call site in
-   *  redraw(): if the SAME civ's elimination just won (or lost) the whole
-   *  game, that dialog already claimed the slot this redraw() and this
-   *  waits its turn -- the elimination notice is still queued, so it shows
-   *  right after the player dismisses the more important one.
+   *  redraw(), but that ordering only matters for the ORDINARY mid-game
+   *  case (an elimination that doesn't decide the game) -- a GAME-ENDING
+   *  elimination is instead announced by showVictorySequence's own
+   *  announceEliminationsThen, called synchronously the moment victory is
+   *  detected, BEFORE the Victory dialog (2026-08-19, user-directed: the
+   *  civ whose defeat won the game should be announced before, not after,
+   *  the win itself). That drains the same queue this function reads, so
+   *  by the time control reaches here on the next redraw() for a
+   *  game-ending elimination, the queue is already empty and this is a
+   *  no-op -- the two never race or double-announce.
    *
    *  The human player's own elimination is skipped entirely (not deferred,
    *  just dropped) -- that already gets its own richer, dedicated Game Over
@@ -3526,23 +3612,13 @@
       }
     }
 
-    // Keyboard-shortcut hints: a static badge on
-    // the two pills that always have one, plus the Shift-held "next 3
-    // turns" prefix on the two remaining auto-repeat-eligible pills (see
-    // maybeScheduleAutoRepeat -- city:resourceProduction/city:research
-    // funnel through the same handler a click would). Rest and Defend
-    // dropped out of this Shift-repeat scheme (2026-08-19, user-directed) --
-    // now channeled and persists on its own every turn until cancelled, so
-    // a Shift-limited "next 3 turns" framing no longer applies to it.
-    // Movement (arrow keys) has no single fixed pill to annotate this way --
-    // "moveTo" only exists dynamically once a destination tile is clicked --
-    // so it's left without a ring badge, a scoping call rather than an
-    // oversight.
+    // Keyboard-shortcut hints: a static badge on the two pills that always
+    // have one. Movement (arrow keys) has no single fixed pill to annotate
+    // this way -- "moveTo" only exists dynamically once a destination tile
+    // is clicked -- so it's left without a ring badge, a scoping call
+    // rather than an oversight.
     for (const o of options) {
       if (o.kind === "restAndDefend" || o.kind === "city:resourceProduction") o.shortcut = "Space";
-      if (shiftHeld && (o.kind === "city:resourceProduction" || o.kind === "city:research")) {
-        o.label = `Next 3 turns: ${o.label}`;
-      }
     }
 
     const center = window.UI.render.tileCenterOnMap(menu.x, menu.y, canvas, gameState, viewState);
@@ -3560,7 +3636,7 @@
 
     const key = page
       ? `page:${menu.subject}:${menu.x},${menu.y}:${menu.page}:${page.body.length}`
-      : `${menu.subject}:${menu.x},${menu.y}::${options.map((o) => o.kind).join("|")}${shiftHeld ? ":shift" : ""}`;
+      : `${menu.subject}:${menu.x},${menu.y}::${options.map((o) => o.kind).join("|")}`;
 
     // Reposition first and rebuild only if that reports the markup is no
     // longer the right shape -- so a pan or zoom with the ring open moves the
@@ -3683,7 +3759,7 @@
         if (dialog.onDismiss) dialog.onDismiss();
         redraw();
       };
-    } else if (dialog.kind === "gameOver") {
+    } else if (dialog.kind === "gameOver" || dialog.kind === "victoryStats") {
       const okBtn = $("game-dialog-ok-btn");
       if (okBtn) okBtn.onclick = () => dialog.onReturnToTitle();
     } else if (dialog.kind === "chooseTech") {
@@ -3784,10 +3860,9 @@
   // condition (same expiresAtTurn convention ai.js's performDefend uses for
   // the AI side). Only one badge shows for this (overlays.js's
   // drawConditionBadges skips the resting icon whenever "defending" is also
-  // active). Channeled (see performRestAndDefend), so no Shift auto-repeat
-  // needed anymore -- it now persists on its own every turn until cancelled
-  // (2026-08-19, user-directed merge with the old separate Garrison
-  // action) -- see handleCancelRestAndDefend.
+  // active). Channeled (see performRestAndDefend), so it persists on its
+  // own every turn until cancelled (2026-08-19, user-directed merge with
+  // the old separate Garrison action) -- see handleCancelRestAndDefend.
   function handleRestAndDefend() {
     if (!humanCivId || !viewState.selectedUnit) return;
     const unit = viewState.selectedUnit;
@@ -4739,7 +4814,6 @@
     const civ = humanCivId && gameState.civs[humanCivId];
     if (!civ || !city || city.civId !== humanCivId) return;
     if (!window.GameEngine.cities.applyResourceProduction(city, civ, gameState)) return;
-    maybeScheduleAutoRepeat(city, "resourceProduction");
     if (!goToNextIdleCityOrNextUnit()) redraw();
   }
 
@@ -4751,16 +4825,14 @@
    *  logic and return a receipt with the same shape (`{completed, techId}`),
    *  just never wrote it into that flag -- do so here so both paths notify
    *  the same way. Its own named handler (rather than inlined in
-   *  handleCityRingAction) so the Space-bar shortcut and the Shift "next 3
-   *  turns" auto-repeat (turns.js) can both call the exact same path a ring
-   *  click does. */
+   *  handleCityRingAction) so the Space-bar shortcut can call the exact
+   *  same path a ring click does. */
   function handleCityResearch(city) {
     const civ = humanCivId && gameState.civs[humanCivId];
     if (!civ || !city || city.civId !== humanCivId) return;
     const result = window.GameEngine.cities.applyResearchBoost(city, civ, gameState);
     if (!result) return;
     if (result.completed) civ.lastCompletedTech = result.techId;
-    maybeScheduleAutoRepeat(city, "research");
     if (!goToNextIdleCityOrNextUnit()) redraw();
   }
 

@@ -321,6 +321,7 @@
       </div>
     </div>
     <div id="game-dialog-overlay" class="techtree-overlay" style="display:none;">
+      <canvas id="fireworks-canvas" style="display:none;"></canvas>
       <div id="game-dialog-modal" class="techtree-modal game-dialog-modal"></div>
     </div>
     <div id="turn-progress-banner" class="turn-progress-banner" style="display:none;"></div>
@@ -350,12 +351,12 @@
         <div class="shortcuts-section">
           <div class="shortcuts-section-title">General</div>
           <div class="shortcuts-row"><span class="shortcuts-key">W A S D / Arrow Keys</span><span>Scroll around the map</span></div>
-          <div class="shortcuts-row"><span class="shortcuts-key">Shift (hold)</span><span>Repeat "Gather More Resources" or "Research" for the next 3 turns when chosen</span></div>
           <div class="shortcuts-row"><span class="shortcuts-key">M</span><span>Mute or unmute all sound</span></div>
         </div>
         <div class="shortcuts-section">
           <div class="shortcuts-section-title">Unit Selected</div>
           <div class="shortcuts-row"><span class="shortcuts-key">Space</span><span>Rest and Defend</span></div>
+          <div class="shortcuts-row"><span class="shortcuts-key">Q</span><span>Quip</span></div>
         </div>
         <div class="shortcuts-section">
           <div class="shortcuts-section-title">City Selected</div>
@@ -435,6 +436,7 @@
   <script src="js/ui/reports.js"></script>
   <script src="js/ui/knowledgebase.js"></script>
   <script src="js/ui/dialog.js"></script>
+  <script src="js/ui/fireworks.js"></script>
   <script src="js/ui/credits.js"></script>
   <script src="js/ui/buildlist.js"></script>
   <script src="js/ui/ringmenu.js"></script>

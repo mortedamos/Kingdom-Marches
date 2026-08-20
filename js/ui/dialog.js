@@ -19,6 +19,7 @@
  *   { kind: "confirmAutomatedAction", unitLabel, actionLabel, onConfirm(), onDecline() }
  *   { kind: "attackNotice", unitLabel, onGoTo(), onSkip() }
  *   { kind: "gameOver", turnsSurvived, citiesFounded, citiesLost, techsResearched, onReturnToTitle() }
+ *   { kind: "victoryStats", timeTaken, totalTurns, militaryPower, influenceLevel, unitKills, unitsLost, onReturnToTitle() }
  *
  * Every kind rendered here needs a matching branch in main.js's
  * wireDialogButtons -- the markup below only names the buttons, it doesn't
@@ -227,6 +228,22 @@ window.UI = window.UI || {};
         <div class="game-dialog-actions">
           <button class="menu-dropdown-btn" id="game-dialog-cancel-btn">Skip</button>
           <button class="menu-dropdown-btn game-dialog-danger" id="game-dialog-confirm-btn">Go to Attack</button>
+        </div>`;
+    }
+    if (dialog.kind === "victoryStats") {
+      // Shown right after the "Victory!" message is dismissed (see main.js's
+      // showVictorySequence) -- same single-exit shape as gameOver below,
+      // just for the winning side's stats instead of the losing side's.
+      return `
+        <h2>Victory!</h2>
+        <div class="stat-row"><span>Total Time Taken</span><span>${escapeHtml(dialog.timeTaken)}</span></div>
+        <div class="stat-row"><span>Total Turns</span><span>${dialog.totalTurns}</span></div>
+        <div class="stat-row"><span>Military Power</span><span>${dialog.militaryPower}</span></div>
+        <div class="stat-row"><span>Influence Level</span><span>${dialog.influenceLevel}</span></div>
+        <div class="stat-row"><span>Unit Kills</span><span>${dialog.unitKills}</span></div>
+        <div class="stat-row"><span>Units Lost in Battle</span><span>${dialog.unitsLost}</span></div>
+        <div class="game-dialog-actions">
+          <button class="menu-dropdown-btn game-dialog-primary" id="game-dialog-ok-btn">Return to Title Screen</button>
         </div>`;
     }
     if (dialog.kind === "gameOver") {

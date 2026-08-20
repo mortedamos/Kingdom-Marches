@@ -951,6 +951,18 @@ html, body {
   justify-content: center;
   z-index: 100;
 }
+/* Victory celebration fireworks (2026-08-19, user-directed) -- lives inside
+   #game-dialog-overlay itself so it shares that overlay's show/hide and
+   z-index for free, sitting behind #game-dialog-modal (a later sibling in
+   source order, so it paints on top with no z-index of its own needed).
+   pointer-events:none so it never blocks clicks on the dialog above it. */
+#fireworks-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
 .techtree-modal {
   position: relative; /* anchors the .techtree-close-btn X to this modal's own corner, see that rule */
   background: var(--bg-panel);

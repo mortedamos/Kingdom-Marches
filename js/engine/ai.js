@@ -5382,7 +5382,7 @@ window.GameEngine = window.GameEngine || {};
         if (hit.kind === "unit") applyBurning(hit.unit, "unit", gameState);
         else if (hit.kind === "structure") applyBurning(hit.record, "structure", gameState);
       }
-      if (hit.kind === "unit" && hit.unit.hp <= 0) otherCivRemoveDeadUnit(gameState.civs, hit.unit);
+      if (hit.kind === "unit" && hit.unit.hp <= 0) otherCivRemoveDeadUnit(gameState.civs, hit.unit, civ.id);
     }
     // A separate radius-0 burst PER TILE the blast actually covers (matching
     // applyFireballBlast's own 3x3-clamped-to-map-bounds loop exactly),
@@ -6724,9 +6724,10 @@ window.GameEngine = window.GameEngine || {};
     // Highlights the swept radius for a moment --
     // see combat.js's spawnAreaEffect/render.js's drawAreaEffects.
     window.GameEngine.combat.spawnAreaEffect(unit.x, unit.y, radius, "blade_sweep");
-    let hitCount = 0, killCount = 0;
+    let hitCount = 0, killCount = 0, lastDefenderCivId = null;
     for (const target of targets) {
       const defenderCiv = civs[target.civId];
+      lastDefenderCivId = defenderCiv.id;
       const combatContext = {
         attackerGarrisoned: isGarrisoned(unit, civ),
         defenderGarrisoned: isGarrisoned(target, defenderCiv),
@@ -6748,7 +6749,7 @@ window.GameEngine = window.GameEngine || {};
 
       if (target.hp <= 0) {
         killCount++;
-        otherCivRemoveDeadUnit(civs, target);
+        otherCivRemoveDeadUnit(civs, target, civ.id);
         const attackerRace = window.GameData.getRace(civ.raceId);
         if (attackerRace.healOnKillPct && unit.hp > 0) {
           const beforeKillHeal = unit.hp;
@@ -6777,7 +6778,7 @@ window.GameEngine = window.GameEngine || {};
 
     if (unit.hp <= 0) {
       if (unit.carries) { dropCargoOrKill(unit.carries, unit.x, unit.y, gameState, log); unit.carries = null; }
-      otherCivRemoveDeadUnit(civs, unit);
+      otherCivRemoveDeadUnit(civs, unit, lastDefenderCivId);
       log.push(`${label}: ${civ.id}'s Blade Dancer fell mid-sweep after hitting ${hitCount} target(s)`);
       return true;
     }
@@ -7984,13 +7985,13 @@ window.GameEngine = window.GameEngine || {};
     }
 
     if (target.hp <= 0) {
-      otherCivRemoveDeadUnit(civs, target);
+      otherCivRemoveDeadUnit(civs, target, monsterCiv.id);
     } else {
       grantXPAndAutoLevel(target, targetCiv, window.GameEngine.combat.xpForCombatAction(
         { damage: result.counterDamage, killedUnitTypeId: monster.hp <= 0 ? monster.typeId : null }));
     }
     if (monster.hp <= 0) {
-      otherCivRemoveDeadUnit(civs, monster);
+      otherCivRemoveDeadUnit(civs, monster, targetCiv.id);
       grantMonsterKillReward(targetCiv, target, gameState);
     }
     log.push(`Wandering Monster: ${describeUnit(monster)} attacks ${targetCiv.id}'s ${describeUnit(target)} at (${target.x},${target.y})`);
@@ -11727,7 +11728,7 @@ window.GameEngine = window.GameEngine || {};
         if (zombified) {
           log.push(`Zombie: ${civ.id}'s ${describeUnit(unit)} raises ${defenderCiv.id}'s fallen ${describeUnit(bestTarget)} as a zombie under ${civ.id}'s control`);
         } else {
-          otherCivRemoveDeadUnit(civs, bestTarget);
+          otherCivRemoveDeadUnit(civs, bestTarget, civ.id);
           // Orc "Hound and Hunter": a defending Wolf Rider's death may spawn
           // its replacement on its own now-vacated tile.
           if (bestTarget.typeId === "wolf_rider" && defenderCiv.unlockedMechanics
@@ -11802,7 +11803,7 @@ window.GameEngine = window.GameEngine || {};
           const replacement = window.GameEngine.combat.maybeSpawnPonyReplacement(civ, unit.x, unit.y, map);
           if (replacement) log.push(`Undaunted: ${civ.id}'s fallen Pony Patrol is replaced by a ${describeUnit(replacement)} at (${replacement.x},${replacement.y})`);
         }
-        otherCivRemoveDeadUnit(civs, unit);
+        otherCivRemoveDeadUnit(civs, unit, defenderCiv.id);
       }
 
       // Veteran leveling: XP for both sides based on what actually happened
@@ -12018,7 +12019,7 @@ window.GameEngine = window.GameEngine || {};
           const replacement = window.GameEngine.combat.maybeSpawnPonyReplacement(civ, unit.x, unit.y, map);
           if (replacement) log.push(`Undaunted: ${civ.id}'s fallen Pony Patrol is replaced by a ${describeUnit(replacement)} at (${replacement.x},${replacement.y})`);
         }
-        otherCivRemoveDeadUnit(civs, unit);
+        otherCivRemoveDeadUnit(civs, unit, bestCity.civ.id);
         log.push(`Rouse the People: ${civ.id}'s ${describeUnit(unit)} was slain by ${bestCity.civ.id}'s city`);
       }
       return true;
@@ -12123,7 +12124,7 @@ window.GameEngine = window.GameEngine || {};
           const replacement = window.GameEngine.combat.maybeSpawnPonyReplacement(civ, unit.x, unit.y, map);
           if (replacement) log.push(`Undaunted: ${civ.id}'s fallen Pony Patrol is replaced by a ${describeUnit(replacement)} at (${replacement.x},${replacement.y})`);
         }
-        otherCivRemoveDeadUnit(civs, unit);
+        otherCivRemoveDeadUnit(civs, unit, bestStruct.s.civ.id);
         log.push(`Structure counter: ${civ.id}'s ${describeUnit(unit)} was slain by ${bestStruct.s.civ.id}'s ${bestStruct.s.record.id}`);
       }
       return true;
@@ -12356,7 +12357,7 @@ window.GameEngine = window.GameEngine || {};
         log.push(`Wall Defense: ${civ.id}'s wall at (${s.x},${s.y}) attacks ${targetCiv.id}'s ${describeUnit(target)} for ${dmg}`);
         if (target.hp <= 0) {
           log.push(`Wall Defense: ${targetCiv.id}'s ${describeUnit(target)} is slain by ${civ.id}'s wall at (${s.x},${s.y})`);
-          otherCivRemoveDeadUnit(civs, target);
+          otherCivRemoveDeadUnit(civs, target, civ.id);
         }
       }
     }
@@ -12414,7 +12415,7 @@ window.GameEngine = window.GameEngine || {};
         log.push(`Mage Tower: ${civ.id}'s Mage College at (${s.x},${s.y}) attacks ${targetCiv.id}'s ${describeUnit(target)} for ${dmg}`);
         if (target.hp <= 0) {
           log.push(`Mage Tower: ${targetCiv.id}'s ${describeUnit(target)} is slain by ${civ.id}'s Mage College at (${s.x},${s.y})`);
-          otherCivRemoveDeadUnit(civs, target);
+          otherCivRemoveDeadUnit(civs, target, civ.id);
         }
       }
     }
@@ -12465,13 +12466,26 @@ window.GameEngine = window.GameEngine || {};
    *  below), so it's also the one place that needs to know how to play a
    *  death sound and queue the smoke/skull cosmetic (2026-08-07, user-
    *  directed -- see deathfx.js/overlays.js's drawDeathEffects). */
-  function otherCivRemoveDeadUnit(civs, deadUnit) {
+  function otherCivRemoveDeadUnit(civs, deadUnit, killerCivId = null) {
     const civ = civs[deadUnit.civId];
     if (civ) {
       window.SfxSystem.playAction(civ.raceId, deadUnit.typeId, "death", deadUnit.x, deadUnit.y, DEATH_SFX_DELAY_MS);
       window.GameEngine.deathFx.spawnDeathEffect(deadUnit.x, deadUnit.y);
       civ.units = civ.units.filter((u) => u !== deadUnit);
       maybeSpawnDeathChest(deadUnit, currentGameStateRef);
+      // Victory-stats tallies (2026-08-19, user-directed): every combat
+      // death in the game funnels through this one chokepoint (see this
+      // function's own doc comment), so it's also the one place that can
+      // count "units lost in battle" for EVERY civ with zero per-call-site
+      // changes. killerCivId is optional and only passed by call sites
+      // where "who did this" is unambiguous (a unit's own attack/counter,
+      // a monster's attack) -- environmental deaths (a bridge destroyed
+      // out from under a unit, a carrier's cargo going down with it) have
+      // no real attacker to credit, so they still count as a loss for the
+      // victim but nobody's kill tally moves.
+      civ.unitsLostInBattle = (civ.unitsLostInBattle || 0) + 1;
+      const killerCiv = killerCivId ? civs[killerCivId] : null;
+      if (killerCiv) killerCiv.unitsKilled = (killerCiv.unitsKilled || 0) + 1;
     }
   }
 
