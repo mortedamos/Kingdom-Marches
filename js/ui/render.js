@@ -1615,11 +1615,32 @@ window.UI = window.UI || {};
    *  even though there are 2 diagonal directions: "diagonal_nwse" draws
    *  the asset as-is, "diagonal_nesw" draws it flipped. bridgeSpriteKey()
    *  collapses both back to the single "diagonal" lookup key for the
-   *  sprite registry. "node" here means an endpoint (only one neighbor,
-   *  or none at all) or a genuine junction -- same "reads fine as a
-   *  single generic variant either way" reasoning wallOrientation's own
-   *  doc comment gives. */
+   *  sprite registry. "node" here means: touching land (always -- see the
+   *  explicit check at the top of this function), a genuine junction
+   *  (both diagonals present), or an isolated segment with no bridge
+   *  neighbor at all -- same "reads fine as a single generic variant
+   *  either way" reasoning wallOrientation's own doc comment gives for
+   *  its own non-land cases. */
   function bridgeOrientation(map, civId, x, y) {
+    // Land-adjacent segments (2026-08-19, user-directed) always render as
+    // the node piece, regardless of how many bridge neighbors this tile
+    // has -- checked FIRST, ahead of the neighbor-count logic below. A
+    // straight/diagonal band reads as though the span just keeps going
+    // past the tile it actually ends on; node's octagonal shape reads as
+    // a proper terminus meeting the shore instead. This can't fall out of
+    // the neighbor-count logic alone: an end segment with exactly one
+    // bridge neighbor and NO adjacent land (the far end of a multi-tile
+    // span still mid-water, one Pioneer action short of reaching shore)
+    // still correctly wants a straight orientation, so the rule has to be
+    // specifically "touches land", not just "has only one neighbor".
+    for (let dy = -1; dy <= 1; dy++) {
+      for (let dx = -1; dx <= 1; dx++) {
+        if (dx === 0 && dy === 0) continue;
+        const nx = x + dx, ny = y + dy;
+        if (nx < 0 || nx >= map.width || ny < 0 || ny >= map.height) continue;
+        if (!window.GameData.TERRAIN[map.tiles[ny * map.width + nx].terrain].isWater) return "node";
+      }
+    }
     const isSameCivBridge = (nx, ny) => {
       if (nx < 0 || nx >= map.width || ny < 0 || ny >= map.height) return false;
       const s = map.tiles[ny * map.width + nx].structure;
