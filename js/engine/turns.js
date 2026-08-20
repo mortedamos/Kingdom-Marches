@@ -1373,12 +1373,57 @@ window.GameEngine = window.GameEngine || {};
     // idle unit) -- only units that chose to Rest this turn (set by AI or the
     // player's Rest button) heal. Runs after the AI turn so this-turn Rest
     // decisions are honored immediately, and after the human's own pre-End-Turn
-    // UI actions for the human civ.
+    // UI actions for the human civ. Excludes channeling === "restAndDefend"
+    // -- that gets its own flat-rate heal (see just below) instead of this
+    // roll3d6-based one, so a unit can't double-heal on the turn it starts
+    // (performRestAndDefend/the AI's Ramparts branch both set unit.resting
+    // AND channeling together).
     for (const unit of civ.units) {
-      if (!unit.resting) continue;
+      if (!unit.resting || unit.channeling === "restAndDefend") continue;
       const inOwnCity = civ.cities.some((c) => c.x === unit.x && c.y === unit.y);
       const tile = map.tiles[unit.y * map.width + unit.x];
       window.GameEngine.combat.healUnit(unit, civ, inOwnCity, tile);
+    }
+
+    // Rest and Defend heal (2026-08-19, user-directed): a flat 20% of
+    // maxHp per turn, minimum 1 -- deliberately NOT the generic roll3d6
+    // heal above, so the rate is exactly predictable regardless of
+    // location/race bonuses. Applies to ANY civ's unit currently
+    // channeling restAndDefend (human via main.js's handleRestAndDefend,
+    // AI via ai.js's Ramparts branch) -- one rate for the one named
+    // action, however it was triggered; the AI branch already re-sets
+    // channeling/resting fresh every turn it re-decides to keep resting,
+    // same as this needs. Respects race.noHealing (Undead) the same way
+    // healUnit does -- resting still isn't how that race heals, so the
+    // defensive brace stays available to them without ever ticking HP up
+    // (and, by the same token, never auto-stops here on its own either).
+    // Auto-stops the moment HP tops out: nothing left for the brace to
+    // accomplish, and for the human player clearing channeling here is
+    // also what makes the unit reappear as needing orders (see orders.js's
+    // isSpent, which treats a truthy channeling as its own "already
+    // spent" reason) instead of silently sitting there looking busy
+    // forever once there's nothing left to heal. EXCEPT inside one of
+    // this civ's own cities (2026-08-19, user-directed): resting there IS
+    // garrison duty, a legitimate standing order in its own right that
+    // just happens to also heal while it waits -- topping out at full HP
+    // doesn't mean the garrison's job is done, so it keeps channeling
+    // (still gets the x2 defending bonus, city defense bonuses, etc.)
+    // instead of getting kicked back to the player as needing a fresh
+    // order every time it finishes healing.
+    for (const unit of civ.units) {
+      if (unit.channeling !== "restAndDefend") continue;
+      const race = window.GameData.getRace(civ.raceId);
+      if (!race.noHealing && unit.hp < unit.maxHp) {
+        const healAmount = Math.max(1, Math.round(unit.maxHp * 0.20));
+        const before = unit.hp;
+        unit.hp = Math.min(unit.maxHp, unit.hp + healAmount);
+        window.GameEngine.floatingText.spawnHealGain(unit, unit.hp - before);
+      }
+      const inOwnCity = civ.cities.some((c) => c.x === unit.x && c.y === unit.y);
+      if (unit.hp >= unit.maxHp && !inOwnCity) {
+        unit.channeling = null;
+        unit.resting = false;
+      }
     }
 
     // Tech: Halfellow "Devoted Companions" -- a carried passenger heals

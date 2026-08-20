@@ -443,7 +443,7 @@ window.GameData.TECHS = {
     effects: [{ type: "replace_unit", from: "catapult", to: "trebuchet" }],
   },
   battle_mage: {
-    id: "battle_mage", label: "Battle Mage", category: "mystic", layer: 4, cost: 55,
+    id: "battle_mage", label: "Battle Mage", category: "mystic", layer: 3, cost: 55,
     prereqs: ["mage_college_tech"], raceOnly: "human",
     // This used to raise the Wizard's firstStrikePct (0.50->0.75) -- Wizard
     // no longer has that property at all (its identity moved to `range`, see
@@ -485,15 +485,19 @@ window.GameData.TECHS = {
     costBreakdown: { harvest: 25, lore: 20, coin: 15 },
     effects: [{ type: "unlock_building", building: "palace" }],
   },
-  // Moved L5 -> L3 and reworked from automatic
+  // Moved L5 -> L3 -> L4 and reworked from automatic
   // splash-on-attack into a standalone targeted action -- see ai.js's
   // performWizardFireball/maybeFireballStrike. Ignite chance is now a fixed
   // 50% (FIREBALL_IGNITE_CHANCE in ai.js), not the Wizard's own
   // burnChancePct stat, so that effect was dropped from this tech's
-  // unit_stat_upgrade below. Prereq (battle_mage, L4) stays put -- same
-  // "move the layer only" policy as Palace Charter/Invisibility above.
+  // unit_stat_upgrade below. Prereq (battle_mage) stays put regardless of
+  // its own layer -- same "move the layer only" policy as Palace Charter/
+  // Invisibility above (2026-08-19: battle_mage itself moved L4 -> L3 the
+  // same day, which happens to resolve the L3-tech-gated-behind-an-L4-
+  // prereq inversion this comment used to describe -- coincidental, not
+  // the reason for either move).
   fireball: {
-    id: "fireball", label: "Fireball!", category: "mystic", layer: 3, cost: 65,
+    id: "fireball", label: "Fireball!", category: "mystic", layer: 4, cost: 65,
     prereqs: ["battle_mage"], raceOnly: "human",
     description: "The wizard may target a tile within range. All units and structures on that tile, and adjacent to that tile, take damage and have a 50% chance to be set on fire (gain the burning condition).",
     costBreakdown: { lore: 65, coin: 30 },
