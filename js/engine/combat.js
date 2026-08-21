@@ -1056,14 +1056,20 @@ window.GameEngine = window.GameEngine || {};
       }
       counterNegated = counterIsNegated(attackerUnit, attackerCiv);
       if (!counterNegated) {
-        let dmg = Math.round(mitigatedDamage(counterAtkStat, counterDefStat) / 2);
+        // 33% of a full hit (2026-08-21, user-directed; was 50%) -- floored
+        // at 1 below, same "a hit always deals SOMETHING" guarantee
+        // mitigatedDamage's own floor gives an ordinary attack, applied
+        // here on the FINAL counter value (after counterDamageMult) rather
+        // than relying on mitigatedDamage's floor alone, since 33% of that
+        // floor (mitigatedDamage's minimum 1) would otherwise round to 0.
+        let dmg = Math.round(mitigatedDamage(counterAtkStat, counterDefStat) * 0.33);
         // Whirlwind Strike/Blade Storm (see attackDamageMult above) --
         // counterDamageMult scales an already-adjacent target's counter down
         // further (25%/16% effectiveness); a non-adjacent Blade Storm target
         // never reaches this function at all (isAdjacent already guards
         // dealReturn's entry above), so it needs no separate suppression here.
         if (context.counterDamageMult != null) dmg = Math.round(dmg * context.counterDamageMult);
-        counterDamage = Math.max(0, dmg);
+        counterDamage = Math.max(1, dmg);
         // Tech: Halfellow "Resilient Spirit" -- same death-save, applied to a
         // would-be-lethal COUNTERATTACK against the original attacker.
         // Dwarf "Unyielding" -- same shape, own decay rate/probabilistic rest.

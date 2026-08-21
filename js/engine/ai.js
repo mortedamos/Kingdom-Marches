@@ -5391,17 +5391,30 @@ window.GameEngine = window.GameEngine || {};
   }
 
   /** Is (x,y) a legal teleport landing tile for `targetUnit`? Out of bounds,
-   *  water, any unit already there (friend or foe), or an enemy wall/
-   *  building/city all disqualify it -- teleporting can never place a unit
-   *  somewhere it could never otherwise stand. */
+   *  water (unless a completed bridge spans it -- see `isBridge` below),
+   *  any unit already there (friend or foe), or an enemy wall/building/city
+   *  all disqualify it -- teleporting can never place a unit somewhere it
+   *  could never otherwise stand.
+   *
+   *  Deliberately uses the raw hasEnemyStructure/hasEnemyCity, NOT
+   *  isEnemyStructureBlockingTile/isEnemyCityBlockingTile (2026-08-21,
+   *  user-directed) -- those two grant a flying exemption for ordinary
+   *  movement's PASS-THROUGH case (a flier may cross over an enemy wall),
+   *  which has no business here: teleporting is always a LANDING, the same
+   *  "never actually stop on an enemy structure/city, flying or not"
+   *  question buildMoveRules' canLandOn answers for ordinary movement. A
+   *  bridge is never an "enemy structure" for this purpose either way --
+   *  hasEnemyStructure already exempts isBridge unconditionally, same as
+   *  every other structure-ownership check in the game. */
   function isValidTeleportTile(gameState, x, y, targetUnit) {
     const { map, civs } = gameState;
     if (x < 0 || x >= map.width || y < 0 || y >= map.height) return false;
     const tile = map.tiles[y * map.width + x];
-    if (window.GameData.TERRAIN[tile.terrain].isWater) return false;
+    const isBridge = !!tile.structure?.isBridge;
+    if (window.GameData.TERRAIN[tile.terrain].isWater && !isBridge) return false;
     if (Object.values(civs).some((c) => c.units.some((u) => u !== targetUnit && u.x === x && u.y === y))) return false;
-    if (isEnemyStructureBlockingTile(tile, targetUnit)) return false;
-    if (isEnemyCityBlockingTile(civs, x, y, targetUnit)) return false;
+    if (hasEnemyStructure(tile, targetUnit.civId)) return false;
+    if (hasEnemyCity(civs, x, y, targetUnit.civId)) return false;
     return true;
   }
 
