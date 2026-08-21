@@ -559,6 +559,21 @@ window.GameEngine = window.GameEngine || {};
     }
   }
 
+  /** Uniform pick among `validResources`, then an independent per-resource
+   *  `spawnRejectChance` roll (default 0, see terrain.js's RESOURCES --
+   *  currently only Treasure Chest sets one above 0) that can discard the
+   *  pick entirely, leaving the tile resource-less -- cuts that one
+   *  resource's own placement rate by exactly its reject chance, without
+   *  redistributing the discarded share onto whatever else is valid on
+   *  that tile (which a competitive spawn-weight approach would do,
+   *  unevenly, depending on how many other resources happen to be valid
+   *  on that particular terrain). */
+  function pickResourceWithRejection(validResources, rng) {
+    const picked = validResources[Math.floor(rng() * validResources.length)];
+    if (rng() < (RESOURCES[picked].spawnRejectChance || 0)) return null;
+    return picked;
+  }
+
   function placeResources(tiles, width, height, rng, landmasses) {
     const PLACEMENT_CHANCE = 0.045;
     for (const tile of tiles) {
@@ -568,7 +583,7 @@ window.GameEngine = window.GameEngine || {};
       );
       if (validResources.length === 0) continue;
       if (rng() < PLACEMENT_CHANCE) {
-        tile.resource = validResources[Math.floor(rng() * validResources.length)];
+        tile.resource = pickResourceWithRejection(validResources, rng);
       }
     }
     // Fairness pass: ensure every landmass with >= 8 tiles has at least one resource
@@ -586,7 +601,7 @@ window.GameEngine = window.GameEngine || {};
           const validResources = window.GameData.RESOURCE_LIST.filter((rid) =>
             RESOURCES[rid].validTerrain.includes(t.terrain)
           );
-          t.resource = validResources[Math.floor(rng() * validResources.length)];
+          t.resource = pickWeightedResource(validResources, rng);
         }
       }
     }

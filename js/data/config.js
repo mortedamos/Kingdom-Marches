@@ -65,9 +65,9 @@ window.GameConfig = {
     /** Local date this build was cut, YYYY-MM-DD. */
     date: "2026-08-20",
     /** Local time this build was cut, 24-hour HH:MM. */
-    time: "21:03",
+    time: "22:36",
     /** Monotonic build counter -- increment it, don't recompute it. */
-    number: 161,
+    number: 162,
   },
 
   // =========================================================================
@@ -213,11 +213,13 @@ window.GameConfig = {
      *  progress; each time that crosses fillThreshold, one random unfilled
      *  offset within the current radius fills. Filled tiles are never lost.
      *
-     *  At the current values that's ~2.5 turns/tile at industriousness 0.3
-     *  (Orc) down to ~1.5 at 1.0 (Halfellow). */
+     *  At the current values that's ~2.7 turns/tile at industriousness 0.3
+     *  (Orc) down to ~1.7 at 1.0 (Halfellow) -- both bases cut 10%
+     *  (2026-08-20, user-directed: "reduce rate of influence spread by
+     *  10%") from their prior 0.9/1.08. */
     fillThreshold: 3,
-    fillRateBase: 0.9,
-    fillRatePerIndustriousness: 1.08,
+    fillRateBase: 0.81,
+    fillRatePerIndustriousness: 0.972,
 
     /** How much the fill rate above scales with the city's CURRENT radius:
      *  the per-turn rate is multiplied by (1 + (influenceRadius - 1) * this).

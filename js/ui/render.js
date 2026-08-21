@@ -1203,6 +1203,29 @@ window.UI = window.UI || {};
         drawPlacementPreviewUnit(ctx, placement.previewUnitId, placement.previewRaceId, screenX, screenY, ts);
       }
     }
+
+    // AoE blast preview (Fireball/Bombardment -- see main.js's
+    // startFireballPlacement/startBombardmentPlacement): while hovering a
+    // legal target tile, also wash every OTHER tile the blast would
+    // actually hit (placement.aoeOffsets, relative to the hovered tile),
+    // not just the single anchor tile the gold highlight above already
+    // shows -- a distinct orange "blast" tint so it doesn't read as just
+    // more legal-target tiles. Skipped entirely for a placement with no
+    // aoeOffsets (every other placement flow -- structures, summons,
+    // teleport, traps -- is unaffected).
+    if (placement.aoeOffsets && hover && placement.slots.some((s) => s.x === hover.x && s.y === hover.y)) {
+      for (const off of placement.aoeOffsets) {
+        const x = hover.x + off.dx, y = hover.y + off.dy;
+        const screenX = x * ts + offsetX;
+        const screenY = y * ts + offsetY;
+        if (screenX < -ts || screenX > ctx.canvas.width || screenY < -ts || screenY > ctx.canvas.height) continue;
+        ctx.fillStyle = "rgba(255, 90, 40, 0.32)";
+        ctx.fillRect(screenX, screenY, ts, ts);
+        ctx.strokeStyle = "rgba(255, 130, 60, 0.9)";
+        ctx.lineWidth = 2;
+        ctx.strokeRect(screenX + 1, screenY + 1, ts - 2, ts - 2);
+      }
+    }
   }
 
   /** Target-selection mode's per-candidate marker (see main.js's

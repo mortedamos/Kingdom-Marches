@@ -8425,6 +8425,39 @@ window.GameEngine = window.GameEngine || {};
     unit.currentMission = "Wandering";
   }
 
+  // World encounters: Swamp tiles produce a Marsh Adder 75% less often than
+  // every other terrain produces its own monster (user-directed,
+  // 2026-08-20) -- a flat per-terrain weight applied at candidate-selection
+  // time in both maybeSpawnMonster and seedInitialMonsters below, rather
+  // than a coin-flip-and-reroll on an already-chosen Swamp tile -- that
+  // would also shrink how often a round spawns ANY monster at all (fewer
+  // successful rolls converted into an actual placement), not just how
+  // often Swamp specifically wins the pick. Every unlisted terrain
+  // defaults to weight 1 (unchanged).
+  const MONSTER_TERRAIN_SPAWN_WEIGHT = { swamp: 0.25 };
+
+  /** Weighted-random pick among `candidates` (an array of map tile
+   *  indices), where a tile's chance of being chosen is proportional to
+   *  MONSTER_TERRAIN_SPAWN_WEIGHT[terrain] (default 1) -- same shape as an
+   *  ordinary uniform pick when every candidate shares the same weight, but
+   *  lets one terrain be systematically over/under-represented without
+   *  touching how many candidates exist or whether a spawn attempt
+   *  succeeds at all. */
+  function pickWeightedMonsterTile(candidates, map) {
+    let totalWeight = 0;
+    const weights = candidates.map((idx) => {
+      const w = MONSTER_TERRAIN_SPAWN_WEIGHT[map.tiles[idx].terrain] ?? 1;
+      totalWeight += w;
+      return w;
+    });
+    let roll = Math.random() * totalWeight;
+    for (let i = 0; i < candidates.length; i++) {
+      roll -= weights[i];
+      if (roll <= 0) return candidates[i];
+    }
+    return candidates[candidates.length - 1]; // floating-point fallback
+  }
+
   /** Monster spawning (see doc/world_encounters_design.md) -- called once
    *  per round from turns.js's beginRound. Spawns at most one monster per
    *  round: rolls max(MIN_SPAWN_CHANCE, BASE_SPAWN_CHANCE * (1 -
@@ -8507,7 +8540,7 @@ window.GameEngine = window.GameEngine || {};
     if (Math.random() >= spawnChance) return;
     if (!uncoveredCandidates.length) return;
 
-    const idx = uncoveredCandidates[Math.floor(Math.random() * uncoveredCandidates.length)];
+    const idx = pickWeightedMonsterTile(uncoveredCandidates, map);
     const x = idx % map.width, y = Math.floor(idx / map.width);
     const typeId = window.GameData.MONSTER_TERRAIN[map.tiles[idx].terrain];
     const newUnit = { typeId, civId: MONSTER_CIV_ID, x, y, isCivilian: false };
@@ -8571,9 +8604,8 @@ window.GameEngine = window.GameEngine || {};
     const targetCount = Math.min(initialPerKingdom * activeKingdoms, candidates.length);
 
     for (let n = 0; n < targetCount; n++) {
-      const pick = Math.floor(Math.random() * candidates.length);
-      const idx = candidates[pick];
-      candidates.splice(pick, 1); // no two initial monsters sharing a tile
+      const idx = pickWeightedMonsterTile(candidates, map);
+      candidates.splice(candidates.indexOf(idx), 1); // no two initial monsters sharing a tile
       const x = idx % map.width, y = Math.floor(idx / map.width);
       const typeId = window.GameData.MONSTER_TERRAIN[map.tiles[idx].terrain];
       const newUnit = { typeId, civId: MONSTER_CIV_ID, x, y, isCivilian: false };

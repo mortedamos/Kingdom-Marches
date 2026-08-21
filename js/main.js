@@ -4598,6 +4598,15 @@
     viewState.placement = {
       slots,
       label: "Fireball!",
+      // Blast preview (render.js's drawPlacementOverlay): the hovered
+      // tile's own 3x3 blast (see combat.js's applyFireballBlast) drawn as
+      // an offset list, not just the single anchor tile -- so the player
+      // can actually see what the blast will hit before committing.
+      aoeOffsets: (() => {
+        const offs = [];
+        for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) offs.push({ dx, dy });
+        return offs;
+      })(),
       onPick: (slot) => {
         viewState.placement = null;
         if (slot) window.GameEngine.ai.performPlayerFireball(civ, caster, slot.x, slot.y, gameState);
@@ -4631,6 +4640,17 @@
     viewState.placement = {
       slots,
       label: "Bombardment",
+      // Blast preview (render.js's drawPlacementOverlay): the hovered
+      // tile's own 2x2 blast (see combat.js's applyBombardBlast -- the
+      // picked tile is the block's TOP-LEFT corner, not its center) drawn
+      // as an offset list, not just the single anchor tile -- so the
+      // player can actually see the other 3 tiles that would also get hit
+      // before committing.
+      aoeOffsets: (() => {
+        const offs = [];
+        for (let dy = 0; dy <= 1; dy++) for (let dx = 0; dx <= 1; dx++) offs.push({ dx, dy });
+        return offs;
+      })(),
       onPick: (slot) => {
         viewState.placement = null;
         if (slot) window.GameEngine.ai.performPlayerBombardment(civ, caster, slot.x, slot.y, gameState);
