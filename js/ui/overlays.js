@@ -60,6 +60,7 @@ window.UI = window.UI || {};
     resting: "⛺",
     webbed: "🕸️",
     poisoned: "🤢",
+    greatBonfireAura: "♨️"
   };
   const CARRYING_ICON = "🫴";
 

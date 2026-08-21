@@ -188,17 +188,15 @@ window.GameData.BUILDINGS = {
   // applying it raw, the way every other (defenseless) structure still does.
   wall_section: {
     id: "wall_section", label: "Wall", symbol: "▬", isWall: true,
-    // Floored at 3 turns to match a level-0 unit's own minBuildTurns
-    // (units.js) -- Pioneer/Scout/Galley all land at exactly 3 turns under
-    // default pacing (see ai.js's unitBuildTurns). wall_section's own raw
-    // formula (round((coinCost/industriousness) * BUILD_SLOWNESS *
-    // buildingPaceFactor), see ai.js's buildingBuildTurns) never exceeds 3
-    // for any race's industriousness (0.2-0.9, races.js), so this floor is
-    // what actually governs everywhere -- every race builds a wall in
-    // exactly 3 turns. cityDefensePerWall (see combat.js's
-    // cityDefenseValue) is a separate, additional defense bonus per wall.
+    // No minBuildTurns (removed 2026-08-21): build time is table-driven now
+    // (see config.js's pacing.buildTurnsByLayer, keyed on
+    // GameData.buildingTechLayer -- wall_section resolves to the "walls"
+    // tech, Layer 0). A hardcoded 3-turn floor would have silently
+    // overridden the table's own Layer 0 Fast/Fastest values (2 turns) --
+    // see units.js's Pioneer for the same fix. cityDefensePerWall (see
+    // combat.js's cityDefenseValue) is a separate, additional defense bonus
+    // per wall.
     coinCost: 11, maxHp: 30, defense: 8,
-    minBuildTurns: 3,
   },
 
   // ---------- BRIDGES — universal, every race can build these (not raceOnly) ----------
@@ -214,7 +212,7 @@ window.GameData.BUILDINGS = {
   bridge_section: {
     id: "bridge_section", label: "Bridge", symbol: "═", isBridge: true,
     coinCost: 11, maxHp: 30, defense: 8,
-    minBuildTurns: 3,
+    // No minBuildTurns -- see wall_section's own comment just above.
   },
 };
 
@@ -269,6 +267,18 @@ window.GameData._TECH_FOR_BUILDING = (() => {
 })();
 window.GameData.techForBuilding = function (buildingId) {
   return window.GameData._TECH_FOR_BUILDING[buildingId] || null;
+};
+
+/** Tech-tree depth the building was FIRST unlocked at (the unlocking tech's
+ *  own `layer`) -- mirrors techs.js's unitTechLayer exactly, same `?? 1`
+ *  defensive fallback for the hypothetical case of a building with no
+ *  unlock_building tech at all (doesn't currently happen -- every building,
+ *  wall_section/bridge_section included, resolves to a real tech). Used by
+ *  ai.js's buildingBuildTurns to index config.js's pacing.buildTurnsByLayer. */
+window.GameData.buildingTechLayer = function (buildingId) {
+  const techId = window.GameData.techForBuilding(buildingId);
+  if (!techId) return 1;
+  return window.GameData.TECHS[techId].layer ?? 1;
 };
 
 /** A building's one-time cost, split across harvest/coin/lore in the same

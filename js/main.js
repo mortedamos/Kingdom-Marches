@@ -37,18 +37,23 @@
   let loadingStatusTimer = null; // see showLoadingScreen/hideLoadingScreen
 
   // Game Speed slider controls how many turns units/buildings/research take
-  // (GameConfig.pacing.slowness) -- see config.js's own doc comment for the
-  // pace-factor system this scales uniformly. 100% reproduces the default
-  // pace exactly; higher = faster (fewer turns), lower = slower, an inverse
-  // relationship. BASE_PACING_SLOWNESS is captured ONCE here, before
-  // applyGameSpeed ever runs, so every later call recomputes from this fixed
-  // baseline rather than the live (possibly already-adjusted) config value --
-  // otherwise repeated speed changes would compound/drift.
-  const BASE_PACING_SLOWNESS = window.GameConfig.pacing.slowness;
+  // (GameConfig.pacing.speedLevelIndex -- see config.js's own doc comment
+  // for the researchTurnsByLayer/buildTurnsByLayer table system this
+  // indexes into). `percent` is kept as the wire format for save games and
+  // multiplayer payloads (gameSpeedPercent, already the established field
+  // name there) even though the UI itself now only ever produces one of
+  // GAME_SPEED_LEVELS' 5 exact values -- an OLDER save/payload could still
+  // carry an in-between percent from before this slider had named levels,
+  // so this maps to the CLOSEST level rather than requiring an exact match.
   let gameSpeedPercent = 100;
   function applyGameSpeed(percent) {
     gameSpeedPercent = percent;
-    window.GameConfig.pacing.slowness = BASE_PACING_SLOWNESS * (100 / percent);
+    let bestIndex = 2, bestDist = Infinity;
+    GAME_SPEED_LEVELS.forEach((level, i) => {
+      const dist = Math.abs(level.percent - percent);
+      if (dist < bestDist) { bestDist = dist; bestIndex = i; }
+    });
+    window.GameConfig.pacing.speedLevelIndex = bestIndex;
   }
 
   // Identity of whatever's currently rendered into the tech tree/reports/
@@ -230,6 +235,22 @@
     noWater: "No ocean or coast at all -- one unbroken landmass.",
   };
   const WORLD_TYPE_DEFAULT_INDEX = WORLD_TYPE_SLIDER_VALUES.indexOf("continent");
+  // Game Options "Game Speed" slider (2026-08-21): was a free 50-150% range
+  // slider (step 5); replaced with 5 named levels, same "index -> lookup
+  // table" shape as World Type just above. Evenly spaced across the same
+  // 50-150% span the old slider covered, so applyGameSpeed's actual pacing
+  // math (and everything downstream of it -- save games, multiplayer sync,
+  // which all still pass around a raw percent) is untouched; only the launch
+  // screen's own index-to-label mapping changed. "Normal" sits in the
+  // middle at index 2 (the default, 100% -- the original, unscaled pace).
+  const GAME_SPEED_LEVELS = [
+    { id: "slowest", label: "Slowest", percent: 50 },
+    { id: "slow", label: "Slow", percent: 75 },
+    { id: "normal", label: "Normal", percent: 100 },
+    { id: "fast", label: "Fast", percent: 125 },
+    { id: "fastest", label: "Fastest", percent: 150 },
+  ];
+  const GAME_SPEED_DEFAULT_INDEX = GAME_SPEED_LEVELS.findIndex((l) => l.id === "normal");
   // Pacing experiment (2026-07-12): ~20% fewer tiles than the previous
   // 65x40 (2600) -- forces civs closer together for faster contact/
   // conflict. Same aspect ratio, scaled by sqrt(0.8). See
@@ -375,11 +396,11 @@
         <label class="launch-row">
           <span>Game Speed</span>
           <span class="launch-row-slider">
-            <input type="range" id="game-speed-slider" min="50" max="150" step="5" value="100">
-            <span id="game-speed-pct">100%</span>
+            <input type="range" id="game-speed-slider" min="0" max="${GAME_SPEED_LEVELS.length - 1}" step="1" value="${GAME_SPEED_DEFAULT_INDEX}">
+            <span id="game-speed-pct">${GAME_SPEED_LEVELS[GAME_SPEED_DEFAULT_INDEX].label}</span>
           </span>
         </label>
-        <p class="launch-hint">How many turns units, buildings, and research take to complete -- lower is slower, higher is faster. 100% (the middle) is the default pace.</p>
+        <p class="launch-hint">How many turns units, buildings, and research take to complete -- Slowest takes longest, Fastest takes fewest turns. Normal (the middle) is the default pace.</p>
         <label class="launch-row">
           <span>Max Monsters</span>
           <span class="launch-row-slider">
@@ -460,12 +481,12 @@
       $("world-type-hint").textContent = WORLD_TYPE_HINTS[worldType];
     });
 
-    // Game Speed slider: the percentage label moves live as the slider is
+    // Game Speed slider: the level label moves live as the slider is
     // dragged -- actually applying the speed (mutating GameConfig.pacing.
     // slowness) waits for Start Game itself (see startGame's applyGameSpeed
     // call), same as every other launch option here.
     $("game-speed-slider").addEventListener("input", (e) => {
-      $("game-speed-pct").textContent = `${e.target.value}%`;
+      $("game-speed-pct").textContent = GAME_SPEED_LEVELS[parseInt(e.target.value, 10)].label;
     });
 
     // Max Monsters slider: same "label moves live, value only actually
@@ -965,7 +986,7 @@
       return;
     }
     const opponentCount = parseInt($("opponent-count").value, 10);
-    applyGameSpeed(parseInt($("game-speed-slider").value, 10));
+    applyGameSpeed(GAME_SPEED_LEVELS[parseInt($("game-speed-slider").value, 10)].percent);
     const monsterCapPerKingdom = parseInt($("monster-cap-slider").value, 10);
     const worldType = WORLD_TYPE_SLIDER_VALUES[parseInt($("world-type-slider").value, 10)];
     const seedInput = $("seed-input").value.trim();

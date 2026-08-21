@@ -61,6 +61,9 @@ window.GameEngine = window.GameEngine || {};
   const CULTURE_SPREAD_INFLUENCE_MULT = CFG.cultureSpreadInfluenceMult;
   const CULTURE_SPREAD_COST_BASE = CFG.cultureSpreadCostBase;
   const CULTURE_SPREAD_COST_PER_POP = CFG.cultureSpreadCostPerPop;
+  // "Research" (see applyResearchBoost below).
+  const RESEARCH_BOOST_COST_BASE = CFG.researchBoostCostBase;
+  const RESEARCH_BOOST_COST_PER_POP = CFG.researchBoostCostPerPop;
 
   // city.influenceRadius is now the SINGLE radius governing both territory
   // influence (influence.js's computeInfluenceMap) and worked-tile yield
@@ -783,21 +786,46 @@ window.GameEngine = window.GameEngine || {};
     return Math.max(1, Math.floor((city && city.population) || 0));
   }
 
-  /** Spends `city`'s production this turn accelerating the civ's current
-   *  research. Returns a receipt { amount, completed, techId, techLabel }, or
-   *  null if it wasn't allowed (already spoken for this turn, building
-   *  something, or nothing is currently being researched). */
+  /** Stockpile cost of a Research boost -- same { base, perPop } shape as
+   *  spreadCultureCost below, scaled off the same population floor. Paid on
+   *  TOP of consuming the city's turn (unlike Spread Culture, which pays
+   *  stockpile INSTEAD of the turn) -- see applyResearchBoost. Pure -- the
+   *  ring menu calls this every render to label the pill. */
+  function researchBoostCost(city) {
+    const pop = Math.max(1, Math.floor((city && city.population) || 1));
+    const out = {};
+    for (const k of Object.keys(RESEARCH_BOOST_COST_BASE)) {
+      out[k] = RESEARCH_BOOST_COST_BASE[k] + RESEARCH_BOOST_COST_PER_POP[k] * pop;
+    }
+    return out;
+  }
+
+  /** Spends `city`'s production this turn (plus stockpile, see
+   *  researchBoostCost) accelerating the civ's current research. Returns a
+   *  receipt { amount, completed, techId, techLabel }, or null if it wasn't
+   *  allowed (already spoken for this turn, building something, nothing
+   *  currently being researched, or the civ can't afford the stockpile
+   *  cost). */
   function applyResearchBoost(city, civ, gameState) {
     if (!city || !civ || city.buildQueue) return null;
     if (isProducingResources(city, gameState) || isBoostingResearch(city, gameState)) return null;
     if (!civ.currentResearch) return null;
 
+    const cost = researchBoostCost(city);
+    civ.stockpile = civ.stockpile || { harvest: 0, coin: 0, lore: 0 };
+    if (!Object.entries(cost).every(([k, v]) => (civ.stockpile[k] || 0) >= v)) return null;
+
     const amount = researchBoostAmount(city);
     const result = window.GameEngine.tech.reduceResearchTurns(civ, amount);
     if (!result) return null;
 
+    for (const [k, v] of Object.entries(cost)) {
+      civ.stockpile[k] = Math.max(0, (civ.stockpile[k] || 0) - v);
+    }
+
     city.researchBoostTurn = gameState.turnNumber || 0;
     city.researchBoostGain = result;
+    city.researchBoostCost = cost;
 
     window.GameEngine.floatingText.spawnFloatingText(
       city, result.completed ? `Research complete: ${result.techLabel}` : `-${amount} Research turns`, "resource");
@@ -1431,6 +1459,7 @@ window.GameEngine = window.GameEngine || {};
     applyResourceProduction,
     isBoostingResearch,
     researchBoostAmount,
+    researchBoostCost,
     applyResearchBoost,
     spreadCultureCost,
     isSpreadingCulture,

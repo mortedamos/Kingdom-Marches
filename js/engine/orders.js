@@ -1331,13 +1331,25 @@ window.GameEngine = window.GameEngine || {};
       // of yet gets no pill), just not printed into the label text.
       if (amounts) options.push({ kind: "city:resourceProduction", label: "Gather More Resources" });
 
-      // "Research": the fourth thing this city's
+      // "Research Tech": the fourth thing this city's
       // production can go into, alongside a unit/building/resources -- see
       // cities.js's applyResearchBoost. Only offered when there's actually
-      // something in progress to accelerate.
+      // something in progress to accelerate AND the civ can afford the
+      // stockpile cost on top of the turn (see researchBoostCost) -- same
+      // affordability gate Spread Culture's own pill uses just below.
       if (civ.currentResearch) {
         const turns = cities.researchBoostAmount(city);
-        options.push({ kind: "city:research", label: `Research (-${turns} turn${turns === 1 ? "" : "s"})` });
+        const researchCost = cities.researchBoostCost(city);
+        const canAffordResearch = Object.entries(researchCost)
+          .every(([k, v]) => ((civ.stockpile && civ.stockpile[k]) || 0) >= v);
+        if (canAffordResearch) {
+          const researchCostLabel = Object.entries(researchCost)
+            .map(([k, v]) => `${Math.ceil(v)}${k[0].toUpperCase()}`).join(" ");
+          options.push({
+            kind: "city:research",
+            label: `Research Tech (-${turns} turn${turns === 1 ? "" : "s"}, -${researchCostLabel})`,
+          });
+        }
       }
     }
 
@@ -1369,7 +1381,7 @@ window.GameEngine = window.GameEngine || {};
       const doing = cities.cityAutomationChoice(civ, city, gameState);
       const doingLabel = doing === "culture" ? "Culture"
         : doing === "resources" ? "Gathering"
-        : doing === "research" ? "Research" : "Idle";
+        : doing === "research" ? "Research Tech" : "Idle";
       options.push({ kind: "city:toggleAutomate", label: `Stop Automating (${doingLabel})` });
     } else {
       options.push({ kind: "city:toggleAutomate", label: "Automate City" });

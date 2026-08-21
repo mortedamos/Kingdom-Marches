@@ -2980,15 +2980,6 @@ window.GameEngine = window.GameEngine || {};
   // wall_section -- nothing is left on the legacy flat-coinCost
   // accumulation path any more.
   //
-  // unitBuildTurns/buildingBuildTurns each ALSO multiply by their own
-  // GameConfig.pacing.unitPaceFactor/buildingPaceFactor (2026-08-06, user-
-  // directed) -- units were finishing in 1-2 turns almost everywhere while
-  // buildings/walls stretched to 15-28 for a low-industriousness race.
-  // Those factors are a fixed RATIO on top of BUILD_SLOWNESS, not a second
-  // independent rate, so slowness stays the one knob that scales every
-  // timed queue in the game together -- see config.js's own doc comment.
-  const BUILD_SLOWNESS = window.GameConfig.pacing.slowness;
-
   /** How fast this civ turns unit power into finished units -- industriousness
    *  (the same trait that drives building speed and tile fill-in rate) plus
    *  3/4 of effective militarism (so a highly militaristic civ, e.g. Orc,
@@ -3000,52 +2991,59 @@ window.GameEngine = window.GameEngine || {};
     return industriousness + 0.75 * effectiveMilitarism(civ);
   }
 
-  /** Turns to build `unitId` for `civ`: (unit power / this civ's build rate)
-   *  scaled by BUILD_SLOWNESS, rounded to the nearest whole turn (minimum 1
-   *  -- a build always takes at least one turn, however cheap). See
-   *  GameData.unitPower for what "power" means (base stats only, no tech
-   *  bonuses) and buildUnitOption for where this timer starts counting down.
-   *  `unit.minBuildTurns`, currently only
-   *  Pioneer/Scout/Galley, is honored as a hard floor the same way
-   *  buildingBuildTurns already honors wall_section's -- a Level 0 unit's
-   *  low base stats put it right at unitPower's floor for EVERY race
-   *  regardless of build rate, so it was finishing in a flat, unvarying 1
-   *  turn no matter how the race/city numbers played out; this makes it a
-   *  real (if still short) wait like everything built after it. */
+  /** Turns to build `unitId` for `civ` -- table-driven (2026-08-21), see
+   *  config.js's pacing.buildTurnsByLayer doc comment for the table itself.
+   *  Layer comes from GameData.unitTechLayer (the layer of the tech that
+   *  first unlocked this unit, NOT a separate build-specific tiering).
+   *  raceUnitBuildRate scales the table value up/down from its
+   *  baselineIndustriousness reference, same "higher rate -> fewer turns"
+   *  relationship the old power/rate formula had. Reads
+   *  pacing.speedLevelIndex LIVE (not snapshotted) so a game-speed change
+   *  takes effect immediately -- unlike the OLD BUILD_SLOWNESS constant this
+   *  replaces, which used to snapshot GameConfig.pacing.slowness once at
+   *  module-load time, silently making the Game Speed slider never actually
+   *  affect unit/building build turns at all. Fixed as a side effect of
+   *  this rewrite. `unit.minBuildTurns`, currently only Pioneer/Scout/
+   *  Galley, is still honored as a hard floor underneath the table. */
   function unitBuildTurns(civ, unitId) {
     const baseUnit = window.GameData.getUnit(unitId);
-    const power = window.GameData.unitPower(unitId);
     const rate = raceUnitBuildRate(civ);
-    // unitPaceFactor: a per-category RATIO on
-    // top of BUILD_SLOWNESS, not a second independent rate -- see its own
-    // doc comment in config.js for why units/buildings needed different
-    // multipliers of the SAME shared slowness knob rather than each
-    // getting their own unrelated constant.
-    const turns = Math.max(1, Math.round((power / rate) * BUILD_SLOWNESS * window.GameConfig.pacing.unitPaceFactor));
+    const P = window.GameConfig.pacing;
+    const speedIdx = P.speedLevelIndex ?? 2;
+    const layer = window.GameData.unitTechLayer(unitId);
+    const table = P.buildTurnsByLayer[layer] ?? P.buildTurnsByLayer[P.buildTurnsByLayer.length - 1];
+    const baseTurns = table[speedIdx];
+    // industriousnessDampExponent: see config.js's own doc comment -- an
+    // exponent on the ratio, not a flat multiplier, so it compresses the
+    // whole curve smoothly rather than clamping the extremes.
+    const ratio = Math.pow(P.baselineIndustriousness / rate, P.industriousnessDampExponent);
+    const turns = Math.max(1, Math.round(baseTurns * ratio));
     return baseUnit.minBuildTurns ? Math.max(turns, baseUnit.minBuildTurns) : turns;
   }
 
-  /** Turns to build `buildingId` for `civ` under the modern multi-resource
-   *  cost model (see GameData.buildingBuildCost) -- same shape as
-   *  unitBuildTurns, reusing the SAME BUILD_SLOWNESS constant so the two
-   *  feel like comparable-weight commitments. Keyed on industriousness
-   *  alone rather than unitBuildTurns' full raceUnitBuildRate, which also
-   *  folds in militarism -- irrelevant here, a civilian building isn't a
-   *  military production decision (the same reasoning cities.js's own
-   *  fill-rate and this file's raceUnitBuildRate already document for
-   *  industriousness as a trait). minBuildTurns (currently only
-   *  wall_section, which DOES reach this function as of 2026-08-06 -- see
-   *  buildings.js's _TECH_FOR_BUILDING) is honored as a hard floor so a
-   *  wealthy city still can't insta-build a wall just because it can now
-   *  pay the (small) cost up front in one turn. */
+  /** Turns to build `buildingId` for `civ` -- table-driven (2026-08-21),
+   *  same shape as unitBuildTurns just above but keyed on
+   *  GameData.buildingTechLayer and industriousness alone (no militarism --
+   *  a civilian building isn't a military production decision, same
+   *  reasoning cities.js's own fill-rate and raceUnitBuildRate already
+   *  document for industriousness as a trait). minBuildTurns (currently
+   *  only wall_section/bridge_section) is still honored as a hard floor
+   *  underneath the table, so a wealthy city still can't insta-build one
+   *  just because it can now pay the (small) cost up front in one turn. */
   function buildingBuildTurns(civ, buildingId) {
     const building = window.GameData.getBuilding(buildingId);
     const race = window.GameData.getRace(civ.raceId);
     const industriousness = race.industriousness ?? 0.5;
-    const total = building.coinCost || 0;
-    // buildingPaceFactor -- see unitBuildTurns' matching comment above /
-    // config.js's own doc comment.
-    const turns = Math.max(1, Math.round((total / industriousness) * BUILD_SLOWNESS * window.GameConfig.pacing.buildingPaceFactor));
+    const P = window.GameConfig.pacing;
+    const speedIdx = P.speedLevelIndex ?? 2;
+    const layer = window.GameData.buildingTechLayer(buildingId);
+    const table = P.buildTurnsByLayer[layer] ?? P.buildTurnsByLayer[P.buildTurnsByLayer.length - 1];
+    const baseTurns = table[speedIdx];
+    // industriousnessDampExponent: see config.js's own doc comment -- an
+    // exponent on the ratio, not a flat multiplier, so it compresses the
+    // whole curve smoothly rather than clamping the extremes.
+    const ratio = Math.pow(P.baselineIndustriousness / industriousness, P.industriousnessDampExponent);
+    const turns = Math.max(1, Math.round(baseTurns * ratio));
     return building.minBuildTurns ? Math.max(turns, building.minBuildTurns) : turns;
   }
 
@@ -11893,12 +11891,12 @@ window.GameEngine = window.GameEngine || {};
   // local copy rather than shared, same "each module owns its own tuning
   // constant" convention as e.g. main.js's startTrapPlacement mirroring
   // ai.js's TRAP_PLACEMENT_RANGE.
-  const GREAT_BONFIRE_AURA_RADIUS = 8;
+  const GREAT_BONFIRE_AURA_RADIUS = 4;
   // How far around a Wanderer/hurt ally to look for a reason to light (or
   // seek) The Great Bonfire -- deliberately smaller than the aura's own
   // radius: this is "is there a fight or a hurting ally close enough to be
   // worth reacting to right now," not "how far the aura itself reaches."
-  const GREAT_BONFIRE_TRIGGER_RADIUS = 5;
+  const GREAT_BONFIRE_TRIGGER_RADIUS = 3;
 
   /**
    * Halfellow "Banish the Darkness" (Wanderer only): situational, not
@@ -13478,6 +13476,7 @@ window.GameEngine = window.GameEngine || {};
     explorePostureFor,
     buildUnitOption,
     unitBuildTurns,
+    buildingBuildTurns,
     maybeHalfellowRegroup,
     maybeSeekInjuredCompanion,
     maybeWaitForCompanionCarry,

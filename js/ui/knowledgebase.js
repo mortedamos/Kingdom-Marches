@@ -91,6 +91,7 @@ window.UI = window.UI || {};
     webbed: "Snared in webbing -- movement locked to zero for 1 turn, but it can still fight back at full strength if something is already adjacent.",
     poisoned: "Venom in its veins -- 1 damage at the start of every turn for 3 turns. Mechanically identical to Burning, just from a venomous source (e.g. the Marsh Adder) instead of fire.",
     keepingWatch: "Posted as a lookout (Halfellow's Keep an Eye Out) -- holds position with +3 Vision.",
+    greatBonfireAura: "Within The Great Bonfire's warmth (Halfellow's Banish the Darkness): heals 10% of max HP per turn (minimum 1) regardless of resting, +2 Defense, +2 Vision, +1 Movement, +5% First Strike, and +10% Double Strike -- also cures, and grants immunity to, Burning, Poisoned, Frozen, Curse, Befuddled, and Webbed. Refreshed every turn the aura still reaches it.",
   };
 
   // Every stat shown on a unit's profile, cross-linked to its own KMKB
@@ -217,6 +218,18 @@ window.UI = window.UI || {};
       .replace(/_/g, " ")
       .replace(/\b\w/g, (c) => c.toUpperCase());
   }
+  // Hand-picked display names for the rare condition whose real name can't
+  // be mechanically derived from titleCase(conditionKey) -- e.g.
+  // greatBonfireAura's possessive apostrophe ("Bonfire's Blessing"), which
+  // no camelCase-to-spaced transform can produce. Falls back to titleCase
+  // for every other condition, so this only ever needs an entry when that
+  // plain transform would be wrong.
+  const CONDITION_DISPLAY_NAME_OVERRIDES = {
+    greatBonfireAura: "Bonfire's Blessing",
+  };
+  function conditionDisplayName(key) {
+    return CONDITION_DISPLAY_NAME_OVERRIDES[key] || titleCase(key);
+  }
   function pctLabel(x) {
     return `${Math.round(x * 100)}%`;
   }
@@ -333,7 +346,7 @@ window.UI = window.UI || {};
         const icon = icons[link.conditionKey] || "";
         return `<button class="kb-condition-link" data-condition-link="${escapeHtml(link.conditionKey)}">
           <span class="kb-condition-link-icon">${icon}</span>
-          <span class="kb-condition-link-text">${escapeHtml(titleCase(link.conditionKey))} — ${escapeHtml(link.describe(unit[link.field]))}</span>
+          <span class="kb-condition-link-text">${escapeHtml(conditionDisplayName(link.conditionKey))} — ${escapeHtml(link.describe(unit[link.field]))}</span>
           <span class="kb-condition-link-arrow">View →</span>
         </button>`;
       });
@@ -515,12 +528,12 @@ window.UI = window.UI || {};
     // Alphabetical by display name -- CONDITION_ICONS
     // itself stays in overlays.js's own declaration order (grouped loosely by
     // theme there), this is purely a display-order sort for this list.
-    const sortedKeys = Object.keys(icons).sort((a, b) => titleCase(a).localeCompare(titleCase(b)));
+    const sortedKeys = Object.keys(icons).sort((a, b) => conditionDisplayName(a).localeCompare(conditionDisplayName(b)));
     return `<div class="kb-list-group">${sortedKeys.map((key) => {
       const selected = key === selectedKey ? " kb-list-btn-selected" : "";
       return `<button class="kb-list-btn${selected}" data-condition-id="${escapeHtml(key)}">
         <span class="kb-list-btn-symbol">${icons[key]}</span>
-        <span>${escapeHtml(titleCase(key))}</span>
+        <span>${escapeHtml(conditionDisplayName(key))}</span>
       </button>`;
     }).join("")}</div>`;
   }
@@ -544,7 +557,7 @@ window.UI = window.UI || {};
       <div class="kb-profile-header">
         <div class="kb-condition-profile-icon">${icons[conditionKey]}</div>
         <div>
-          <h2>${escapeHtml(titleCase(conditionKey))}</h2>
+          <h2>${escapeHtml(conditionDisplayName(conditionKey))}</h2>
         </div>
       </div>
       <div class="kb-condition-profile-desc">${escapeHtml(desc)}</div>

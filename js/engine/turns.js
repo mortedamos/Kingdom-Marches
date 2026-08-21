@@ -1191,7 +1191,7 @@ window.GameEngine = window.GameEngine || {};
     // Metal there's no need for a dedup Set -- nothing else can double-apply
     // this aura to the same ally in the same turn.
     {
-      const GREAT_BONFIRE_AURA_RADIUS = 8;
+      const GREAT_BONFIRE_AURA_RADIUS = 4;
       const bonfire = civ.units.find((u) => u.typeId === "great_bonfire");
       if (bonfire) {
         for (const ally of civ.units) {

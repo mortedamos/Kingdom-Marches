@@ -351,7 +351,7 @@ window.UI = window.UI || {};
         : "";
       return `<h3>Building</h3>
         ${autoHtml}
-        <div class="stat-row"><span>Research</span><span>${escapeHtml(summary)}</span></div>
+        <div class="stat-row"><span>Research Tech</span><span>${escapeHtml(summary)}</span></div>
         <div class="stat-row"><em>This turn's production went to research</em></div>`;
     }
 

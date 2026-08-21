@@ -1980,7 +1980,7 @@ window.GameData.TECHS = {
   halfellow_banish_the_darkness: {
     id: "halfellow_banish_the_darkness", label: "Banish the Darkness", category: "mystic", layer: 5, cost: 95,
     prereqs: ["halfellow_hearth_and_homeland", "halfellow_devoted_companions"], raceOnly: "halfellow",
-    description: "The Wanderer gains a new full-turn action: Create The Great Bonfire, summoning it onto an open adjacent tile (not Water or Mountains). Only one Great Bonfire may burn at a time for this kingdom -- summoning a new one dismisses the old. It burns for 5 turns before self-dismissing, and radiates an aura in an 8-tile radius: allied units there (including the Bonfire itself) heal 10% of their max HP per turn (minimum 1) regardless of resting, gain +2 defense, +2 vision, +1 movement, +5% First Strike, and +10% Double Strike, and are cured of, and immune to, Burning, Poisoned, Frozen, Curse, Befuddled, and Webbed for as long as they stay in range.",
+    description: "The Wanderer gains a new full-turn action: Create The Great Bonfire, summoning it onto an open adjacent tile (not Water or Mountains). Only one Great Bonfire may burn at a time for this kingdom -- summoning a new one dismisses the old. It burns for 5 turns before self-dismissing, and radiates Bonfire's Blessing in a 4-tile radius: allied units there (including the Bonfire itself) heal 10% of their max HP per turn (minimum 1) regardless of resting, gain +2 defense, +2 vision, +1 movement, +5% First Strike, and +10% Double Strike, and are cured of, and immune to, Burning, Poisoned, Frozen, Curse, Befuddled, and Webbed for as long as they stay in range.",
     costBreakdown: { lore: 55, coin: 25, harvest: 15 },
     effects: [
       { type: "unlock_unit", unit: "great_bonfire" },

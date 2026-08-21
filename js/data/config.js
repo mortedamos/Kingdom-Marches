@@ -63,35 +63,99 @@ window.GameConfig = {
   // stamp, and the only cost of forgetting is being told the wrong thing.
   build: {
     /** Local date this build was cut, YYYY-MM-DD. */
-    date: "2026-08-20",
+    date: "2026-08-21",
     /** Local time this build was cut, 24-hour HH:MM. */
-    time: "22:36",
+    time: "10:36",
     /** Monotonic build counter -- increment it, don't recompute it. */
-    number: 162,
+    number: 163,
   },
 
   // =========================================================================
   // PACING  (js/engine/ai.js, js/engine/tech.js)
+  // How many turns a unit, building, or tech takes to complete -- table-
+  // driven (2026-08-21), replacing the old continuous cost/rate formula.
   // =========================================================================
   pacing: {
-    /** Universal turns-to-complete rate: one shared knob for every timed
-     *  queue in the game -- ai.js's unitBuildTurns/buildingBuildTurns and
-     *  tech.js's researchTurns all read this. Formula shape is the same
-     *  everywhere: turns = round((cost or power) / rate * slowness), min 1. */
-    slowness: 0.1,
-    /** Per-category RATIOS on top of slowness above, not a second
-     *  independent rate -- keeps slowness as the ONE knob that scales every
-     *  queue at once while letting units/buildings/research each move at
-     *  their own established relative pace. Tuned so a mid-tier combat unit
-     *  lands around 3-4 turns, and (paired with tech.js's
-     *  RESEARCH_TURNS_EXPONENT) research at industriousness 0.5 lands
-     *  Layer 1 at 3 turns and Layer 5 at 20, with Layers 0/2/3/4 falling
-     *  smoothly in between (2/3/5/8/12/20) -- see researchTurns' own doc
-     *  comment. Faster/slower industriousness races and the Game Speed
-     *  slider scale proportionally from there. */
-    unitPaceFactor: 2.2,
-    buildingPaceFactor: 0.5,
-    researchPaceFactor: 2.1,
+    /** Which of the 5 named Game Speed levels (Slowest/Slow/Normal/Fast/
+     *  Fastest, indices 0-4) is active right now -- the live index INTO
+     *  researchTurnsByLayer/buildTurnsByLayer below. 2 (Normal) by default;
+     *  mutated by main.js's applyGameSpeed at Start Game (and on save/
+     *  multiplayer load) from whichever percent the launch-screen slider
+     *  maps to. Read live (not snapshotted) by tech.js's researchTurns and
+     *  ai.js's unitBuildTurns/buildingBuildTurns, so a mid-session speed
+     *  change (not currently exposed in the UI, but nothing stops a future
+     *  one) would take effect immediately -- unlike the OLD pacing.slowness
+     *  this replaces, which ai.js's unitBuildTurns/buildingBuildTurns used
+     *  to snapshot into a module-level const at page-load time, silently
+     *  making the Game Speed slider never actually affect unit/building
+     *  build turns at all (only research, which read it live). Fixed as a
+     *  side effect of this rewrite. */
+    speedLevelIndex: 2,
+
+    /** The industriousness value researchTurnsByLayer/buildTurnsByLayer
+     *  below are CALIBRATED against -- matches the `?? 0.5` fallback used
+     *  everywhere a race's industriousness is read, so an unspecified race
+     *  reproduces the table exactly. A race's actual industriousness (and,
+     *  for units, militarism -- see ai.js's raceUnitBuildRate) still scales
+     *  turns up/down from there: turns = round(tableValue *
+     *  (baselineIndustriousness / actualRate) ^
+     *  industriousnessDampExponent), preserving the same "higher
+     *  industriousness -> fewer turns" relationship the old cost/rate
+     *  formula had, just anchored to the table instead of a continuous
+     *  formula. */
+    baselineIndustriousness: 0.5,
+
+    /** Dampens how much industriousness (and, for units, militarism) can
+     *  swing build/research turns away from the table's baseline (2026-08-21,
+     *  user-directed -- an UNDAMPENED ratio spans ~0.56x (Dwarf, 0.9) to
+     *  ~2.5x (Undead, 0.2), a ~4.5x gap between the fastest and slowest
+     *  race for the identical item). Applied as an EXPONENT on the ratio
+     *  (baselineIndustriousness / actualRate) ^ this, not a flat multiplier
+     *  or a clamp -- compresses the whole curve smoothly at both ends while
+     *  preserving direction and relative ordering (still-faster stays
+     *  faster). 1.0 is the old, undampened behavior; 0.0 would make
+     *  industriousness/militarism irrelevant to pacing entirely. At 0.4:
+     *  Dwarf ~0.75x, Human ~0.87x, Orc ~1.28x, Undead ~1.44x -- a mild nudge
+     *  rather than a defining trait. */
+    industriousnessDampExponent: 0.4,
+
+    /** Tech Research Time (turns), by tech layer (0-5) and speed level
+     *  (Slowest/Slow/Normal/Fast/Fastest, indices 0-4) -- user-authored
+     *  spreadsheet (2026-08-21), ~1.5x turns per speed step AND per layer
+     *  step (both axes share the identical underlying geometric sequence:
+     *  round(2 * 1.5^n) for n = layer - speedIndex + 3 -- verified against
+     *  every one of the sheet's 25 given cells with zero mismatches). Layer
+     *  0's row wasn't given in the source sheet; derived by extending that
+     *  exact same sequence one step further (n=-4 -> round(2/1.5)=1 at
+     *  Fastest), not guessed independently -- flag to the user if wrong. */
+    researchTurnsByLayer: [
+      [8, 5, 3, 2, 1],    // Layer 0 (derived, see comment above)
+      [12, 8, 5, 3, 2],   // Layer 1
+      [18, 12, 8, 5, 3],  // Layer 2
+      [27, 18, 12, 8, 5], // Layer 3
+      [41, 27, 18, 12, 8],// Layer 4
+      [62, 41, 27, 18, 12], // Layer 5
+    ],
+
+    /** Unit + Structure Build Time (turns), by BUILD layer and speed level,
+     *  same shape as researchTurnsByLayer above -- user-authored spreadsheet
+     *  (2026-08-21), given complete for all 6 layers (no derived rows).
+     *  "Build layer" is NOT a separate concept from the tech tree: a unit's
+     *  layer is window.GameData.unitTechLayer(unitId) (the layer of the
+     *  tech that first unlocks it), a building's is
+     *  window.GameData.buildingTechLayer(buildingId) -- see ai.js's
+     *  unitBuildTurns/buildingBuildTurns. ~1.25x per step, noisier than
+     *  research's clean 1.5x (small integers round-trip less exactly), with
+     *  a floor of 2 turns visible at the low end (Layer 0/Fastest and
+     *  Layer 1/Fastest both clamp to 2 rather than continuing down to 1). */
+    buildTurnsByLayer: [
+      [5, 4, 3, 2, 2],   // Layer 0 (Bridge, Wall, Pioneer, ...)
+      [6, 5, 4, 3, 2],   // Layer 1 (Ranger, Spearguard, ...)
+      [8, 6, 5, 4, 3],   // Layer 2 (Wizard, ...)
+      [10, 8, 6, 5, 4],  // Layer 3 (Bombard, ...)
+      [13, 10, 8, 6, 5], // Layer 4 (Awakened Oak, ...)
+      [16, 13, 10, 8, 6],// Layer 5 (Dragon, Runeforged Titan, ...)
+    ],
   },
 
   // =========================================================================
@@ -198,12 +262,21 @@ window.GameConfig = {
      *  stockpile instead. cultureSpreadInfluenceMult is the multiplier
      *  applied to the city's influence strength for the turn it fires (see
      *  influence.js's computeInfluenceMap); cultureSpreadCostBase/PerPop
-     *  set the { coin, lore } cost as a flat amount plus a per-population
+     *  set the { harvest, lore } cost as a flat amount plus a per-population
      *  scale, so the price keeps pace with a growing city the same way
      *  researchBoostAmount's payoff already does. */
     cultureSpreadInfluenceMult: 1.5,
-    cultureSpreadCostBase: { coin: 5, lore: 3 },
-    cultureSpreadCostPerPop: { coin: 2, lore: 1 },
+    cultureSpreadCostBase: { harvest: 5, lore: 3 },
+    cultureSpreadCostPerPop: { harvest: 2, lore: 1 },
+
+    /** "Research" (see cities.js's applyResearchBoost/researchBoostAmount):
+     *  spending a city's production turn to cut the civ's current research
+     *  by researchBoostAmount(city) turns ALSO now costs stockpile, same
+     *  { base, perPop } shape as Spread Culture just above -- unlike Spread
+     *  Culture, this is paid on TOP of consuming the city's turn, not
+     *  instead of it. */
+    researchBoostCostBase: { coin: 5, lore: 2 },
+    researchBoostCostPerPop: { coin: 2, lore: 1 },
 
     /** FILL-IN: a tile inside a city's radius contributes nothing to
      *  influence OR yield until it has individually "filled in". This delay
