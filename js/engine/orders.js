@@ -308,8 +308,23 @@ window.GameEngine = window.GameEngine || {};
     unit.channeling = null;
     unit.sentry = false;
     unit.followTarget = null;
-    unit.x = tile.caveLinkX;
-    unit.y = tile.caveLinkY;
+    // Don't stack on whatever's already sitting at the far end (2026-08-21,
+    // user-directed) -- same "nearest open neighbor, city tile as last
+    // resort" convention ai.js's spawnUnitInCity already uses for a
+    // completed build; findClosestOpenPlacementTile falls back to the link
+    // tile itself (accepting the stack) only if every neighbor is ALSO
+    // blocked.
+    const ai = window.GameEngine.ai;
+    const destX = tile.caveLinkX, destY = tile.caveLinkY;
+    const caveOccupied = ai.buildOccupancySet(gameState.civs, unit);
+    if (caveOccupied.has(`${destX},${destY}`)) {
+      const openSpot = ai.findClosestOpenPlacementTile(destX, destY, map, gameState.civs, caveOccupied, unit.civId);
+      unit.x = openSpot ? openSpot.x : destX;
+      unit.y = openSpot ? openSpot.y : destY;
+    } else {
+      unit.x = destX;
+      unit.y = destY;
+    }
     unit.usedThisTurn = true;
     // Zero, not left alone (2026-08-19 bugfix): whatever movement the unit
     // had left over from walking to the entrance belongs to a trip that no

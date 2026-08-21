@@ -2307,6 +2307,29 @@ window.GameEngine = window.GameEngine || {};
     return occ;
   }
 
+  /** Tiles occupied by an ENEMY unit -- unlike buildOccupancySet above, a
+   *  unit of the SAME civ as excludeUnit does NOT occupy its tile here
+   *  (2026-08-21, user-directed: a ground unit may move THROUGH a tile held
+   *  by an allied unit, just never actually stop there -- see
+   *  buildMoveRules' canLandOn, which still checks buildOccupancySet's full
+   *  set for that). Same Hidden exemption as buildOccupancySet -- every
+   *  unit reaching the hidden check here already belongs to a different
+   *  civ (same-civ units were excluded above it), so it simplifies to
+   *  "hidden always exempts." */
+  function buildEnemyOccupancySet(civs, excludeUnit) {
+    const occ = new Set();
+    if (!civs) return occ;
+    for (const c of Object.values(civs)) {
+      for (const u of c.units) {
+        if (u === excludeUnit || u.carriedBy) continue;
+        if (u.civId === excludeUnit?.civId) continue; // allied -- doesn't block passage
+        if (u.conditions?.hidden) continue;
+        occ.add(`${u.x},${u.y}`);
+      }
+    }
+    return occ;
+  }
+
   /** Tiles occupied by another FLYING unit -- the only thing that blocks a
    *  flying unit's flight path. Ground units don't: a flying unit can pass
    *  straight over them mid-route (see moveUnitToward's landing-safety check
@@ -2519,12 +2542,20 @@ window.GameEngine = window.GameEngine || {};
    * unit (only another flying unit blocks their path); they must still never
    * actually land/stop on any occupied tile, which is what the separate
    * canLandOn test enforces using the full occupancy set instead.
+   *
+   * Ground units get the same "pass over, never land on" treatment for an
+   * ALLIED unit specifically (2026-08-21, user-directed) -- occupied uses
+   * buildEnemyOccupancySet instead of the full set, so a friendly unit's
+   * tile costs normally to CROSS, but fullOccupied (used by canLandOn
+   * below) still includes it, so a move can never actually end there. An
+   * ENEMY unit still fully blocks passage, same as always -- this is about
+   * marching past your own army, not walking through the enemy's.
    */
   function buildMoveRules(unit, civs, map) {
     const baseUnit = window.GameData.getUnit(unit.typeId);
     const flying = window.GameEngine.combat.isFlying(unit);
-    const occupied = flying ? buildFlyingBlockSet(civs, unit) : buildOccupancySet(civs, unit);
-    const fullOccupied = flying ? buildOccupancySet(civs, unit) : occupied;
+    const occupied = flying ? buildFlyingBlockSet(civs, unit) : buildEnemyOccupancySet(civs, unit);
+    const fullOccupied = buildOccupancySet(civs, unit);
 
     // `fromIdx` (the ORIGIN tile's index for this hop) is threaded through by
     // pathfinding.js's findPath as costFn's 4th argument, and by
@@ -2556,12 +2587,17 @@ window.GameEngine = window.GameEngine || {};
     // so this deliberately re-checks structure/city ownership WITHOUT the
     // flying exemption that isEnemyStructureBlockingTile/isEnemyCityBlocking-
     // Tile grant for costFn's pass-through case. For a non-flying unit,
-    // "can cross" and "can stop" are the same question, so it just defers.
+    // costFn's own structure/city checks are ALREADY the non-exempt version
+    // (isEnemyStructureBlockingTile only grants its flying exemption when
+    // the unit actually IS flying), so reusing costFn there is safe -- the
+    // fullOccupied gate first is what's new (2026-08-21, user-directed):
+    // costFn's own `occupied` no longer blocks an ALLIED tile (see
+    // buildEnemyOccupancySet above), so without this explicit check first, a
+    // unit could "land" on an ally it's allowed to walk through.
     const canLandOn = (nx, ny, tile) => {
+      if (fullOccupied.has(`${nx},${ny}`)) return false;
       if (!flying) return costFn(nx, ny, tile) !== window.GameData.IMPASSABLE;
-      return !fullOccupied.has(`${nx},${ny}`)
-        && !hasEnemyStructure(tile, unit.civId)
-        && !hasEnemyCity(civs, nx, ny, unit.civId);
+      return !hasEnemyStructure(tile, unit.civId) && !hasEnemyCity(civs, nx, ny, unit.civId);
     };
 
     return { baseUnit, flying, occupied, fullOccupied, costFn, canLandOn };
@@ -2606,16 +2642,20 @@ window.GameEngine = window.GameEngine || {};
       if (revealedEnemy) window.GameEngine.combat.revealHidden(revealedEnemy, currentTurnNumber);
       if (isLandingStep && revealedEnemy) break; // don't stack on the now-visible unit
 
-      // Landing-safety check (flying only): a flying unit's costFn already lets
-      // it path straight through a tile occupied by a ground unit, an enemy
-      // structure, or an enemy city (all "moves over all terrain"), but it
-      // must never actually stop there. If this step would be where it stops
-      // -- either because movement runs out here, or because it's the final
-      // step in the whole path -- and the tile is blocked by any of those,
-      // stop one tile short instead. Deliberately re-checks structure/city
-      // ownership WITHOUT the flying exemption -- see buildMoveRules's
-      // canLandOn, which is where that distinction now lives.
-      if (flying && isLandingStep) {
+      // Landing-safety check: a flying unit's costFn already lets it path
+      // straight through a tile occupied by a ground unit, an enemy
+      // structure, or an enemy city (all "moves over all terrain"), and
+      // (2026-08-21, user-directed) a GROUND unit's costFn now likewise lets
+      // it path straight through a tile occupied by an ALLIED unit -- but
+      // neither may ever actually stop there. If this step would be where
+      // the unit stops -- either because movement runs out here, or because
+      // it's the final step in the whole path -- and the tile is blocked,
+      // stop one tile short instead. Was flying-only until this change,
+      // since a ground unit's own costFn used to make "can cross" and "can
+      // stop" the same question (no ally-pass-through existed yet); now
+      // that costFn alone doesn't cover ally-occupied landing tiles, every
+      // unit needs this same re-check -- see buildMoveRules's canLandOn.
+      if (isLandingStep) {
         const stepTile = map.tiles[step.y * map.width + step.x];
         if (!rules.canLandOn(step.x, step.y, stepTile)) break;
       }
@@ -8163,7 +8203,7 @@ window.GameEngine = window.GameEngine || {};
   const CAVE_SHORTCUT_MARGIN = 6;
   function maybeCaveShortcutPlay(civ, unit, gameState, log) {
     if (unit.usedThisTurn || unit.channeling) return false;
-    const { map } = gameState;
+    const { map, civs } = gameState;
     const target = nearestEnemyLandmark(civ, gameState, unit.x, unit.y);
     if (!target) return false; // no other civs left -- nothing to route toward
 
@@ -8173,8 +8213,21 @@ window.GameEngine = window.GameEngine || {};
       const distViaLink = window.GameEngine.influence.chebyshev(onCaveNow.caveLinkX, onCaveNow.caveLinkY, target.x, target.y);
       if (distHere - distViaLink < CAVE_SHORTCUT_MARGIN) return false; // not worth jumping
       const fromX = unit.x, fromY = unit.y;
-      unit.x = onCaveNow.caveLinkX;
-      unit.y = onCaveNow.caveLinkY;
+      // Don't stack on whatever's already sitting at the far end
+      // (2026-08-21, user-directed) -- same convention orders.js's
+      // performEnterCave (the player-facing twin of this) and
+      // spawnUnitInCity use: nearest open neighbor, link tile itself only
+      // if every neighbor is ALSO blocked.
+      const destX = onCaveNow.caveLinkX, destY = onCaveNow.caveLinkY;
+      const caveOccupied = buildOccupancySet(civs, unit);
+      if (caveOccupied.has(`${destX},${destY}`)) {
+        const openSpot = findClosestOpenPlacementTile(destX, destY, map, civs, caveOccupied, civ.id);
+        unit.x = openSpot ? openSpot.x : destX;
+        unit.y = openSpot ? openSpot.y : destY;
+      } else {
+        unit.x = destX;
+        unit.y = destY;
+      }
       unit.usedThisTurn = true;
       unit.currentMission = `Used a cave to jump from (${fromX},${fromY}) to (${unit.x},${unit.y})`;
       log.push(`Cave: ${civ.id}'s ${describeUnit(unit)} enters a cave at (${fromX},${fromY}), emerging at (${unit.x},${unit.y})`);
@@ -8199,8 +8252,17 @@ window.GameEngine = window.GameEngine || {};
       // away instead of always burning a separate arrival turn (same
       // optimization maybeDungeonDelvePlay/maybeOpenChestPlay use).
       const fromX = unit.x, fromY = unit.y;
-      unit.x = best.linkX;
-      unit.y = best.linkY;
+      // Don't stack -- see the onCaveNow branch above for the same fix.
+      const destX2 = best.linkX, destY2 = best.linkY;
+      const caveOccupied2 = buildOccupancySet(civs, unit);
+      if (caveOccupied2.has(`${destX2},${destY2}`)) {
+        const openSpot2 = findClosestOpenPlacementTile(destX2, destY2, map, civs, caveOccupied2, civ.id);
+        unit.x = openSpot2 ? openSpot2.x : destX2;
+        unit.y = openSpot2 ? openSpot2.y : destY2;
+      } else {
+        unit.x = destX2;
+        unit.y = destY2;
+      }
       unit.usedThisTurn = true;
       unit.currentMission = `Used a cave to jump from (${fromX},${fromY}) to (${unit.x},${unit.y})`;
       log.push(`Cave: ${civ.id}'s ${describeUnit(unit)} enters a cave at (${fromX},${fromY}), emerging at (${unit.x},${unit.y})`);
