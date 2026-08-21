@@ -3015,6 +3015,9 @@
         } else if (intent.kind === "setTrap") {
           window.GameEngine.ai.performPlayerTrapSet(civ, unit, intent.trapKind, intent.trapTargetX, intent.trapTargetY, gameState);
           window.GameEngine.turns.refreshVisibility(gameState);
+        } else if (intent.kind === "createGreatBonfire") {
+          window.GameEngine.ai.performPlayerWandererBonfireSummon(civ, unit, gameState);
+          window.GameEngine.turns.refreshVisibility(gameState);
         }
         finish();
       },
@@ -4389,6 +4392,15 @@
           // frost"/"setTrap:fire" -- same payload-in-kind-string convention
           // as castFlight/carryUnit above.
           startTrapPlacement(unit, kind.slice("setTrap:".length));
+        } else if (kind === "createGreatBonfire") {
+          // Halfellow "Banish the Darkness": single click, no placement mode
+          // -- lands on a random open adjacent tile, same shape as
+          // Raptor/Shadowsteed just below.
+          const civ = gameState.civs[humanCivId];
+          if (civ) {
+            window.GameEngine.ai.performPlayerWandererBonfireSummon(civ, unit, gameState);
+            window.GameEngine.turns.refreshVisibility(gameState);
+          }
         } else if (kind === "summonRaptor" || kind === "summonShadowsteed") {
           // Elf Druid: a single click, no
           // placement mode needed -- Raptor/Shadowsteed always land on an

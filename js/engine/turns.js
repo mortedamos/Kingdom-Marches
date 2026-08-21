@@ -80,10 +80,13 @@ window.GameEngine = window.GameEngine || {};
         // Halfellow "Keep an Eye Out": +3 vision while holding a lookout
         // post (Hidden + stationary) -- see ai.js's maybeKeepAnEyeOutPlay.
         const watchVision = unit.conditions?.keepingWatch?.visionBonus || 0;
+        // Halfellow "Banish the Darkness": +2 vision while inside The Great
+        // Bonfire's aura -- see beginCivTurn's per-turn application below.
+        const bonfireVision = unit.conditions?.greatBonfireAura?.visionBonus || 0;
         // Level-up "+1 Vision" pick -- same flat-add convention as
         // attack/defense, see combat.js's LEVEL_BONUS_VALUES.
         const levelVision = unit.levelBonuses?.visionRadius || 0;
-        const r = (baseUnit.visionRadius || 3) + overrideVision + flightVision + watchVision + levelVision;
+        const r = (baseUnit.visionRadius || 3) + overrideVision + flightVision + watchVision + bonfireVision + levelVision;
         for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) {
           const x = unit.x + dx, y = unit.y + dy;
           if (x < 0 || x >= map.width || y < 0 || y >= map.height) continue;
@@ -1050,6 +1053,17 @@ window.GameEngine = window.GameEngine || {};
       }
     }
 
+    // Halfellow "Banish the Darkness": The Great Bonfire only burns for
+    // GREAT_BONFIRE_DURATION turns from the moment it's summoned (see
+    // ai.js's startWandererBonfireSummon, which stamps bonfireExpiresAtTurn)
+    // -- checked once at the top of the civ's own turn, BEFORE the aura loop
+    // further below, so an expiring Bonfire grants exactly
+    // GREAT_BONFIRE_DURATION turns of active aura, not one extra. No disband
+    // dialog needed (unlike the Wisp cap further below) -- there's at most
+    // one, per civ, and it simply times out.
+    civ.units = civ.units.filter((u) => !(u.typeId === "great_bonfire"
+      && u.bonfireExpiresAtTurn != null && (gameState.turnNumber || 0) >= u.bonfireExpiresAtTurn));
+
     // Human "Crusade": each Paladin's holy aura heals every allied unit within
     // 1 tile (Chebyshev, including the Paladin itself) 10% of max HP, and
     // grants a 1-turn "crusadeAura" condition (+2 attack, +1 defense, +25%
@@ -1153,6 +1167,46 @@ window.GameEngine = window.GameEngine || {};
             healedStructures.add(s);
             s.hp = Math.min(s.maxHp, s.hp + Math.max(1, Math.round(s.maxHp * 0.05)));
           }
+        }
+      }
+    }
+
+    // Halfellow "Banish the Darkness": The Great Bonfire's aura -- every
+    // allied unit within GREAT_BONFIRE_AURA_RADIUS tiles (Chebyshev,
+    // including the Bonfire's own tile) heals 10% of max HP per turn
+    // (minimum 1) regardless of resting, and gains a refreshed 1-turn
+    // "greatBonfireAura" condition (+2 defense, +2 vision, +1 movement, +5%
+    // First Strike, +10% Double Strike -- read by combat.js's
+    // effectiveDefense/effectiveFirstStrikePct/effectiveDoubleStrikePct,
+    // this function's own visionRadius sum above, and ai.js's
+    // computeMovementBudget), same refresh-every-turn convention as
+    // Crusade/Heavy Metal above. Also cures AND grants immunity to Burning,
+    // Poisoned, Frozen, Curse, Befuddled, and Webbed -- the cure is the
+    // explicit clearCondition calls below; the immunity is enforced
+    // generically inside combat.js's setCondition (see
+    // GREAT_BONFIRE_IMMUNE_CONDITIONS there), which blocks any of those six
+    // from being (re-)applied to a unit that currently has this condition.
+    // Per-civ singleton (at most one Great Bonfire ever exists for a given
+    // civ, see ai.js's startWandererBonfireSummon), so unlike Crusade/Heavy
+    // Metal there's no need for a dedup Set -- nothing else can double-apply
+    // this aura to the same ally in the same turn.
+    {
+      const GREAT_BONFIRE_AURA_RADIUS = 8;
+      const bonfire = civ.units.find((u) => u.typeId === "great_bonfire");
+      if (bonfire) {
+        for (const ally of civ.units) {
+          if (window.GameEngine.influence.chebyshev(bonfire.x, bonfire.y, ally.x, ally.y) > GREAT_BONFIRE_AURA_RADIUS) continue;
+          const bonfireBefore = ally.hp;
+          ally.hp = Math.min(ally.maxHp, ally.hp + Math.max(1, Math.round(ally.maxHp * 0.10)));
+          if (ally.hp > bonfireBefore) window.GameEngine.floatingText.spawnHealGain(ally, ally.hp - bonfireBefore);
+          for (const key of ["burning", "poisoned", "frozen", "curse", "befuddled", "webbed"]) {
+            window.GameEngine.combat.clearCondition(ally, key);
+          }
+          window.GameEngine.combat.setCondition(ally, "greatBonfireAura", {
+            expiresAtTurn: (gameState.turnNumber || 0) + 1,
+            defenseBonus: 2, visionBonus: 2, movementBonus: 1,
+            firstStrikePctBonus: 0.05, doubleStrikePctBonus: 0.10,
+          });
         }
       }
     }

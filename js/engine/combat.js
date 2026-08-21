@@ -175,6 +175,9 @@ window.GameEngine = window.GameEngine || {};
     // Dwarf "Power Metal"/"Epic Metal": Troubadour's aura -- see turns.js's
     // per-turn application and effectiveAttack's matching check above.
     pct += unit.conditions?.powerMetalAura?.firstStrikePctBonus || 0;
+    // Halfellow "Banish the Darkness": The Great Bonfire's aura -- see
+    // turns.js's per-turn application and effectiveDefense's matching check.
+    pct += unit.conditions?.greatBonfireAura?.firstStrikePctBonus || 0;
     // Orc "Violent Momentum": a unit that killed an enemy last turn gets a
     // temporary First Strike bump alongside its movement bonus -- see
     // ai.js's applyOrcCombatMechanics.
@@ -246,6 +249,9 @@ window.GameEngine = window.GameEngine || {};
     // Orc "Violent Momentum": same temporary bump as First Strike above,
     // same source condition -- see ai.js's applyOrcCombatMechanics.
     pct += unit.conditions?.killMomentum?.doubleStrikePctBonus || 0;
+    // Halfellow "Banish the Darkness": The Great Bonfire's aura -- see
+    // turns.js's per-turn application and effectiveDefense's matching check.
+    pct += unit.conditions?.greatBonfireAura?.doubleStrikePctBonus || 0;
     // Veteran leveling -- see LEVELING section below.
     pct += unit.levelBonuses?.doubleStrikePct || 0;
     // A reanimated or befuddled unit can't manage a second swing, for the
@@ -422,16 +428,11 @@ window.GameEngine = window.GameEngine || {};
     // already has more (e.g. a future higher-range Halfellow unit, or a
     // per-unit-type tech override above) is never reduced by it.
     //
-    // Scoped down (2026-07-14): `exemptFromUniversalRangeGrant` (units.js)
-    // opts a specific unit OUT of this floor -- added after a live headless
-    // trace showed Boomerang turning Halfellow's entire army into permanent,
-    // zero-counterattack-risk skirmishers (Militia, its numerically dominant
-    // late-game unit, included), not just an early-game toolkit as the tech
-    // was designed for. Militia is now exempt so the floor still covers the
-    // race's actual early/scouting units (Wanderer, Pony Patrol) without
-    // extending risk-free ranged combat to its main standing-army unit too.
-    // See project_pairwise_balance_human_orc_halfellow /
-    // project_boomerang_scope_down memory.
+    // Militia's `exemptFromUniversalRangeGrant` opt-out (units.js) was
+    // removed (2026-08-20) -- Boomerang now applies to every Halfellow
+    // unit, Militia included, per updated balance direction. The
+    // `exemptFromUniversalRangeGrant` mechanism itself stays generic (still
+    // used elsewhere, e.g. Dwarf Musketeer) in case a future unit needs it.
     if (baseUnit.exemptFromUniversalRangeGrant) return base;
     return Math.max(base, civ.universalRangeGrant || 0);
   }
@@ -463,7 +464,18 @@ window.GameEngine = window.GameEngine || {};
    * left alone by tickConditions and must be cleared explicitly by whatever
    * event ends it (see turns.js's heal phase for exhausted).
    */
+  // Halfellow "Banish the Darkness": while an ally stands in The Great
+  // Bonfire's aura (unit.conditions.greatBonfireAura, refreshed every turn
+  // by turns.js), it can't be newly afflicted with any of these six negative
+  // conditions -- a single guard here covers every current AND future call
+  // site (scattered across ai.js/combat.js) automatically, rather than
+  // needing each one to remember to check. Curing an already-active one on
+  // entry is a separate step (turns.js's aura loop calls clearCondition
+  // directly, which this guard does not gate).
+  const GREAT_BONFIRE_IMMUNE_CONDITIONS = new Set(["burning", "poisoned", "frozen", "curse", "befuddled", "webbed"]);
+
   function setCondition(unit, key, data) {
+    if (GREAT_BONFIRE_IMMUNE_CONDITIONS.has(key) && unit.conditions?.greatBonfireAura) return;
     unit.conditions = unit.conditions || {};
     unit.conditions[key] = data;
   }
@@ -733,6 +745,10 @@ window.GameEngine = window.GameEngine || {};
 
     // Dwarf "Heavy Metal"/"Epic Metal": Troubadour's aura -- same shape as Crusade.
     if (unit.conditions?.heavyMetalAura) def += unit.conditions.heavyMetalAura.defenseBonus || 0;
+
+    // Halfellow "Banish the Darkness": The Great Bonfire's aura -- same
+    // shape as Crusade/Heavy Metal above, see turns.js's per-turn application.
+    if (unit.conditions?.greatBonfireAura) def += unit.conditions.greatBonfireAura.defenseBonus || 0;
 
     // Dwarf "Shield Wall": flat +2 defense as long as at least one other
     // Dwarf military unit is adjacent -- doesn't scale with how many are
@@ -1358,14 +1374,14 @@ window.GameEngine = window.GameEngine || {};
     return replacement;
   }
 
-  /** Halfellow "Undaunted": 25% chance a
+  /** Halfellow "Undaunted": 50% chance a
    *  Wanderer spawns on a dead Pony Patrol's own tile -- same shape as Orc's
    *  Hound and Hunter above (spawns on the dead unit's own now-vacated
    *  tile), just a single replacement type instead of a 50/50 pick. Only
    *  fires for pony_patrol deaths -- callers gate on `deadUnit.typeId`
    *  before calling this. Returns the spawned unit, or null. */
   function maybeSpawnPonyReplacement(civ, x, y, map) {
-    if (Math.random() >= 0.25) return null;
+    if (Math.random() >= 0.5) return null;
     const terrain = window.GameData.TERRAIN[map.tiles[y * map.width + x].terrain];
     if (terrain.isWater || terrain.moveCostLand === window.GameData.IMPASSABLE) return null;
     const replacement = { typeId: "wanderer", civId: civ.id, x, y, isCivilian: false };

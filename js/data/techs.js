@@ -1717,7 +1717,7 @@ window.GameData.TECHS = {
   halfellow_undaunted: {
     id: "halfellow_undaunted", label: "Undaunted", category: "military", layer: 4, cost: 50,
     prereqs: ["halfellow_pony_patrol"], raceOnly: "halfellow",
-    description: "When a Pony Patrol is killed, 25% chance a Wanderer spawns in its place.",
+    description: "When a Pony Patrol is killed, 50% chance a Wanderer spawns in its place.",
     costBreakdown: { harvest: 28, lore: 22 },
     effects: [{ type: "unlock_mechanic", mechanic: "undaunted" }],
   },
@@ -1753,7 +1753,7 @@ window.GameData.TECHS = {
   halfellow_boomerang: {
     id: "halfellow_boomerang", label: "Boomerang", category: "military", layer: 2, cost: 30,
     prereqs: [], raceOnly: "halfellow",
-    description: "Every Halfellow unit except Militia gains Ranged 2 (attacks from 2 tiles away and takes no counterattack when doing so).",
+    description: "Every Halfellow unit gains Ranged 2 (attacks from 2 tiles away and takes no counterattack when doing so).",
     costBreakdown: { harvest: 15, lore: 15 },
     effects: [{ type: "universal_range_grant", value: 2 }],
   },
@@ -1806,9 +1806,9 @@ window.GameData.TECHS = {
   halfellow_pub_crawl: {
     id: "halfellow_pub_crawl", label: "Pub Crawl", category: "civic", layer: 2, cost: 40,
     prereqs: ["halfellow_neighborhood_pub"], raceOnly: "halfellow",
-    description: "+1 coin per building constructed in a city (walls don't count).",
+    description: "+3 coin per building constructed in a city (walls don't count).",
     costBreakdown: { lore: 16, coin: 12, harvest: 12 },
-    effects: [{ type: "building_count_bonus", bonus: { coin: 1 } }],
+    effects: [{ type: "building_count_bonus", bonus: { coin: 3 } }],
   },
   // Unlocks the Trouble Maker unit, with Resource Heist and Unlock the Gate
   // already built in (see ai.js's maybeResourceHeistPlay/
@@ -1962,11 +1962,29 @@ window.GameData.TECHS = {
   halfellow_resilient_spirit: {
     id: "halfellow_resilient_spirit", label: "Resilient Spirit", category: "military", layer: 5, cost: 90,
     prereqs: ["halfellow_family_and_friendship"], raceOnly: "halfellow",
-    description: "If the next hit against a Halfellow unit (forward or counter) would kill it, 25% chance to negate all of that damage instead. Triggering forces the unit to Rest next turn, and permanently reduces that same unit's own trigger chance by 15 percentage points (floored at 0%) -- diminishing returns per unit, never resets. Additionally, Halfellow units have a 50% chance to resist being raised from the dead (if killed by an undead unit, only a 50% chance the undead turns it into a zombie under its control).",
+    description: "If the next hit against a Halfellow unit (forward or counter) would kill it, 33% chance to negate all of that damage instead. Triggering forces the unit to Rest next turn, and permanently reduces that same unit's own trigger chance by 15 percentage points (floored at 0%) -- diminishing returns per unit, never resets. Additionally, Halfellow units have a 50% chance to resist being raised from the dead (if killed by an undead unit, only a 50% chance the undead turns it into a zombie under its control).",
     costBreakdown: { lore: 55, harvest: 35 },
     effects: [
-      { type: "unlock_mechanic", mechanic: "resilient_spirit", value: 0.25 },
+      { type: "unlock_mechanic", mechanic: "resilient_spirit", value: 0.33 },
       { type: "raise_dead_resistance", value: 0.5 },
+    ],
+  },
+  // "Banish the Darkness": Wanderer's new full-turn action, "Create The
+  // Great Bonfire" -- summons a stationary, destructible object (unit
+  // "great_bonfire", see units.js) on an open adjacent tile, free (costs
+  // only the Wanderer's turn, no resources -- see ai.js's
+  // startWandererBonfireSummon). Per-civ singleton: summoning a new one
+  // dismisses this civ's own old one, if it has one. Burns for 5 turns,
+  // then self-dismisses. See turns.js's beginCivTurn for its aura (heal,
+  // stat buffs, negative-condition cure/immunity) and expiry tick.
+  halfellow_banish_the_darkness: {
+    id: "halfellow_banish_the_darkness", label: "Banish the Darkness", category: "mystic", layer: 5, cost: 95,
+    prereqs: ["halfellow_hearth_and_homeland", "halfellow_devoted_companions"], raceOnly: "halfellow",
+    description: "The Wanderer gains a new full-turn action: Create The Great Bonfire, summoning it onto an open adjacent tile (not Water or Mountains). Only one Great Bonfire may burn at a time for this kingdom -- summoning a new one dismisses the old. It burns for 5 turns before self-dismissing, and radiates an aura in an 8-tile radius: allied units there (including the Bonfire itself) heal 10% of their max HP per turn (minimum 1) regardless of resting, gain +2 defense, +2 vision, +1 movement, +5% First Strike, and +10% Double Strike, and are cured of, and immune to, Burning, Poisoned, Frozen, Curse, Befuddled, and Webbed for as long as they stay in range.",
+    costBreakdown: { lore: 55, coin: 25, harvest: 15 },
+    effects: [
+      { type: "unlock_unit", unit: "great_bonfire" },
+      { type: "unlock_mechanic", mechanic: "banish_the_darkness" },
     ],
   },
   halfellow_rouse_the_people: {

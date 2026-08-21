@@ -169,8 +169,19 @@ window.GameData.UNIT_TYPE_PROPER_NAMES = {
     "Cinderjaw", "Doomscale", "Dacorax", "Korganadraxis"
   ],
   militia: [
-	"Willowshire Wardens", "Concerned Citizens Brigade", "Mossmeadow Sentinels", "Greenhill Rangers", "Applefoot Watch", "Merry Meadow Militia", "Dapplethorn Defenders", 
+	"Willowshire Wardens", "Concerned Citizens Brigade", "Mossmeadow Sentinels", "Greenhill Rangers", "Applefoot Watch", "Merry Meadow Militia", "Dapplethorn Defenders",
 	"Angry Applemeadow Association", "Greenburrow Defenders", "Quietbrook Shouters", "Barrowdeep Busy-Bodies"
+  ],
+  // Each name should read as a half-remembered rite from before the
+  // Halfellows settled down and built hearths of their own -- see
+  // doc/halfellow tech clarifications.txt Q20 and the sprite's own art
+  // brief (tools/prompts/halfellow_great_bonfire_sheet_2x2.txt) for the
+  // "ancient/primal, later adopted into something cozy" duality this is
+  // meant to carry.
+  great_bonfire: [
+    "The Old Rite", "Kindlewake", "The Longest Vigil", "Stonecircle Blaze",
+    "The Gathering Flame", "Emberkin", "The First Hearth", "Ashwake",
+    "The Homecoming Fire", "Sparkwarden", "The Watchfire of Old", "Old Midsummer",
   ],
   raptor: [
     "Skyfeather", "Windtalon", "Duskwing", "Farsight", "Cloudstrider",

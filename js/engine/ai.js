@@ -2363,14 +2363,19 @@ window.GameEngine = window.GameEngine || {};
     // trap is exactly the case that rule was never meant to touch), which
     // silently broke orders.js's isSpent -- see its "budget > 0" fallback --
     // and made an inert trap wrongly nag the player for orders every turn.
-    if (unit.typeId === "trap_frost" || unit.typeId === "trap_fire") return 0;
+    // Halfellow "Banish the Darkness": The Great Bonfire is an inert object,
+    // same "never moves, full stop" rule as the trap check just above.
+    if (unit.typeId === "trap_frost" || unit.typeId === "trap_fire" || unit.typeId === "great_bonfire") return 0;
     const baseUnit = window.GameData.getUnit(unit.typeId);
     // civ.unitOverrides movement delta (e.g. Orc's Swift Hunters: +1 Wolf Rider movement)
     const overrideMovement = unit._moveMods?.unitOverrides?.[unit.typeId]?.movement || 0;
     // Level-up "+0.5 Movement" pick -- same
     // flat-add convention as attack/defense, see combat.js's LEVEL_BONUS_VALUES.
     const levelMovement = unit.levelBonuses?.movement || 0;
-    let movement = baseUnit.movement + overrideMovement + levelMovement;
+    // Halfellow "Banish the Darkness": +1 movement while inside The Great
+    // Bonfire's aura -- see turns.js's beginCivTurn per-turn application.
+    const bonfireMovement = unit.conditions?.greatBonfireAura?.movementBonus || 0;
+    let movement = baseUnit.movement + overrideMovement + levelMovement + bonfireMovement;
     // Tech-unlocked terrain movement bonus: extra movement points while standing
     // on the race's favored terrain at the start of this move (e.g. Human on Plains).
     // "river" is a pseudo-terrain key checked separately since rivers overlay
@@ -4574,6 +4579,18 @@ window.GameEngine = window.GameEngine || {};
         continue;
       }
 
+      // Halfellow "Banish the Darkness": The Great Bonfire has no
+      // player-defined actions either -- same exclusive "checked before
+      // everything else, never fights/moves/is asked for orders" shape as
+      // the trap branch just above. Its aura, heal, and 5-turn expiry are
+      // all handled centrally in turns.js's beginCivTurn, not here.
+      if (unit.typeId === "great_bonfire") {
+        unit.resting = true;
+        unit.usedThisTurn = true;
+        unit.currentMission = "Burning brightly";
+        continue;
+      }
+
       // currentMission: a short, human-readable "what is this unit doing right
       // now" label, read by sidebar.js for spectator mode's unit inspection.
       // Reset to a generic default here so every branch below overwrites it
@@ -4755,6 +4772,12 @@ window.GameEngine = window.GameEngine || {};
       // action. See maybeRiddlePlay's doc comment.
       if (unit.typeId === "wanderer" && maybeRiddlePlay(civ, unit, gameState, log)) continue;
 
+      // Halfellow "Banish the Darkness" (Wanderer only): situational support
+      // play -- checked before Envoy since backing up a fight or a hurting
+      // ally outranks a pure economy action too, same reasoning as Riddle
+      // just above. See maybeCreateGreatBonfirePlay's doc comment.
+      if (unit.typeId === "wanderer" && maybeCreateGreatBonfirePlay(civ, unit, gameState, log)) continue;
+
       // Halfellow "Envoy" (Wanderer only -- Pioneer's own equivalent lives
       // in maybeFoundCity): opportunistic, lower priority than combat/
       // stealth above, so only fires when a Wanderer has nothing more
@@ -4856,6 +4879,12 @@ window.GameEngine = window.GameEngine || {};
       // matters if units actually stand next to each other -- see
       // maybeShieldWallPosition.
       if (maybeShieldWallPosition(civ, unit, gameState, nearActiveCombat, log)) continue;
+
+      // Halfellow "Banish the Darkness": same "positioning play" shape as
+      // Shield Wall just above -- an unattended Halfellow military unit that
+      // actually needs the aura (hurt, or standing near active combat)
+      // heads for it. See maybeSeekGreatBonfireAura's doc comment.
+      if (maybeSeekGreatBonfireAura(civ, unit, gameState, nearActiveCombat, log)) continue;
 
       // Orc "Pillage and Loot": an unattended raider actively suppressing
       // enemy tiles right now should keep doing that instead of wandering
@@ -7722,6 +7751,80 @@ window.GameEngine = window.GameEngine || {};
     return ok;
   }
 
+  const GREAT_BONFIRE_DURATION = 5;
+
+  /** Halfellow "Banish the Darkness": removes this civ's own existing Great
+   *  Bonfire from civ.units, if it has one -- per-civ singleton (see
+   *  startWandererBonfireSummon), so summoning a new one always clears the
+   *  old one first. `exceptUnit` (optional) is spared even if it's a Great
+   *  Bonfire -- used to protect a just-spawned replacement from being
+   *  caught by its own dismissal pass. No-op if this civ has none. */
+  function dismissExistingGreatBonfire(civ, exceptUnit = null) {
+    civ.units = civ.units.filter((u) => u.typeId !== "great_bonfire" || u === exceptUnit);
+  }
+
+  /** A Wanderer creates The Great Bonfire on an open adjacent tile
+   *  IMMEDIATELY -- no multi-turn delay, same shape (and the same reasoning:
+   *  a manually-played unit's multi-turn build would silently stall, see
+   *  startDruidSummon's doc comment) as every other instant summon in this
+   *  file. Unlike all of them, though, this one is entirely free
+   *  (user-directed: "just cost the full turn") -- no upkeep check, no
+   *  build cost, no stockpile spend -- so the only way this fails is if
+   *  every one of the Wanderer's 8 neighboring tiles is blocked (water,
+   *  mountains -- both already excluded by isOpenPlacementTile via
+   *  moveCostLand/isWater -- occupied, or enemy-held).
+   *
+   *  The civ may only ever have ONE Great Bonfire burning at a time
+   *  (user-directed: per-civ, not a single map-wide singleton) --
+   *  dismissExistingGreatBonfire only runs AFTER a new one successfully
+   *  lands, so a failed summon attempt (no open tile) never destroys a
+   *  bonfire that was already burning. Stamps `bonfireExpiresAtTurn` on the
+   *  new unit -- see turns.js's beginCivTurn, which removes it once that
+   *  turn is reached (self-dismissing after GREAT_BONFIRE_DURATION turns of
+   *  active aura).
+   *
+   *  `confirmed` (default false): same "propose once, re-invoke to commit"
+   *  pendingIntent staging every other automated-unit summon in this file
+   *  uses -- see startDruidSummon's doc comment for why. */
+  function startWandererBonfireSummon(civ, wanderer, gameState, log, confirmed = false) {
+    if (wanderer.automated && !confirmed) {
+      wanderer.pendingIntent = { kind: "createGreatBonfire", label: "Create The Great Bonfire" };
+      wanderer.usedThisTurn = true;
+      wanderer.currentMission = "Proposing to create The Great Bonfire — awaiting confirmation";
+      log.push(`Wanderer proposing to create The Great Bonfire at (${wanderer.x},${wanderer.y}) — awaiting player confirmation`);
+      return true; // consumes the turn either way -- same "decided, just paused" contract as the attack gates
+    }
+    const spawned = spawnUnitAdjacentToUnit(civ, wanderer, "great_bonfire", gameState);
+    if (!spawned) return false; // no open adjacent tile -- nothing spent, turn not consumed
+    dismissExistingGreatBonfire(civ, spawned);
+    spawned.bonfireExpiresAtTurn = (gameState.turnNumber || 0) + GREAT_BONFIRE_DURATION;
+    wanderer.usedThisTurn = true;
+    wanderer.currentMission = `Created The Great Bonfire at (${spawned.x},${spawned.y})`;
+    log.push(`Banish the Darkness: ${civ.id}'s Wanderer creates The Great Bonfire at (${spawned.x},${spawned.y})`);
+    window.SfxSystem.playAction(civ.raceId, "wanderer", "create_great_bonfire", spawned.x, spawned.y);
+    // Poof-of-magic burst on the newly-landed unit's tile -- see
+    // overlays.js's AREA_EFFECT_GLYPHS.summon.
+    window.GameEngine.combat.spawnAreaEffect(spawned.x, spawned.y, 0, "summon");
+    return true;
+  }
+
+  /** Direct player-invoked Great Bonfire summon (mirrors
+   *  performPlayerDruidSummon) -- the ring-menu "Create The Great Bonfire"
+   *  action calls straight into this, always confirmed (bypasses the
+   *  automated/pendingIntent gate entirely), since a manual ring click
+   *  already IS the confirmation regardless of whether this Wanderer
+   *  happens to be flagged automated from some earlier turn. Completes
+   *  synchronously -- the new unit (and the old one's dismissal, if any)
+   *  are both reflected in civ.units by the time this returns. */
+  function performPlayerWandererBonfireSummon(civ, wanderer, gameState) {
+    currentTurnNumber = gameState.turnNumber || 0;
+    currentGameStateRef = gameState;
+    const log = [];
+    const ok = startWandererBonfireSummon(civ, wanderer, gameState, log, true);
+    if (log.length) appendAIActionLog(gameState, civ.id, log);
+    return ok;
+  }
+
   /** Halfellow Trouble Maker AI: if Set the Trap is researched and there's a
    *  free slot under the civ-wide cap (trapCapReached), plants a trap
    *  (instant, see startTroubleMakerTrapSet) at the nearest legal tile to
@@ -8988,6 +9091,35 @@ window.GameEngine = window.GameEngine || {};
     unit.usedThisTurn = true;
     unit.currentMission = `Forming a shield wall near (${nearest.x},${nearest.y})`;
     log.push(`Shield Wall: ${civ.id}'s ${describeUnit(unit)} closes ranks with an ally`);
+    return true;
+  }
+
+  /**
+   * Halfellow "Banish the Darkness": an unattended Halfellow military unit
+   * prefers to stand within The Great Bonfire's aura whenever it actually
+   * needs what the aura offers -- hurt (below 70% HP) or fighting/standing
+   * near active combat (`nearActiveCombat`, the same signal Shield Wall
+   * positioning above reuses) -- rather than beelining for it unconditionally
+   * just because one happens to exist somewhere on the map. No-op if this
+   * civ has no active Bonfire, if the unit is already within its aura
+   * radius, or if neither trigger applies. Same "positioning play, own-race
+   * priority slot" shape as Shield Wall above -- checked right after it in
+   * runUnitTurn. Returns true if it consumed the turn (moving toward the
+   * Bonfire).
+   */
+  function maybeSeekGreatBonfireAura(civ, unit, gameState, nearActiveCombat, log) {
+    if (civ.raceId !== "halfellow" || unit.usedThisTurn) return false;
+    if (unit.typeId === "great_bonfire") return false;
+    if (window.GameData.getUnit(unit.typeId).category !== "military") return false;
+    const bonfire = civ.units.find((u) => u.typeId === "great_bonfire");
+    if (!bonfire) return false;
+    if (window.GameEngine.influence.chebyshev(bonfire.x, bonfire.y, unit.x, unit.y) <= GREAT_BONFIRE_AURA_RADIUS) return false;
+    const hurt = unit.hp < unit.maxHp * 0.7;
+    if (!hurt && !nearActiveCombat) return false;
+    moveUnitToward(unit, bonfire.x, bonfire.y, gameState.map, gameState.civs);
+    unit.usedThisTurn = true;
+    unit.currentMission = "Heading for The Great Bonfire";
+    log.push(`Banish the Darkness: ${civ.id}'s ${describeUnit(unit)} heads for The Great Bonfire at (${bonfire.x},${bonfire.y})`);
     return true;
   }
 
@@ -11725,6 +11857,66 @@ window.GameEngine = window.GameEngine || {};
     return true;
   }
 
+  // Mirrors turns.js's beginCivTurn aura-radius constant -- kept as its own
+  // local copy rather than shared, same "each module owns its own tuning
+  // constant" convention as e.g. main.js's startTrapPlacement mirroring
+  // ai.js's TRAP_PLACEMENT_RANGE.
+  const GREAT_BONFIRE_AURA_RADIUS = 8;
+  // How far around a Wanderer/hurt ally to look for a reason to light (or
+  // seek) The Great Bonfire -- deliberately smaller than the aura's own
+  // radius: this is "is there a fight or a hurting ally close enough to be
+  // worth reacting to right now," not "how far the aura itself reaches."
+  const GREAT_BONFIRE_TRIGGER_RADIUS = 5;
+
+  /**
+   * Halfellow "Banish the Darkness" (Wanderer only): situational, not
+   * automatic -- per user direction ("situationally... especially when
+   * enemies are near or they need healing"), only bothers creating/
+   * relocating The Great Bonfire when there's an actual reason to. Skips
+   * entirely if this civ's existing Bonfire (if any) already reaches this
+   * Wanderer's own position (GREAT_BONFIRE_AURA_RADIUS) -- no point
+   * re-lighting one that's already doing its job right here. Otherwise
+   * fires when EITHER an enemy unit, OR a hurt (<70% HP) allied military
+   * unit, is within GREAT_BONFIRE_TRIGGER_RADIUS of this Wanderer. Checked
+   * after Riddle (see its call site's comment: "disabling a real threat
+   * outranks an economy action" -- the same reasoning ranks THIS above pure
+   * economy too) and before Envoy, in runUnitTurn. Returns true if it
+   * consumed the turn.
+   */
+  function maybeCreateGreatBonfirePlay(civ, unit, gameState, log) {
+    if (civ.raceId !== "halfellow" || !civ.unlockedMechanics || !civ.unlockedMechanics.has("banish_the_darkness")) return false;
+    if (unit.typeId !== "wanderer" || unit.usedThisTurn) return false;
+
+    const existing = civ.units.find((u) => u.typeId === "great_bonfire");
+    if (existing && window.GameEngine.influence.chebyshev(existing.x, existing.y, unit.x, unit.y) <= GREAT_BONFIRE_AURA_RADIUS) {
+      return false;
+    }
+
+    const { civs } = gameState;
+    let reason = false;
+    outer: for (const otherCiv of Object.values(civs)) {
+      if (otherCiv.id === civ.id || otherCiv.eliminated) continue;
+      for (const enemy of otherCiv.units) {
+        if (window.GameEngine.influence.chebyshev(unit.x, unit.y, enemy.x, enemy.y) <= GREAT_BONFIRE_TRIGGER_RADIUS) {
+          reason = true; break outer;
+        }
+      }
+    }
+    if (!reason) {
+      for (const ally of civ.units) {
+        if (ally === unit || ally.carriedBy) continue;
+        if (window.GameData.getUnit(ally.typeId).category !== "military") continue;
+        if (ally.hp >= ally.maxHp * 0.7) continue;
+        if (window.GameEngine.influence.chebyshev(unit.x, unit.y, ally.x, ally.y) <= GREAT_BONFIRE_TRIGGER_RADIUS) {
+          reason = true; break;
+        }
+      }
+    }
+    if (!reason) return false;
+
+    return startWandererBonfireSummon(civ, unit, gameState, log);
+  }
+
   function maybeHalfellowStealthPlay(civ, unit, gameState, weights, difficulty, log) {
     if (civ.raceId !== "halfellow") return false;
     if (!civ.unlockedMechanics || !civ.unlockedMechanics.has("sneaking_around")) return false;
@@ -13336,6 +13528,7 @@ window.GameEngine = window.GameEngine || {};
     isValidTrapPlacementTile,
     performPlayerTrapSet,
     trapCapReached,
+    performPlayerWandererBonfireSummon,
     primeUnitForAutomation,
     runAutomatedUnitTurn,
   };

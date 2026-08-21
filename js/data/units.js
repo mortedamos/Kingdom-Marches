@@ -225,17 +225,17 @@ window.GameData.UNITS = {
   },
   cavalry: {
     id: "cavalry", label: "Cavalry", symbol: "♞", category: "military", raceOnly: "human",
-    attack: 6, defense: 4, movement: 4, visionRadius: 3, firstStrikePct: 0.03,
+    attack: 6, defense: 4, movement: 4, visionRadius: 3, firstStrikePct: 0.05,
     coinCost: 22, biggerPct: .2,  attackChars: ["⚔", "🗡"],
   },
   knight: {
     id: "knight", label: "Knight", symbol: "♞", category: "military", raceOnly: "human",
     attack: 8, defense: 7, movement: 5, visionRadius: 3, // replaces Cavalry via the Knighthood tech
-    coinCost: 32, firstStrikePct: 0.05, biggerPct: .25, attackChars: ["⚔", "🗡"],
+    coinCost: 32, firstStrikePct: 0.1, biggerPct: .25, attackChars: ["⚔", "🗡"],
   },
   paladin: {
     id: "paladin", label: "Paladin", symbol: "♞", category: "military", raceOnly: "human",
-    attack: 10, defense: 8, movement: 5, visionRadius: 4, firstStrikePct: 0.06, // replaces Knight via the Chivalric Order tech
+    attack: 10, defense: 8, movement: 5, visionRadius: 4, firstStrikePct: 0.2, doubleStrikePct: 0.1, // replaces Knight via the Chivalric Order tech
     coinCost: 42, biggerPct: .4, attackChars: ["⚔", "🗡", "🛡"], rare: true,
   },
   archer: {
@@ -385,12 +385,6 @@ window.GameData.UNITS = {
     id: "militia", label: "Militia", symbol: "⚔", category: "military", raceOnly: "halfellow",
     attack: 5, defense: 7, movement: 2, visionRadius: 4, siegePct: .3,
     coinCost: 22, attackChars: ["🔪", "🔱"], biggerPct: .2, rare: true, nameSpecial: true,
-    // Opts out of Boomerang's civ-wide Ranged-2 floor (combat.js
-    // effectiveRange). Militia is Halfellow's numerically dominant
-    // standing-army unit; exempting it keeps Boomerang's risk-free ranged
-    // combat scoped to the race's early/scouting units instead of the
-    // whole army.
-    exemptFromUniversalRangeGrant: true,
   },
   // Deliberately unremarkable combat stats, same "the real value is the
   // kit, not front-line stats" philosophy as Human's Wizard -- see
@@ -433,6 +427,22 @@ window.GameData.UNITS = {
     id: "trap_fire", label: "Fire Trap", symbol: "🪤", category: "military", raceOnly: "halfellow",
     attack: 0, defense: 0, movement: 0, visionRadius: 1,
     coinCost: 20, cityBuildable: false, noUpkeep: true, nameSpecial: true, // an object, not a person
+  },
+  // Halfellow "Banish the Darkness": summoned by a Wanderer's full-turn
+  // action (see ai.js's startWandererBonfireSummon), never built by a city,
+  // free to summon (no upkeep, no build cost -- unlike Wisp/the traps above,
+  // which do pay a resource cost). attack:0/defense:0 mirrors the traps'
+  // "trivially easy to kill, one hit from most attacks" HP (derived from
+  // attack+defense+tech layer, see units.js's file-header doc and
+  // GameData.unitMaxHP) -- it never fights back and never takes an action,
+  // but unlike a hidden trap it's fully visible and CAN be destroyed early
+  // by an enemy who reaches it before its 5-turn timer runs out. visionRadius
+  // matches its own aura radius (see turns.js's beginCivTurn) so the light it
+  // casts also reveals fog of war that far.
+  great_bonfire: {
+    id: "great_bonfire", label: "The Great Bonfire", symbol: "🔥", category: "military", raceOnly: "halfellow",
+    attack: 0, defense: 0, movement: 0, visionRadius: 8, biggerPct: 1.1, 
+    coinCost: 0, cityBuildable: false, noUpkeep: true, nameSpecial: true, // an object, not a person
   },
 
   // --- DWARF full roster (redesigned tree, no stubs -- see techs.js) ---

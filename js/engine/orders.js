@@ -1150,6 +1150,17 @@ window.GameEngine = window.GameEngine || {};
         options.push({ kind: "setTrap:fire", label: "Set Fire Trap" });
       }
 
+      // Halfellow "Banish the Darkness": single click, no placement mode
+      // needed -- same "lands on a random open adjacent tile" shape as
+      // Raptor/Shadowsteed above (ai.js's spawnUnitAdjacentToUnit), not a
+      // player-chosen destination like Wisp/the traps. Always offered (no
+      // civ-wide cap check like Wisp/traps) since summoning a new Bonfire
+      // simply dismisses this civ's old one rather than being blocked by it.
+      if (unit.typeId === "wanderer" && !unit.usedThisTurn
+          && civ.unlockedMechanics?.has("banish_the_darkness")) {
+        options.push({ kind: "createGreatBonfire", label: "Create The Great Bonfire" });
+      }
+
       // Hidden/stealth -- sidebar.js's stealthActions.
       if (unit.conditions?.hidden) {
         options.push({ kind: "cancelHidden", label: "Cancel Hidden" });

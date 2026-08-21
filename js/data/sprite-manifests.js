@@ -146,6 +146,15 @@ window.GameData.SPRITE_MANIFESTS = {
     frameWidth: 128, frameHeight: 128, layout: "horizontal",
     animations: { idle: { frames: [0], fps: 1 } },
   },
+  // The Great Bonfire: a gentle 4-frame flicker, same fps:1 rate every
+  // other animated unit already uses (well below any strobing threshold --
+  // see project no-flashing-effects constraint), not a single static frame
+  // like the traps above -- it's meant to read as a living fire, not an
+  // inert prop.
+  "unit/great_bonfire": {
+    frameWidth: 128, frameHeight: 128, layout: "horizontal",
+    animations: { idle: { frames: [0, 1, 2, 3], fps: 1 } },
+  },
   "unit/spearguard": {
     frameWidth: 128, frameHeight: 128, layout: "horizontal",
     animations: { idle: { frames: [0, 1, 2, 3], fps: 1 } },
