@@ -747,14 +747,17 @@ window.UI = window.UI || {};
     return tile._effectPhase;
   }
 
-  /** 4 stable random values [0,1) cached on the tile, for ground-clutter
+  /** 5 stable random values [0,1) cached on the tile, for ground-clutter
    *  placement (grass tuft offsets/sizes, sand-wisp cycle offset -- see
    *  drawGrassClutter/drawWindWisp below). A separate cache from
    *  tileEffectPhase above rather than reusing it, so retuning clutter's
    *  random needs never perturbs chest-sparkle timing (they'd otherwise be
-   *  drawing from the same cached Math.random() call). */
+   *  drawing from the same cached Math.random() call). Index 4 (added
+   *  2026-08-21) is grass clutter's own "does this tile show any at all"
+   *  coin flip -- see drawGrassClutter; every other consumer here only ever
+   *  reads indices 0-3, so adding a 5th slot doesn't disturb them. */
   function tileClutterSeed(tile) {
-    if (!tile._clutterSeed) tile._clutterSeed = [Math.random(), Math.random(), Math.random(), Math.random()];
+    if (!tile._clutterSeed) tile._clutterSeed = [Math.random(), Math.random(), Math.random(), Math.random(), Math.random()];
     return tile._clutterSeed;
   }
 
@@ -1005,17 +1008,27 @@ window.UI = window.UI || {};
     }
   }
 
+  // Default fire gradient stops for drawFlameTongue -- dark orange base
+  // through orange-red to a pale yellow tip. Pulled out to a constant so
+  // drawWispFlicker below can pass its own green/purple stops through the
+  // exact same teardrop shape instead of duplicating the path math.
+  const FLAME_TONGUE_FIRE_STOPS = [
+    [0, "rgba(200,40,10,0.92)"],
+    [0.45, "rgba(255,110,20,0.95)"],
+    [0.8, "rgba(255,190,50,0.95)"],
+    [1, "rgba(255,235,140,0.85)"],
+  ];
+
   /** Single flame tongue, a teardrop silhouette (round base, pointed tip)
-   *  with a vertical gradient from a dark orange base through orange-red to
-   *  a pale yellow tip -- drawn pointing straight up before the caller's own
-   *  rotate/translate/scale, so lean and flutter are just transform calls,
-   *  not separate path math per flame. */
-  function drawFlameTongue(ctx, size) {
+   *  with a vertical gradient from a dark base color through a bright
+   *  midtone to a pale tip -- drawn pointing straight up before the
+   *  caller's own rotate/translate/scale, so lean and flutter are just
+   *  transform calls, not separate path math per flame. `colorStops`
+   *  (optional, [offset, rgba] pairs) defaults to ordinary fire; see
+   *  drawWispFlicker for a colored (green/purple) use of the same shape. */
+  function drawFlameTongue(ctx, size, colorStops = FLAME_TONGUE_FIRE_STOPS) {
     const grad = ctx.createLinearGradient(0, size * 0.5, 0, -size * 0.55);
-    grad.addColorStop(0, "rgba(200,40,10,0.92)");
-    grad.addColorStop(0.45, "rgba(255,110,20,0.95)");
-    grad.addColorStop(0.8, "rgba(255,190,50,0.95)");
-    grad.addColorStop(1, "rgba(255,235,140,0.85)");
+    for (const [offset, color] of colorStops) grad.addColorStop(offset, color);
     ctx.fillStyle = grad;
     ctx.beginPath();
     ctx.moveTo(0, size * 0.5);
@@ -1027,17 +1040,27 @@ window.UI = window.UI || {};
   /** Burning (2026-08-19, user-requested): a real flickering-flame effect
    *  on top of the existing orange tint (see drawConditionVisualEffects'
    *  own BURNING_TINT_COLOR flicker) -- that tint alone reads as "tinted",
-   *  this is what actually reads as "on fire". 3 flame tongues clustered
-   *  along the top edge of the box, each with its own phase offset (from
-   *  conditionEffectPhase, which works for a structure record exactly the
-   *  same as a unit -- both are just plain objects it can cache
+   *  this is what actually reads as "on fire". Up to 3 flame tongues
+   *  clustered along the top edge of the box, each with its own phase
+   *  offset (from conditionEffectPhase, which works for a structure record
+   *  exactly the same as a unit -- both are just plain objects it can cache
    *  `_effectPhase` on) so a screen full of burning things doesn't flicker
    *  in lockstep. Works for both units (called from render.js's unit loop)
    *  and structures (render.js's Structures loop) via the same generic
    *  {ctx, entity, boxX, boxY, boxSize, now} shape drawLevelUpSparkles
    *  above uses -- callers just need entity.conditions.burning (unit) or
-   *  entity.burning (structure) truthy before calling this. */
-  function drawFlameEffect(ctx, entity, boxX, boxY, boxSize, now) {
+   *  entity.burning (structure) truthy before calling this.
+   *
+   *  `opts` (2026-08-21, added for the ambient Bonfire/Fire Trap embers --
+   *  see drawBonfireEmbers/drawFireTapEmbers below): sizeMult/alphaMult
+   *  scale the flames down for a subtler, permanent flourish instead of the
+   *  Burning debuff's full-intensity warning; count trims down from the
+   *  full 3-flame cluster. All default to the Burning condition's original,
+   *  unscaled look when omitted, so its own 2 call sites are unaffected. */
+  function drawFlameEffect(ctx, entity, boxX, boxY, boxSize, now, opts = {}) {
+    const sizeMult = opts.sizeMult ?? 1;
+    const alphaMult = opts.alphaMult ?? 1;
+    const count = opts.count ?? 3;
     const phase = conditionEffectPhase(entity);
     const reduced = window.UI.motion && window.UI.motion.isReduced();
     const baseX = boxX + boxSize / 2;
@@ -1046,21 +1069,160 @@ window.UI = window.UI || {};
       { dx: -0.22, scale: 0.62, speed: 1.0, offset: 0 },
       { dx: 0, scale: 0.8, speed: 1.25, offset: 1.7 },
       { dx: 0.24, scale: 0.55, speed: 0.85, offset: 3.4 },
-    ];
+    ].slice(0, count);
     for (const f of flames) {
       const t = now / 130 * f.speed + phase * 3 + f.offset;
       // Reduced motion: park each flame at a fixed mid-flicker lean/height
       // instead of animating -- still reads as "on fire", just not moving.
       const lean = reduced ? 0.15 : 0.3 * Math.sin(t);
       const heightFlicker = reduced ? 1 : 0.85 + 0.25 * Math.sin(t * 1.7 + 0.6);
-      const alpha = reduced ? 0.85 : 0.75 + 0.2 * Math.sin(t * 2.3);
-      const size = boxSize * 0.34 * f.scale * heightFlicker;
+      const alpha = (reduced ? 0.85 : 0.75 + 0.2 * Math.sin(t * 2.3)) * alphaMult;
+      const size = boxSize * 0.34 * f.scale * heightFlicker * sizeMult;
       ctx.save();
-      ctx.globalAlpha = Math.max(0.4, Math.min(1, alpha));
+      ctx.globalAlpha = Math.max(0.4 * alphaMult, Math.min(1, alpha));
       ctx.translate(baseX + boxSize * f.dx, baseY);
       ctx.rotate(lean);
       drawFlameTongue(ctx, size);
       ctx.restore();
+    }
+  }
+
+  // --- Ambient unit effects (2026-08-21, user-requested) ------------------
+  // Small always-on flourishes for a few specific unit types -- distinct
+  // from drawFlameEffect/drawConditionVisualEffects above, which are tied
+  // to a TEMPORARY condition (the Burning debuff, etc.); these are
+  // permanent flavor for what the unit type IS, gated on unit.typeId and
+  // always playing regardless of combat state. 2D-only, matching
+  // drawFlameEffect/drawLevelUpSparkles' own existing 2D-only scope (see
+  // render3d.js -- it never calls either).
+
+  const AMBIENT_SMOKE_CYCLE_MS = 3200; // one puff-pair cycle
+  const AMBIENT_SMOKE_PUFF_DELAYS = [0, 0.5]; // two puffs, staggered half a cycle apart
+
+  /** A couple of small grey puffs drifting slowly straight up from
+   *  (baseX,baseY) and fading -- a continuous, looping version of the
+   *  combat-triggered death/muzzle smoke puffs above (same soft grey
+   *  circle, ease-out drift, just perpetually cycling instead of a one-shot
+   *  burst). `phase` (conditionEffectPhase) offsets the cycle so multiple
+   *  bonfires/fire traps on screen don't puff in unison. `scale` sets how
+   *  far/large the puffs grow -- pass roughly the width of the source
+   *  flame so smoke reads as coming from it. */
+  function drawAmbientSmoke(ctx, baseX, baseY, scale, phase, now) {
+    if (window.UI.motion && window.UI.motion.isReduced()) return; // pure motion, no meaningful static frame
+    const cyclePos = ((now + phase * 1000) % AMBIENT_SMOKE_CYCLE_MS) / AMBIENT_SMOKE_CYCLE_MS;
+    ctx.save();
+    for (const delay of AMBIENT_SMOKE_PUFF_DELAYS) {
+      const t = (cyclePos - delay + 1) % 1;
+      const ease = 1 - (1 - t) * (1 - t);
+      const rise = scale * 1.3 * ease;
+      const size = scale * (0.16 + 0.1 * ease);
+      const alpha = (t < 0.15 ? t / 0.15 : Math.max(0, 1 - (t - 0.15) / 0.85)) * 0.4;
+      if (alpha <= 0) continue;
+      const driftX = Math.sin(t * Math.PI * 1.3 + phase * 4) * scale * 0.1;
+      ctx.globalAlpha = alpha;
+      ctx.fillStyle = "#b8b8b8";
+      ctx.beginPath();
+      ctx.arc(baseX + driftX, baseY - rise, Math.max(1, size), 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  /** The Great Bonfire: subtle flickering flames plus a little smoke
+   *  drifting off the top (2026-08-21, user-requested). Reuses
+   *  drawFlameEffect at reduced size/opacity/count so it reads as ambient
+   *  warmth rather than the Burning debuff's urgent full-intensity blaze. */
+  function drawBonfireEmbers(ctx, unit, boxX, boxY, boxSize, now) {
+    drawFlameEffect(ctx, unit, boxX, boxY, boxSize, now, { sizeMult: 0.55, alphaMult: 0.75, count: 2 });
+    drawAmbientSmoke(ctx, boxX + boxSize * 0.5, boxY + boxSize * 0.06, boxSize * 0.5, conditionEffectPhase(unit), now);
+  }
+
+  /** Fire Trap: the same subtle flicker + light smoke treatment as the
+   *  Great Bonfire just above, scaled down further -- a trap is a small
+   *  object, not a campfire (2026-08-21, user-requested). */
+  function drawFireTapEmbers(ctx, unit, boxX, boxY, boxSize, now) {
+    drawFlameEffect(ctx, unit, boxX, boxY, boxSize, now, { sizeMult: 0.4, alphaMult: 0.65, count: 2 });
+    drawAmbientSmoke(ctx, boxX + boxSize * 0.5, boxY + boxSize * 0.14, boxSize * 0.36, conditionEffectPhase(unit), now);
+  }
+
+  // Green/purple gradient stops for the Wisp's flame tongues -- same
+  // teardrop shape drawFlameTongue already draws for ordinary fire, just
+  // recolored (see drawFlameTongue's colorStops param).
+  const WISP_GREEN_FLAME_STOPS = [
+    [0, "rgba(10,70,20,0.88)"], [0.45, "rgba(50,190,70,0.92)"],
+    [0.8, "rgba(140,255,130,0.92)"], [1, "rgba(220,255,210,0.82)"],
+  ];
+  const WISP_PURPLE_FLAME_STOPS = [
+    [0, "rgba(55,10,90,0.88)"], [0.45, "rgba(150,40,200,0.92)"],
+    [0.8, "rgba(210,120,255,0.92)"], [1, "rgba(240,215,255,0.82)"],
+  ];
+
+  /** Orc Wisp: subtle flickering green and purple flames (2026-08-21,
+   *  user-requested) -- one tongue of each color, independently flickering
+   *  (own speed/phase offset), rather than drawFlameEffect's uniform fire
+   *  cluster. */
+  function drawWispFlicker(ctx, unit, boxX, boxY, boxSize, now) {
+    const phase = conditionEffectPhase(unit);
+    const reduced = window.UI.motion && window.UI.motion.isReduced();
+    const baseX = boxX + boxSize / 2, baseY = boxY + boxSize * 0.18;
+    const flames = [
+      { dx: -0.16, stops: WISP_GREEN_FLAME_STOPS, speed: 1.05, offset: 0 },
+      { dx: 0.16, stops: WISP_PURPLE_FLAME_STOPS, speed: 0.9, offset: 2.6 },
+    ];
+    for (const f of flames) {
+      const t = now / 150 * f.speed + phase * 3 + f.offset;
+      const lean = reduced ? 0.12 : 0.24 * Math.sin(t);
+      const heightFlicker = reduced ? 1 : 0.8 + 0.25 * Math.sin(t * 1.6 + 0.5);
+      const alpha = reduced ? 0.6 : 0.5 + 0.18 * Math.sin(t * 2.1);
+      const size = boxSize * 0.22 * heightFlicker;
+      ctx.save();
+      ctx.globalAlpha = Math.max(0.3, Math.min(0.85, alpha));
+      ctx.translate(baseX + boxSize * f.dx, baseY);
+      ctx.rotate(lean);
+      drawFlameTongue(ctx, size, f.stops);
+      ctx.restore();
+    }
+  }
+
+  const ICE_SHIMMER_CYCLE_MS = 5000;
+  const ICE_SHIMMER_BURST_MS = 650;
+  const ICE_SHIMMER_COLOR = "#dff3ff";
+
+  /** Ice Trap: an occasional blue-white shimmer, as if light were catching
+   *  a facet of ice (2026-08-21, user-requested) -- same occasional-glint
+   *  idiom as drawChestSparkle/drawResourceGlint (most of the cycle draws
+   *  nothing at all), just two spots on the unit's own box instead of one
+   *  on a tile icon, staggered half a cycle apart so it reads as light
+   *  catching different facets rather than one point blinking. */
+  function drawIceTrapShimmer(ctx, unit, boxX, boxY, boxSize, now) {
+    const phase = conditionEffectPhase(unit);
+    if (window.UI.motion && window.UI.motion.isReduced()) {
+      drawSparkleMark(ctx, boxX + boxSize * 0.62, boxY + boxSize * 0.35, boxSize * 0.07, 0.4, ICE_SHIMMER_COLOR);
+      return;
+    }
+    const spots = [
+      { x: 0.62, y: 0.35, delay: 0 },
+      { x: 0.36, y: 0.55, delay: 0.5 },
+    ];
+    for (const spot of spots) {
+      const t = (now + phase * 1000 + spot.delay * ICE_SHIMMER_CYCLE_MS) % ICE_SHIMMER_CYCLE_MS;
+      if (t > ICE_SHIMMER_BURST_MS) continue;
+      const burstT = t / ICE_SHIMMER_BURST_MS;
+      const alpha = (burstT < 0.3 ? burstT / 0.3 : Math.max(0, 1 - (burstT - 0.3) / 0.7)) * 0.75;
+      drawSparkleMark(ctx, boxX + boxSize * spot.x, boxY + boxSize * spot.y, boxSize * 0.13 * alpha, alpha, ICE_SHIMMER_COLOR);
+    }
+  }
+
+  /** Single dispatch point for the ambient per-unit-type effects above --
+   *  render.js's unit loop calls this once per unit, unconditionally, right
+   *  alongside its existing Burning-condition drawFlameEffect call; unit
+   *  types with no ambient effect defined here are simply a no-op. */
+  function drawAmbientUnitEffects(ctx, unit, boxX, boxY, boxSize, now) {
+    switch (unit.typeId) {
+      case "great_bonfire": drawBonfireEmbers(ctx, unit, boxX, boxY, boxSize, now); break;
+      case "wisp": drawWispFlicker(ctx, unit, boxX, boxY, boxSize, now); break;
+      case "trap_fire": drawFireTapEmbers(ctx, unit, boxX, boxY, boxSize, now); break;
+      case "trap_frost": drawIceTrapShimmer(ctx, unit, boxX, boxY, boxSize, now); break;
     }
   }
 
@@ -1304,6 +1466,11 @@ window.UI = window.UI || {};
   // snapshot.
   const GRASS_TUFT_COUNT = 2;
   const GRASS_SWAY_PERIOD_MS = 2600;
+  // Fraction of plains tiles that show NO grass clutter at all (2026-08-21,
+  // user-directed: "reduce number of grass overlay effects by about 1/3")
+  // -- see drawGrassClutter's own doc comment for why this thins the map-
+  // wide count instead of shrinking GRASS_TUFT_COUNT.
+  const GRASS_SKIP_CHANCE = 1 / 3;
   const GRASS_BLADE_COLOR = "#6f9143";
 
   /** One small tuft of 3 thin blades fanning from a base point, tips
@@ -1330,10 +1497,17 @@ window.UI = window.UI || {};
    *  stable-random per tile (tileClutterSeed) so they don't relocate frame
    *  to frame. Reduced motion: tufts stand still (sway pinned to 0) rather
    *  than being hidden entirely -- unlike the sand wisp below, a still
-   *  tuft of grass is a perfectly meaningful static rendering. */
+   *  tuft of grass is a perfectly meaningful static rendering.
+   *
+   *  About 1/3 of plains tiles show no clutter at all (2026-08-21, user-
+   *  directed thinning -- seed[4] < GRASS_SKIP_CHANCE), rather than
+   *  shrinking GRASS_TUFT_COUNT itself: a tile that DOES show grass still
+   *  gets the full 2-tuft look, it's just rarer across the map, so density
+   *  drops without any single tuft cluster reading as sparser than before. */
   function drawGrassClutter(ctx, tile, x, y, screenX, screenY, ts, now) {
-    const reduced = window.UI.motion && window.UI.motion.isReduced();
     const seed = tileClutterSeed(tile);
+    if (seed[4] < GRASS_SKIP_CHANCE) return;
+    const reduced = window.UI.motion && window.UI.motion.isReduced();
     for (let i = 0; i < GRASS_TUFT_COUNT; i++) {
       const s0 = seed[i * 2], s1 = seed[i * 2 + 1];
       const ox = 0.18 + s0 * 0.64;
@@ -1407,8 +1581,12 @@ window.UI = window.UI || {};
   // a large fraction of every visible swamp/forest tile showed one at once.
   // Stretched the cycle and cut the active window down to a ~5-8% duty
   // cycle instead -- so a critter reads as a rare, worth-noticing event,
-  // not ambient population.
-  const SNAKE_CYCLE_MS = 32000;
+  // not ambient population. Cycle stretched again 2026-08-21 (32000 -> 48000,
+  // user-directed: "reduce number of swamp overlay effects by about 1/3")
+  // -- ACTIVE_MS held fixed so an individual sighting still looks/lasts
+  // exactly the same, just happens 1/3 less often (duty cycle
+  // 6000/32000=18.75% -> 6000/48000=12.5%, a 2/3 ratio).
+  const SNAKE_CYCLE_MS = 48000;
   const SNAKE_ACTIVE_MS = 6000;
   const SNAKE_LEG_COUNT = 2;
   const SNAKE_COLOR = "#4a6b3a";
@@ -1593,6 +1771,7 @@ window.UI = window.UI || {};
     getActiveMuzzleSmoke,
     getUnitShakeOffset, drawConditionVisualEffects, drawConditionBadges, drawChannelStashLabel, drawIdleCityBadge,
     drawLevelUpGlowBehind, drawLevelUpSparkles, drawFlameEffect, drawChestSparkle, drawResourceGlint,
+    drawAmbientUnitEffects,
     drawGrassClutter, drawWindWisp, drawSwampSnake, drawForestBird,
     hexToRgba, drawHatch, drawConstructionSite, auraInfoForUnit, drawTileScoreOverlay,
     ATTACK_ANIM_MS, SLASH_ANIM_MS, AREA_EFFECT_ANIM_MS, AREA_EFFECT_COLORS, DEATH_EFFECT_ANIM_MS,

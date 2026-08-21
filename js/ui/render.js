@@ -1048,6 +1048,7 @@ window.UI = window.UI || {};
       ctx.restore();
       overlays.drawConditionVisualEffects(ctx, unit, unitSprite, boxX, boxY, boxSize, now);
       if (unit.conditions?.burning) overlays.drawFlameEffect(ctx, unit, boxX, boxY, boxSize, now);
+      overlays.drawAmbientUnitEffects(ctx, unit, boxX, boxY, boxSize, now);
 
       // HP bar
       if (unit.hp != null && unit.maxHp && unit.hp < unit.maxHp) {
