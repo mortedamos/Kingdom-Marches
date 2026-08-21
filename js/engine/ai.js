@@ -75,6 +75,16 @@ window.GameEngine = window.GameEngine || {};
     return Math.min(1, base + bonus);
   }
 
+  /** The active AI Aggression level (Low/Normal/High, universal launch
+   *  option -- see config.js's own aiAggression doc comment for the full
+   *  reasoning). Read live off GameConfig, not snapshotted, so it always
+   *  reflects whatever main.js's applyAiAggression last set. Falls back to
+   *  index 1 (Normal) defensively if the config shape is ever missing. */
+  function aiAggressionLevel() {
+    const A = window.GameConfig.aiAggression;
+    return A.levels[A.levelIndex] ?? A.levels[1];
+  }
+
   /**
    * Derives AI action weights from a race's personality traits.
    * Traits (0–1) live in races.js; this converts them to multipliers
@@ -88,17 +98,24 @@ window.GameEngine = window.GameEngine || {};
    *                                for how this is weighed against military need
    *   aggressiveness  → attack / raid
    *   militarism      → garrison (used in build scoring and garrison hold logic)
+   *
+   * attack/raid additionally get scaled by the active AI Aggression level's
+   * combatWeightMult (see config.js's own doc comment and aiAggressionLevel
+   * above) -- deliberately the ONLY two outputs it touches, so a more
+   * aggressive setting makes a civ commit its existing military more
+   * readily without changing how much it settles, builds, or researches.
    */
   function racialWeights(civ) {
     const race = window.GameData.getRace(civ.raceId);
     const agg = aggressivenessFor(civ);
+    const combatMult = aiAggressionLevel().combatWeightMult;
     const trait = (t) => 0.4 + (t ?? 0.5) * 1.1; // maps 0→0.4, 0.5→0.95, 1→1.5
     return {
       settle:   trait(race.expansionism),
       build:    trait(race.industriousness),
       research: trait(race.curiosity),
-      attack:   0.3 + agg * 1.2,
-      raid:     agg * 1.8,
+      attack:   (0.3 + agg * 1.2) * combatMult,
+      raid:     agg * 1.8 * combatMult,
       garrison: trait(effectiveMilitarism(civ)),
       explore:  trait(race.curiosity),
     };
@@ -305,10 +322,21 @@ window.GameEngine = window.GameEngine || {};
     return race.aggressiveness ?? 0.5;
   }
 
-  /** Highly aggressive (1.0) civs will take a fight at roughly even odds (50%);
-   *  passive (0.0) civs hold out for heavily favorable odds (~90%). */
+  // A civ never accepts worse than this, no matter how aggressive the race
+  // trait or the AI Aggression level -- a floor against genuinely reckless
+  // fights (see minAcceptableWinProbability's winProbFloorShift).
+  const MIN_ACCEPTABLE_WIN_PROBABILITY_FLOOR = 0.35;
+
+  /** Highly aggressive (1.0) civs will take a fight at roughly even odds
+   *  (50%); passive (0.0) civs hold out for heavily favorable odds (~90%).
+   *  The active AI Aggression level's winProbFloorShift (see config.js's
+   *  own doc comment and aiAggressionLevel above) subtracts further off
+   *  this on top of the race trait, clamped at
+   *  MIN_ACCEPTABLE_WIN_PROBABILITY_FLOOR so even a max-aggressiveness race
+   *  at max AI Aggression still won't take a truly hopeless fight. */
   function minAcceptableWinProbability(civ) {
-    return 0.9 - aggressivenessFor(civ) * 0.4;
+    const base = 0.9 - aggressivenessFor(civ) * 0.4;
+    return Math.max(MIN_ACCEPTABLE_WIN_PROBABILITY_FLOOR, base - aiAggressionLevel().winProbFloorShift);
   }
 
   // Settle-need roll: a peaceful, low-militarism/low-aggressiveness civ
@@ -9629,9 +9657,20 @@ window.GameEngine = window.GameEngine || {};
    *  land near the same balanced ratio as two fierce ones (e.g. Orc, both
    *  ~0.9) -- what differs between them is how OFTEN their units act at all
    *  (aggressiveness gates hunting probability, militarism gates garrisoning),
-   *  not which side of defend-vs-raid they lean toward. */
+   *  not which side of defend-vs-raid they lean toward.
+   *
+   *  aggressiveness is scaled by the active AI Aggression level's
+   *  combatWeightMult (2026-08-21, user-directed) BEFORE the ratio, not
+   *  after -- this is the actual bottleneck the willingness-to-fight knob
+   *  (racialWeights' attack/raid, minAcceptableWinProbability) turned out
+   *  to sit behind: a headless batch (window.__sim) showed that knob alone
+   *  barely moved whole-game combat stats even pushed well past High's
+   *  values, because a unit can only ACCEPT a fight it's already in range
+   *  of -- this function is what decides whether an idle unit goes looking
+   *  for one at all (huntEnemyInfrastructure, offense) vs falls back to
+   *  reinforceHomeCity (defense). See this function's own call site. */
   function militaryPostureFor(civ) {
-    const agg = aggressivenessFor(civ);
+    const agg = aggressivenessFor(civ) * aiAggressionLevel().combatWeightMult;
     const mil = effectiveMilitarism(civ);
     const total = agg + mil;
     return total > 0 ? agg / total : 0.5;
@@ -9702,7 +9741,15 @@ window.GameEngine = window.GameEngine || {};
     const cityGateShortfall = gatedLayer !== null ? Math.max(0, gatedLayer - civ.cities.length) : 0;
     const exploreDesire = curiosity * (1 + cityGateShortfall * 0.5);
 
-    const militaryNeed = (militarism * 0.5 + agg * 0.3) * (detectThreat(civ, gameState) ? 2.5 : 1);
+    // Scaled by the active AI Aggression level's combatWeightMult
+    // (2026-08-21, user-directed) -- see militaryPostureFor's own doc
+    // comment for why this, not the attack/raid scoring weights, turned out
+    // to be the actual lever: this ratio is what decides whether an idle
+    // unit goes exploring at all instead of pursuing a military objective in
+    // the first place, upstream of ever reaching a fight to accept or
+    // decline.
+    const militaryNeed = (militarism * 0.5 + agg * 0.3) * aiAggressionLevel().combatWeightMult
+      * (detectThreat(civ, gameState) ? 2.5 : 1);
 
     const ratio = exploreDesire / (exploreDesire + militaryNeed || 1);
     return Math.max(0.15, Math.min(0.85, ratio));

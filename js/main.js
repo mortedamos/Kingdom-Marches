@@ -56,6 +56,17 @@
     window.GameConfig.pacing.speedLevelIndex = bestIndex;
   }
 
+  // AI Aggression slider (2026-08-21, user-directed): how readily a
+  // kingdom commits to fights -- see config.js's own aiAggression doc
+  // comment for the combatWeightMult/winProbFloorShift mechanism this level
+  // index drives. Universal -- applies in Spectator mode too, not just
+  // Single Player (2026-08-21, user-directed).
+  let aiAggressionLevelIndex = 1;
+  function applyAiAggression(levelIndex) {
+    aiAggressionLevelIndex = levelIndex;
+    window.GameConfig.aiAggression.levelIndex = levelIndex;
+  }
+
   // Identity of whatever's currently rendered into the tech tree/reports/
   // dialog modals -- redraw() only rebuilds a modal's innerHTML when its
   // identity actually changes, not on every single call (redraw fires on
@@ -251,6 +262,15 @@
     { id: "fastest", label: "Fastest", percent: 150 },
   ];
   const GAME_SPEED_DEFAULT_INDEX = GAME_SPEED_LEVELS.findIndex((l) => l.id === "normal");
+  // Game Options "AI Aggression" slider (2026-08-21, user-directed): unlike
+  // World Type/Game Speed, the levels themselves (label + tuning values)
+  // live in config.js's aiAggression.levels, not duplicated here -- main.js
+  // only needs the index/label for the UI, and config.js is what ai.js
+  // actually reads live, so config.js is the single source of truth. "1"
+  // (Normal) is the default per user direction, NOT the middle-of-range
+  // convention World Type/Game Speed use for their own reasons -- Low
+  // (index 0) is deliberately what today's game already does.
+  const AI_AGGRESSION_DEFAULT_INDEX = 1;
   // Pacing experiment (2026-07-12): ~20% fewer tiles than the previous
   // 65x40 (2600) -- forces civs closer together for faster contact/
   // conflict. Same aspect ratio, scaled by sqrt(0.8). See
@@ -402,6 +422,14 @@
         </label>
         <p class="launch-hint">How many turns units, buildings, and research take to complete -- Slowest takes longest, Fastest takes fewest turns. Normal (the middle) is the default pace.</p>
         <label class="launch-row">
+          <span>AI Aggression</span>
+          <span class="launch-row-slider">
+            <input type="range" id="ai-aggression-slider" min="0" max="${window.GameConfig.aiAggression.levels.length - 1}" step="1" value="${AI_AGGRESSION_DEFAULT_INDEX}">
+            <span id="ai-aggression-label">${window.GameConfig.aiAggression.levels[AI_AGGRESSION_DEFAULT_INDEX].label}</span>
+          </span>
+        </label>
+        <p class="launch-hint">How readily AI-controlled kingdoms commit to fights -- applies to every AI civ, in Single Player and Spectator alike. Doesn't change how quickly they settle cities or research tech -- Normal (the default) fights more than Low without falling behind economically.</p>
+        <label class="launch-row">
           <span>Max Monsters</span>
           <span class="launch-row-slider">
             <input type="range" id="monster-cap-slider" min="0" max="3" step="1" value="2">
@@ -487,6 +515,13 @@
     // call), same as every other launch option here.
     $("game-speed-slider").addEventListener("input", (e) => {
       $("game-speed-pct").textContent = GAME_SPEED_LEVELS[parseInt(e.target.value, 10)].label;
+    });
+
+    // AI Aggression slider: same "label moves live, value only actually
+    // applies at Start Game" pattern as Game Speed just above -- see
+    // startGame's applyAiAggression call.
+    $("ai-aggression-slider").addEventListener("input", (e) => {
+      $("ai-aggression-label").textContent = window.GameConfig.aiAggression.levels[parseInt(e.target.value, 10)].label;
     });
 
     // Max Monsters slider: same "label moves live, value only actually
@@ -987,6 +1022,9 @@
     }
     const opponentCount = parseInt($("opponent-count").value, 10);
     applyGameSpeed(GAME_SPEED_LEVELS[parseInt($("game-speed-slider").value, 10)].percent);
+    // Universal (2026-08-21, user-directed) -- applies in Spectator mode
+    // too, not just Single Player, same as Game Speed/Max Monsters above.
+    applyAiAggression(parseInt($("ai-aggression-slider").value, 10));
     const monsterCapPerKingdom = parseInt($("monster-cap-slider").value, 10);
     const worldType = WORLD_TYPE_SLIDER_VALUES[parseInt($("world-type-slider").value, 10)];
     const seedInput = $("seed-input").value.trim();
@@ -1093,6 +1131,10 @@
     spectatorMode = payload.spectatorMode;
     aiDifficulty = payload.aiDifficulty;
     applyGameSpeed(payload.gameSpeedPercent || 100);
+    // Falls back to 1 (Normal, the current default) for a save made before
+    // the AI Aggression slider existed -- same "predates this field"
+    // convention as gameSpeedPercent's own fallback just above.
+    applyAiAggression(payload.aiAggressionLevelIndex ?? 1);
     for (const civ of Object.values(gameState.civs)) civ.isHuman = civ.id === humanCivId;
     updateMapSeedLabel();
     viewState = {
@@ -1898,7 +1940,7 @@
     const payload = {
       version: 1,
       savedAt: new Date().toISOString(),
-      humanCivId, spectatorMode, aiDifficulty, gameSpeedPercent,
+      humanCivId, spectatorMode, aiDifficulty, gameSpeedPercent, aiAggressionLevelIndex,
       gameState,
     };
     const json = window.GameEngine.savegame.serialize(payload);
@@ -1987,6 +2029,10 @@
     // Speed slider existed, same "predates this field" convention as
     // civ.isHuman's own recompute just below.
     applyGameSpeed(payload.gameSpeedPercent || 100);
+    // Falls back to 1 (Normal, the current default) for a save made before
+    // the AI Aggression slider existed -- same convention as gameSpeedPercent
+    // just above.
+    applyAiAggression(payload.aiAggressionLevelIndex ?? 1);
     // Recomputed rather than trusted from the save file itself (2026-08-04):
     // civ.isHuman didn't exist before this fix, so a save made prior to it
     // would otherwise load with the flag missing on every civ, silently

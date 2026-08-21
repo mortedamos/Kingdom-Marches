@@ -601,7 +601,7 @@ window.GameEngine = window.GameEngine || {};
           const validResources = window.GameData.RESOURCE_LIST.filter((rid) =>
             RESOURCES[rid].validTerrain.includes(t.terrain)
           );
-          t.resource = pickWeightedResource(validResources, rng);
+          t.resource = pickResourceWithRejection(validResources, rng);
         }
       }
     }

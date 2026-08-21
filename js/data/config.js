@@ -65,9 +65,9 @@ window.GameConfig = {
     /** Local date this build was cut, YYYY-MM-DD. */
     date: "2026-08-21",
     /** Local time this build was cut, 24-hour HH:MM. */
-    time: "10:36",
+    time: "13:51",
     /** Monotonic build counter -- increment it, don't recompute it. */
-    number: 163,
+    number: 164,
   },
 
   // =========================================================================
@@ -155,6 +155,66 @@ window.GameConfig = {
       [10, 8, 6, 5, 4],  // Layer 3 (Bombard, ...)
       [13, 10, 8, 6, 5], // Layer 4 (Awakened Oak, ...)
       [16, 13, 10, 8, 6],// Layer 5 (Dragon, Runeforged Titan, ...)
+    ],
+  },
+
+  // =========================================================================
+  // AI AGGRESSION  (js/engine/ai.js)
+  // Universal launch option, Single Player and Spectator alike (2026-08-21,
+  // user-directed): how readily a kingdom commits its EXISTING military to
+  // fights. Deliberately narrow in scope -- see levels' own doc comment for
+  // the reasoning.
+  // =========================================================================
+  aiAggression: {
+    /** Which of `levels` below (Low/Normal/High, indices 0-2) is active
+     *  right now. 1 (Normal) by default, matching the launch-screen
+     *  slider's own default. Mutated by main.js's applyAiAggression at
+     *  Start Game (and on save/multiplayer load) -- applies to every AI
+     *  civ, in both Single Player and Spectator mode. Read live (not
+     *  snapshotted) by ai.js's racialWeights/minAcceptableWinProbability. */
+    levelIndex: 1,
+
+    /** combatWeightMult scales FOUR things, all decision-time multipliers on
+     *  top of a civ's own race traits, never anything settle/build/research
+     *  reads directly: racialWeights' attack/raid outputs,
+     *  minAcceptableWinProbability's threshold (via winProbFloorShift
+     *  below), AND -- added 2026-08-21 after headless testing (see below)
+     *  showed the first two barely moved whole-game combat stats even
+     *  pushed well past High -- the offense-lean of militaryPostureFor and
+     *  explorePostureFor's militaryNeed term. Those last two turned out to
+     *  be the REAL bottleneck: a unit can only accept a fight it's already
+     *  in range of, and militaryPostureFor/explorePostureFor are what
+     *  decide whether an idle unit goes LOOKING for one (huntEnemyInfra-
+     *  structure) or defaults to reinforcing/exploring instead, upstream of
+     *  ever reaching the attack-scoring code the first two touch. Explicitly
+     *  NOT touched, still: settle/build/research/garrison weights,
+     *  rollsForSettleNeed's drag term, and computeMilitaryCap (2026-08-21,
+     *  user-directed: "I dont want a kingdom to avoid building tech or
+     *  cities... an [aggressive] kingdom [shouldn't] get stuck with basic,
+     *  weak units") -- a bigger standing army also means more upkeep
+     *  competing with the SAME stockpile that funds research/building, so
+     *  this only makes a civ commit the forces it already has, and seek out
+     *  more fights with them, more readily -- never trades its economy for
+     *  its army.
+     *
+     *  winProbFloorShift subtracts straight off minAcceptableWinProbability
+     *  (today: 0.9 - aggressiveness*0.4, i.e. a passive race holds out for
+     *  ~90% win odds) -- clamped in ai.js so it can never drop below a
+     *  reckless floor.
+     *
+     *  Low (index 0) = 1.0x / +0, reproducing the CURRENT game exactly --
+     *  today's AI is the "Low" baseline (2026-08-21, user-directed).
+     *  Normal/High's values below were re-validated via an 8-seed/4-race
+     *  headless batch (window.__sim) after the posture-function wiring
+     *  above was added -- see project memory for the actual before/after
+     *  numbers. Re-run that batch before changing these further; watch
+     *  army size, tech-layer progress, and win-condition mix same as any
+     *  other pacing change (see this file's own top-of-file CHANGING
+     *  VALUES note). */
+    levels: [
+      { label: "Low", combatWeightMult: 1.0, winProbFloorShift: 0 },
+      { label: "Normal", combatWeightMult: 1.35, winProbFloorShift: 0.10 },
+      { label: "High", combatWeightMult: 1.7, winProbFloorShift: 0.20 },
     ],
   },
 
