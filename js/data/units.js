@@ -440,7 +440,7 @@ window.GameData.UNITS = {
   // casts also reveals fog of war that far.
   great_bonfire: {
     id: "great_bonfire", label: "The Great Bonfire", symbol: "🔥", category: "military", raceOnly: "halfellow",
-    attack: 0, defense: 0, movement: 0, visionRadius: 8, biggerPct: .75, 
+    attack: 0, defense: 0, movement: 0, visionRadius: 8, biggerPct: .5, 
     coinCost: 0, cityBuildable: false, noUpkeep: true, nameSpecial: true, // an object, not a person
   },
 
