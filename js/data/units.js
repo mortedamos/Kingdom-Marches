@@ -332,9 +332,7 @@ window.GameData.UNITS = {
     // ordinary cascade too.
     cityBuildable: false, noUpkeep: true, neverExplores: true, nameSpecial: true, // a construct, not a person -- see unit-names.js
   },
-  // Pinnacle unit, but a deliberately different shape from Dwarf's
-  // Runeforged Titan (see project_titan_very_rare / techs.js
-  // elf_the_living_forest): `rare` (not `veryRare`) and no `siegeTarget` --
+ 
   // the elves' own siege unit is meant to be fielded in numbers ("a forest
   // of siege units marching"), not a singular, wall-tough city-crusher like
   // the Titan.
@@ -353,8 +351,8 @@ window.GameData.UNITS = {
   // from, same name, same upkeep.
   dire_bear: {
     id: "dire_bear", label: "Dire Bear", symbol: "🐻", category: "military", raceOnly: "elf",
-    attack: 9, defense: 13, movement: 3, visionRadius: 2, siegePct: 0.50,
-    attackChars: ["𓆩", "彡"], biggerPct: .7, doubleStrikePct: 0.1,
+    attack: 9, defense: 9, movement: 3, visionRadius: 2, siegePct: 0.50,
+    attackChars: ["𓆩", "彡"], biggerPct: .6, doubleStrikePct: 0.1,
     cityBuildable: false,
   },
 
@@ -592,7 +590,7 @@ window.GameData.UNITS = {
 
   dragon: {
     id: "dragon", label: "Dragon", symbol: "🐉", category: "military", raceOnly: "orc",
-    attack: 10, defense: 8, movement: 4, visionRadius: 5, flying: true, range: 2, siegePct: 1.00, burnChancePct: 0.50,
+    attack: 10, defense: 9, movement: 4, visionRadius: 5, flying: true, range: 2, siegePct: 1.00, burnChancePct: 0.50,
     coinCost: 55, biggerPct: 1.0, attackChars: ["🔥", "💥", "彡"], rare: true,
     nameSpecial: true, // a beast, not a person -- see unit-names.js
   },
