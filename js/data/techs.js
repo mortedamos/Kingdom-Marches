@@ -232,19 +232,26 @@ window.GameData.TECHS = {
   spirit_of_exploration: {
     id: "spirit_of_exploration", label: "Spirit of Exploration", category: "civic", layer: 1, cost: 14,
     prereqs: [], raceOnly: "human",
-    description: "Reduces the movement cost of Plains by 0.5.",
+    description: "Reduces the movement cost of Plains by 0.5. +0.2 lore per Plains tile under your influence.",
     costBreakdown: { lore: 14 },
-    effects: [{ type: "terrain_movement_discount", terrain: "plains", value: 0.5 }],
+    effects: [
+      { type: "terrain_movement_discount", terrain: "plains", value: 0.5 },
+      { type: "lore_per_influence_tile", terrain: "plains", value: 0.2 },
+    ],
   },
   rivercraft: {
     id: "rivercraft", label: "Rivercraft", category: "civic", layer: 1, cost: 14,
     prereqs: [], raceOnly: "human",
-    description: "Reduces the movement cost of River tiles by 0.5.",
+    description: "Reduces the movement cost of River tiles by 0.5. +0.2 lore per River tile under your influence.",
     costBreakdown: { lore: 14 },
     // "river" is a pseudo-terrain key: rivers overlay any base terrain
     // (tile.hasRiver), so getMoveCost/landCostForTerrain check it separately
-    // -- see ai.js.
-    effects: [{ type: "terrain_movement_discount", terrain: "river", value: 0.5 }],
+    // -- see ai.js. Same pseudo-terrain key reused by the
+    // lore_per_influence_tile effect below -- see turns.js's beginCivTurn.
+    effects: [
+      { type: "terrain_movement_discount", terrain: "river", value: 0.5 },
+      { type: "lore_per_influence_tile", terrain: "river", value: 0.2 },
+    ],
   },
   homestead: {
     id: "homestead", label: "Homestead", category: "civic", layer: 1, cost: 20,
@@ -389,14 +396,22 @@ window.GameData.TECHS = {
   sea_charts: {
     id: "sea_charts", label: "Sea Charts", category: "civic", layer: 3, cost: 45,
     prereqs: ["make_way"], raceOnly: "human",
-    description: "All Ocean and Coast tiles anywhere on the map are always revealed -- no fog of war on those tiles at all.",
+    description: "All Ocean and Coast tiles anywhere on the map are always revealed -- no fog of war on those tiles at all. +0.2 lore per Ocean and Coast tile under your influence.",
     costBreakdown: { lore: 27, coin: 18 },
     // Same "unlock_mechanic" + turns.js hand-check pattern as Elf's Wind
     // From Distant Treetops and Dwarf's Mountains on the Horizon -- see
     // turns.js's refreshVisibility, which is where "sea_charts" is actually
     // read (there is no dedicated reveal-by-terrain effect type; every
     // terrain-reveal tech in the game goes through this same generic flag).
-    effects: [{ type: "unlock_mechanic", mechanic: "sea_charts" }],
+    // Two separate lore_per_influence_tile entries (not one effect with a
+    // terrain list) -- every other tech-effect in this file targets exactly
+    // one terrain per entry; see turns.js's beginCivTurn for where these are
+    // totaled up each turn.
+    effects: [
+      { type: "unlock_mechanic", mechanic: "sea_charts" },
+      { type: "lore_per_influence_tile", terrain: "ocean", value: 0.2 },
+      { type: "lore_per_influence_tile", terrain: "coast", value: 0.2 },
+    ],
   },
   flight: {
     id: "flight", label: "Flight", category: "mystic", layer: 3, cost: 60,

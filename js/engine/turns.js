@@ -1270,6 +1270,33 @@ window.GameEngine = window.GameEngine || {};
     // would never actually reach it.
     if (civ.lorePerCity) civ.resources.lore += civ.lorePerCity * civ.cities.length;
 
+    // Tech: lore_per_influence_tile (Human "Spirit of Exploration"/
+    // "Rivercraft"/"Sea Charts") -- flat lore per tile currently under this
+    // civ's influence (tile.status === "owned", same territory definition
+    // influence.js's countTerritory uses for the victory tile count) that
+    // matches a terrain the civ has unlocked a bonus for. Deliberately
+    // civ-wide territory, not cities.js's per-city WORKED-tile radius (see
+    // unlock_tile_bonus/tileYieldContribution) -- a tile counts here the
+    // instant it's owned, whether or not any city's fill-in radius reaches
+    // it. "river" is a pseudo-terrain key (tile.hasRiver, any direction),
+    // same convention terrain_movement_discount uses, not a real terrain id.
+    // Same place in the turn as lore_per_city just above, and for the same
+    // reason: must land in civ.resources before the stockpile sweep just
+    // below it, or research spending would never see it.
+    if (civ.lorePerInfluenceTile) {
+      for (const [terrainKey, value] of Object.entries(civ.lorePerInfluenceTile)) {
+        let count = 0;
+        for (const tile of map.tiles) {
+          if (tile.status !== "owned" || tile.ownerCivId !== civ.id) continue;
+          const matches = terrainKey === "river"
+            ? !!(tile.hasRiver && (tile.hasRiver.n || tile.hasRiver.s || tile.hasRiver.e || tile.hasRiver.w))
+            : tile.terrain === terrainKey;
+          if (matches) count++;
+        }
+        civ.resources.lore += value * count;
+      }
+    }
+
     // Running stockpile: accumulate production, then deduct unit upkeep
     civ.stockpile = civ.stockpile || { harvest: 0, coin: 0, lore: 0 };
     civ.stockpile.harvest += civ.resources.harvest;

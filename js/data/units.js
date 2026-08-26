@@ -275,7 +275,7 @@ window.GameData.UNITS = {
   // --- ELF full roster (see techs.js) ---
   ranger: {
     id: "ranger", label: "Ranger", symbol: "⌖", category: "military", raceOnly: "elf",
-    attack: 4, defense: 3, movement: 2, visionRadius: 4, range: 2, firstStrikePct: 0.05,
+    attack: 4, defense: 2, movement: 2, visionRadius: 4, range: 2, firstStrikePct: 0.05,
     coinCost: 15, attackChars: ["➵", "➳"], doubleStrikePct: 0.1,
   },
   blade_dancer: {
@@ -290,7 +290,7 @@ window.GameData.UNITS = {
   // summon -- see ai.js's UTILITY_UNIT_MECHANICS and maybeElfDruidPlay).
   druid: {
     id: "druid", label: "Druid", symbol: "✦", category: "military", raceOnly: "elf",
-    attack: 3, defense: 3, movement: 2, visionRadius: 3, range: 2, siegePct: 0.10, poisonChancePct: 0.10,
+    attack: 3, defense: 2, movement: 2, visionRadius: 3, range: 2, siegePct: 0.10, poisonChancePct: 0.10,
     // canProspect: orders.js's contextMenuOptions/turns.js's Hunt Game/Farm
     // Soil channels gate purely on this flag, no race/unit-type
     // restriction.
@@ -337,7 +337,7 @@ window.GameData.UNITS = {
   // the Titan.
   awakened_oak: {
     id: "awakened_oak", label: "Awakened Oak", symbol: "♣", category: "military", raceOnly: "elf",
-    attack: 10, defense: 10, movement: 3, visionRadius: 3, siegePct: 2.0,
+    attack: 10, defense: 9, movement: 3, visionRadius: 3, siegePct: 2.0,
     coinCost: 65, biggerPct: 1.0, attackChars: ["🌳", "𖣂", "🌿", "🫚"],
     rare: true, neverExplores: true,
     nameSpecial: true, // a living tree, not a person -- see unit-names.js
@@ -363,7 +363,7 @@ window.GameData.UNITS = {
   // --- HALFELLOW full roster (see techs.js) ---
   wanderer: {
     id: "wanderer", label: "Wanderer", symbol: "⚔", category: "military", raceOnly: "halfellow",
-    attack: 2, defense: 4, movement: 2, visionRadius: 3,
+    attack: 2, defense: 3, movement: 2, visionRadius: 3,
     // canFoundCity removed (2026-08-17, user-directed) -- Wanderer settling
     // was an additional option alongside the shared Pioneer (see
     // halfellow_arms); every consumer of this flag (orders.js/main.js/
@@ -374,12 +374,12 @@ window.GameData.UNITS = {
   },
   pony_patrol: {
     id: "pony_patrol", label: "Pony Patrol", symbol: "♞", category: "military", raceOnly: "halfellow",
-    attack: 4, defense: 6, movement: 4, visionRadius: 3, firstStrikePct: 0.02,
+    attack: 4, defense: 5, movement: 4, visionRadius: 3, firstStrikePct: 0.02,
     coinCost: 20, biggerPct: .2
   },
   militia: {
     id: "militia", label: "Militia", symbol: "⚔", category: "military", raceOnly: "halfellow",
-    attack: 5, defense: 7, movement: 2, visionRadius: 4, siegePct: .3,
+    attack: 5, defense: 6, movement: 2, visionRadius: 4, siegePct: .3,
     coinCost: 22, attackChars: ["🔪", "🔱"], biggerPct: .2, rare: true, nameSpecial: true,
   },
   // Deliberately unremarkable combat stats, same "the real value is the
@@ -454,7 +454,7 @@ window.GameData.UNITS = {
   },
   musketeer: {
     id: "musketeer", label: "Musketeer", symbol: "⌐", category: "military", raceOnly: "dwarf",
-    attack: 4, defense: 3, movement: 2, visionRadius: 3, range: 2,
+    attack: 3, defense: 3, movement: 2, visionRadius: 3, range: 2,
     coinCost: 22, attackChars: ["💥", "●"],
     // muzzleSmoke: a directional puff-of-smoke overlay drawn at the
     // attacker's own tile, biased toward its target -- see overlays.js's
@@ -497,7 +497,7 @@ window.GameData.UNITS = {
   // the unit never throws a normal punch with it.
   bombard: {
     id: "bombard", label: "Bombard", symbol: "⛰", category: "military", raceOnly: "dwarf", range: 3,
-    attack: 9, defense: 4, movement: 2, visionRadius: 3, siegePct: 2.75, siegeAtRange: true,
+    attack: 8, defense: 4, movement: 2, visionRadius: 3, siegePct: 2.75, siegeAtRange: true,
     attackChars: ["⚫️", "💥"], biggerPct: .6, burnChancePct: 0.5,
     noOrdinaryAttack: true, neverExplores: true, muzzleSmoke: true,
     nameSpecial: true, // a machine, not a person -- see unit-names.js

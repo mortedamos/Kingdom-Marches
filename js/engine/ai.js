@@ -1305,7 +1305,13 @@ window.GameEngine = window.GameEngine || {};
         return false;
       }
       civ.stockpile.coin -= building.coinCost;
-      build.turnsLeft = building.minBuildTurns;
+      // 2026-08-24 bugfix (same one orders.js's advanceGotoOrder buildBridge
+      // branch already got): bridge_section has no minBuildTurns field --
+      // build time went table-driven when that field was removed. Reading
+      // it here always produced undefined, so this counted down from NaN
+      // forever and never hit <=0 -- construction showed "NaN turns
+      // remaining" and never completed. This AI path was missed in that fix.
+      build.turnsLeft = buildingBuildTurns(civ, "bridge_section");
     }
     build.turnsLeft--;
     pioneer.usedThisTurn = true;
@@ -8972,16 +8978,24 @@ window.GameEngine = window.GameEngine || {};
     // handling at all -- resolveRound/computeMovementBudget already read
     // those generically for every unit in the game.
     const baseMonster = window.GameData.getUnit(monster.typeId);
+    // Once per LANDED HIT this round (see landedHitCount, which also fixes
+    // a pre-existing gap here: this used to check only target.hp > 0, so a
+    // Flying-evasion miss or Invulnerability-negated hit -- which leaves
+    // the target alive precisely because nothing connected -- could still
+    // web/freeze/poison it) -- a landed Double Strike follow-up gets its
+    // own independent shot at each condition, same as the ordinary hit.
     if (target.hp > 0) {
-      if (Math.random() < (baseMonster.webChancePct || 0)) {
-        applyWebbed(target, gameState);
-        log.push(`Web: ${describeUnit(monster)} webs ${targetCiv.id}'s ${describeUnit(target)} at (${target.x},${target.y})`);
-      }
-      if (Math.random() < (baseMonster.frozenChancePct || 0)) {
-        window.GameEngine.combat.setCondition(target, "frozen", { attackMult: 0.75, expiresAtTurn: (gameState.turnNumber || 0) + FROZEN_DURATION });
-      }
-      if (Math.random() < (baseMonster.poisonChancePct || 0)) {
-        applyPoisoned(target, gameState);
+      for (let i = 0; i < landedHitCount(result); i++) {
+        if (Math.random() < (baseMonster.webChancePct || 0)) {
+          applyWebbed(target, gameState);
+          log.push(`Web: ${describeUnit(monster)} webs ${targetCiv.id}'s ${describeUnit(target)} at (${target.x},${target.y})`);
+        }
+        if (Math.random() < (baseMonster.frozenChancePct || 0)) {
+          window.GameEngine.combat.setCondition(target, "frozen", { attackMult: 0.75, expiresAtTurn: (gameState.turnNumber || 0) + FROZEN_DURATION });
+        }
+        if (Math.random() < (baseMonster.poisonChancePct || 0)) {
+          applyPoisoned(target, gameState);
+        }
       }
     }
 
@@ -12972,6 +12986,27 @@ window.GameEngine = window.GameEngine || {};
   }
 
   /**
+   * How many of this round's hits actually connected -- 0, 1 (just the
+   * ordinary hit), or 2 (ordinary hit + a landed Double Strike follow-up,
+   * see combat.js's resolveRound). Every on-hit condition-chance roll below
+   * (Burning, Freeze, Poison, Befuddle, Curse, Web) loops over this count so
+   * a landed Double Strike gets its own independent shot at inflicting a
+   * condition, same as the ordinary hit does -- previously every one of
+   * these checks only ever looked at the ordinary hit's fullNegated/
+   * fullMissed flags, so a Double Strike follow-up could deal real damage
+   * but could never itself burn/freeze/poison/etc. anyone (2026-08-26,
+   * user-directed). A "negated" (Invulnerability/death-save) or "missed"
+   * (Flying evasion) hit never connected, so it contributes nothing either
+   * way -- same rule the ordinary hit's own gate already used.
+   */
+  function landedHitCount(result) {
+    let n = 0;
+    if (!result.fullNegated && !result.fullMissed) n++;
+    if (result.doubleStruck && !result.doubleNegated && !result.doubleMissed) n++;
+    return n;
+  }
+
+  /**
    * @param opts.forcedTarget  A specific enemy unit to attack, bypassing the
    *   scoring loop below. Set only by a human player's explicit attack order
    *   (see orders.js): the player has already decided WHO to hit, but the
@@ -13198,13 +13233,18 @@ window.GameEngine = window.GameEngine || {};
       // hardcoded Scout/Dragon-ranged-only + Goblin-Miscreant-melee-always
       // special case; now fully generic -- ANY Orc unit's landed hit rolls
       // its own burnChancePct, same shape as Elf's Poisonous Extracts
-      // (applyElfCombatMechanics) rather than a unit-type/range gate.
+      // (applyElfCombatMechanics) rather than a unit-type/range gate. Rolled
+      // once per landed hit this round (see landedHitCount) -- a landed
+      // Double Strike follow-up gets its own independent shot at igniting
+      // the target, same odds as the ordinary hit.
       const burnItAllDownChance = window.GameEngine.combat.getUnitProperty(unit, civ, "burnChancePct", 0);
-      if (civ.unlockedMechanics && civ.unlockedMechanics.has("burn_it_all_down")
-          && !result.fullNegated && !result.fullMissed
-          && burnItAllDownChance > 0 && Math.random() < burnItAllDownChance) {
-        applyBurning(bestTarget, "unit", gameState);
-        log.push(`Burn It All Down: ${civ.id}'s ${describeUnit(unit)} sets ${bestTarget.civId}'s ${describeUnit(bestTarget)} ablaze`);
+      if (civ.unlockedMechanics && civ.unlockedMechanics.has("burn_it_all_down") && burnItAllDownChance > 0) {
+        for (let i = 0; i < landedHitCount(result); i++) {
+          if (Math.random() < burnItAllDownChance) {
+            applyBurning(bestTarget, "unit", gameState);
+            log.push(`Burn It All Down: ${civ.id}'s ${describeUnit(unit)} sets ${bestTarget.civId}'s ${describeUnit(bestTarget)} ablaze`);
+          }
+        }
       }
 
       // Human "Fireball!" does not ride on an ordinary attack -- it's its
@@ -13214,13 +13254,18 @@ window.GameEngine = window.GameEngine || {};
       // attacks, same shape as Fireball's burnChancePct trigger just
       // above. frozenChancePct is per-unit data (see units.js's wizard
       // entry for its small 0.05 baseline; this tech adds +0.50 on top via
-      // its own unit_stat_upgrade effect).
+      // its own unit_stat_upgrade effect). Rolled once per landed hit, same
+      // Double Strike treatment as Burn It All Down above.
       if (unit.typeId === "wizard" && civ.unlockedMechanics && civ.unlockedMechanics.has("freezing_touch")) {
         const freezeChance = window.GameEngine.combat.getUnitProperty(unit, civ, "frozenChancePct", 0);
-        if (!result.fullNegated && !result.fullMissed && freezeChance > 0 && Math.random() < freezeChance) {
-          window.GameEngine.combat.setCondition(bestTarget, "frozen", {
-            attackMult: 0.75, expiresAtTurn: (gameState.turnNumber || 0) + FROZEN_DURATION,
-          });
+        if (freezeChance > 0) {
+          for (let i = 0; i < landedHitCount(result); i++) {
+            if (Math.random() < freezeChance) {
+              window.GameEngine.combat.setCondition(bestTarget, "frozen", {
+                attackMult: 0.75, expiresAtTurn: (gameState.turnNumber || 0) + FROZEN_DURATION,
+              });
+            }
+          }
         }
       }
 
@@ -14249,43 +14294,51 @@ window.GameEngine = window.GameEngine || {};
       }
     }
     // Malefic Malediction: a Bog Witch curses whatever she hits, kill or not
-    // -- but only if the hit actually landed. Unlike the two hp<=0 checks
-    // above/below, this one doesn't naturally exclude a Flying-evasion miss
-    // (fullMissed) on its own, since it never looks at damage/hp at all --
-    // needs the explicit check so a whiffed swing at a Flying target doesn't
-    // still curse it.
-    if (attackerUnit.typeId === "bog_witch" && !result.fullNegated && !result.fullMissed &&
+    // -- once per LANDED HIT this round (see landedHitCount, which already
+    // excludes a whiffed Flying-evasion miss or negated hit), so a landed
+    // Double Strike follow-up curses again too, same as the ordinary hit.
+    if (attackerUnit.typeId === "bog_witch" &&
         attackerCiv.unlockedMechanics && attackerCiv.unlockedMechanics.has("malefic_malediction")) {
-      setCondition(defenderUnit, "curse", { attackMult: 0.5, moveMult: 0.5, expiresAtTurn: turn + CURSE_DURATION });
-      window.SfxSystem.playAction(attackerCiv.raceId, "bog_witch", "curse", defenderUnit.x, defenderUnit.y);
-      window.GameEngine.combat.spawnAreaEffect(defenderUnit.x, defenderUnit.y, 0, "curse");
+      for (let i = 0; i < landedHitCount(result); i++) {
+        setCondition(defenderUnit, "curse", { attackMult: 0.5, moveMult: 0.5, expiresAtTurn: turn + CURSE_DURATION });
+        window.SfxSystem.playAction(attackerCiv.raceId, "bog_witch", "curse", defenderUnit.x, defenderUnit.y);
+        window.GameEngine.combat.spawnAreaEffect(defenderUnit.x, defenderUnit.y, 0, "curse");
+      }
     }
     // Orc "Afflictions of Anguish"/"Pyromania": generic on-hit chances,
     // same shape as Elf's Poisonous Extracts (applyElfCombatMechanics) --
-    // per-unit data field, rolled once per landed hit, gated behind
-    // whichever tech actually grants that unit its non-zero value. Poison
+    // per-unit data field, gated behind whichever tech actually grants that
+    // unit its non-zero value. Rolled once per LANDED HIT this round (see
+    // landedHitCount) -- a landed Double Strike follow-up gets its own
+    // independent shot at each condition, same as the ordinary hit. Each
+    // condition below is also its own separate Math.random() call, so a
+    // unit with more than one non-zero chance (e.g. a Bog Witch with both
+    // Afflictions' curse and freeze) can inflict several different
+    // conditions off the very same hit, not just one or the other. Poison
     // is shared by both techs (Bog Witch via Afflictions, Goblin Miscreant
     // via Pyromania), so it checks either mechanic; Befuddled/Curse/Frozen
     // are Afflictions-only.
-    if (!result.fullNegated && !result.fullMissed && attackerCiv.unlockedMechanics) {
-      if (attackerCiv.unlockedMechanics.has("afflictions_of_anguish") || attackerCiv.unlockedMechanics.has("pyromania")) {
-        const poisonChance = window.GameEngine.combat.getUnitProperty(attackerUnit, attackerCiv, "poisonChancePct", 0);
-        if (poisonChance > 0 && Math.random() < poisonChance) applyPoisoned(defenderUnit, gameState);
-      }
-      if (attackerCiv.unlockedMechanics.has("afflictions_of_anguish")) {
-        const befuddleChance = window.GameEngine.combat.getUnitProperty(attackerUnit, attackerCiv, "befuddledChancePct", 0);
-        if (befuddleChance > 0 && Math.random() < befuddleChance) {
-          window.GameEngine.combat.applyBefuddled(defenderUnit, turn);
+    if (attackerCiv.unlockedMechanics) {
+      for (let i = 0; i < landedHitCount(result); i++) {
+        if (attackerCiv.unlockedMechanics.has("afflictions_of_anguish") || attackerCiv.unlockedMechanics.has("pyromania")) {
+          const poisonChance = window.GameEngine.combat.getUnitProperty(attackerUnit, attackerCiv, "poisonChancePct", 0);
+          if (poisonChance > 0 && Math.random() < poisonChance) applyPoisoned(defenderUnit, gameState);
         }
-        const curseChance = window.GameEngine.combat.getUnitProperty(attackerUnit, attackerCiv, "curseChancePct", 0);
-        if (curseChance > 0 && Math.random() < curseChance) {
-          setCondition(defenderUnit, "curse", { attackMult: 0.5, moveMult: 0.5, expiresAtTurn: turn + CURSE_DURATION });
-          window.SfxSystem.playAction(attackerCiv.raceId, attackerUnit.typeId, "curse", defenderUnit.x, defenderUnit.y);
-          window.GameEngine.combat.spawnAreaEffect(defenderUnit.x, defenderUnit.y, 0, "curse");
-        }
-        const freezeChance = window.GameEngine.combat.getUnitProperty(attackerUnit, attackerCiv, "frozenChancePct", 0);
-        if (freezeChance > 0 && Math.random() < freezeChance) {
-          setCondition(defenderUnit, "frozen", { attackMult: 0.75, expiresAtTurn: turn + FROZEN_DURATION });
+        if (attackerCiv.unlockedMechanics.has("afflictions_of_anguish")) {
+          const befuddleChance = window.GameEngine.combat.getUnitProperty(attackerUnit, attackerCiv, "befuddledChancePct", 0);
+          if (befuddleChance > 0 && Math.random() < befuddleChance) {
+            window.GameEngine.combat.applyBefuddled(defenderUnit, turn);
+          }
+          const curseChance = window.GameEngine.combat.getUnitProperty(attackerUnit, attackerCiv, "curseChancePct", 0);
+          if (curseChance > 0 && Math.random() < curseChance) {
+            setCondition(defenderUnit, "curse", { attackMult: 0.5, moveMult: 0.5, expiresAtTurn: turn + CURSE_DURATION });
+            window.SfxSystem.playAction(attackerCiv.raceId, attackerUnit.typeId, "curse", defenderUnit.x, defenderUnit.y);
+            window.GameEngine.combat.spawnAreaEffect(defenderUnit.x, defenderUnit.y, 0, "curse");
+          }
+          const freezeChance = window.GameEngine.combat.getUnitProperty(attackerUnit, attackerCiv, "frozenChancePct", 0);
+          if (freezeChance > 0 && Math.random() < freezeChance) {
+            setCondition(defenderUnit, "frozen", { attackMult: 0.75, expiresAtTurn: turn + FROZEN_DURATION });
+          }
         }
       }
     }
@@ -14310,25 +14363,28 @@ window.GameEngine = window.GameEngine || {};
    *  module constant. */
   function applyElfCombatMechanics(attackerUnit, attackerCiv, defenderUnit, defenderCiv, result, gameState) {
     if (!attackerCiv.unlockedMechanics) return;
-    // A landed hit only -- mirrors Malefic Malediction's fullNegated/
-    // fullMissed guard (a Flying-evasion miss or Invulnerability-negated hit
-    // never connected, so there's nothing to freeze/poison).
-    if (result.fullNegated || result.fullMissed) return;
-    if (attackerCiv.unlockedMechanics.has("first_frost_of_autumn")) {
-      const chance = window.GameEngine.combat.getUnitProperty(attackerUnit, attackerCiv, "frozenChancePct", 0);
-      if (chance > 0 && Math.random() < chance) {
-        window.GameEngine.combat.setCondition(defenderUnit, "frozen", {
-          attackMult: 0.75, expiresAtTurn: (gameState.turnNumber || 0) + FROZEN_DURATION,
-        });
+    // Once per LANDED HIT this round (see landedHitCount) -- a landed
+    // Double Strike follow-up gets its own independent shot at Freeze and
+    // Poison, same as the ordinary hit. Both are their own separate
+    // Math.random() calls each iteration, so a unit with both mechanics
+    // unlocked can land both conditions off the same hit.
+    for (let i = 0; i < landedHitCount(result); i++) {
+      if (attackerCiv.unlockedMechanics.has("first_frost_of_autumn")) {
+        const chance = window.GameEngine.combat.getUnitProperty(attackerUnit, attackerCiv, "frozenChancePct", 0);
+        if (chance > 0 && Math.random() < chance) {
+          window.GameEngine.combat.setCondition(defenderUnit, "frozen", {
+            attackMult: 0.75, expiresAtTurn: (gameState.turnNumber || 0) + FROZEN_DURATION,
+          });
+        }
       }
-    }
-    // elf_poisonous_extracts -- same shape as First Frost above, reusing
-    // applyPoisoned (Marsh Adder's venom) rather than inventing a second
-    // "poisoned" condition setter.
-    if (attackerCiv.unlockedMechanics.has("poisonous_extracts")) {
-      const chance = window.GameEngine.combat.getUnitProperty(attackerUnit, attackerCiv, "poisonChancePct", 0);
-      if (chance > 0 && Math.random() < chance) {
-        applyPoisoned(defenderUnit, gameState);
+      // elf_poisonous_extracts -- same shape as First Frost above, reusing
+      // applyPoisoned (Marsh Adder's venom) rather than inventing a second
+      // "poisoned" condition setter.
+      if (attackerCiv.unlockedMechanics.has("poisonous_extracts")) {
+        const chance = window.GameEngine.combat.getUnitProperty(attackerUnit, attackerCiv, "poisonChancePct", 0);
+        if (chance > 0 && Math.random() < chance) {
+          applyPoisoned(defenderUnit, gameState);
+        }
       }
     }
   }

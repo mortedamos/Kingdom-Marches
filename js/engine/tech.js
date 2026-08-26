@@ -176,6 +176,7 @@ window.GameEngine = window.GameEngine || {};
     civ.universalRangeGrant = civ.universalRangeGrant || 0; // floor on every unit's effective Ranged (see combat.js effectiveRange)
     civ.buildingCountBonus = civ.buildingCountBonus || {}; // { harvest|coin|lore: perBuildingValue } -- see cities.js's per-building-count yield
     civ.fillRateMult = civ.fillRateMult || 1; // multiplies advanceCityFill's per-turn progress (e.g. Halfellow Community Fellowship)
+    civ.lorePerInfluenceTile = civ.lorePerInfluenceTile || {}; // { terrainId|"river": perOwnedTileValue } -- see turns.js's beginCivTurn
 
     for (const effect of tech.effects) {
       switch (effect.type) {
@@ -277,6 +278,16 @@ window.GameEngine = window.GameEngine || {};
           civ.unlockedTileBonuses[effect.terrain] = existing;
           break;
         }
+        case "lore_per_influence_tile":
+          // Flat lore per OWNED tile of a matching terrain -- every tile
+          // under this civ's influence/territory, not just tiles a city is
+          // actively working (contrast unlock_tile_bonus above). "river" is
+          // a pseudo-terrain key here too (tile.hasRiver, any direction),
+          // same convention terrain_movement_discount uses -- see turns.js's
+          // beginCivTurn for where this is actually totaled up each turn.
+          civ.lorePerInfluenceTile[effect.terrain] =
+            (civ.lorePerInfluenceTile[effect.terrain] || 0) + effect.value;
+          break;
         case "unlock_feature_bonus": {
           const existing = civ.unlockedFeatureBonuses[effect.feature] || {};
           for (const [k, v] of Object.entries(effect.bonus)) existing[k] = (existing[k] || 0) + v;
