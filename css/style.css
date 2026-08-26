@@ -1898,13 +1898,16 @@ html, body {
 }
 /* --- Launch options modal (reuses .techtree-overlay for the backdrop) --- */
 .launch-options-modal {
-  /* 2026-08-19, user-directed: widened again to fit the two-column
-     .launch-grid below without the cards feeling cramped -- the old
-     max(50vw, 460px) cap was sized for a single stacked column and left
-     two side-by-side cards squeezed. min(..., 94vw) is still the same
-     overflow guard, so a narrow/mobile-width window still shrinks to fit
-     instead of spilling past the viewport edge. */
-  width: min(max(64vw, 640px), 94vw);
+  /* A fixed cap rather than the old viewport-proportional
+     min(max(64vw, 640px), 94vw). That formula grew the modal with the
+     screen -- 819px on a 1280px viewport -- which only ever bought more
+     empty space, since the content is four fixed-size cards and not a
+     table. 680px seats exactly two ~260px cascade columns (see
+     .launch-grid) with room for the modal's own padding and the scrollbar
+     gutter, and nothing gains from a third. The 94vw term is still the
+     overflow guard for a narrow window, where it resolves to a single
+     column instead. */
+  width: min(680px, 94vw);
   max-height: 88vh;
   overflow-y: auto;
 }
@@ -1915,24 +1918,41 @@ html, body {
   color: var(--accent);
   letter-spacing: 0.06em;
 }
-/* Two-column layout (2026-08-19, user-directed): the modal used to stack
-   every section in one long column, which made it tall and scrolly with
-   overlapping-feeling hint text. grid-auto-flow: column + two explicit
-   rows fills column 1 top-to-bottom before starting column 2, so DOM order
-   [Mode, Single Player/Races in Play, World, Audio] lands as Mode/identity
-   on the left and World/Audio settings on the right. Whichever of Single
-   Player vs Races in Play is display:none (see startGame's spectator
-   toggle) simply isn't a grid item, so the other one slots into that same
-   left-column cell without a layout change. */
+/* CASCADING LAYOUT (2026-08-26, user-directed: "the game options screen is
+   too wide for mobile with 2 columns, and looks strange in desktop (lots of
+   empty space). change to cascading model?")
+   -----------------------------------------------------------------------
+   Was a rigid 2x2 grid (grid-template-columns: 1fr 1fr + two explicit rows
+   + grid-auto-flow: column), which broke in both directions:
+
+   - DESKTOP: explicit rows make every card in a row as tall as the tallest
+     card in it. World is ~400px and Mode is ~90px, so row 1 became 400px
+     tall and Single Player -- row 2 of column 1 -- was pushed 300px down
+     the page, leaving a hole that size in the middle of the left column.
+     Removing the Audio section (2026-08-26) took the grid from four cards
+     to three and made the degenerate case the normal one.
+   - MOBILE: the two columns were unconditional. On a 375px screen that left
+     each ~190px wide, which the World card's own content then overflowed
+     straight past the right edge of the modal (measured: 543px right edge
+     inside a 353px modal).
+
+   A CSS multi-column cascade fixes both with no media query and no fixed
+   count: the browser fits as many `columns`-wide columns as the container
+   can take -- two in the 680px modal, ONE on a phone -- and flows the cards
+   down one and into the next. break-inside: avoid is what keeps a card
+   whole instead of splitting it across the fold; the bottom margin (rather
+   than a grid `gap`) is what spaces them, since columns have no row gap.
+
+   The spectator toggle still needs no special handling: whichever of Single
+   Player / Races in Play is display:none simply isn't in the flow, and the
+   cascade re-balances around the other. */
 .launch-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  grid-template-rows: repeat(2, auto);
-  grid-auto-flow: column;
-  gap: 14px 20px;
-  align-items: start;
+  columns: 260px;
+  column-gap: 18px;
 }
 .launch-section {
+  break-inside: avoid;
+  margin: 0 0 14px;
   padding: 14px 16px;
   border: 1px solid var(--border);
   border-radius: 6px;

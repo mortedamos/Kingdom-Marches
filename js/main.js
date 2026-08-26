@@ -379,6 +379,23 @@
         </label>
         <p class="launch-hint" id="world-type-hint">${WORLD_TYPE_HINTS[WORLD_TYPE_SLIDER_VALUES[WORLD_TYPE_DEFAULT_INDEX]]}</p>
         <label class="launch-row">
+          <span>Map Seed</span>
+          <input type="text" id="seed-input" placeholder="random">
+        </label>
+        <p class="launch-hint">Leave the seed blank for a random map, or reuse one to replay the same world.</p>
+      </div>
+
+      <!-- Split out of the World card (2026-08-26) as part of the cascade
+           layout -- see css/style.css's .launch-grid. World held five
+           controls and four hint paragraphs, making it ~400px tall against
+           Mode's ~90px, so it was most of the modal's height on its own and
+           no column arrangement could balance around it. Two cards of
+           comparable size cascade evenly; the split is along a real seam
+           too, since "what the map looks like" and "how fast/hard the game
+           runs" are separate decisions. -->
+      <div class="launch-section">
+        <div class="launch-section-label">Pace &amp; Difficulty</div>
+        <label class="launch-row">
           <span>Game Speed</span>
           <span class="launch-row-slider">
             <input type="range" id="game-speed-slider" min="0" max="${GAME_SPEED_LEVELS.length - 1}" step="1" value="${GAME_SPEED_DEFAULT_INDEX}">
@@ -402,11 +419,6 @@
           </span>
         </label>
         <p class="launch-hint">Caps how many Wandering Monsters can exist at once, scaled by the number of kingdoms in play. 0 turns them off entirely.</p>
-        <label class="launch-row">
-          <span>Map Seed</span>
-          <input type="text" id="seed-input" placeholder="random">
-        </label>
-        <p class="launch-hint">Leave the seed blank for a random map, or reuse one to replay the same world.</p>
       </div>
       </div>
 
