@@ -1330,6 +1330,14 @@ html, body {
    description numbers used to. Visually distinct from the plain description
    text above it -- a compact stat readout, not prose. */
 .techtree-node-unit-stats { color: var(--accent); font-size: 11px; margin-top: 3px; font-weight: 600; }
+/* Unit/condition cross-links into the Knowledge Base (2026-08-26, user-
+   directed) -- techtree.js's unitStatsHtml/conditionLinksHtml, wired in
+   main.js's wireTechTreeKbLinks. Reuses .tile-link's own look (see that
+   rule's comment) so "this text jumps somewhere" always reads the same way
+   across the whole game; the only addition here is spacing, since these sit
+   right after other text rather than alone in their own row. */
+.techtree-kb-link { margin-left: 6px; }
+.techtree-node-conditions { margin-top: 3px; display: flex; flex-wrap: wrap; gap: 2px 10px; }
 .techtree-node-tag { font-size: 10px; text-transform: uppercase; letter-spacing: 0.4px; margin-top: 3px; display: inline-block; }
 .techtree-node.completed { border-color: #4a8f5c; background: rgba(74, 143, 92, 0.12); }
 .techtree-node.completed .techtree-node-tag { color: #6bc47f; }
@@ -1345,6 +1353,15 @@ html, body {
    ahead. transition makes the hover reveal a deliberate act, not a flicker. */
 .techtree-node.techtree-node-far { opacity: 0.22; transition: opacity 0.15s ease; }
 .techtree-node.techtree-node-far:hover { opacity: 1; }
+/* Reference tech tree (2026-08-26, user-directed) -- the Knowledge Base's
+   own "Tech Trees" tab, rendered against a synthetic civ frozen at 0 cities
+   forever (see main.js's buildReferenceCiv). Every non-Level-0 tech there is
+   permanently "locked" by construction, which is a meaningless signal in a
+   page whose whole job is to be READ, not played toward -- so this page (and
+   only this page; techtree.js's own isReference flag already keeps
+   techtree-node-far from ever being added here at all, see renderNode's
+   comment) gets its ordinary .locked dimming turned back off too. */
+.techtree-reference .techtree-node.locked { opacity: 1; }
 
 /* "Jump to this tech" target (research-complete modal, 2026-08-10,
    user-directed): a brief pulse so the linked node is easy to spot after the

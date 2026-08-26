@@ -629,5 +629,9 @@ window.UI = window.UI || {};
       </div>`;
   }
 
-  window.UI.knowledgebase = { renderUnits, renderConditions, renderStats, drawUnitPortrait, wireCombatSimulator };
+  // conditionDisplayName exported (2026-08-26) so techtree.js's own
+  // condition cross-links (conditionLinksHtml) render the exact same label
+  // this page's own list does, rather than a second hand-copied version
+  // that could drift.
+  window.UI.knowledgebase = { renderUnits, renderConditions, renderStats, drawUnitPortrait, wireCombatSimulator, conditionDisplayName };
 })();

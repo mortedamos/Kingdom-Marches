@@ -31,6 +31,57 @@ window.UI = window.UI || {};
   const COLUMNS = ["civic", "building", "military", "mystic"];
   const COLUMN_LABEL = { civic: "Civic", building: "Building", military: "Military", mystic: "Mystic" };
 
+  // Tech-effect -> Knowledge Base condition cross-links (2026-08-26,
+  // user-directed). There is no structured "grants a condition" effect type
+  // to scan for -- every one of these rides on a plain unlock_mechanic plus
+  // a per-unit *ChancePct stat the civ's combat-mechanics code reads
+  // directly (see ai.js's applyElfCombatMechanics/applyOrcCombatMechanics
+  // and the wizard's Freezing Touch/Burn It All Down blocks) -- so this is a
+  // small hand-maintained table, same convention as knowledgebase.js's own
+  // UNIT_CONDITION_LINKS. A mechanic absent here just renders with no
+  // condition link, same as any tech with no such effect at all; a newly
+  // added condition-granting tech needs one more entry.
+  const MECHANIC_CONDITIONS = {
+    poisonous_extracts: ["poisoned"],
+    first_frost_of_autumn: ["frozen"],
+    freezing_touch: ["frozen"],
+    burn_it_all_down: ["burning"],
+    malefic_malediction: ["curse"],
+    pyromania: ["poisoned"],
+    afflictions_of_anguish: ["poisoned", "befuddled", "curse", "frozen"],
+  };
+
+  /** Every distinct condition key `tech` can inflict on attack, via
+   *  MECHANIC_CONDITIONS -- deduplicated (afflictions_of_anguish alone lists
+   *  four), in table declaration order. */
+  function conditionKeysForTech(tech) {
+    const keys = [];
+    for (const e of tech.effects || []) {
+      if (e.type !== "unlock_mechanic") continue;
+      for (const k of MECHANIC_CONDITIONS[e.mechanic] || []) {
+        if (!keys.includes(k)) keys.push(k);
+      }
+    }
+    return keys;
+  }
+
+  /** One ".tile-link"-styled cross-link per condition `tech` can inflict,
+   *  jumping straight to that condition's own Knowledge Base page -- wired
+   *  in main.js (see wireTechTreeKbLinks), reusing whatever
+   *  conditionDisplayName knowledgebase.js already uses for that page's own
+   *  list so the label can never drift between the two. Empty string (not
+   *  null) when there's nothing to show, so the caller can drop it straight
+   *  into a template literal. */
+  function conditionLinksHtml(tech) {
+    const keys = conditionKeysForTech(tech);
+    if (!keys.length) return "";
+    const displayName = (window.UI.knowledgebase && window.UI.knowledgebase.conditionDisplayName) || ((k) => k);
+    const links = keys.map((key) =>
+      `<span class="tile-link techtree-kb-link" data-kb-condition="${escapeHtml(key)}">View: ${escapeHtml(displayName(key))} &rarr;</span>`
+    ).join(" ");
+    return `<div class="techtree-node-conditions">${links}</div>`;
+  }
+
   // Old-model races still tag their ability nodes "mechanics" -- these render
   // in the Civic column, matching how Human's tree folded Mechanics into Civic.
   function columnFor(tech) {
@@ -131,7 +182,22 @@ window.UI = window.UI || {};
     return null;
   }
 
-  function render(civ, isPlayerCiv, focusTechId, hoverTechId) {
+  /** `isReference` (2026-08-26, user-directed): true for the Knowledge
+   *  Base's own "Tech Trees" tab, which renders against buildReferenceCiv's
+   *  synthetic civ (main.js) -- zero cities, zero completed techs beyond
+   *  Level 0, by construction, forever. Every non-trivial tech in that view
+   *  is permanently "locked" and, before this flag existed, also picked up
+   *  the extra techtree-node-far fade meant for a genuinely far-off tech IN
+   *  A REAL GAME (2026-08-04, user-directed, and still exactly right there
+   *  -- see renderNode's own comment on it) -- except every tech in a
+   *  reference view is "far off" by that same measure, since there's no
+   *  real city count to compare against. The result was most of the tree
+   *  rendering barely legible on a page whose whole purpose is to be read.
+   *  This flag turns that fade off for renderNode (never applies it) and
+   *  stamps a class the live game's own tree never gets, so style.css can
+   *  neutralize .locked's ordinary dimming there too without touching what
+   *  "locked" looks like in an actual game. */
+  function render(civ, isPlayerCiv, focusTechId, hoverTechId, isReference) {
     const race = window.GameData.getRace(civ.raceId);
     // The AI's "intends to research next" hint is meaningless for the human's
     // own tree -- nothing is going to pick for them, that's the whole point.
@@ -165,6 +231,7 @@ window.UI = window.UI || {};
           cols[col].map((tech) => renderNode(
             civ, tech, nextPick, isPlayerCiv, tech.id === focusTechId,
             tech.id === hoverTechId ? "self" : relationKindFor(relations, tech.id),
+            isReference,
           )).join("") || ""
         }</div>`).join("")}
       </div>`;
@@ -176,7 +243,7 @@ window.UI = window.UI || {};
     </div>`;
 
     return `
-      <div class="panel">
+      <div class="panel${isReference ? " techtree-reference" : ""}">
         <h2>${escapeHtml(race.label)} — Tech Tree</h2>
         <div class="stat-row"><span>Cities</span><span>${civ.cities.length}</span></div>
         ${isPlayerCiv ? (() => {
@@ -241,10 +308,15 @@ window.UI = window.UI || {};
     const base = window.GameData.getUnit(unitId);
     const parts = unitStatParts(civ, unitId);
     if (!base || !parts) return "";
-    return `<div class="techtree-node-unit-stats">${escapeHtml(base.label)}: ${escapeHtml(parts.join(" · "))}</div>`;
+    // Cross-links to that unit's own Knowledge Base profile (2026-08-26,
+    // user-directed) -- see conditionLinksHtml just above for the sibling
+    // condition-link feature and main.js's wireTechTreeKbLinks for how both
+    // get wired.
+    return `<div class="techtree-node-unit-stats">${escapeHtml(base.label)}: ${escapeHtml(parts.join(" · "))}
+      <span class="tile-link techtree-kb-link" data-kb-unit="${escapeHtml(unitId)}">View unit &rarr;</span></div>`;
   }
 
-  function renderNode(civ, tech, nextPick, isPlayerCiv, isFocused, relationKind) {
+  function renderNode(civ, tech, nextPick, isPlayerCiv, isFocused, relationKind, isReference) {
     const completed = civ.completedTechs.has(tech.id);
     const researching = civ.currentResearch === tech.id;
     const isNextPick = !completed && !researching && tech.id === nextPick;
@@ -343,6 +415,7 @@ window.UI = window.UI || {};
     const body = `<div class="techtree-node-name">${escapeHtml(tech.label)}</div>
       ${tech.description ? `<div class="techtree-node-desc">${escapeHtml(tech.description)}</div>` : ''}
       ${unlockedUnitStats}
+      ${conditionLinksHtml(tech)}
       <div class="techtree-node-tag">${escapeHtml(tag)} · ${costHtml}${escapeHtml(turnsTag)}</div>`;
 
     // Extra fade for tiers that are genuinely FAR off (2026-08-04, user-
@@ -355,8 +428,13 @@ window.UI = window.UI || {};
     // gap is usually one tech away, not a stage of the game away. Always
     // reaches full clarity on hover (see the .techtree-node-far:hover CSS
     // rule) so nothing is ever permanently unreadable, just deprioritized.
+    //
+    // NEVER applied when isReference (2026-08-26, user-directed): see
+    // render()'s own doc comment on why "far off" is meaningless against a
+    // synthetic civ with 0 cities forever -- everything past Level 1 would
+    // measure as far, which is the opposite of this feature's own intent.
     let extraFadeClass = "";
-    if (!cityGateOk) {
+    if (!isReference && !cityGateOk) {
       const citiesAway = tech.layer - civ.cities.length;
       if (citiesAway >= 2) extraFadeClass = " techtree-node-far";
     }

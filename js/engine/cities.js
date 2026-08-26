@@ -1368,13 +1368,6 @@ window.GameEngine = window.GameEngine || {};
   }
 
   /** Sums yield from all tiles this city owns AND has filled in, within its influence radius */
-  // Road-tile yield bonuses (race-default or tech-unlocked, e.g. Human's Trade
-  // Roads / Halfellow's The Road Goes Ever On) are capped at this many
-  // contributing road tiles per city, regardless of how many more roads the
-  // city actually has -- prevents a player from farming a resource bonus by
-  // paving their entire territory. Applies to every race/tech that grants a
-  // per-road-tile bonus, not just whichever one happens to define it.
-  const ROAD_BONUS_TILE_CAP = CFG.roadBonusTileCap;
 
   /**
    * Yield contribution from ONE worked tile at offset (dx,dy) from its city,
@@ -1382,15 +1375,11 @@ window.GameEngine = window.GameEngine || {};
    * single tile's actual yield can be computed in isolation -- see
    * computeTileActualYield below, used by the sidebar's tile-panel "Actual
    * Yield" row -- without duplicating the bonus-stacking rules in two
-   * places. `roadBonusTilesUsed` is the caller's own running count against
-   * ROAD_BONUS_TILE_CAP; pass 0 for a standalone single-tile lookup that
-   * isn't tracking a city-wide cap (see computeTileActualYield's own doc
-   * comment on why that's a deliberate, harmless simplification there).
-   * Returns null if this tile isn't actually paying `civ` anything right
-   * now (not owned by them, or contested with no Barrow to soften it) --
-   * otherwise { totals: {harvest,coin,lore}, usedRoadBonus }.
+   * places. Returns null if this tile isn't actually paying `civ` anything
+   * right now (not owned by them, or contested with no Barrow to soften
+   * it) -- otherwise { totals: {harvest,coin,lore} }.
    */
-  function tileYieldContribution(tile, dx, dy, civ, hasBarrow, barrowContestedMult, roadBonusTilesUsed) {
+  function tileYieldContribution(tile, dx, dy, civ, hasBarrow, barrowContestedMult) {
     if (tile.ownerCivId !== civ.id) return null;
     // Barrow: contested tiles yield at the override rate instead of 0
     let tileYieldMult = 1.0;
@@ -1468,16 +1457,13 @@ window.GameEngine = window.GameEngine || {};
       for (const [k, v] of Object.entries(ufb.ruin)) totals[k] += v * tileYieldMult;
     }
 
-    // Road bonuses share one per-city cap (ROAD_BONUS_TILE_CAP above):
-    // the race-default half (fb.road) falls off with distance like any
-    // other race-default bonus; the tech-unlocked half (ufb.road) doesn't.
-    let usedRoadBonus = false;
-    if (tileCountsAsRoad(tile) && (fb.road || ufb.road) && roadBonusTilesUsed < ROAD_BONUS_TILE_CAP) {
-      usedRoadBonus = true;
+    // Road bonuses (race-default fb.road and tech-unlocked ufb.road) --
+    // uncapped: any tile that counts as a road pays out.
+    if (tileCountsAsRoad(tile) && (fb.road || ufb.road)) {
       if (fb.road) for (const [k, v] of Object.entries(fb.road)) totals[k] += v * (k === "lore" ? tileYieldMult : baseMult);
       if (ufb.road) for (const [k, v] of Object.entries(ufb.road)) totals[k] += v * tileYieldMult;
     }
-    return { totals, usedRoadBonus };
+    return { totals };
   }
 
   function computeWorkedTileYield(city, civ, map) {
@@ -1486,19 +1472,17 @@ window.GameEngine = window.GameEngine || {};
     const hasBarrow = cityHasStructure(city, "barrow");
     const barrowContestedMult = hasBarrow
       ? window.GameData.getBuilding("barrow").contestedYieldPenaltyOverride : 0;
-    let roadBonusTilesUsed = 0;
     for (let dy = -radius; dy <= radius; dy++) {
       for (let dx = -radius; dx <= radius; dx++) {
         if (!isOffsetFilled(city, dx, dy)) continue;
         const tx = city.x + dx, ty = city.y + dy;
         if (tx < 0 || tx >= map.width || ty < 0 || ty >= map.height) continue;
         const tile = map.tiles[ty * map.width + tx];
-        const result = tileYieldContribution(tile, dx, dy, civ, hasBarrow, barrowContestedMult, roadBonusTilesUsed);
+        const result = tileYieldContribution(tile, dx, dy, civ, hasBarrow, barrowContestedMult);
         if (!result) continue;
         totals.harvest += result.totals.harvest;
         totals.coin += result.totals.coin;
         totals.lore += result.totals.lore;
-        if (result.usedRoadBonus) roadBonusTilesUsed++;
       }
     }
 
@@ -1515,13 +1499,7 @@ window.GameEngine = window.GameEngine || {};
    * tileYieldContribution. Returns null if no city of this civ currently
    * works the tile (owned but not yet filled-in, contested with no Barrow,
    * or not owned by this civ at all) -- there's nothing "actual" to show
-   * beyond the base yield already on screen. The road-bonus-cap check is
-   * always passed 0 (bonus treated as active) rather than a real running
-   * count -- a standalone tile lookup has no defined iteration order to
-   * derive that from, so a city that's already saturated its cap elsewhere
-   * could in the rare case show a slightly optimistic number here; not
-   * worth the complexity of threading real city-wide state through a
-   * single-tile query for a display-only figure.
+   * beyond the base yield already on screen.
    */
   function computeTileActualYield(tile, x, y, civ) {
     let totals = null;
@@ -1532,7 +1510,7 @@ window.GameEngine = window.GameEngine || {};
       const hasBarrow = cityHasStructure(city, "barrow");
       const barrowContestedMult = hasBarrow
         ? window.GameData.getBuilding("barrow").contestedYieldPenaltyOverride : 0;
-      const result = tileYieldContribution(tile, dx, dy, civ, hasBarrow, barrowContestedMult, 0);
+      const result = tileYieldContribution(tile, dx, dy, civ, hasBarrow, barrowContestedMult);
       if (!result) continue;
       totals = totals || { harvest: 0, coin: 0, lore: 0 };
       totals.harvest += result.totals.harvest;

@@ -8516,11 +8516,23 @@ window.GameEngine = window.GameEngine || {};
   function jitterChestReward(amount) {
     return Math.round(amount * (1 + (Math.random() * 0.5 - 0.25)));
   }
+  /** Orc's Plunder tech (2026-08-26, user-directed): a chest that would've
+   *  paid something other than coin also pays this bonus coin haul on top
+   *  -- always jittered and tripled, same as a normal coin payout's own
+   *  3x multiplier below, just granted unconditionally rather than only
+   *  when the rewardType roll happens to land on "coin". */
+  function grantPlunderBonus(civ, unit, cfg) {
+    const amount = jitterChestReward(cfg.rewardAmount) * 3;
+    civ.stockpile.coin = (civ.stockpile.coin || 0) + amount;
+    window.GameEngine.floatingText.spawnFloatingText(unit, `+${amount} coin (Plunder)`, "resource");
+    return amount;
+  }
   function openTreasureChest(civ, unit, gameState) {
     const { map } = gameState;
     const tile = map.tiles[unit.y * map.width + unit.x];
     if (!tile || tile.resource !== "chest") return null;
     const cfg = window.GameConfig.worldEncounters.treasureChest;
+    const plunder = civ.unlockedMechanics && civ.unlockedMechanics.has("plunder");
 
     tile.resource = null;
     window.GameEngine.turns.scheduleResourceRespawn(gameState, "chest");
@@ -8559,7 +8571,9 @@ window.GameEngine = window.GameEngine || {};
     if (rewardType === "xp") {
       const amount = jitterChestReward(cfg.rewardAmount);
       applyComputedXP(unit, civ, amount);
-      return { trapped: false, rewardType, amount };
+      const result = { trapped: false, rewardType, amount };
+      if (plunder) result.bonusCoin = grantPlunderBonus(civ, unit, cfg);
+      return result;
     }
     if (rewardType === "mapFragment") {
       // See turns.js's revealMapFragment. Falls back to a coin payout if
@@ -8567,16 +8581,18 @@ window.GameEngine = window.GameEngine || {};
       // nothing would be a worse outcome than the trap.
       const revealed = window.GameEngine.turns.revealMapFragment(civ, gameState);
       if (!revealed) {
-        const amount = jitterChestReward(cfg.rewardAmount);
+        const amount = jitterChestReward(cfg.rewardAmount) * (plunder ? 3 : 1);
         civ.stockpile.coin = (civ.stockpile.coin || 0) + amount;
         window.GameEngine.floatingText.spawnFloatingText(unit, `+${amount} coin`, "resource");
         return { trapped: false, rewardType: "coin", amount };
       }
       window.GameEngine.floatingText.spawnFloatingText(unit, "Map Fragment!", "resource");
-      return { trapped: false, rewardType: "mapFragment", revealed };
+      const result = { trapped: false, rewardType: "mapFragment", revealed };
+      if (plunder) result.bonusCoin = grantPlunderBonus(civ, unit, cfg);
+      return result;
     }
     if (rewardType === "coin") {
-      const amount = jitterChestReward(cfg.rewardAmount);
+      const amount = jitterChestReward(cfg.rewardAmount) * (plunder ? 3 : 1);
       civ.stockpile.coin = (civ.stockpile.coin || 0) + amount;
       window.GameEngine.floatingText.spawnFloatingText(unit, `+${amount} coin`, "resource");
       return { trapped: false, rewardType, amount };
@@ -8589,16 +8605,20 @@ window.GameEngine = window.GameEngine || {};
         const amount = 1 + Math.floor(Math.random() * 3); // 1-3 rounds
         const result = window.GameEngine.tech.reduceResearchTurns(civ, amount);
         window.GameEngine.floatingText.spawnFloatingText(unit, `Research -${amount} rounds!`, "resource");
-        return { trapped: false, rewardType, amount, researchResult: result };
+        const out = { trapped: false, rewardType, amount, researchResult: result };
+        if (plunder) out.bonusCoin = grantPlunderBonus(civ, unit, cfg);
+        return out;
       }
-      const amount = jitterChestReward(cfg.rewardAmount);
+      const amount = jitterChestReward(cfg.rewardAmount) * (plunder ? 3 : 1);
       civ.stockpile.coin = (civ.stockpile.coin || 0) + amount;
       window.GameEngine.floatingText.spawnFloatingText(unit, `+${amount} coin`, "resource");
       return { trapped: false, rewardType: "coin", amount };
     }
     civ.stockpile[rewardType] = (civ.stockpile[rewardType] || 0) + cfg.rewardAmount;
     window.GameEngine.floatingText.spawnFloatingText(unit, `+${cfg.rewardAmount} ${rewardType}`, "resource");
-    return { trapped: false, rewardType, amount: cfg.rewardAmount };
+    const result = { trapped: false, rewardType, amount: cfg.rewardAmount };
+    if (plunder) result.bonusCoin = grantPlunderBonus(civ, unit, cfg);
+    return result;
   }
 
   /** Finds the nearest known Treasure Chest tile (currently visible OR

@@ -126,10 +126,25 @@ window.GameData.TECHS = {
   // infrastructure, same tier as Pioneer/Scout/Galley/Hunt Game/Farm Soil --
   // every civ starts with it, no race restriction, any unit can Delve.
   // Grants the "dungeon_delve" mechanic id (read by orders.js/ai.js/turns.js).
+  //
+  // Category "mystic", not "civic" (2026-08-26, user-directed): unlike
+  // Hunt Game/Farm Soil/Fishing/Mining, which are all mundane labor on an
+  // ordinary tile, this is picking apart the leavings of something old and
+  // half-understood -- the Mystic column is where the tree already files
+  // exactly that kind of content.
+  //
+  // Description simplified to match the terse "unit can X for bonus Y"
+  // register the other Level 0 gathering techs use, in place of the old
+  // text's blow-by-blow of channel/cancel/claim mechanics -- none of the
+  // sibling techs explain their own persistence rules either, so this
+  // brings it in line rather than making it the odd one out. The
+  // treasure/monster line reflects a real mechanic, not added flavor: see
+  // turns.js's once-per-Ruin rolls against config.js's
+  // worldEncounters.ruin.treasureFindChance/monsterEncounterChance.
   ruin_delving: {
-    id: "ruin_delving", label: "Ruin Delving", category: "civic", layer: 0, cost: 10,
+    id: "ruin_delving", label: "Ruin Delving", category: "mystic", layer: 0, cost: 10,
     prereqs: [],
-    description: "Any unit standing on a Ruin may start Delving it: a full-turn action that continues automatically (no move/attack) until cancelled, gradually claiming the 1-tile radius around itself just like a city fills in its own tiles, and yielding pooled coin and lore per turn. Instantly loses everything it was claiming/generating if cancelled, the unit moves off the Ruin, or it dies.",
+    description: "Any unit can Delve a Ruin for steady Coin and Lore, with a chance to uncover treasure or disturb something dangerous.",
     effects: [{ type: "unlock_mechanic", mechanic: "dungeon_delve" }],
   },
   // Fishing/Mining/Walls: each mechanic already
@@ -256,9 +271,9 @@ window.GameData.TECHS = {
   homestead: {
     id: "homestead", label: "Homestead", category: "civic", layer: 1, cost: 20,
     prereqs: [], raceOnly: "human",
-    description: "+0.5 harvest from Plains.",
+    description: "+0.25 harvest from Plains.",
     costBreakdown: { lore: 14, coin: 6 },
-    effects: [{ type: "unlock_tile_bonus", terrain: "plains", bonus: { harvest: 0.5 } }],
+    effects: [{ type: "unlock_tile_bonus", terrain: "plains", bonus: { harvest: 0.25 } }],
   },
   // --- Layer 2 ---
   marketcraft: {
@@ -307,9 +322,9 @@ window.GameData.TECHS = {
   trade_roads: {
     id: "trade_roads", label: "Trade Roads", category: "civic", layer: 2, cost: 40,
     prereqs: ["homestead"], raceOnly: "human",
-    description: "+1 coin, +0.2 lore per road tile within a city's radius.",
+    description: "+0.5 coin, +0.5 lore per road tile within a city's radius.",
     costBreakdown: { coin: 40 },
-    effects: [{ type: "unlock_feature_bonus", feature: "road", bonus: { coin: 1, lore: 0.2 } }],
+    effects: [{ type: "unlock_feature_bonus", feature: "road", bonus: { coin: 0.5, lore: 0.5 } }],
   },
   make_way: {
     id: "make_way", label: "Make Way", category: "civic", layer: 2, cost: 22,
@@ -375,12 +390,27 @@ window.GameData.TECHS = {
   // targeted cast into a passive on-hit chance -- see
   // ai.js's considerAttackOrGarrison (Human "Freezing Touch" block, right
   // next to Fireball's burnChancePct trigger).
+  //
+  // Bugfix (2026-08-26): that ai.js block gates the whole roll behind
+  // `civ.unlockedMechanics.has("freezing_touch")`, but this tech's only
+  // effect was unit_stat_upgrade -- nothing ever added "freezing_touch" to
+  // unlockedMechanics (that Set is populated exclusively by unlock_mechanic
+  // effects, see tech.js's applyTechEffects). The +50% frozenChancePct WAS
+  // being applied to the Wizard's stats correctly; the roll that would
+  // actually spend it just never ran. Researching this tech had zero
+  // gameplay effect. Added the missing unlock_mechanic effect below --
+  // mechanic id matches the tech id, same as every other same-shaped tech
+  // (poisonous_extracts, burn_it_all_down, first_frost_of_autumn all name
+  // their own tech id as the mechanic they grant).
   freezing_touch: {
     id: "freezing_touch", label: "Freezing Touch", category: "mystic", layer: 2, cost: 42,
     prereqs: ["wizardry"], raceOnly: "human",
     description: "The Wizard's attacks gain +50% chance to inflict the Frozen condition.",
     costBreakdown: { lore: 30, coin: 12 },
-    effects: [{ type: "unit_stat_upgrade", unit: "wizard", changes: { frozenChancePct: 0.5 } }],
+    effects: [
+      { type: "unit_stat_upgrade", unit: "wizard", changes: { frozenChancePct: 0.5 } },
+      { type: "unlock_mechanic", mechanic: "freezing_touch" },
+    ],
   },
   common_tongue: {
     id: "common_tongue", label: "Common Tongue", category: "civic", layer: 3, cost: 55,
@@ -562,16 +592,16 @@ window.GameData.TECHS = {
   elf_nature_provides: {
     id: "elf_nature_provides", label: "Nature Provides", category: "civic", layer: 1, cost: 18,
     prereqs: [], raceOnly: "elf",
-    description: "+1 harvest from Forest.",
+    description: "+0.25 harvest from Forest.",
     costBreakdown: { lore: 12, coin: 6 },
-    effects: [{ type: "unlock_tile_bonus", terrain: "forest", bonus: { harvest: 1 } }],
+    effects: [{ type: "unlock_tile_bonus", terrain: "forest", bonus: { harvest: 0.25 } }],
   },
   elf_murmuring_of_leaves: {
     id: "elf_murmuring_of_leaves", label: "The Murmuring of Leaves", category: "civic", layer: 1, cost: 16,
     prereqs: [], raceOnly: "elf",
-    description: "+0.5 lore from Forest.",
+    description: "+0.3 lore from Forest.",
     costBreakdown: { lore: 16 },
-    effects: [{ type: "unlock_tile_bonus", terrain: "forest", bonus: { lore: 0.5 } }],
+    effects: [{ type: "unlock_tile_bonus", terrain: "forest", bonus: { lore: 0.3 } }],
   },
   // Halves the flat RESOURCE_EXHAUSTION_CHANCE (5%->2%) for this civ's
   // Ruin/Gold Vein/Iron Vein/Fish Shoal/Game/Fertile Soil channels -- see
@@ -586,9 +616,9 @@ window.GameData.TECHS = {
   elf_whispering_waters: {
     id: "elf_whispering_waters", label: "Whispering Waters", category: "civic", layer: 2, cost: 20,
     prereqs: [], raceOnly: "elf",
-    description: "+0.5 lore and +0.5 harvest from river.",
+    description: "+0.3 lore from river.",
     costBreakdown: { lore: 14, coin: 6 },
-    effects: [{ type: "unlock_feature_bonus", feature: "river", bonus: { lore: 0.5, harvest: 0.5 } }],
+    effects: [{ type: "unlock_feature_bonus", feature: "river", bonus: { lore: 0.3 } }],
   },
   elf_longstrider: {
     id: "elf_longstrider", label: "Longstrider", category: "civic", layer: 2, cost: 20,
@@ -600,9 +630,9 @@ window.GameData.TECHS = {
   elf_gems_of_starlight: {
     id: "elf_gems_of_starlight", label: "Gems of Starlight", category: "civic", layer: 3, cost: 30,
     prereqs: ["elf_silverleaf_atelier"], raceOnly: "elf",
-    description: "+1 coin from Mountains.",
+    description: "+0.25 coin from Mountains.",
     costBreakdown: { coin: 20, lore: 10 },
-    effects: [{ type: "unlock_tile_bonus", terrain: "mountains", bonus: { coin: 1 } }],
+    effects: [{ type: "unlock_tile_bonus", terrain: "mountains", bonus: { coin: 0.25 } }],
   },
   elf_wind_from_distant_treetops: {
     id: "elf_wind_from_distant_treetops", label: "Wind From Distant Treetops", category: "civic", layer: 4, cost: 50,
@@ -935,16 +965,16 @@ window.GameData.TECHS = {
   dwarf_wealth_of_the_earth: {
     id: "dwarf_wealth_of_the_earth", label: "Wealth of the Earth", category: "civic", layer: 1, cost: 16,
     prereqs: [], raceOnly: "dwarf",
-    description: "+0.75 coin from Mountains.",
+    description: "+0.25 coin from Mountains.",
     costBreakdown: { coin: 10, lore: 6 },
-    effects: [{ type: "unlock_tile_bonus", terrain: "mountains", bonus: { coin: 0.75 } }],
+    effects: [{ type: "unlock_tile_bonus", terrain: "mountains", bonus: { coin: 0.25 } }],
   },
   dwarf_imported_goods: {
     id: "dwarf_imported_goods", label: "Imported Goods", category: "civic", layer: 2, cost: 28,
     prereqs: [], raceOnly: "dwarf",
-    description: "+1 harvest per road tile within a city's radius, up to 8 road tiles per city.",
+    description: "+0.5 harvest, +0.25 lore per road tile within a city's radius.",
     costBreakdown: { coin: 18, lore: 10 },
-    effects: [{ type: "unlock_feature_bonus", feature: "road", bonus: { harvest: 1 } }],
+    effects: [{ type: "unlock_feature_bonus", feature: "road", bonus: { harvest: 0.5, lore: 0.25 } }],
   },
   dwarf_dwarven_mining: {
     id: "dwarf_dwarven_mining", label: "Dwarven Mining", category: "civic", layer: 1, cost: 16,
@@ -956,16 +986,16 @@ window.GameData.TECHS = {
   dwarf_quarry: {
     id: "dwarf_quarry", label: "Quarry", category: "civic", layer: 1, cost: 20,
     prereqs: ["dwarf_stonecunning"], raceOnly: "dwarf",
-    description: "+0.75 coin from Hills.",
+    description: "+0.25 coin from Hills.",
     costBreakdown: { coin: 13, lore: 7 },
-    effects: [{ type: "unlock_tile_bonus", terrain: "hills", bonus: { coin: 0.75 } }],
+    effects: [{ type: "unlock_tile_bonus", terrain: "hills", bonus: { coin: 0.25 } }],
   },
   dwarf_deep_lore: {
     id: "dwarf_deep_lore", label: "Deep Lore", category: "mystic", layer: 1, cost: 20,
     prereqs: ["dwarf_stonecunning"], raceOnly: "dwarf",
-    description: "+0.75 lore from Mountains.",
+    description: "+0.3 lore from Mountains.",
     costBreakdown: { lore: 12, coin: 8 },
-    effects: [{ type: "unlock_tile_bonus", terrain: "mountains", bonus: { lore: 0.75 } }],
+    effects: [{ type: "unlock_tile_bonus", terrain: "mountains", bonus: { lore: 0.3 } }],
   },
   dwarf_mountains_on_the_horizon: {
     id: "dwarf_mountains_on_the_horizon", label: "Mountains on the Horizon", category: "civic", layer: 2, cost: 20,
@@ -1196,7 +1226,7 @@ window.GameData.TECHS = {
     effects: [{ type: "terrain_movement_discount", terrain: "swamp", value: 0.5 }],
   },
   orc_forced_march: {
-    id: "orc_forced_march", label: "Forced March", category: "civic", layer: 1, cost: 14,
+    id: "orc_forced_march", label: "Forced March", category: "civic", layer: 2, cost: 14,
     prereqs: [], raceOnly: "orc",
     // Civ-wide: terrain_movement_discount applies to every unit this civ
     // owns (unlike unit_terrain_movement_discount's units:[] allowlist).
@@ -1210,6 +1240,20 @@ window.GameData.TECHS = {
     description: "+3 movement, 10% First Strike, and 10% Double Strike for a unit that killed an enemy unit within the previous 3 turns.",
     costBreakdown: { lore: 14 },
     effects: [{ type: "unlock_mechanic", mechanic: "violent_momentum" }],
+  },
+  // "plunder" is read directly by ai.js's openTreasureChest (2026-08-26,
+  // user-directed) -- a chest that would've paid something other than coin
+  // also pays a bonus coin haul on top, and any coin a chest DOES pay
+  // (primary or the bonus) is tripled. Deliberately scoped to actually
+  // opening a Treasure Chest only, not Ruin Delve finds or Wandering
+  // Monster kills -- those reuse the same reward table through a separate
+  // function, grantMonsterKillReward, which this doesn't touch.
+  orc_plunder: {
+    id: "orc_plunder", label: "Plunder", category: "civic", layer: 1, cost: 16,
+    prereqs: [], raceOnly: "orc",
+    description: "Opening a Treasure Chest always finds coin, on top of whatever else was found, and any coin found is tripled.",
+    costBreakdown: { coin: 10, lore: 6 },
+    effects: [{ type: "unlock_mechanic", mechanic: "plunder" }],
   },
   orc_raiders: {
     id: "orc_raiders", label: "Raiders", category: "military", layer: 1, cost: 15,
@@ -1245,11 +1289,11 @@ window.GameData.TECHS = {
     ],
   },
   orc_bog_harvest: {
-    id: "orc_bog_harvest", label: "Wetland Harvest", category: "civic", layer: 2, cost: 20,
+    id: "orc_bog_harvest", label: "Wetland Harvest", category: "civic", layer: 1, cost: 20,
     prereqs: [], raceOnly: "orc",
-    description: "+0.5 Harvest from Swamp.",
+    description: "+0.25 Harvest from Swamp.",
     costBreakdown: { lore: 14, harvest: 6 },
-    effects: [{ type: "unlock_tile_bonus", terrain: "swamp", bonus: { harvest: 0.5 } }],
+    effects: [{ type: "unlock_tile_bonus", terrain: "swamp", bonus: { harvest: 0.25 } }],
   },
   orc_warcraft: {
     id: "orc_warcraft", label: "War Camp", category: "building", layer: 1, cost: 22,
@@ -1484,7 +1528,7 @@ window.GameData.TECHS = {
     effects: [{ type: "unlock_tile_bonus", terrain: "swamp", bonus: { lore: 0.5 } }],
   },
   orc_honor_the_dead: {
-    id: "orc_honor_the_dead", label: "Honor the Dead", category: "civic", layer: 2, cost: 55,
+    id: "orc_honor_the_dead", label: "Honor the Dead", category: "mystic", layer: 1, cost: 55,
     prereqs: [], raceOnly: "orc",
     description: "When an Orc unit dies, gain +30 lore. Orc units have a 50% chance to resist being raised from the dead (if an Orc unit is slain by an Undead unit, only a 50% chance the Undead civ turns it into a zombie under its control).",
     costBreakdown: { lore: 45, harvest: 10 },
@@ -1688,16 +1732,16 @@ window.GameData.TECHS = {
   halfellow_hillside_harvest: {
     id: "halfellow_hillside_harvest", label: "Hillside Harvest", category: "civic", layer: 1, cost: 20,
     prereqs: ["halfellow_singing_hills"], raceOnly: "halfellow",
-    description: "+0.5 harvest from Hills.",
+    description: "+0.25 harvest from Hills.",
     costBreakdown: { lore: 13, coin: 7 },
-    effects: [{ type: "unlock_tile_bonus", terrain: "hills", bonus: { harvest: 0.5 } }],
+    effects: [{ type: "unlock_tile_bonus", terrain: "hills", bonus: { harvest: 0.25 } }],
   },
   halfellow_road_goes_ever_on: {
     id: "halfellow_road_goes_ever_on", label: "The Road Goes Ever On", category: "civic", layer: 2, cost: 22,
     prereqs: [], raceOnly: "halfellow",
-    description: "+1 lore per road tile within a city's radius, up to 8 road tiles per city.",
+    description: "+0.5 lore per road tile within a city's radius.",
     costBreakdown: { lore: 14, harvest: 8 },
-    effects: [{ type: "unlock_feature_bonus", feature: "road", bonus: { lore: 1 } }],
+    effects: [{ type: "unlock_feature_bonus", feature: "road", bonus: { lore: 0.5 } }],
   },
   halfellow_farmers_market: {
     id: "halfellow_farmers_market", label: "Farmers Market", category: "building", layer: 1, cost: 20,
@@ -1771,12 +1815,12 @@ window.GameData.TECHS = {
   halfellow_riverboat_trade: {
     id: "halfellow_riverboat_trade", label: "Riverboat Trade", category: "civic", layer: 2, cost: 38,
     prereqs: ["halfellow_riverfolk"], raceOnly: "halfellow",
-    description: "+0.75 coin per river tile within a city's radius.",
+    description: "+0.5 coin per river tile within a city's radius.",
     costBreakdown: { coin: 22, harvest: 16 },
-    effects: [{ type: "unlock_feature_bonus", feature: "river", bonus: { coin: 0.75 } }],
+    effects: [{ type: "unlock_feature_bonus", feature: "river", bonus: { coin: 0.5 } }],
   },
   halfellow_nice_day_fishing: {
-    id: "halfellow_nice_day_fishing", label: "Nice Day for Fishing", category: "civic", layer: 2, cost: 38,
+    id: "halfellow_nice_day_fishing", label: "A Nice Day for Fishing", category: "civic", layer: 2, cost: 38,
     prereqs: ["halfellow_riverfolk"], raceOnly: "halfellow",
     description: "+0.5 harvest from Rivers.",
     costBreakdown: { lore: 22, coin: 16 },
@@ -2002,8 +2046,9 @@ window.GameData.TECHS = {
     effects: [{ type: "unlock_mechanic", mechanic: "rouse_the_people" }],
   },
   // "Set the Trap": the Trouble Maker's third
-  // trick. Gated behind Ice Fishing (2026-08-17, user-directed -- was
-  // gated behind The Riddle Game). Unlocks BOTH trap flavors at once -- the
+  // trick. Gated behind A Nice Day for Fishing (2026-08-26, user-directed --
+  // was gated behind Ice Fishing before that, and The Riddle Game before
+  // that). Unlocks BOTH trap flavors at once -- the
   // player picks Frost or Fire per placement, not a separate tech per
   // flavor. Two unlock_unit effects register both "trap_frost"/"trap_fire"
   // with techForUnit (so unitBuildCost can derive each one's resource split
@@ -2012,7 +2057,7 @@ window.GameData.TECHS = {
   // Spirit/Wisp pattern exactly.
   halfellow_set_the_trap: {
     id: "halfellow_set_the_trap", label: "Set the Trap", category: "mystic", layer: 3, cost: 90,
-    prereqs: ["halfellow_ice_fishing"], raceOnly: "halfellow",
+    prereqs: ["halfellow_nice_day_fishing"], raceOnly: "halfellow",
     description: "The Trouble Maker may set a Frost Trap or a Fire Trap on any unoccupied tile within its own range. Either trap stays hidden indefinitely -- it is never spotted by normal means, though a splash/area attack that happens to land on it can still catch it by accident, same as any other hidden unit. The instant an enemy unit ends a move adjacent to it, the trap springs: 4 damage plus Frozen (0 movement, -25% attack, 3 turns) for a Frost Trap, or 4 damage plus Burning (1 damage/turn for 3 turns, no effect on Coast/Ocean/river) for a Fire Trap -- then the trap is spent. The Halfellow kingdom may field at most one trap (of either flavor) per living Trouble Maker.",
     costBreakdown: { harvest: 8, coin: 12, lore: 20 },
     effects: [

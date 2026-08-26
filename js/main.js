@@ -1207,13 +1207,17 @@
               <select id="kb-techtree-race-select">${raceOptionsHtml}</select>
             </label>
           </div>
-          ${window.UI.techtree.render(refCiv, false, null, null)}
+          ${window.UI.techtree.render(refCiv, false, null, null, /* isReference */ true)}
         </div>`;
       const raceSelect = $("kb-techtree-race-select");
       if (raceSelect) raceSelect.onchange = () => {
         knowledgeSelectedRaceId = raceSelect.value;
         renderKnowledgeOverlay();
       };
+      // Unit/condition cross-links (techtree.js's renderNode) -- already
+      // inside the Knowledge Base overlay, so no overlay-switching needed,
+      // just flip which page it's showing.
+      wireTechTreeKbLinks(content);
     } else {
       content.innerHTML = window.UI.knowledgebase.renderUnits(knowledgeSelectedUnitId);
       const canvas = content.querySelector(".kb-unit-portrait");
@@ -1252,6 +1256,30 @@
     knowledgeBackTarget = null;
     renderKnowledgeOverlay();
   }
+
+  /** Closes the in-game "View Tech Tree" overlay (#techtree-overlay) --
+   *  state mutation only, no redraw() of its own, so callers can do
+   *  whatever comes next (open a different overlay, redraw the main game)
+   *  without an intermediate frame flickering through neither. Factored out
+   *  (2026-08-26) from the Close button's own handler below, which was the
+   *  only caller until the tech tree's unit/condition cross-links
+   *  (wireTechTreeKbLinks) needed to close this overlay on their way to
+   *  opening the Knowledge Base one -- same close, different next step. */
+  function closeTechTreeOverlay() {
+    viewState.techTreeCivId = null;
+    viewState.techTreeHoverId = null;
+    // Fires the deferred unit-built-notice/pendingIntent chain -- see
+    // openTechResearchedDialog's onChooseResearch, which stashes it here
+    // instead of firing it the instant the tech tree opens, specifically so
+    // those notices can't pop up and steal focus while the player is still
+    // choosing research. Cleared before calling: the callback itself may end
+    // up back at a point that reopens the tech tree (unlikely today, but
+    // this ordering means an onTechTreeClosed set during the callback is
+    // never stomped by this line running after it).
+    const onClosed = viewState.onTechTreeClosed;
+    viewState.onTechTreeClosed = null;
+    if (onClosed) onClosed();
+  }
   /** A unit profile's condition cross-link (e.g. Wizard's "Burning — 5%
    *  chance to inflict on hit") -- jumps to that condition's own page,
    *  remembering the unit so "Back" can return to it. */
@@ -1275,6 +1303,70 @@
     knowledgeSelectedUnitId = knowledgeBackTarget.unitId;
     knowledgeBackTarget = null;
     renderKnowledgeOverlay();
+  }
+
+  /** A tech tree node's "unlocks this unit" / "grants this condition"
+   *  cross-links (techtree.js's renderNode: unitStatsHtml/conditionLinksHtml)
+   *  -- jump straight to that Knowledge Base page. 2026-08-26, user-
+   *  directed.
+   *
+   *  No back-target, unlike jumpToCondition/jumpToStat above: those return
+   *  to the SPECIFIC unit profile a player was just reading, which makes
+   *  sense as a "Back" button. A tech-tree jump has no equivalent single
+   *  screen to return to -- it could be the Knowledge Base's own Tech Trees
+   *  tab (a race picker + scroll position) or the entirely separate in-game
+   *  "View Tech Tree" overlay (see wireTechTreeKbLinks) -- so this doesn't
+   *  try to fake one. */
+  function jumpToUnitFromTechTree(unitId) {
+    knowledgeBackTarget = null;
+    knowledgeView = "units";
+    knowledgeSelectedUnitId = unitId;
+    renderKnowledgeOverlay();
+  }
+  /** Same, for a tech's "grants X condition" cross-link. */
+  function jumpToConditionFromTechTree(conditionKey) {
+    knowledgeBackTarget = null;
+    knowledgeView = "conditions";
+    knowledgeSelectedConditionKey = conditionKey;
+    renderKnowledgeOverlay();
+  }
+
+  /** Wires every techtree.js cross-link (`[data-kb-unit]`/
+   *  `[data-kb-condition]`) inside `container` to jump into the Knowledge
+   *  Base. Shared by both places techtree.js's render() lands -- the
+   *  Knowledge Base's own Tech Trees tab and the in-game "View Tech Tree"
+   *  overlay -- so the two can't drift out of sync with each other.
+   *
+   *  `closeLiveTree`, when passed, is called before jumping -- the in-game
+   *  overlay is a SEPARATE modal from the Knowledge Base one (#techtree-
+   *  overlay vs #knowledge-overlay), so that call site has to close the
+   *  first before the second can show; the Knowledge Base's own Tech Trees
+   *  tab is already inside the overlay being navigated, so it passes
+   *  nothing.
+   *
+   *  e.stopPropagation() is load-bearing, not defensive: a tech that's
+   *  currently available to research renders its WHOLE node as a real
+   *  <button> with its own onclick (start researching this -- see the
+   *  ".techtree-node-selectable" wiring below). These links are plain
+   *  <span>s specifically so they can sit inside that button without
+   *  producing invalid nested-button markup, but a click still bubbles --
+   *  without this, following a "View unit" link on a researchable tech
+   *  would also silently kick off researching it. */
+  function wireTechTreeKbLinks(container, closeLiveTree) {
+    for (const el of container.querySelectorAll("[data-kb-unit]")) {
+      el.onclick = (e) => {
+        e.stopPropagation();
+        if (closeLiveTree) closeLiveTree();
+        jumpToUnitFromTechTree(el.dataset.kbUnit);
+      };
+    }
+    for (const el of container.querySelectorAll("[data-kb-condition]")) {
+      el.onclick = (e) => {
+        e.stopPropagation();
+        if (closeLiveTree) closeLiveTree();
+        jumpToConditionFromTechTree(el.dataset.kbCondition);
+      };
+    }
   }
 
   /** Wires the "Knowledge" menu's Units/Conditions/Stats buttons on BOTH
@@ -3642,28 +3734,35 @@
    *  notices, so both read identically. Trap results aren't routed through
    *  here -- nothing was "found," so they keep their own dedicated text. */
   function describeTreasureFind(unitLabel, result) {
+    let found;
     if (result.rewardType === "mapFragment") {
-      return {
+      found = {
         title: "Map Fragment!",
         text: `${unitLabel} finds a map fragment -- unrolling it reveals a swath of unexplored land around (${result.revealed.x},${result.revealed.y}) for the rest of this turn.`,
       };
-    }
-    if (result.rewardType === "xp") {
-      return {
+    } else if (result.rewardType === "xp") {
+      found = {
         title: "Treasure Found!",
         text: `${unitLabel} finds an experience crystal -- absorbing it grants +${result.amount} XP.`,
       };
-    }
-    if (result.rewardType === "lore") {
-      return {
+    } else if (result.rewardType === "lore") {
+      found = {
         title: "Treasure Found!",
         text: `${unitLabel} finds an ancient tome -- its knowledge is worth +${result.amount} lore.`,
       };
+    } else {
+      found = {
+        title: "Treasure Found!",
+        text: `${unitLabel} finds a pile of gold coins -- worth +${result.amount} coin.`,
+      };
     }
-    return {
-      title: "Treasure Found!",
-      text: `${unitLabel} finds a pile of gold coins -- worth +${result.amount} coin.`,
-    };
+    // Orc's Plunder tech (2026-08-26, user-directed): a chest that paid
+    // something other than coin also pays a bonus coin haul, tacked on
+    // as a second sentence rather than its own branch above.
+    if (result.bonusCoin) {
+      found.text += ` Plunder turns up an extra ${result.bonusCoin} coin besides.`;
+    }
+    return found;
   }
 
   /** Ruin Delve treasure-find announcements:
@@ -4167,20 +4266,7 @@
         }
       }
       $("techtree-close-btn").onclick = () => {
-        viewState.techTreeCivId = null;
-        viewState.techTreeHoverId = null;
-        // Fires the deferred unit-built-notice/pendingIntent chain
-        // -- see openTechResearchedDialog's
-        // onChooseResearch, which stashes it here instead of firing it the
-        // instant the tech tree opens, specifically so those notices can't
-        // pop up and steal focus while the player is still choosing research.
-        // Cleared before calling: the callback itself may end up back at a
-        // point that reopens the tech tree (unlikely today, but this ordering
-        // means an onTechTreeClosed set during the callback is never
-        // stomped by this line running after it).
-        const onClosed = viewState.onTechTreeClosed;
-        viewState.onTechTreeClosed = null;
-        if (onClosed) onClosed();
+        closeTechTreeOverlay();
         redraw();
       };
       // Research selection (player's own tree only -- renderNode only emits
@@ -4191,6 +4277,12 @@
           redraw();
         };
       }
+      // Unit/condition cross-links (techtree.js's renderNode) -- this
+      // overlay is a SEPARATE modal from the Knowledge Base's own, so
+      // following one has to close this before the Knowledge Base can show;
+      // see wireTechTreeKbLinks's own doc comment on why a redraw() has to
+      // land in between rather than folding into jumpTo*FromTechTree itself.
+      wireTechTreeKbLinks($("techtree-content"), () => { closeTechTreeOverlay(); redraw(); });
       // Hover prereq/unlock highlighting: hovering any node highlights its
       // prereq ancestors and whatever it unlocks with a colored border,
       // nothing else -- no dimming of unrelated nodes, and layers never

@@ -65,9 +65,9 @@ window.GameConfig = {
     /** Local date this build was cut, YYYY-MM-DD. */
     date: "2026-08-26",
     /** Local time this build was cut, 24-hour HH:MM. */
-    time: "16:05",
+    time: "18:12",
     /** Monotonic build counter -- increment it, don't recompute it. */
-    number: 178,
+    number: 179,
   },
 
   // =========================================================================
@@ -519,10 +519,6 @@ window.GameConfig = {
      *  relaxed floor used only when a civ is stranded with no legal site. */
     minCitySpacing: 6,
     emergencyCitySpacing: 3,
-
-    /** How many road tiles in a city's radius can pay a road yield bonus.
-     *  Without a cap, paving every tile becomes the dominant strategy. */
-    roadBonusTileCap: 8,
   },
 
   // =========================================================================
