@@ -373,6 +373,11 @@
         <span class="m-fab-label">End<br>Turn</span>
         <span class="m-fab-badge" id="m-fab-badge" hidden></span>
       </button>
+      <!-- Shows/hides the sheet -- replaces an earlier drag-to-resize gesture
+           that kept losing touches to the tab strip's own tap targets (see
+           css/mobile.css and main.js's setupSheetToggle). Icon/aria-expanded
+           are placeholders until setSheetDetent's first call at startup. -->
+      <button id="m-sheet-toggle-btn" class="m-sheet-toggle" aria-label="Show panel" aria-expanded="false">&#8963;</button>
       <div id="m-scrim" class="m-scrim" hidden></div>
 
       <!-- Landscape nudge (mobile phase 4). manifest.json's

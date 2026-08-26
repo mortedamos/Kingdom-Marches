@@ -363,15 +363,22 @@ body.mobile .m-scrim {
 /* --- the sheet ---------------------------------------------------------- */
 
 /* The sidebar, re-homed. Three resting heights, driven by data-detent and a
-   single translate -- so the drag handler only ever sets one property and
-   dragging can interrupt the transition cleanly.
+   single translate. Peek/full are the two states the #m-sheet-toggle-btn
+   button drives; half also still happens on its own via
+   revealSheetForSelection when the player taps something on the map.
 
-   --m-sheet-peek is how much stays on screen at rest -- tall enough to
-   clear the grab strip below AND still show the full tab row beneath it
-   (2026-08-26: was 4.6rem, sized only for the tab row -- see the padding-top
-   note on `#sidebar > *` below for why both grew together). */
+   Button, not drag-to-resize (2026-08-26, user-directed): a drag gesture
+   used to live here, claiming presses in the sheet's top strip -- but that
+   strip is also where the tab row's own tap targets sit, and a thumb
+   landing on a tab (the natural place to land one, being the most visually
+   prominent thing in the peek strip) kept getting swallowed as a failed
+   drag instead of a tab tap. A button sidesteps that whole class of
+   touch-target conflict rather than continuing to tune the zone -- see
+   index.html's #m-sheet-toggle-btn and main.js's setupSheetToggle.
+
+   --m-sheet-peek is how much stays on screen at rest. */
 body.mobile #sidebar {
-  --m-sheet-peek: 6.85rem;
+  --m-sheet-peek: 4.6rem;
   position: fixed;
   left: 0;
   right: 0;
@@ -390,50 +397,16 @@ body.mobile #sidebar {
   box-shadow: 0 -6px 28px rgba(0, 0, 0, .45);
   transform: translateY(calc(100% - var(--m-sheet-peek) - env(safe-area-inset-bottom, 0px)));
   transition: transform .28s cubic-bezier(.32, .72, 0, 1);
-  touch-action: none;   /* the sheet owns vertical drags, not the browser */
 }
 body.mobile #sidebar[data-detent="half"] { transform: translateY(52%); }
 body.mobile #sidebar[data-detent="full"] { transform: translateY(0); }
-/* While a finger is on it, follow the finger exactly -- no easing, or the
-   sheet lags behind the thumb and feels attached by elastic. */
-body.mobile #sidebar.m-dragging { transition: none; }
 
-/* Grabber. A pseudo-element on purpose: sidebar.js rewrites this container's
-   innerHTML on every redraw, so any real child would be destroyed. The drag
-   listener is bound to #sidebar itself and only claims presses that start in
-   the top strip -- see main.js's setupMobileShell. */
-body.mobile #sidebar::before {
-  content: "";
-  position: absolute;
-  top: 1.35rem;
-  left: 50%;
-  width: 2.4rem;
-  height: .25rem;
-  margin-left: -1.2rem;
-  border-radius: 999px;
-  background: currentColor;
-  opacity: .35;
-  z-index: 2;
-  pointer-events: none;
-}
-
-/* Sheet contents scroll internally, below the grabber.
-   padding-top (2026-08-26, user-reported): was 1.15rem, which left the tab
-   strip starting at ~18px from the sheet's top -- well inside
-   SHEET_GRAB_ZONE_PX's 44px "this press is a drag" band in main.js's
-   setupSheetDrag. A finger landing on a tab (the most visually prominent
-   thing in the peek strip, and the natural place to land a thumb) fell
-   inside that band roughly two-thirds of the time, so touches meant as
-   "grab and slide" kept landing as tab taps instead -- read by the user as
-   the sheet simply not being draggable. 3rem clears the whole grab band
-   with a hair of margin; SHEET_GRAB_ZONE_PX was widened to match exactly,
-   so there's no dead strip between "definitely a drag" and "definitely
-   content" either. */
+/* Sheet contents scroll internally. */
 body.mobile #sidebar > * {
   max-height: 100%;
   overflow-y: auto;
   overscroll-behavior: contain;
-  padding-top: 3rem;
+  padding-top: 1.15rem;
   -webkit-overflow-scrolling: touch;
 }
 
@@ -467,7 +440,8 @@ body.mobile #sidebar .tile-tab {
 
 body.mobile .m-menu-btn,
 body.mobile .m-status,
-body.mobile .m-fab {
+body.mobile .m-fab,
+body.mobile .m-sheet-toggle {
   position: fixed;
   z-index: 45;
   font: inherit;
@@ -570,11 +544,30 @@ body.mobile .m-fab-badge {
 }
 body.mobile .m-fab-badge[hidden] { display: none; }
 
+/* Sheet show/hide toggle: sits left of the FAB, on the same bottom arc,
+   vertically centered against it (7px = half the 14px size difference).
+   Replaces the old drag grabber -- see the sheet's own rule block above. */
+body.mobile .m-sheet-toggle {
+  right: calc(env(safe-area-inset-right, 0px) + .85rem + 66px + .6rem);
+  bottom: calc(var(--m-fab-bottom, 5.6rem) + env(safe-area-inset-bottom, 0px) + 7px);
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-size: 1.3rem;
+  line-height: 1;
+  padding: 0;
+  transition: transform .18s ease;
+}
+body.mobile .m-sheet-toggle:active { transform: scale(.93); }
+
 /* Desktop keeps none of this. */
-.m-menu-btn, .m-status, .m-fab, .m-scrim { display: none; }
+.m-menu-btn, .m-status, .m-fab, .m-sheet-toggle, .m-scrim { display: none; }
 body.mobile .m-menu-btn,
 body.mobile .m-status,
-body.mobile .m-fab { display: grid; }
+body.mobile .m-fab,
+body.mobile .m-sheet-toggle { display: grid; }
 body.mobile .m-status { display: flex; }
 body.mobile .m-scrim { display: block; }
 body.mobile .m-scrim[hidden] { display: none; }

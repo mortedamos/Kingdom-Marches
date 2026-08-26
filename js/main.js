@@ -501,9 +501,11 @@
   // sidebar.js replaces its container's innerHTML on every redraw, so
   // anything bound in there would be detached seconds later.
   // ==========================================================================
-  const SHEET_DETENTS = ["peek", "half", "full"];
 
-  /** Moves the sheet to a detent by name, clamped to the ends. */
+  /** Moves the sheet to a detent by name, clamped to the ends. Also syncs
+   *  #m-sheet-toggle-btn's icon/aria-expanded -- the single choke point for
+   *  that sync no matter which of this function's callers moved the sheet
+   *  (the button itself, revealSheetForSelection, or a new-turn reset). */
   function setSheetDetent(name) {
     const sheet = $("sidebar");
     if (!sheet) return;
@@ -512,16 +514,23 @@
     // once the sheet is up -- otherwise it covers the panel the player just
     // opened.
     sheet.style.setProperty("--m-fab-bottom", name === "peek" ? "5.6rem" : "1rem");
+    const toggle = $("m-sheet-toggle-btn");
+    if (toggle) {
+      const open = name !== "peek";
+      toggle.setAttribute("aria-expanded", open ? "true" : "false");
+      toggle.setAttribute("aria-label", open ? "Collapse panel" : "Show panel");
+      toggle.innerHTML = open ? "&#8964;" : "&#8963;"; // down chevron / up chevron
+    }
   }
 
   /** Raises a resting sheet to half height. Called when the player selects
    *  something on the map: selection and sheet height should be ONE gesture,
-   *  not a tap followed by a separate drag. Never lowers a sheet the player
-   *  deliberately opened, and never fights a drag in progress. */
+   *  not a tap followed by a separate action. Never lowers a sheet the
+   *  player deliberately opened. */
   function revealSheetForSelection() {
     if (!document.body.classList.contains("mobile")) return;
     const sheet = $("sidebar");
-    if (!sheet || sheet.classList.contains("m-dragging")) return;
+    if (!sheet) return;
     if ((sheet.dataset.detent || "peek") === "peek") setSheetDetent("half");
   }
 
@@ -582,96 +591,18 @@
     if (scrim) scrim.hidden = !open;
   }
 
-  /** Drag-to-resize on the sheet. Only claims presses landing in the top
-   *  strip, so the panel's own content stays scrollable everywhere else --
-   *  the grabber is a ::before pseudo-element and can't take listeners of its
-   *  own (see css/mobile.css). 48px (2026-08-26, user-reported) to exactly
-   *  match css/mobile.css's `#sidebar > *` padding-top -- that padding is
-   *  what actually keeps the tab strip's own tap targets out of this zone;
-   *  the two have to move together or a real touch can land past this JS
-   *  cutoff but still inside the tab strip's old higher position, or vice
-   *  versa. */
-  const SHEET_GRAB_ZONE_PX = 48;
-  function setupSheetDrag(sheet) {
-    let startY = 0, startTranslate = 0, translate = 0, dragging = false;
-
-    /** Current translateY in px, read off the computed matrix.
-     *
-     *  Deliberately the TRANSLATE, not the element's top. The sheet is
-     *  position:fixed;bottom:0, so its untransformed top is already partway
-     *  down the screen and `top` and `translateY` differ by that offset --
-     *  driving one from the other (the first cut of this did) puts the sheet
-     *  a sheet-height away from the finger and makes every snap decision
-     *  read the wrong detent. */
-    function currentTranslate() {
-      const m = new DOMMatrixReadOnly(getComputedStyle(sheet).transform);
-      return m.m42 || 0;
-    }
-
-    /** How far down the sheet sits at rest, in px -- i.e. translate at the
-     *  "peek" detent, which is the maximum a drag may travel. */
-    function peekTranslate() {
-      const h = sheet.getBoundingClientRect().height;
-      const peekPx = parseFloat(getComputedStyle(sheet).getPropertyValue("--m-sheet-peek")) || 0;
-      // --m-sheet-peek is authored in rem.
-      const rem = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
-      return Math.max(0, h - peekPx * rem);
-    }
-
-    sheet.addEventListener("pointerdown", (e) => {
-      const rect = sheet.getBoundingClientRect();
-      if (e.clientY - rect.top > SHEET_GRAB_ZONE_PX) return; // content, not the lip
-      dragging = true;
-      startY = e.clientY;
-      startTranslate = translate = currentTranslate();
-      sheet.classList.add("m-dragging");
-      // Capture is an optimisation (it keeps the drag alive if the finger
-      // leaves the element), never a requirement -- and it throws if the
-      // pointer isn't currently active. Never let that failure take the drag
-      // down with it.
-      try { sheet.setPointerCapture(e.pointerId); } catch (_) { /* not capturable */ }
-    });
-
-    sheet.addEventListener("pointermove", (e) => {
-      if (!dragging) return;
-      // Follow the finger 1:1, bounded by the two extreme detents so the
-      // sheet can neither be thrown off the bottom nor dragged above its
-      // full height.
-      translate = Math.max(0, Math.min(peekTranslate(), startTranslate + (e.clientY - startY)));
-      sheet.style.transform = `translateY(${translate}px)`;
-    });
-
-    function end(e) {
-      if (!dragging) return;
-      dragging = false;
-      sheet.classList.remove("m-dragging");
-
-      // Decide from the tracked translate, NOT from a fresh rect read: the
-      // moment the inline transform is cleared the sheet starts transitioning
-      // toward its detent, so measuring afterwards samples an animation
-      // already in progress and the snap chases its own tail.
-      //
-      // This settles the sheet BEFORE releasing capture, deliberately.
-      // releasePointerCapture throws when the pointer isn't currently
-      // captured -- which happens for real (the browser drops capture itself
-      // on pointercancel, and this same handler serves both events). Doing it
-      // first left the sheet stranded mid-drag with a stale inline transform
-      // and no detent update, because the throw skipped everything after it.
-      const frac = peekTranslate() > 0 ? translate / peekTranslate() : 0;
-      sheet.style.transform = "";
-      setSheetDetent(frac > 0.66 ? "peek" : frac > 0.24 ? "half" : "full");
-      try { sheet.releasePointerCapture(e.pointerId); } catch (_) { /* already released */ }
-    }
-    sheet.addEventListener("pointerup", end);
-    sheet.addEventListener("pointercancel", end);
-
-    // Tapping the lip cycles up, which is the fast path for a player who does
-    // not want to drag at all.
-    sheet.addEventListener("click", (e) => {
-      const rect = sheet.getBoundingClientRect();
-      if (e.clientY - rect.top > SHEET_GRAB_ZONE_PX) return;
-      const i = SHEET_DETENTS.indexOf(sheet.dataset.detent || "peek");
-      setSheetDetent(SHEET_DETENTS[Math.min(SHEET_DETENTS.length - 1, i + 1)]);
+  /** Shows/hides the sheet via #m-sheet-toggle-btn (2026-08-26,
+   *  user-directed): peek and full are the two states this drives. Treats
+   *  "anything more open than peek" (i.e. half too, from
+   *  revealSheetForSelection) as "open" for the purposes of the toggle --
+   *  pressing it while at half still collapses straight to peek, same as
+   *  pressing it from full. Replaces an earlier drag-to-resize gesture; see
+   *  css/mobile.css's `#sidebar` rule block for why. */
+  function setupSheetToggle() {
+    $("m-sheet-toggle-btn")?.addEventListener("click", () => {
+      const sheet = $("sidebar");
+      if (!sheet) return;
+      setSheetDetent((sheet.dataset.detent || "peek") === "peek" ? "full" : "peek");
     });
   }
 
@@ -728,8 +659,8 @@
   function setupMobileShell() {
     if (!document.body.classList.contains("mobile")) return;
 
-    const sheet = $("sidebar");
-    if (sheet) { setSheetDetent("peek"); setupSheetDrag(sheet); }
+    if ($("sidebar")) setSheetDetent("peek");
+    setupSheetToggle();
 
     // Forwards to the sidebar's own End Turn, which is re-rendered constantly
     // -- so it's looked up at tap time, never cached.
@@ -3173,6 +3104,15 @@
   let pendingPreUnitCounts = null;
 
   function finishRoundBookkeeping(victoryResult) {
+    // Collapse the mobile sheet back to peek (2026-08-26, user-reported):
+    // whatever it ended the previous turn at -- raised by a tap-to-select
+    // mid-turn, or left open by the player -- a new round should always
+    // start with the map fully visible, not however much screen the sheet
+    // happened to be covering when the player hit End Turn. Unconditional,
+    // ahead of every dialog this function might raise below, so a dialog
+    // that itself wants the sheet up (none currently do) would still win.
+    if (document.body.classList.contains("mobile")) setSheetDetent("peek");
+
     // Auto-quicksave (2026-08-26, user-directed): every 10 turns, quietly
     // -- same single localStorage slot and quickSave() function the manual
     // Quick Save button/F5 use, just silenced (no button flash, no alert on
