@@ -1936,6 +1936,12 @@ window.GameEngine = window.GameEngine || {};
     const eliminationResult = checkEliminationVictory(gameState);
     if (eliminationResult) return eliminationResult;
 
+    // "Keep Fighting!" (2026-08-26, user-directed): set once a single-player
+    // human declines a territorial win from main.js's showVictorySequence --
+    // permanently disables territorial victory for the rest of THIS game, so
+    // only Elimination (checked above) can end it from here on.
+    if (gameState.disableTerritorialVictory) return null;
+
     // Territorial victory is an ABSOLUTE tile count (2026-08-25), not a share
     // of the map -- see config.js's victory.tileTarget for why. `counts` is
     // now a plain owned-tile tally (every tile weighs 1), so this compares

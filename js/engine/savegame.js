@@ -118,5 +118,105 @@ window.GameEngine = window.GameEngine || {};
     return payload;
   }
 
-  window.GameEngine.savegame = { serialize, deserialize };
+  /**
+   * COMPRESSION  (2026-08-26, user-directed: "reduce the size of save game
+   * data in file and in browser storage")
+   * ---------------------------------------------------------------------
+   * gzip via the browser-native CompressionStream/DecompressionStream APIs
+   * (Chrome/Edge 80+, Firefox 113+, Safari 16.4+) -- no bundled library,
+   * which matters here: this project has no build step or package manager
+   * (see the local-server project memory), so anything that isn't either
+   * hand-written or a single vendored <script> is real friction. This
+   * save's JSON is heavily repetitive (thousands of near-identical tile/
+   * unit objects sharing the same keys), exactly the shape gzip is best
+   * at -- typically 5-10x smaller.
+   *
+   * CAN_COMPRESS gates every path below: a browser without these APIs
+   * (there are still a few, e.g. older Safari) falls back to the original
+   * plain-JSON behavior rather than breaking save/load entirely.
+   *
+   * File saves and localStorage need different encodings for the SAME
+   * compressed bytes -- a File download can just be the raw gzip bytes
+   * (Blob has no string constraint), but localStorage.setItem only
+   * accepts a string, so that path base64-encodes them with a "GZ1:"
+   * prefix. Either way, loading detects the format itself (gzip's own
+   * magic bytes 0x1f 0x8b for files, the "GZ1:" prefix for localStorage)
+   * rather than trusting a version field -- so an OLD save/quicksave made
+   * before this existed (plain JSON either way) still loads exactly as it
+   * always did, with no migration step and no format bump needed.
+   */
+  const CAN_COMPRESS = typeof CompressionStream !== "undefined" && typeof DecompressionStream !== "undefined";
+
+  async function gzipBytes(text) {
+    const stream = new Blob([text]).stream().pipeThrough(new CompressionStream("gzip"));
+    return new Uint8Array(await new Response(stream).arrayBuffer());
+  }
+
+  async function gunzipBytes(bytes) {
+    const stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream("gzip"));
+    return new Response(stream).text();
+  }
+
+  function looksGzipped(bytes) {
+    return bytes.length >= 2 && bytes[0] === 0x1f && bytes[1] === 0x8b;
+  }
+
+  // Chunked, not a single String.fromCharCode(...bytes) spread -- a
+  // multi-MB save's byte array would blow past the engine's max argument
+  // count for a spread call.
+  const B64_CHUNK = 0x8000;
+  function bytesToBase64(bytes) {
+    let s = "";
+    for (let i = 0; i < bytes.length; i += B64_CHUNK) {
+      s += String.fromCharCode.apply(null, bytes.subarray(i, i + B64_CHUNK));
+    }
+    return btoa(s);
+  }
+  function base64ToBytes(b64) {
+    const s = atob(b64);
+    const bytes = new Uint8Array(s.length);
+    for (let i = 0; i < s.length; i++) bytes[i] = s.charCodeAt(i);
+    return bytes;
+  }
+
+  /** File save: a Blob ready to hand to a download link. */
+  async function serializeToBlob(payload) {
+    const json = serialize(payload);
+    if (!CAN_COMPRESS) return new Blob([json], { type: "application/json" });
+    return new Blob([await gzipBytes(json)], { type: "application/gzip" });
+  }
+
+  /** File load: `buffer` is the file's raw bytes (FileReader.readAsArrayBuffer),
+   *  not text -- reading as text first would corrupt a gzip file's binary
+   *  content before this ever saw it. */
+  async function deserializeFromArrayBuffer(buffer) {
+    const bytes = new Uint8Array(buffer);
+    if (looksGzipped(bytes)) {
+      if (!CAN_COMPRESS) throw new Error("This save is compressed, but your browser doesn't support decompression.");
+      return deserialize(await gunzipBytes(bytes));
+    }
+    return deserialize(new TextDecoder().decode(bytes));
+  }
+
+  /** localStorage quicksave: a string ready for localStorage.setItem. */
+  async function serializeToLocalStorageString(payload) {
+    const json = serialize(payload);
+    if (!CAN_COMPRESS) return json;
+    return "GZ1:" + bytesToBase64(await gzipBytes(json));
+  }
+
+  /** localStorage quickload: `value` is whatever localStorage.getItem returned. */
+  async function deserializeFromLocalStorageString(value) {
+    if (value.startsWith("GZ1:")) {
+      if (!CAN_COMPRESS) throw new Error("This quicksave is compressed, but your browser doesn't support decompression.");
+      return deserialize(await gunzipBytes(base64ToBytes(value.slice(4))));
+    }
+    return deserialize(value);
+  }
+
+  window.GameEngine.savegame = {
+    serialize, deserialize,
+    serializeToBlob, deserializeFromArrayBuffer,
+    serializeToLocalStorageString, deserializeFromLocalStorageString,
+  };
 })();

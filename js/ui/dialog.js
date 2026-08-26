@@ -10,7 +10,7 @@
  *   { kind: "foundCity", x, y, suggested, onAnswer(nameOrNull) }
  *   { kind: "confirmEndTurn", items[], onAnswer(bool) }
  *   { kind: "confirm", title, text, confirmLabel, danger, onAnswer(bool) }
- *   { kind: "message", title, text, onDismiss() }
+ *   { kind: "message", title, text, onDismiss(), onKeepFighting()? }
  *   { kind: "chooseTech", title, text, options: [{id,label,description}], onAnswer(techId) }
  *   { kind: "chooseStarvationDisband", civLabel, candidates: [{label,description}], onAnswer(index) }
  *   { kind: "chooseWispDisband", civLabel, candidates: [{label,description}], onAnswer(index) }
@@ -342,11 +342,17 @@ window.UI = window.UI || {};
           <button class="menu-dropdown-btn game-dialog-primary" id="game-dialog-ok-btn">Return to Title Screen</button>
         </div>`;
     }
-    // "message" -- single-button dismiss, e.g. a victory announcement.
+    // "message" -- single-button dismiss, e.g. a victory announcement. A
+    // territorial victory in single player also carries dialog.onKeepFighting
+    // (see main.js's showVictorySequence) -- a second, non-primary button
+    // that lets the player decline the win and keep playing toward
+    // Elimination victory instead, rather than the OK button's default
+    // "accept the win" path into the stats screen.
     return `
       <h2>${escapeHtml(dialog.title || "")}</h2>
       <p>${escapeHtml(dialog.text)}</p>
       <div class="game-dialog-actions">
+        ${dialog.onKeepFighting ? `<button class="menu-dropdown-btn" id="game-dialog-keep-fighting-btn">Keep Fighting!</button>` : ""}
         <button class="menu-dropdown-btn game-dialog-primary" id="game-dialog-ok-btn">OK</button>
       </div>`;
   }

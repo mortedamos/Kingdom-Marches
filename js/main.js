@@ -860,16 +860,20 @@
       e.target.value = "";
       if (!file) return;
       const reader = new FileReader();
-      reader.onload = () => {
+      reader.onload = async () => {
         try {
-          const payload = window.GameEngine.savegame.deserialize(reader.result);
+          // See the in-game Load Game handler's own comment
+          // (handleLoadGameFile) for why this reads bytes, not text.
+          const payload = await window.GameEngine.savegame.deserializeFromArrayBuffer(reader.result);
           startGameFromSave(payload);
         } catch (err) {
           alert(`Failed to load save file: ${err.message}`);
         }
       };
-      reader.readAsText(file);
+      reader.readAsArrayBuffer(file);
     });
+    $("title-quick-load-btn")?.addEventListener("click", quickLoad);
+    updateQuickLoadButtons();
   }
 
   /** Every mute control across the app -- the title menu bar's Audio
@@ -2333,20 +2337,22 @@
     $("save-game-btn").addEventListener("click", handleSaveGame);
     $("load-game-btn").addEventListener("click", () => $("load-game-file-input").click());
     $("load-game-file-input").addEventListener("change", handleLoadGameFile);
+    $("quick-save-btn").addEventListener("click", () => quickSave());
+    $("quick-load-btn").addEventListener("click", quickLoad);
   }
 
-  function handleSaveGame() {
+  async function handleSaveGame() {
     const payload = {
       version: 1,
       savedAt: new Date().toISOString(),
       humanCivId, spectatorMode, aiDifficulty, gameSpeedPercent, aiAggressionLevelIndex,
       gameState,
     };
-    const json = window.GameEngine.savegame.serialize(payload);
-    // .kmsg extension, not .json -- the payload itself is still plain JSON text
-    // (savegame.js's serialize/deserialize are untouched), this only changes
-    // what the downloaded file is named.
-    const blob = new Blob([json], { type: "application/json" });
+    // .kmsg extension regardless of whether this browser could gzip it
+    // (savegame.js's serializeToBlob falls back to plain JSON on its own
+    // when it can't) -- loading detects the actual format from the file's
+    // own bytes, not the extension, so this name never has to change.
+    const blob = await window.GameEngine.savegame.serializeToBlob(payload);
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
@@ -2368,15 +2374,91 @@
     e.target.value = ""; // reset so re-selecting the same file still fires change
     if (!file) return;
     const reader = new FileReader();
-    reader.onload = () => {
+    reader.onload = async () => {
       try {
-        const payload = window.GameEngine.savegame.deserialize(reader.result);
+        // Raw bytes, not text -- a gzip-compressed save's binary content
+        // would be corrupted by reading it as text first (see savegame.js's
+        // deserializeFromArrayBuffer, which detects gzip vs. an OLD plain-
+        // JSON save from its own magic bytes, not the file extension).
+        const payload = await window.GameEngine.savegame.deserializeFromArrayBuffer(reader.result);
         applyLoadedPayload(payload);
       } catch (err) {
         alert(`Failed to load save file: ${err.message}`);
       }
     };
-    reader.readAsText(file);
+    reader.readAsArrayBuffer(file);
+  }
+
+  /** Quick Save / Quick Load: same payload shape and serializer as the
+   *  File > Save Game / Load Game buttons above, just to/from a single
+   *  fixed localStorage slot instead of a downloaded/picked file -- see
+   *  QUICKSAVE_KEY. */
+  const QUICKSAVE_KEY = "kingdom-marches-quicksave";
+
+  /** Enables/disables every Quick Load entry (title screen + in-game) based
+   *  on whether a quicksave currently exists -- called once at bootstrap
+   *  (setupTitleLoadGameControl) and again after every successful Quick
+   *  Save, so "nothing saved yet" reads as a disabled button rather than a
+   *  confusing alert on first click. */
+  function updateQuickLoadButtons() {
+    const has = !!localStorage.getItem(QUICKSAVE_KEY);
+    for (const id of ["quick-load-btn", "title-quick-load-btn"]) {
+      const btn = $(id);
+      if (btn) btn.disabled = !has;
+    }
+  }
+
+  /** `silent`: true for the automatic every-10-turns save (see
+   *  finishRoundBookkeeping) -- skips the button-flash confirmation
+   *  (nothing was clicked, so nothing to flash) and downgrades a quota
+   *  failure to a console.warn instead of a blocking alert() (a full quota
+   *  would otherwise re-alert the player every 10 turns forever). A
+   *  manually-triggered Quick Save (button/F5) always gets the loud,
+   *  explicit feedback since the player is waiting on it. */
+  async function quickSave({ silent = false } = {}) {
+    if (!gameState) return;
+    const payload = {
+      version: 1, savedAt: new Date().toISOString(),
+      humanCivId, spectatorMode, aiDifficulty, gameSpeedPercent, aiAggressionLevelIndex,
+      gameState,
+    };
+    try {
+      // serializeToLocalStorageString stringifies `payload` synchronously
+      // before its own async gzip step, so this snapshot is safe even
+      // though gameState itself keeps mutating (redraw, AI turns, etc.)
+      // while the await below is in flight.
+      const value = await window.GameEngine.savegame.serializeToLocalStorageString(payload);
+      localStorage.setItem(QUICKSAVE_KEY, value);
+    } catch (err) {
+      if (silent) console.warn(`Auto-quicksave failed: ${err.message}`);
+      else alert(`Quick Save failed (likely out of browser storage space): ${err.message}`);
+      return;
+    }
+    updateQuickLoadButtons();
+    if (silent) return;
+    const label = $("quick-save-btn-label");
+    if (label) {
+      const original = label.textContent;
+      label.textContent = "Saved ✓";
+      setTimeout(() => { label.textContent = original; }, 1200);
+    }
+  }
+
+  /** Same dual-context branch File > Load Game already needs two SEPARATE
+   *  handlers for (title screen vs. in-game, see setupTitleLoadGameControl's
+   *  own doc comment) -- one function here instead, since there's no file
+   *  input/FileReader step to duplicate: gameState existing (or not) is
+   *  enough to tell which context this call landed in. */
+  async function quickLoad() {
+    const value = localStorage.getItem(QUICKSAVE_KEY);
+    if (!value) { alert("No quicksave found."); return; }
+    try {
+      const payload = await window.GameEngine.savegame.deserializeFromLocalStorageString(value);
+      if (gameState) applyLoadedPayload(payload);
+      else startGameFromSave(payload);
+    } catch (err) {
+      alert(`Failed to load quicksave: ${err.message}`);
+    }
   }
 
   /**
@@ -2749,6 +2831,25 @@
         return;
       }
 
+      // F5/F9: Quick Save/Quick Load (see quickSave/quickLoad above).
+      // Checked here, before the gameState/humanCivId gate below, because
+      // Quick Load must also work from the title screen (no game running
+      // yet) -- same reasoning as M/Enter above. Quick Save has no title-
+      // screen equivalent (nothing to save yet), so it stays gated on
+      // gameState existing.
+      if (e.key === "F5") {
+        e.preventDefault(); // stop the browser's own page reload
+        if (e.repeat || anyOverlayOpen() || !gameState) return;
+        quickSave();
+        return;
+      }
+      if (e.key === "F9") {
+        e.preventDefault();
+        if (e.repeat || anyOverlayOpen()) return;
+        quickLoad();
+        return;
+      }
+
       if (!gameState || !viewState || !humanCivId || anyOverlayOpen()) return;
 
       const key = e.key.toLowerCase();
@@ -2905,6 +3006,14 @@
   let pendingPreUnitCounts = null;
 
   function finishRoundBookkeeping(victoryResult) {
+    // Auto-quicksave (2026-08-26, user-directed): every 10 turns, quietly
+    // -- same single localStorage slot and quickSave() function the manual
+    // Quick Save button/F5 use, just silenced (no button flash, no alert on
+    // a quota failure) since nothing was clicked. turns.js's endRound has
+    // already incremented gameState.turnNumber by the time this fires (see
+    // advanceOneUnitStep's roundComplete check, this function's only caller).
+    if (gameState.turnNumber % 10 === 0) quickSave({ silent: true });
+
     // A leftover gameState.immediateVictoryResult (see checkImmediateVictory)
     // from earlier this same round, never consumed because some OTHER
     // dialog kept occupying viewState.dialog's one slot every redraw() until
@@ -2978,7 +3087,7 @@
       const text = victoryResult.type === "elimination"
         ? `${victoryResult.winner} has conquered all rivals!`
         : `${victoryResult.winner} has achieved territorial dominance! (${(victoryResult.share * 100).toFixed(0)}% of the map)`;
-      showVictorySequence(victoryResult.winner, text);
+      showVictorySequence(victoryResult.winner, text, victoryResult.type);
     }
   }
 
@@ -2994,7 +3103,7 @@
    *  the stats screen -- there's no explicit stop call anywhere in this
    *  chain because the only way out is Return to Title, a full page
    *  reload (handleReturnToTitle), which tears down everything for free. */
-  function showVictorySequence(winnerCivId, text) {
+  function showVictorySequence(winnerCivId, text, victoryType) {
     clearInterval(autoplayTimer);
     // Switches music to the winning race's victory theme --
     // <race>_victory_#.mp3, falls back to that race's
@@ -3004,6 +3113,17 @@
     announceEliminationsThen(() => {
       viewState.dialog = {
         kind: "message", title: "Victory!", text,
+        // "Keep Fighting!" (2026-08-26, user-directed): only a territorial
+        // win can be declined -- an Elimination win has nothing left to
+        // keep fighting FOR (every rival is already gone), and All-AI
+        // Spectator has no human stake to opt out on anyone's behalf.
+        // Permanently disables territorial victory for the rest of THIS
+        // game (gameState.disableTerritorialVictory, read by turns.js's
+        // checkVictory) -- only Elimination can end it from here on.
+        onKeepFighting: (victoryType === "territory" && !spectatorMode) ? () => {
+          gameState.disableTerritorialVictory = true;
+          window.UI.fireworks.stop();
+        } : undefined,
         onDismiss: () => openVictoryStatsDialog(winnerCivId),
       };
       redraw();
@@ -3160,7 +3280,7 @@
       // victory branch uses ("HUMAN has conquered all rivals!", not the
       // prettier race label) -- this is that exact same message, just shown
       // sooner, so it should read identically either way it gets triggered.
-      showVictorySequence(victoryResult.winner, `${victoryResult.winner} has conquered all rivals!`);
+      showVictorySequence(victoryResult.winner, `${victoryResult.winner} has conquered all rivals!`, "elimination");
     }
   }
 
@@ -3614,6 +3734,11 @@
   // didn't ask to look) or to the post-hoc notice (that attack already
   // happened -- see its own offerAttackNotice call, which passes no delay).
   const ATTACK_NOTICE_GO_TO_DELAY_MS = 1000;
+  // "X Kingdom Taking Its Turn..." banner pause, single player only -- see
+  // advanceTurn's processBatch. All-AI Spectator keeps its own much
+  // shorter, hardcoded 260ms cycle instead (that mode's whole appeal is
+  // watching civs cycle fast).
+  const TURN_BANNER_PAUSE_MS = 2000;
   // Post-attack pause (2026-08-19, user-directed): separate from the delay
   // above, which only ever ran BEFORE the hit landed (letting the camera
   // settle on "Go To", nothing at all on "Skip"). Once an AI attack against
@@ -3819,7 +3944,13 @@
       const race = window.GameData.getRace(civ.raceId);
       viewState.turnBanner = `${race.label} Kingdom Taking Its Turn...`;
       redraw();
-      setTimeout(processBatch, 260);
+      // Single player (2026-08-26, user-directed): long enough to actually
+      // read the banner before it's overwritten by the next civ's. All-AI
+      // Spectator keeps the original quick cycle -- that mode's whole
+      // appeal is watching many civs cycle fast, even faster still at the
+      // Speed menu's higher multipliers, and a forced 2s-per-civ floor
+      // would fight that at every setting.
+      setTimeout(processBatch, spectatorMode ? 260 : TURN_BANNER_PAUSE_MS);
     }
     processBatch();
   }
@@ -4398,6 +4529,17 @@
         viewState.dialog = null;
         lastRenderedDialog = null;
         if (dialog.onDismiss) dialog.onDismiss();
+        redraw();
+      };
+      // "Keep Fighting!" (see dialog.js's own doc comment) -- deliberately
+      // does NOT also call dialog.onDismiss: declining the win skips the
+      // victory stats screen that OK leads into and drops straight back
+      // into ordinary play.
+      const keepFightingBtn = $("game-dialog-keep-fighting-btn");
+      if (keepFightingBtn) keepFightingBtn.onclick = () => {
+        viewState.dialog = null;
+        lastRenderedDialog = null;
+        dialog.onKeepFighting();
         redraw();
       };
     } else if (dialog.kind === "gameOver" || dialog.kind === "victoryStats") {
