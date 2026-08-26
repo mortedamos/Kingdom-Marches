@@ -1,8 +1,36 @@
 /**
  * INPUT HANDLER
  * -------------
- * Mouse interactions on the map canvas: click to select a tile, drag to pan.
+ * Pointer interactions on the map canvas: tap/click to select a tile, drag to
+ * pan, pinch or wheel to zoom, long-press or right-click for the radial menu.
  * Also the human-player city naming prompt (per the city naming addendum §1).
+ *
+ * POINTER EVENTS, NOT MOUSE EVENTS  (2026-08-25, mobile phase 0)
+ * -------------------------------------------
+ * This module used to bind mousedown/mousemove/mouseup/click/contextmenu, so
+ * on a touch device the whole game ran on the browser's synthesized-mouse
+ * emulation: a tap and a drag worked, and nothing else did -- no pinch, no
+ * long-press, no multi-touch at all.
+ *
+ * The fix is deliberately NOT "add touchstart handlers alongside the mouse
+ * ones". That gives two input paths that have to be kept in agreement
+ * forever, plus a double-fire problem, since mobile browsers synthesize a
+ * full mouse sequence after every touch sequence. Instead everything routes
+ * through Pointer Events, which unify mouse, touch and pen into one stream
+ * (e.pointerType says which) -- so there is exactly one drag implementation,
+ * one tap implementation, and touch support is a property of the model
+ * rather than a parallel copy of it.
+ *
+ * Consequences worth knowing:
+ *  - Tap/click is resolved on `pointerup`, not via a `click` listener. Both
+ *    would fire for a mouse, so the `click` binding is gone entirely.
+ *  - The canvas needs `touch-action: none` in CSS or the browser eats pans
+ *    for its own scrolling and pinches for page zoom before we ever see them.
+ *  - Hover (viewState.hoverTile) is gated on pointerType === "mouse". A
+ *    touch device cannot hover, and letting a tap set a hover tile leaves a
+ *    stale path preview stuck on the map after the finger lifts.
+ *  - Right-click and long-press both open the radial menu through the same
+ *    openRingMenu() call, so the two entry points can't drift apart.
  *
  * SELECTION MODEL
  * -------------------------------------------
@@ -38,24 +66,198 @@
 window.UI = window.UI || {};
 
 (function () {
-  function attach(canvas, gameState, viewState, onChange) {
-    let dragging = false;
-    let dragStartX = 0, dragStartY = 0;
-    let dragMoved = false;
+  /** Travel (px) a press may drift and still count as a tap rather than a
+   *  drag. 4 was fine for a mouse; a finger always wobbles a few px on the
+   *  way back up, so tapping a unit on a phone at that threshold registers
+   *  as a 1px pan and selects nothing. */
+  const TAP_SLOP = 10;
 
-    canvas.addEventListener("mousedown", (e) => {
+  /** Hold (ms) before a press becomes a radial-menu open. 350 is the usual
+   *  platform long-press: short enough not to feel stuck, long enough that
+   *  the start of a pan doesn't trip it. */
+  const LONG_PRESS_MS = 350;
+
+  function attach(canvas, gameState, viewState, onChange) {
+    // Live pointers by id. Size tells us the gesture: 1 = pan/tap/long-press,
+    // 2 = pinch. Anything more is ignored rather than guessed at.
+    const pointers = new Map();
+    let dragging = false;
+    let dragMoved = false;
+    let dragStartX = 0, dragStartY = 0;
+    let longPressTimer = null;
+    let longPressFired = false;
+    let pinchDist = 0;
+
+    // RING-DRAG (2026-08-26, mobile phase 3): once a long-press opens the
+    // ring, the SAME finger stays down and can slide across the pills to
+    // preview each one before committing on release -- long-press, slide,
+    // lift, one continuous gesture. See css/mobile.css's
+    // .map-ring-item-armed for the visual half of this.
+    //
+    // ringDragPointerId is the touch that opened the ring, or null when no
+    // ring-drag is in progress. armedPill is whichever .map-ring-item is
+    // currently under that finger, or null over empty space/the subject.
+    //
+    // This works entirely through hit-testing (document.elementFromPoint),
+    // NOT through real pointer events landing on the buttons. Pointer
+    // capture was taken on the CANVAS at pointerdown (see below) and stays
+    // there for this pointerId's whole lifetime, so every move/up for it
+    // keeps arriving here even once the finger is physically over a pill --
+    // the buttons never see a hover or a click of their own. Commit is done
+    // by calling the armed button's OWN .click() at release, which runs
+    // through the exact same onclick main.js's renderRingMenu already wired
+    // up -- no second dispatch path to keep in sync with a mouse click.
+    let ringDragPointerId = null;
+    let armedPill = null;
+
+    function disarmRingPill() {
+      if (armedPill) armedPill.classList.remove("map-ring-item-armed");
+      armedPill = null;
+    }
+
+    function cancelLongPress() {
+      if (longPressTimer !== null) { clearTimeout(longPressTimer); longPressTimer = null; }
+    }
+
+    /** Zoom by `factor` about a point in canvas-local px, holding the world
+     *  position under that point fixed. Shared by wheel and pinch so the two
+     *  can't develop different anchoring behavior. */
+    function zoomAbout(localX, localY, factor) {
+      const { MIN_ZOOM, MAX_ZOOM } = window.UI.render;
+      const oldZoom = viewState.zoomLevel || 1;
+      const newZoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, oldZoom * factor));
+      if (newZoom === oldZoom) return;
+      const scrollX = viewState.scrollX || 0;
+      const scrollY = viewState.scrollY || 0;
+      viewState.scrollX = (localX + scrollX) * (newZoom / oldZoom) - localX;
+      viewState.scrollY = (localY + scrollY) * (newZoom / oldZoom) - localY;
+      viewState.zoomLevel = newZoom;
+    }
+
+    function pinchGeometry() {
+      const [a, b] = [...pointers.values()];
+      const rect = canvas.getBoundingClientRect();
+      return {
+        dist: Math.hypot(a.x - b.x, a.y - b.y),
+        cx: (a.x + b.x) / 2 - rect.left,
+        cy: (a.y + b.y) / 2 - rect.top,
+      };
+    }
+
+    canvas.addEventListener("pointerdown", (e) => {
+      pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+
+      if (pointers.size === 2) {
+        // Second finger down: this is a pinch, not a pan. Abandon the drag
+        // in progress and mark it moved so the eventual pointerup can't be
+        // mistaken for a tap on whatever was under the first finger.
+        cancelLongPress();
+        dragging = false;
+        dragMoved = true;
+        pinchDist = pinchGeometry().dist;
+        // A second finger landing mid ring-drag is not a gesture this
+        // supports -- abandon the arm-preview rather than let two unrelated
+        // gestures fight over the same pointer bookkeeping. The ring itself
+        // (viewState.ringMenu) is untouched, so it's still open and tappable
+        // normally once both fingers lift.
+        ringDragPointerId = null;
+        disarmRingPill();
+        return;
+      }
+      if (pointers.size > 2) { cancelLongPress(); return; }
+
+      // Right mouse button is the desktop radial-menu gesture and is handled
+      // by the contextmenu listener below -- starting a pan on it would drag
+      // the map out from under the menu that's about to open.
+      if (e.pointerType === "mouse" && e.button === 2) return;
+
+      // Capture keeps a pan alive if the finger slides off the canvas, but it
+      // throws when the pointer isn't active -- never let that abort the
+      // gesture setup that follows.
+      try { canvas.setPointerCapture(e.pointerId); } catch (_) { /* not capturable */ }
       dragging = true;
       dragMoved = false;
+      longPressFired = false;
       dragStartX = e.clientX;
       dragStartY = e.clientY;
       canvas.style.cursor = "grabbing";
+
+      // Long-press -> radial menu. Touch and pen only: a mouse already has
+      // right-click, and a held left button there means a slow drag.
+      if (e.pointerType !== "mouse") {
+        const downX = e.clientX, downY = e.clientY;
+        cancelLongPress();
+        longPressTimer = window.setTimeout(() => {
+          longPressTimer = null;
+          if (dragMoved || pointers.size !== 1) return;
+          longPressFired = true;
+          dragging = false;
+          const rect = canvas.getBoundingClientRect();
+          const tilePos = window.UI.render.screenToTile(
+            downX - rect.left, downY - rect.top, viewState, gameState.map);
+          if (!tilePos) return;
+          // A short tick confirms the hold registered, so the player isn't
+          // left guessing whether to keep waiting. Deliberately one pulse --
+          // never a repeating pattern (see the project's no-flashing rule,
+          // which applies to haptics for the same reason it applies to light).
+          navigator.vibrate?.(10);
+          openRingMenu(tilePos, gameState, viewState, onChange);
+          // Begin ring-drag tracking for this SAME finger, which is still
+          // down -- but only if a ring genuinely opened. An empty option
+          // list leaves viewState.ringMenu untouched (openRingMenu's own
+          // early return), and there is nothing to drag across in that case.
+          if (viewState.ringMenu) ringDragPointerId = e.pointerId;
+        }, LONG_PRESS_MS);
+      }
     });
 
-    window.addEventListener("mousemove", (e) => {
+    window.addEventListener("pointermove", (e) => {
+      const p = pointers.get(e.pointerId);
+      if (!p) return;
+      p.x = e.clientX; p.y = e.clientY;
+
+      if (pointers.size === 2) {
+        const { dist, cx, cy } = pinchGeometry();
+        if (pinchDist > 0 && dist > 0) zoomAbout(cx, cy, dist / pinchDist);
+        pinchDist = dist;
+        onChange();
+        return;
+      }
+
+      if (e.pointerId === ringDragPointerId) {
+        // Hit-test by SCREEN POSITION, not by which element actually
+        // received the event -- capture means this pointer's events all
+        // still target the canvas, never the pill physically under it.
+        const el = document.elementFromPoint(e.clientX, e.clientY);
+        const pill = el && el.closest(".map-ring-item");
+        if (pill !== armedPill) {
+          disarmRingPill();
+          if (pill) {
+            pill.classList.add("map-ring-item-armed");
+            armedPill = pill;
+            // Tick only when LANDING on a pill, not when leaving one for
+            // empty space -- losing the arm should feel like nothing
+            // happened, not like a second, different event.
+            navigator.vibrate?.(10);
+          }
+        }
+        // Deliberately no onChange() here -- this only toggles a CSS class
+        // on an existing button, not game or view state, so there is
+        // nothing for a redraw to pick up. Skipping it also means
+        // renderRingMenu never re-runs mid-gesture, which is what keeps
+        // `armedPill` a stable reference for the whole drag (see this
+        // function's own header comment).
+        return;
+      }
+
       if (!dragging) return;
       const dx = e.clientX - dragStartX;
       const dy = e.clientY - dragStartY;
-      if (Math.abs(dx) + Math.abs(dy) > 4) dragMoved = true;
+      if (!dragMoved && Math.abs(dx) + Math.abs(dy) > TAP_SLOP) {
+        dragMoved = true;
+        cancelLongPress(); // the press became a pan; it is no longer a hold
+      }
+      if (!dragMoved) return; // inside the slop: don't nudge the map at all
       viewState.scrollX = (viewState.scrollX || 0) - dx;
       viewState.scrollY = (viewState.scrollY || 0) - dy;
       dragStartX = e.clientX;
@@ -63,10 +265,80 @@ window.UI = window.UI || {};
       onChange();
     });
 
-    window.addEventListener("mouseup", () => {
+    function endPointer(e) {
+      const had = pointers.delete(e.pointerId);
+      if (!had) return;
+      cancelLongPress();
+      // Throws when the pointer isn't captured -- which genuinely happens,
+      // since this handler also serves pointercancel, where the browser has
+      // already dropped capture itself. Unguarded, that throw would skip the
+      // tap resolution below and swallow the selection.
+      try { canvas.releasePointerCapture(e.pointerId); } catch (_) { /* already released */ }
+
+      if (e.pointerId === ringDragPointerId) {
+        ringDragPointerId = null;
+        const pill = armedPill;
+        disarmRingPill();
+        if (pill) {
+          // Runs through the exact click handler main.js's renderRingMenu
+          // bound to this button -- see this module's header comment on why
+          // that's the whole point of driving this by hit-testing rather
+          // than by reimplementing dispatch here.
+          pill.click();
+        } else {
+          // Lifted over empty space or back over the subject: cancel. A
+          // finger that has left the glass can never supply the tap this
+          // ring is otherwise waiting for, so leaving it open would strand
+          // it until the player's next unrelated tap dismissed it by
+          // accident.
+          viewState.ringMenu = null;
+          onChange();
+        }
+        return;
+      }
+
+      if (pointers.size === 1) {
+        // Came out of a pinch with one finger still down. Re-anchor the pan
+        // to where THAT finger is now, or the map jumps by the gap between
+        // them on the next move.
+        const [rest] = [...pointers.values()];
+        dragStartX = rest.x; dragStartY = rest.y;
+        dragging = true;
+        dragMoved = true;  // still not a tap
+        pinchDist = 0;
+        return;
+      }
+      if (pointers.size > 0) return;
+
+      const wasDragging = dragging;
       dragging = false;
+      pinchDist = 0;
       canvas.style.cursor = "grab";
-    });
+
+      // A tap is a press that neither travelled nor became a hold. Resolved
+      // here rather than in a `click` listener so mouse and touch share one
+      // path -- see this module's header.
+      if (!wasDragging || dragMoved || longPressFired) return;
+      if (e.pointerType === "mouse" && e.button === 2) return;
+      const tilePos = eventTile(e, canvas, viewState, gameState);
+      if (!tilePos) return;
+
+      // Structure-placement mode swallows the tap: while the player is
+      // picking a tile for a queued building, a tap means "put it here", not
+      // "inspect this tile". Tapping outside the highlighted slots cancels,
+      // which is the conventional escape from a modal cursor.
+      if (viewState.placement) {
+        const slot = viewState.placement.slots.find((s) => s.x === tilePos.x && s.y === tilePos.y);
+        if (viewState.placement.onPick) viewState.placement.onPick(slot || null);
+        onChange();
+        return;
+      }
+      handleTileClick(tilePos, gameState, viewState);
+      onChange();
+    }
+
+    window.addEventListener("pointerup", endPointer);
+    window.addEventListener("pointercancel", endPointer);
 
     // Scroll wheel: bare wheel zooms toward the cursor, matching every
     // other strategy game's convention (GameConfig.view.wheelZooms, default
@@ -121,81 +393,17 @@ window.UI = window.UI || {};
       onChange();
     }, { passive: false });
 
-    canvas.addEventListener("click", (e) => {
-      if (dragMoved) return; // suppress click after drag
-      const tilePos = eventTile(e, canvas, viewState, gameState);
-      if (!tilePos) return;
-      // Structure-placement mode swallows the click: while the player is
-      // picking a tile for a queued building, a left-click means "put it
-      // here", not "inspect this tile". Clicking outside the highlighted
-      // slots cancels, which is the conventional escape from a modal cursor.
-      if (viewState.placement) {
-        const slot = viewState.placement.slots.find((s) => s.x === tilePos.x && s.y === tilePos.y);
-        if (viewState.placement.onPick) viewState.placement.onPick(slot || null);
-        onChange();
-        return;
-      }
-      handleTileClick(tilePos, gameState, viewState);
-      onChange();
-    });
-
-    // RADIAL MENU: every right-click opens a ring of context-relevant
-    // actions AROUND the clicked tile (see orders.js's
-    // contextMenuOptions for what's offered and why, js/ui/ringmenu.js for
-    // the geometry, main.js's redraw()/handleContextMenuAction for how it's
-    // rendered and dispatched) -- this handler only decides WHERE the
-    // player clicked and stores that, same "decide where, not what" split
-    // the old handler had.
-    //
-    // No screenX/screenY any more: the ring anchors to the TILE, so the
-    // cursor's own position stops being part of the model (and with it goes
-    // the old menu's hardcoded width/height clamp estimates).
+    // Desktop entry point to the radial menu. Touch reaches the same
+    // openRingMenu() via the long-press timer in pointerdown above.
+    // preventDefault always, even on a no-op -- and note this also suppresses
+    // the browser's OWN long-press context menu on mobile, which would
+    // otherwise race ours.
     canvas.addEventListener("contextmenu", (e) => {
-      e.preventDefault(); // suppress the browser menu, always -- even on a no-op
+      e.preventDefault();
       if (dragMoved) return;
       const tilePos = eventTile(e, canvas, viewState, gameState);
       if (!tilePos) return;
-      const orders = window.GameEngine.orders;
-
-      // Structure placement is a modal cursor that swallows left-clicks (see
-      // the click handler above), so right-click is the conventional escape
-      // from it rather than yet another way to open a menu.
-      if (viewState.placement) {
-        if (viewState.placement.onPick) viewState.placement.onPick(null);
-        onChange();
-        return;
-      }
-
-      let res = orders.mapMenuOptions(gameState, viewState, tilePos.x, tilePos.y, viewState.humanCivId);
-      // Retarget BEFORE committing to an option list: the subject is on the
-      // clicked tile (one of the player's own units, or a city with nothing
-      // selected), so selection follows the ring and the sidebar stays in
-      // agreement with it. Forcing the tab matters -- handleTileClick carries
-      // the previously-active tab KIND forward, so arriving from a Terrain
-      // tab would otherwise leave the sidebar showing terrain while the ring
-      // talks about a unit. Same follow-up main.js's Next Unit cycler does.
-      if (res.retarget) {
-        handleTileClick(tilePos, gameState, viewState);
-        const sel = viewState.selection;
-        if (sel) {
-          const wanted = res.subject === "city" ? "city" : "unit";
-          const idx = sel.tabs.findIndex((t) => t.kind === wanted);
-          if (idx >= 0) setActiveTab(gameState, viewState, idx);
-        }
-        // Re-derive against the new selection -- the previous list was built
-        // for whatever happened to be selected a moment ago.
-        res = orders.mapMenuOptions(gameState, viewState, tilePos.x, tilePos.y, viewState.humanCivId);
-      }
-
-      if (!res.options.length) {
-        onChange();
-        return;
-      }
-      viewState.ringMenu = { x: tilePos.x, y: tilePos.y, subject: res.subject, page: null };
-      // Aiming is over -- the player is reading the ring now, not the map.
-      // See the hover handler below for why this matters beyond cosmetics.
-      viewState.hoverTile = null;
-      onChange();
+      openRingMenu(tilePos, gameState, viewState, onChange);
     });
 
     // Hover tile drives the path preview and the move/attack cursor. Tracked
@@ -209,7 +417,12 @@ window.UI = window.UI || {};
     // would be rebuilt several times mid-travel, which is exactly the
     // "control swapped out from under the click" failure main.js's
     // hasFocusedControlIn comment documents for the report dropdowns.
-    canvas.addEventListener("mousemove", (e) => {
+    // MOUSE ONLY. A touch device has no hover state, and a finger dragging
+    // across the map would otherwise leave a path preview and attack reticle
+    // painted under wherever it happened to lift. On touch the SELECTED tile
+    // carries that role instead.
+    canvas.addEventListener("pointermove", (e) => {
+      if (e.pointerType !== "mouse") return;
       if (dragging) return; // panning, not aiming
       if (viewState.ringMenu) return;
       const tilePos = eventTile(e, canvas, viewState, gameState);
@@ -223,9 +436,64 @@ window.UI = window.UI || {};
         onChange();
       }
     });
-    canvas.addEventListener("mouseleave", () => {
+    canvas.addEventListener("pointerleave", (e) => {
+      if (e.pointerType !== "mouse") return;
       if (viewState.hoverTile) { viewState.hoverTile = null; onChange(); }
     });
+  }
+
+  /** RADIAL MENU: opens a ring of context-relevant actions AROUND a tile (see
+   *  orders.js's contextMenuOptions for what's offered and why,
+   *  js/ui/ringmenu.js for the geometry, main.js's redraw()/
+   *  handleContextMenuAction for how it's rendered and dispatched). This only
+   *  decides WHERE, never what -- same "decide where, not what" split the
+   *  original right-click handler had.
+   *
+   *  The ring anchors to the TILE, not to the cursor, so there is no
+   *  screen-position argument at all. That is also what lets a long-press
+   *  reuse this untouched: a finger has no cursor to anchor to. */
+  function openRingMenu(tilePos, gameState, viewState, onChange) {
+    const orders = window.GameEngine.orders;
+
+    // Structure placement is a modal cursor that swallows taps (see the tap
+    // branch in endPointer), so the ring gesture is the conventional escape
+    // from it rather than yet another way to open a menu.
+    if (viewState.placement) {
+      if (viewState.placement.onPick) viewState.placement.onPick(null);
+      onChange();
+      return;
+    }
+
+    let res = orders.mapMenuOptions(gameState, viewState, tilePos.x, tilePos.y, viewState.humanCivId);
+    // Retarget BEFORE committing to an option list: the subject is on the
+    // clicked tile (one of the player's own units, or a city with nothing
+    // selected), so selection follows the ring and the sidebar stays in
+    // agreement with it. Forcing the tab matters -- handleTileClick carries
+    // the previously-active tab KIND forward, so arriving from a Terrain tab
+    // would otherwise leave the sidebar showing terrain while the ring talks
+    // about a unit. Same follow-up main.js's Next Unit cycler does.
+    if (res.retarget) {
+      handleTileClick(tilePos, gameState, viewState);
+      const sel = viewState.selection;
+      if (sel) {
+        const wanted = res.subject === "city" ? "city" : "unit";
+        const idx = sel.tabs.findIndex((t) => t.kind === wanted);
+        if (idx >= 0) setActiveTab(gameState, viewState, idx);
+      }
+      // Re-derive against the new selection -- the previous list was built
+      // for whatever happened to be selected a moment ago.
+      res = orders.mapMenuOptions(gameState, viewState, tilePos.x, tilePos.y, viewState.humanCivId);
+    }
+
+    if (!res.options.length) {
+      onChange();
+      return;
+    }
+    viewState.ringMenu = { x: tilePos.x, y: tilePos.y, subject: res.subject, page: null };
+    // Aiming is over -- the player is reading the ring now, not the map. See
+    // the hover handler for why this matters beyond cosmetics.
+    viewState.hoverTile = null;
+    onChange();
   }
 
   /** Screen coords of a mouse event -> tile coords, or null if off-map. */
@@ -276,6 +544,14 @@ window.UI = window.UI || {};
       const civ = gameState.civs[unit.civId];
       if (civ) window.SfxSystem.playAction(civ.raceId, unit.typeId, "move");
     }
+
+    // Optional post-selection hook. The mobile shell uses it to raise the
+    // bottom sheet, so that picking something up and seeing its panel are one
+    // gesture rather than a tap followed by a separate drag (main.js's
+    // revealSheetForSelection). An explicit hook rather than a listener on
+    // the canvas because selection is decided HERE -- a bystander would have
+    // to guess at handler ordering to know it had happened. Unset on desktop.
+    window.UI.input.onTileSelected?.(viewState, gameState);
   }
 
   /** Rebuilds viewState.selection.tabs from live game state and re-resolves

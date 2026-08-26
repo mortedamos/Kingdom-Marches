@@ -316,7 +316,10 @@ window.UI = window.UI || {};
     if (!canvas || !clouds.length) return;
     const ctx = canvas.getContext("2d");
     const cfg = CFG();
-    const w = canvas.width, h = canvas.height;
+    // CSS pixels, not the DPR-scaled buffer: this context is pre-scaled by
+    // main.js's resizeMapCanvas, so drifting clouds are positioned in the
+    // same coordinate space the map underneath uses.
+    const w = canvas.__cssW || canvas.width, h = canvas.__cssH || canvas.height;
     if (!w || !h) return;
 
     // --- advance drift ------------------------------------------------

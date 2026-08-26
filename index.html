@@ -2,9 +2,30 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<!-- viewport-fit=cover lets the page paint under a notch and the home
+     indicator, which is what makes env(safe-area-inset-*) resolve to real
+     values instead of 0 (see css/mobile.css). maximum-scale/user-scalable
+     stop the browser's own pinch-zoom and double-tap-zoom from fighting the
+     map's -- the canvas has touch-action:none, but these gestures can still
+     start on the surrounding chrome. -->
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, user-scalable=no">
+<!-- Fullscreen, no browser chrome, when installed to the home screen. -->
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Kingdom Marches">
+<!-- Matches manifest.json's background_color/theme_color -- the color a
+     mobile browser paints its own address-bar chrome and the OS splash
+     screen while the page is loading, before any CSS has had a chance to
+     run. A mismatch here reads as a flash of the wrong color at launch. -->
+<meta name="theme-color" content="#14161b">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="assets/img/icon-192.png">
 <title>Kingdom Marches</title>
 <link rel="stylesheet" href="css/style.css">
+<!-- Loaded always; every rule inside is scoped to body.mobile and is inert
+     until main.js's detectMobile() adds that class. -->
+<link rel="stylesheet" href="css/mobile.css">
 </head>
 <body>
 
@@ -307,6 +328,46 @@
         <div id="map-context-menu-root"></div>
       </div>
       <div id="sidebar" class="sidebar"></div>
+
+      <!-- MOBILE CHROME (2026-08-25, mobile phase 1) -- display:none on
+           desktop, shown only under body.mobile (see css/mobile.css).
+           Deliberately OUTSIDE #sidebar and .menu-bar: sidebar.js replaces
+           its container's innerHTML on every redraw, so anything living in
+           there would be destroyed several times a second. These are
+           siblings, wired once at startup by main.js's setupMobileShell().
+
+           None of them own any game logic. The FAB forwards its tap to the
+           real #end-turn-btn the sidebar renders, and the hamburger toggles
+           the existing .menu-bar rather than reimplementing it -- so every
+           handler main.js already binds by id keeps working untouched. -->
+      <button id="m-menu-btn" class="m-menu-btn" aria-label="Menu" aria-expanded="false">
+        <span class="m-menu-bars" aria-hidden="true"></span>
+      </button>
+      <div id="m-status" class="m-status" role="status">
+        <span class="m-status-turn" id="m-status-turn">—</span>
+        <span class="m-status-res" id="m-status-res"></span>
+      </div>
+      <button id="m-endturn-fab" class="m-fab" aria-label="End turn">
+        <span class="m-fab-label">End<br>Turn</span>
+        <span class="m-fab-badge" id="m-fab-badge" hidden></span>
+      </button>
+      <div id="m-scrim" class="m-scrim" hidden></div>
+
+      <!-- Landscape nudge (mobile phase 4). manifest.json's
+           orientation:"portrait-primary" already asks Android/Chrome to
+           lock orientation for an INSTALLED app, but that hint has no
+           effect at all for the far more common case of someone just
+           opening this in a normal mobile browser tab -- there is no
+           landscape layout yet (user-directed: phones, portrait, for now),
+           so this is the fallback for that case. Dismissible per rotation,
+           not permanently: rotating back to portrait re-arms it, since the
+           point is a reminder, not a one-time notice that a player could
+           dismiss once and then be stuck against for good. -->
+      <div id="m-rotate-notice" class="m-rotate-notice">
+        <div class="m-rotate-icon" aria-hidden="true">⟳</div>
+        <p>Kingdom Marches is built for portrait play. Rotate your device for the full layout.</p>
+        <button id="m-rotate-dismiss" class="m-rotate-dismiss">Continue Anyway</button>
+      </div>
     </div>
     <div id="techtree-overlay" class="techtree-overlay" style="display:none;">
       <div id="techtree-modal" class="techtree-modal">

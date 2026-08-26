@@ -1,0 +1,15 @@
+{
+  "name": "Kingdom Marches",
+  "short_name": "Kingdom Marches",
+  "description": "A turn-based 4X strategy game of kingdoms, tech, and territory.",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#14161b",
+  "theme_color": "#14161b",
+  "orientation": "portrait-primary",
+  "icons": [
+    { "src": "assets/img/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "assets/img/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" }
+  ]
+}

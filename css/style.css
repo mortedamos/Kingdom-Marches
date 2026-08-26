@@ -233,7 +233,13 @@ html, body {
   display: flex;
   flex-direction: column;
   width: 100%;
+  /* 100vh on a mobile browser means the viewport WITH the address bar and
+     toolbar counted in, even while they're on screen -- so the bottom of the
+     UI sits underneath them until the user scrolls. 100dvh tracks the chrome
+     as it slides in and out. vh first as the fallback for anything that
+     doesn't know dvh; the dvh line simply wins where it's supported. */
   height: 100vh;
+  height: 100dvh;
 }
 /* Body row (map + sidebar), below the top menu bar -- same two-region split
    as before, just no longer the full-height flex row itself. min-height: 0
@@ -254,6 +260,11 @@ html, body {
   height: 100%;
   display: block;
   cursor: grab;
+  /* Without this the browser claims touch gestures before input.js ever sees
+     them: a one-finger drag becomes page scroll and a pinch becomes page
+     zoom, so panning and zooming the MAP would be impossible on a phone.
+     Pointer events still arrive; we just get to decide what they mean. */
+  touch-action: none;
 }
 /* Drifting cloud layer (2026-08-06, user-directed) -- purely cosmetic
    atmosphere floating above the map. pointer-events:none so it can never

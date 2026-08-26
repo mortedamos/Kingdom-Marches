@@ -1,0 +1,746 @@
+/**
+ * MOBILE STYLES
+ * =============
+ * Everything here is scoped to `body.mobile` and is inert on desktop.
+ *
+ * WHY A SEPARATE FILE  (2026-08-25, user-directed)
+ * ---------------------------------------------------------------------------
+ * The alternative was threading mobile rules through style.css's 2,100 lines
+ * behind media queries. That file has no breakpoints at all today, and the
+ * changes mobile needs are STRUCTURAL rather than sizing -- the sidebar stops
+ * being a column and becomes a sheet, the menu bar stops existing and becomes
+ * two separate controls. Rules that reshape a layout read badly interleaved
+ * with the rules establishing it, and they are far easier to reason about (and
+ * to delete, if a direction doesn't work out) when they live together.
+ *
+ * The cost is some duplication of selectors between the two files. That is
+ * accepted deliberately.
+ *
+ * TARGET  (user-directed): phones, portrait. Tablets and landscape are
+ * explicitly out of scope for now -- they mostly want the desktop layout with
+ * a narrower sidebar, which is a different and much smaller problem.
+ *
+ * THE GATE
+ * ---------------------------------------------------------------------------
+ * `body.mobile` is set once at startup by main.js's detectMobile(), from a
+ * coarse-pointer check AND a viewport width test -- not from a user-agent
+ * sniff, which is unreliable and ages badly. Every rule below is scoped to it
+ * rather than to a bare media query, so that:
+ *   - a desktop browser resized narrow does NOT silently become the phone
+ *     build mid-session (the layout swaps under you, and canvas sizing and
+ *     input handling would have to re-negotiate), and
+ *   - the mode can be forced for testing (`?mobile` / `?desktop`) without
+ *     having to fake a device.
+ *
+ * STATUS: phase 0. This file currently carries only the foundations -- the
+ * layout inversion (bottom sheet, FAB, status pill) is phase 1 and lands here.
+ */
+
+/* --------------------------------------------------------------------------
+   FOUNDATIONS
+   -------------------------------------------------------------------------- */
+
+body.mobile {
+  /* A phone browser will happily bounce the whole document when a gesture
+     starts at a screen edge, which drags the game out of frame. The game is a
+     fixed-viewport app, not a scrolling page. */
+  overscroll-behavior: none;
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  /* Belt and braces with .game-screen's own dvh rule in style.css. */
+  height: 100dvh;
+  overflow: hidden;
+
+  /* Stops iOS inflating body text in portrait, which would silently break
+     every panel measured in ems. */
+  -webkit-text-size-adjust: 100%;
+}
+
+/* Double-tap-to-zoom is a browser behavior we want replaced by our own
+   double-tap-to-zoom-the-MAP (phase 3), and its ~300ms click delay makes
+   every button feel unresponsive until then. */
+body.mobile button,
+body.mobile .menu-btn,
+body.mobile .menu-dropdown-btn {
+  touch-action: manipulation;
+}
+
+/* The blue-grey flash a mobile browser paints over a tapped element. It reads
+   as a rendering artifact rather than as feedback; real press states are
+   defined per-control. */
+body.mobile * {
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Long-press on the map is OUR gesture (it opens the radial menu -- see
+   input.js). Left alone, the browser also fires its own text-selection and
+   callout behavior on the same press, which puts a selection handle or a
+   share sheet on top of the ring. Deliberately NOT applied to dialogs or the
+   knowledge base, where selecting text is legitimate. */
+body.mobile .map-area,
+body.mobile #map-canvas {
+  -webkit-touch-callout: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+/* Notches, rounded corners and the home indicator. Anything anchored to a
+   screen edge has to sit inside the safe area or it is partly unreachable.
+   Uses the padding on the shell rather than on each control, so phase 1's
+   sheet and FAB inherit it. Requires `viewport-fit=cover` on the viewport
+   meta tag (index.html) -- without that, env() resolves to 0 everywhere. */
+body.mobile .game-screen {
+  padding-top: env(safe-area-inset-top, 0px);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  padding-left: env(safe-area-inset-left, 0px);
+  padding-right: env(safe-area-inset-right, 0px);
+  box-sizing: border-box;
+}
+
+/* No cursor affordances on a device with no cursor. */
+body.mobile #map-canvas {
+  cursor: default;
+}
+
+/* --------------------------------------------------------------------------
+   PHASE 1 — LAYOUT INVERSION
+
+   Desktop wraps the map in permanent furniture: a menu strip above, a 280px
+   inspector beside. Measured on a 375px-wide phone that leaves the map 95
+   CSS pixels of width, which is the whole argument for doing this.
+
+   So the map takes the entire screen and everything else is summoned over
+   it. Nothing MOVES in the DOM to achieve that -- these rules only reposition
+   what index.html already contains, precisely so that every handler main.js
+   binds by id keeps working. See index.html's mobile-chrome block.
+   -------------------------------------------------------------------------- */
+
+body.mobile .game-body {
+  display: block;   /* not the desktop flex row */
+  position: relative;
+}
+
+/* Map to full bleed, underneath everything else. */
+body.mobile .map-area {
+  position: absolute;
+  inset: 0;
+}
+
+/* The desktop menu strip becomes a drawer behind the hamburger. Kept in the
+   DOM (and so keeps all its wiring) but slid off-screen until summoned. */
+body.mobile .menu-bar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  z-index: 60;
+  width: min(82vw, 20rem);
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  background: var(--bg-panel, #14161b);
+  padding: calc(env(safe-area-inset-top, 0px) + 3.5rem) 0 2rem;
+  box-shadow: 2px 0 24px rgba(0, 0, 0, .5);
+  transform: translateX(-102%);
+  transition: transform .26s cubic-bezier(.32, .72, 0, 1);
+  visibility: hidden;
+}
+body.mobile.m-menu-open .menu-bar {
+  transform: translateX(0);
+  visibility: visible;
+}
+/* In the drawer, each desktop dropdown becomes a collapsible SECTION of one
+   settings list -- File, Interface, Audio, Knowledge, Reports.
+
+   This reuses main.js's setupMenuBar wiring exactly as it stands: it already
+   closes every other dropdown before opening the tapped one, and already puts
+   an `.active` class on the open header. On desktop that reads as a menu bar;
+   here the identical behavior reads as an accordion. So there is no mobile
+   menu controller -- only different clothes on the same one. */
+body.mobile .menu-bar .menu-item {
+  width: 100%;
+  position: static;
+}
+body.mobile .menu-bar .menu-btn {
+  width: 100%;
+  text-align: left;
+  padding: .95rem 1.1rem;
+  font-size: .95rem;
+  font-weight: 600;
+  letter-spacing: .02em;
+  border: 0;
+  border-bottom: 1px solid rgba(255, 255, 255, .07);
+  border-radius: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 50px;
+}
+/* Disclosure caret, rotating on the .active class the existing JS sets. */
+body.mobile .menu-bar .menu-btn::after {
+  content: "";
+  width: .48rem;
+  height: .48rem;
+  border-right: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  opacity: .5;
+  transform: rotate(-45deg);
+  transition: transform .18s ease;
+  margin-right: .2rem;
+}
+body.mobile .menu-bar .menu-btn.active::after { transform: rotate(45deg); }
+
+/* The open section. Left as the inline display the JS sets (flex) -- not
+   forced open, or every section would be expanded at once and the drawer
+   would be one unnavigable scroll. */
+body.mobile .menu-bar .menu-dropdown {
+  position: static;
+  width: 100%;
+  min-width: 0;
+  border: none;
+  border-bottom: 1px solid rgba(255, 255, 255, .07);
+  border-radius: 0;
+  box-shadow: none;
+  background: rgba(0, 0, 0, .26);
+  flex-direction: column;
+  padding: .25rem 0;
+}
+
+/* Grouped-list rows. 48px min: comfortably past the 44px floor, and it makes
+   the whole drawer scan as one rhythm rather than as ported desktop bits. */
+body.mobile .menu-bar .menu-dropdown-btn,
+body.mobile .menu-bar .audio-panel-row {
+  min-height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: .9rem;
+  padding: .55rem 1.1rem;
+  font-size: .94rem;
+  width: 100%;
+  text-align: left;
+  border: 0;
+  border-radius: 0;
+  background: none;
+}
+body.mobile .menu-bar .menu-dropdown-btn + .menu-dropdown-btn,
+body.mobile .menu-bar .audio-panel-row + .audio-panel-row {
+  border-top: 1px solid rgba(255, 255, 255, .05);
+}
+body.mobile .menu-bar .fow-panel-label {
+  padding: .8rem 1.1rem .3rem;
+  font-size: .74rem;
+  letter-spacing: .09em;
+  text-transform: uppercase;
+  opacity: .55;
+}
+
+/* Checkbox -> switch. A 22px tick box is a desktop control shrunk onto a
+   phone; a switch is what a settings row is supposed to look like here, and
+   it doubles the hit area. Radios keep their own shape -- they mean "one of
+   these", and a row of switches would say the wrong thing. */
+body.mobile .menu-bar input[type="checkbox"] {
+  appearance: none;
+  -webkit-appearance: none;
+  flex: 0 0 auto;
+  width: 50px;
+  height: 30px;
+  margin: 0;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, .17);
+  border: 1px solid rgba(255, 255, 255, .16);
+  position: relative;
+  transition: background-color .2s ease;
+  cursor: pointer;
+}
+body.mobile .menu-bar input[type="checkbox"]::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: #f2efe6;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, .45);
+  transition: transform .2s cubic-bezier(.32, .72, 0, 1);
+}
+body.mobile .menu-bar input[type="checkbox"]:checked {
+  background: #3f7a4b;
+  border-color: rgba(150, 220, 160, .5);
+}
+body.mobile .menu-bar input[type="checkbox"]:checked::after {
+  transform: translateX(20px);
+}
+
+body.mobile .menu-bar input[type="radio"] {
+  appearance: none;
+  -webkit-appearance: none;
+  flex: 0 0 auto;
+  width: 26px;
+  height: 26px;
+  margin: 0;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, .35);
+  background: transparent;
+  position: relative;
+}
+body.mobile .menu-bar input[type="radio"]:checked {
+  border-color: #7fbf8c;
+}
+body.mobile .menu-bar input[type="radio"]:checked::after {
+  content: "";
+  position: absolute;
+  inset: 4px;
+  border-radius: 50%;
+  background: #7fbf8c;
+}
+
+/* Sliders need a thumb a finger can actually catch. */
+body.mobile .menu-bar input[type="range"] {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 30px;
+  background: transparent;
+  appearance: none;
+  -webkit-appearance: none;
+}
+body.mobile .menu-bar input[type="range"]::-webkit-slider-runnable-track {
+  height: 5px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, .2);
+}
+body.mobile .menu-bar input[type="range"]::-webkit-slider-thumb {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 26px;
+  height: 26px;
+  margin-top: -10px;
+  border-radius: 50%;
+  background: #f2efe6;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, .5);
+}
+body.mobile .menu-bar input[type="range"]::-moz-range-track {
+  height: 5px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, .2);
+}
+body.mobile .menu-bar input[type="range"]::-moz-range-thumb {
+  width: 26px;
+  height: 26px;
+  border: 0;
+  border-radius: 50%;
+  background: #f2efe6;
+}
+
+body.mobile .menu-bar select {
+  min-height: 40px;
+  font-size: .92rem;
+  padding: .3rem .55rem;
+  border-radius: 8px;
+  max-width: 55%;
+}
+body.mobile .menu-bar .now-playing-value {
+  max-width: 55%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  opacity: .7;
+}
+
+/* Dismiss layer for the drawer. */
+body.mobile .m-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 55;
+  background: rgba(0, 0, 0, .5);
+  border: 0;
+}
+
+/* --- the sheet ---------------------------------------------------------- */
+
+/* The sidebar, re-homed. Three resting heights, driven by data-detent and a
+   single translate -- so the drag handler only ever sets one property and
+   dragging can interrupt the transition cleanly.
+
+   --m-sheet-peek is how much stays on screen at rest. */
+body.mobile #sidebar {
+  --m-sheet-peek: 4.6rem;
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  top: auto;
+  width: auto;
+  height: 78vh;
+  z-index: 30;
+  border-radius: 16px 16px 0 0;
+  /* The gilded per-race frame is this game's identity and worth keeping, but
+     a four-sided border-image around a sheet reads as a box floating in the
+     wrong place. Top edge only: the art still themes to the kingdom, and it
+     doubles as the sheet's lip. */
+  border-width: 12px 0 0 0;
+  overflow: hidden;
+  box-shadow: 0 -6px 28px rgba(0, 0, 0, .45);
+  transform: translateY(calc(100% - var(--m-sheet-peek) - env(safe-area-inset-bottom, 0px)));
+  transition: transform .28s cubic-bezier(.32, .72, 0, 1);
+  touch-action: none;   /* the sheet owns vertical drags, not the browser */
+}
+body.mobile #sidebar[data-detent="half"] { transform: translateY(52%); }
+body.mobile #sidebar[data-detent="full"] { transform: translateY(0); }
+/* While a finger is on it, follow the finger exactly -- no easing, or the
+   sheet lags behind the thumb and feels attached by elastic. */
+body.mobile #sidebar.m-dragging { transition: none; }
+
+/* Grabber. A pseudo-element on purpose: sidebar.js rewrites this container's
+   innerHTML on every redraw, so any real child would be destroyed. The drag
+   listener is bound to #sidebar itself and only claims presses that start in
+   the top strip -- see main.js's setupMobileShell. */
+body.mobile #sidebar::before {
+  content: "";
+  position: absolute;
+  top: .55rem;
+  left: 50%;
+  width: 2.4rem;
+  height: .25rem;
+  margin-left: -1.2rem;
+  border-radius: 999px;
+  background: currentColor;
+  opacity: .35;
+  z-index: 2;
+  pointer-events: none;
+}
+
+/* Sheet contents scroll internally, below the grabber. */
+body.mobile #sidebar > * {
+  max-height: 100%;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-top: 1.15rem;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* The sidebar's own End Turn is redundant once the FAB exists, and having
+   two of the same control on one screen is worse than having one. The button
+   stays in the DOM -- the FAB forwards taps to it. */
+body.mobile #sidebar .end-turn-btn { display: none; }
+
+/* Tab strip -> horizontally scrolling chips. */
+body.mobile #sidebar .sidebar-tabs,
+body.mobile #sidebar .tab-strip {
+  display: flex;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scrollbar-width: none;
+  gap: .35rem;
+}
+body.mobile #sidebar .sidebar-tabs::-webkit-scrollbar,
+body.mobile #sidebar .tab-strip::-webkit-scrollbar { display: none; }
+body.mobile #sidebar .sidebar-tabs > *,
+body.mobile #sidebar .tab-strip > * {
+  flex: 0 0 auto;
+  min-height: 38px;
+}
+
+/* --- floating chrome ---------------------------------------------------- */
+
+body.mobile .m-menu-btn,
+body.mobile .m-status,
+body.mobile .m-fab {
+  position: fixed;
+  z-index: 45;
+  font: inherit;
+  color: var(--text, #e8e4da);
+  border: 1px solid rgba(255, 255, 255, .16);
+  background: rgba(18, 20, 26, .82);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  box-shadow: 0 2px 12px rgba(0, 0, 0, .38);
+}
+
+body.mobile .m-menu-btn {
+  top: calc(env(safe-area-inset-top, 0px) + .6rem);
+  left: calc(env(safe-area-inset-left, 0px) + .6rem);
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+}
+/* Three bars from one element: the box is the middle bar, the two
+   pseudo-elements are the outer pair. */
+body.mobile .m-menu-bars,
+body.mobile .m-menu-bars::before,
+body.mobile .m-menu-bars::after {
+  content: "";
+  display: block;
+  width: 18px;
+  height: 2px;
+  border-radius: 2px;
+  background: currentColor;
+  position: relative;
+}
+body.mobile .m-menu-bars::before { position: absolute; top: -6px; }
+body.mobile .m-menu-bars::after  { position: absolute; top: 6px; }
+
+body.mobile .m-status {
+  top: calc(env(safe-area-inset-top, 0px) + .6rem);
+  right: calc(env(safe-area-inset-right, 0px) + .6rem);
+  height: 44px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 1px;
+  padding: 0 .8rem;
+  border-radius: 12px;
+  line-height: 1.15;
+  font-variant-numeric: tabular-nums;
+}
+body.mobile .m-status-turn { font-size: .76rem; opacity: .72; }
+body.mobile .m-status-res  { font-size: .82rem; font-weight: 600; white-space: nowrap; }
+
+/* End Turn: the most-pressed control in the game, so it gets the bottom-right
+   thumb arc and sits above the sheet's peek height. */
+body.mobile .m-fab {
+  right: calc(env(safe-area-inset-right, 0px) + .85rem);
+  bottom: calc(var(--m-fab-bottom, 5.6rem) + env(safe-area-inset-bottom, 0px));
+  width: 66px;
+  height: 66px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  text-align: center;
+  font-size: .78rem;
+  font-weight: 700;
+  letter-spacing: .02em;
+  padding: 0;
+  transition: transform .18s ease, background-color .2s ease;
+}
+body.mobile .m-fab:active { transform: scale(.93); }
+/* Nothing left to order: the turn is ready to end, and the button says so
+   with color and weight rather than by animating. Static on purpose -- a
+   pulsing control would violate the project's no-flashing rule. */
+body.mobile .m-fab.m-ready {
+  background: rgba(58, 122, 74, .9);
+  border-color: rgba(140, 220, 150, .5);
+}
+body.mobile .m-fab-badge {
+  position: absolute;
+  top: -3px;
+  right: -3px;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 5px;
+  border-radius: 11px;
+  background: #b4451f;
+  color: #fff;
+  font-size: .72rem;
+  font-weight: 700;
+  display: grid;
+  place-items: center;
+  border: 2px solid rgba(18, 20, 26, .9);
+}
+body.mobile .m-fab-badge[hidden] { display: none; }
+
+/* Desktop keeps none of this. */
+.m-menu-btn, .m-status, .m-fab, .m-scrim { display: none; }
+body.mobile .m-menu-btn,
+body.mobile .m-status,
+body.mobile .m-fab { display: grid; }
+body.mobile .m-status { display: flex; }
+body.mobile .m-scrim { display: block; }
+body.mobile .m-scrim[hidden] { display: none; }
+
+/* The zoom buttons are redundant once pinch works, and they sit exactly where
+   the status pill goes. */
+body.mobile .zoom-controls { display: none; }
+
+/* --------------------------------------------------------------------------
+   PHASE 2 — DESTINATIONS
+
+   Tech tree, Reports, Knowledge, Shortcuts. These are places you GO, not
+   settings you flip, and they already exist as full-screen overlays with
+   their own scroll containers -- so they want re-dressing, not rebuilding.
+
+   Deliberately excluded: #game-dialog-modal. It carries real decisions (keep
+   or raze a captured city, confirm ending a turn), and a modal you can
+   swipe away by accident is the wrong shape for a choice that matters. Those
+   keep their explicit buttons. See main.js's setupSwipeToDismiss.
+   -------------------------------------------------------------------------- */
+
+/* The knowledge overlay is inset by exactly the desktop sidebar's 280px so it
+   never covers it (.knowledge-overlay-ingame in style.css). On a phone there
+   IS no sidebar beside the map -- it's the bottom sheet now -- so that inset
+   just squeezed the panel into a 95px column, the same failure the layout
+   inversion exists to fix. */
+body.mobile .knowledge-overlay.knowledge-overlay-ingame {
+  right: 0;
+}
+
+body.mobile .techtree-modal,
+body.mobile .reports-modal,
+body.mobile .knowledge-modal {
+  width: 100vw;
+  max-width: 100vw;
+  height: 100dvh;
+  max-height: 100dvh;
+  border-radius: 0;
+  margin: 0;
+  padding-top: calc(env(safe-area-inset-top, 0px) + 1.5rem);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  transition: transform .26s cubic-bezier(.32, .72, 0, 1);
+}
+/* Following the finger during a dismiss drag -- no easing, same reasoning as
+   the sheet. */
+body.mobile .m-swiping { transition: none !important; }
+
+/* Grab affordance, matching the bottom sheet's so the two read as the same
+   language. Pseudo-element again: these modals have their content replaced
+   wholesale by their renderers. */
+body.mobile .techtree-modal::before,
+body.mobile .reports-modal::before,
+body.mobile .knowledge-modal::before {
+  content: "";
+  position: absolute;
+  top: calc(env(safe-area-inset-top, 0px) + .5rem);
+  left: 50%;
+  width: 2.4rem;
+  height: .25rem;
+  margin-left: -1.2rem;
+  border-radius: 999px;
+  background: currentColor;
+  opacity: .3;
+  z-index: 3;
+  pointer-events: none;
+}
+
+body.mobile .techtree-close-btn {
+  width: 44px;
+  height: 44px;
+  font-size: 1.7rem;
+  top: calc(env(safe-area-inset-top, 0px) + .35rem);
+  right: .4rem;
+  z-index: 4;
+}
+
+/* --------------------------------------------------------------------------
+   PHASE 4 — FEELS-INSTALLED
+
+   manifest.json's orientation:"portrait-primary" locks rotation for an
+   INSTALLED app on Android/Chrome, but that hint is invisible to the far
+   more common case of someone just opening the game in an ordinary mobile
+   browser tab. This is that case's fallback -- see index.html's own comment
+   on #m-rotate-notice for why it's dismissible per-rotation rather than
+   forever.
+   -------------------------------------------------------------------------- */
+.m-rotate-notice {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1.1rem;
+  padding: 2rem;
+  text-align: center;
+  background: #0d0e11;
+  color: #e8e4da;
+}
+body.mobile.m-landscape .m-rotate-notice { display: flex; }
+.m-rotate-icon {
+  font-size: 2.6rem;
+  line-height: 1;
+  opacity: .85;
+  /* A single settle, not a loop -- the project's no-flashing rule covers
+     repeating motion as much as it covers repeating light, and a spinning
+     glyph here would be exactly that. */
+  animation: m-rotate-settle .5s ease-out;
+}
+@keyframes m-rotate-settle {
+  from { transform: rotate(-90deg); opacity: 0; }
+  to   { transform: rotate(0deg);   opacity: .85; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .m-rotate-icon { animation: none; }
+}
+.m-rotate-notice p {
+  max-width: 26rem;
+  margin: 0;
+  font-size: 1rem;
+  line-height: 1.5;
+  color: #b6bcc7;
+}
+.m-rotate-dismiss {
+  min-height: 44px;
+  padding: 0 1.3rem;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, .22);
+  background: rgba(255, 255, 255, .08);
+  color: inherit;
+  font: inherit;
+  font-size: .92rem;
+}
+
+/* Wide content inside a destination scrolls in its own box rather than
+   forcing the page sideways -- reports tables and the tech tree are both far
+   wider than a phone. */
+body.mobile .techtree-modal-scroll,
+body.mobile #techtree-content,
+body.mobile #reports-content,
+body.mobile #knowledge-content {
+  overflow-x: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Touch-sized rows in the knowledge base's own navigation. */
+body.mobile .knowledge-modal button,
+body.mobile #reports-content button,
+body.mobile .knowledge-nav-item {
+  min-height: 44px;
+}
+
+/* --------------------------------------------------------------------------
+   PHASE 3 — THE RING GESTURE
+
+   On desktop the ring is a right-click convenience. On a phone it becomes
+   the PRIMARY way to give orders: long-press opens it, sliding the same
+   finger across the pills previews each one, and lifting commits whichever
+   is under the finger when it leaves the glass -- one continuous gesture
+   from intent to action, thumb never leaving the screen. See input.js's
+   ring-drag handling in attach() for the touch-move/haptic side of this;
+   these rules are its visual half.
+
+   ringmenu.js's layout() already grows PILL_H/PITCH to 44px/52px under
+   body.mobile, so the geometry and this height agree without either module
+   knowing about the other's number directly -- both just read the same
+   mobile flag.
+   -------------------------------------------------------------------------- */
+
+body.mobile .map-ring-item {
+  height: 44px;
+  padding: 0 14px;
+  font-size: 13px;
+  border-radius: 22px;
+}
+
+/* The pill currently under the dragging finger -- input.js toggles this as
+   the finger crosses from one pill to the next, WITHOUT firing a real
+   pointer/hover event on the button (pointer capture keeps every event
+   routed to the canvas throughout the gesture, by design -- see input.js).
+   Bright rather than the desktop hover treatment: a mouse hover is passive
+   feedback, but this state means "lift now and this fires", which needs to
+   read as more committed than a hover ever does. */
+body.mobile .map-ring-item-armed {
+  background: var(--accent, #d9b565);
+  border-color: var(--accent, #d9b565);
+  color: #16181c;
+  transform: translateY(-50%) scale(1.06);
+  box-shadow: 0 3px 14px rgba(0, 0, 0, .55);
+}

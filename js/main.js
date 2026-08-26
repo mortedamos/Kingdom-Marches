@@ -478,7 +478,321 @@
     return stamp;
   }
 
+  /** Decides once, at startup, whether this is the phone build, and stamps
+   *  `body.mobile` -- the gate every rule in css/mobile.css hangs off.
+   *
+   *  Deliberately NOT a user-agent sniff (unreliable, and ages badly as
+   *  devices change) and deliberately NOT a live media query. A desktop
+   *  browser dragged narrow must not flip into the phone layout mid-session:
+   *  the whole layout would swap underneath the player, and canvas sizing and
+   *  input handling would have to renegotiate on the fly. Evaluated once and
+   *  left alone; a real device never changes category anyway.
+   *
+   *  Two signals, both required. `pointer: coarse` says the primary input is
+   *  a finger, which rules out a desktop with a touchscreen. The width test
+   *  rules IN phones only -- tablets are explicitly out of scope for now
+   *  (user-directed): a 10-inch screen mostly wants the desktop layout with a
+   *  narrower sidebar, which is a different and much smaller problem.
+   *
+   *  `?mobile` and `?desktop` force it either way, so the phone build can be
+   *  worked on in a desktop browser without faking a device. */
+  const MOBILE_MAX_WIDTH = 820;
+  function detectMobile() {
+    const q = window.location.search;
+    if (/[?&]desktop\b/.test(q)) return false;
+    if (/[?&]mobile\b/.test(q)) return true;
+    const coarse = window.matchMedia?.("(pointer: coarse)").matches;
+    const narrow = Math.min(window.innerWidth, window.innerHeight) <= MOBILE_MAX_WIDTH;
+    return !!coarse && narrow;
+  }
+
+  // ==========================================================================
+  // MOBILE SHELL  (2026-08-25, mobile phase 1)
+  // Bottom sheet, End Turn FAB, status pill, menu drawer.
+  //
+  // Everything here DRIVES existing controls rather than replacing them. The
+  // FAB forwards its tap to the real #end-turn-btn the sidebar renders; the
+  // hamburger toggles the existing .menu-bar. So none of main.js's several
+  // dozen id-bound handlers need to know the phone layout exists, and there
+  // is no second implementation of ending a turn to keep in sync.
+  //
+  // Bound once, at startup, to elements that live OUTSIDE #sidebar --
+  // sidebar.js replaces its container's innerHTML on every redraw, so
+  // anything bound in there would be detached seconds later.
+  // ==========================================================================
+  const SHEET_DETENTS = ["peek", "half", "full"];
+
+  /** Moves the sheet to a detent by name, clamped to the ends. */
+  function setSheetDetent(name) {
+    const sheet = $("sidebar");
+    if (!sheet) return;
+    sheet.dataset.detent = name;
+    // The FAB rides above the sheet's lip at rest, and gets out of the way
+    // once the sheet is up -- otherwise it covers the panel the player just
+    // opened.
+    sheet.style.setProperty("--m-fab-bottom", name === "peek" ? "5.6rem" : "1rem");
+  }
+
+  /** Raises a resting sheet to half height. Called when the player selects
+   *  something on the map: selection and sheet height should be ONE gesture,
+   *  not a tap followed by a separate drag. Never lowers a sheet the player
+   *  deliberately opened, and never fights a drag in progress. */
+  function revealSheetForSelection() {
+    if (!document.body.classList.contains("mobile")) return;
+    const sheet = $("sidebar");
+    if (!sheet || sheet.classList.contains("m-dragging")) return;
+    if ((sheet.dataset.detent || "peek") === "peek") setSheetDetent("half");
+  }
+
+  /** Turn number, stockpile, and the awaiting-orders badge. Cheap enough to
+   *  run on every redraw; reads the same sources the sidebar does. */
+  function updateMobileStatus() {
+    if (!document.body.classList.contains("mobile")) return;
+    const turnEl = $("m-status-turn"), resEl = $("m-status-res");
+    const fab = $("m-endturn-fab"), badge = $("m-fab-badge");
+    if (!turnEl || !gameState) return;
+
+    turnEl.textContent = `Turn ${gameState.turnNumber || 0}`;
+    const civ = humanCivId ? gameState.civs[humanCivId] : null;
+    if (civ && resEl) {
+      const s = civ.stockpile || {};
+      const n = (v) => Math.round(v || 0).toLocaleString();
+      resEl.textContent = `${n(s.harvest)} · ${n(s.coin)} · ${n(s.lore)}`;
+    } else if (resEl) {
+      resEl.textContent = "";
+    }
+
+    if (!fab || !badge) return;
+    const waiting = civ
+      ? window.GameEngine.orders.unitsNeedingOrders(gameState, humanCivId).length
+      : 0;
+    badge.hidden = waiting === 0;
+    badge.textContent = waiting > 99 ? "99+" : String(waiting);
+    // Colour, not motion -- see css/mobile.css's note on the no-flashing rule.
+    fab.classList.toggle("m-ready", !!civ && waiting === 0);
+  }
+
+  // Re-armed on returning to portrait, not stored across sessions -- see
+  // index.html's #m-rotate-notice comment on why this is a reminder rather
+  // than a one-time dismissal.
+  let rotateNoticeDismissed = false;
+
+  /** Shows/hides #m-rotate-notice against the device's CURRENT orientation.
+   *  Bound to resize (which also fires on a rotation) rather than a bare
+   *  CSS media query so dismissal can be tracked at all -- pure CSS has no
+   *  concept of "the player already said continue anyway this time." */
+  function updateRotateNotice() {
+    if (!document.body.classList.contains("mobile")) return;
+    const isLandscape = window.matchMedia("(orientation: landscape)").matches;
+    if (!isLandscape) rotateNoticeDismissed = false;
+    document.body.classList.toggle("m-landscape", isLandscape && !rotateNoticeDismissed);
+  }
+
+  function setMobileMenuOpen(open) {
+    document.body.classList.toggle("m-menu-open", open);
+    const btn = $("m-menu-btn"), scrim = $("m-scrim");
+    if (btn) btn.setAttribute("aria-expanded", open ? "true" : "false");
+    if (scrim) scrim.hidden = !open;
+  }
+
+  /** Drag-to-resize on the sheet. Only claims presses landing in the top
+   *  strip, so the panel's own content stays scrollable everywhere else --
+   *  the grabber is a ::before pseudo-element and can't take listeners of its
+   *  own (see css/mobile.css). */
+  const SHEET_GRAB_ZONE_PX = 44;
+  function setupSheetDrag(sheet) {
+    let startY = 0, startTranslate = 0, translate = 0, dragging = false;
+
+    /** Current translateY in px, read off the computed matrix.
+     *
+     *  Deliberately the TRANSLATE, not the element's top. The sheet is
+     *  position:fixed;bottom:0, so its untransformed top is already partway
+     *  down the screen and `top` and `translateY` differ by that offset --
+     *  driving one from the other (the first cut of this did) puts the sheet
+     *  a sheet-height away from the finger and makes every snap decision
+     *  read the wrong detent. */
+    function currentTranslate() {
+      const m = new DOMMatrixReadOnly(getComputedStyle(sheet).transform);
+      return m.m42 || 0;
+    }
+
+    /** How far down the sheet sits at rest, in px -- i.e. translate at the
+     *  "peek" detent, which is the maximum a drag may travel. */
+    function peekTranslate() {
+      const h = sheet.getBoundingClientRect().height;
+      const peekPx = parseFloat(getComputedStyle(sheet).getPropertyValue("--m-sheet-peek")) || 0;
+      // --m-sheet-peek is authored in rem.
+      const rem = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
+      return Math.max(0, h - peekPx * rem);
+    }
+
+    sheet.addEventListener("pointerdown", (e) => {
+      const rect = sheet.getBoundingClientRect();
+      if (e.clientY - rect.top > SHEET_GRAB_ZONE_PX) return; // content, not the lip
+      dragging = true;
+      startY = e.clientY;
+      startTranslate = translate = currentTranslate();
+      sheet.classList.add("m-dragging");
+      // Capture is an optimisation (it keeps the drag alive if the finger
+      // leaves the element), never a requirement -- and it throws if the
+      // pointer isn't currently active. Never let that failure take the drag
+      // down with it.
+      try { sheet.setPointerCapture(e.pointerId); } catch (_) { /* not capturable */ }
+    });
+
+    sheet.addEventListener("pointermove", (e) => {
+      if (!dragging) return;
+      // Follow the finger 1:1, bounded by the two extreme detents so the
+      // sheet can neither be thrown off the bottom nor dragged above its
+      // full height.
+      translate = Math.max(0, Math.min(peekTranslate(), startTranslate + (e.clientY - startY)));
+      sheet.style.transform = `translateY(${translate}px)`;
+    });
+
+    function end(e) {
+      if (!dragging) return;
+      dragging = false;
+      sheet.classList.remove("m-dragging");
+
+      // Decide from the tracked translate, NOT from a fresh rect read: the
+      // moment the inline transform is cleared the sheet starts transitioning
+      // toward its detent, so measuring afterwards samples an animation
+      // already in progress and the snap chases its own tail.
+      //
+      // This settles the sheet BEFORE releasing capture, deliberately.
+      // releasePointerCapture throws when the pointer isn't currently
+      // captured -- which happens for real (the browser drops capture itself
+      // on pointercancel, and this same handler serves both events). Doing it
+      // first left the sheet stranded mid-drag with a stale inline transform
+      // and no detent update, because the throw skipped everything after it.
+      const frac = peekTranslate() > 0 ? translate / peekTranslate() : 0;
+      sheet.style.transform = "";
+      setSheetDetent(frac > 0.66 ? "peek" : frac > 0.24 ? "half" : "full");
+      try { sheet.releasePointerCapture(e.pointerId); } catch (_) { /* already released */ }
+    }
+    sheet.addEventListener("pointerup", end);
+    sheet.addEventListener("pointercancel", end);
+
+    // Tapping the lip cycles up, which is the fast path for a player who does
+    // not want to drag at all.
+    sheet.addEventListener("click", (e) => {
+      const rect = sheet.getBoundingClientRect();
+      if (e.clientY - rect.top > SHEET_GRAB_ZONE_PX) return;
+      const i = SHEET_DETENTS.indexOf(sheet.dataset.detent || "peek");
+      setSheetDetent(SHEET_DETENTS[Math.min(SHEET_DETENTS.length - 1, i + 1)]);
+    });
+  }
+
+  /** Swipe a full-screen destination down to close it.
+   *
+   *  Dismisses by clicking the modal's OWN `.techtree-close-btn` rather than
+   *  hiding anything directly -- each overlay's close path does more than set
+   *  display:none (knowledge resets its view, reports clear cached series),
+   *  and reproducing that here would mean four more things to keep in step.
+   *  Same forwarding trick the End Turn FAB uses.
+   *
+   *  Only claims presses starting in the top strip, so the content below
+   *  keeps its own scrolling. */
+  const SWIPE_GRAB_ZONE_PX = 56;
+  const SWIPE_DISMISS_PX = 110;
+  function setupSwipeToDismiss(modal) {
+    if (!modal) return;
+    let startY = 0, dy = 0, active = false;
+
+    modal.addEventListener("pointerdown", (e) => {
+      // Never start a dismiss on the close button itself -- let the tap land.
+      if (e.target.closest(".techtree-close-btn")) return;
+      const rect = modal.getBoundingClientRect();
+      if (e.clientY - rect.top > SWIPE_GRAB_ZONE_PX) return;
+      active = true;
+      startY = e.clientY;
+      dy = 0;
+      modal.classList.add("m-swiping");
+      try { modal.setPointerCapture(e.pointerId); } catch (_) { /* not capturable */ }
+    });
+
+    modal.addEventListener("pointermove", (e) => {
+      if (!active) return;
+      dy = Math.max(0, e.clientY - startY);   // downward only
+      modal.style.transform = `translateY(${dy}px)`;
+    });
+
+    function end(e) {
+      if (!active) return;
+      active = false;
+      modal.classList.remove("m-swiping");
+      modal.style.transform = "";
+      // Settle before releasing capture -- releasePointerCapture throws when
+      // the pointer is already gone, which is the normal case on
+      // pointercancel, and that throw would skip the dismiss below.
+      const shouldClose = dy > SWIPE_DISMISS_PX;
+      try { modal.releasePointerCapture(e.pointerId); } catch (_) { /* already released */ }
+      if (shouldClose) modal.querySelector(".techtree-close-btn")?.click();
+    }
+    modal.addEventListener("pointerup", end);
+    modal.addEventListener("pointercancel", end);
+  }
+
+  function setupMobileShell() {
+    if (!document.body.classList.contains("mobile")) return;
+
+    const sheet = $("sidebar");
+    if (sheet) { setSheetDetent("peek"); setupSheetDrag(sheet); }
+
+    // Forwards to the sidebar's own End Turn, which is re-rendered constantly
+    // -- so it's looked up at tap time, never cached.
+    $("m-endturn-fab")?.addEventListener("click", () => {
+      $("end-turn-btn")?.click();
+    });
+
+    $("m-menu-btn")?.addEventListener("click", () => {
+      setMobileMenuOpen(!document.body.classList.contains("m-menu-open"));
+    });
+    $("m-scrim")?.addEventListener("click", () => setMobileMenuOpen(false));
+
+    // Tapping the map dismisses the drawer and drops an un-pinned sheet back
+    // to peek, so the map is one tap away from anywhere.
+    $("map-canvas")?.addEventListener("pointerdown", () => {
+      if (document.body.classList.contains("m-menu-open")) setMobileMenuOpen(false);
+    });
+
+    // The status pill expands the Kingdom view -- the pill is a summary, and
+    // tapping a summary should open the thing it summarises.
+    $("m-status")?.addEventListener("click", () => setSheetDetent("full"));
+
+    // Destinations: swipe down to leave. #game-dialog-modal is deliberately
+    // absent -- see setupSwipeToDismiss.
+    ["techtree-modal", "reports-modal", "knowledge-modal", "keyboard-shortcuts-modal"]
+      .forEach((id) => setupSwipeToDismiss($(id)));
+
+    // Opening a destination should not leave the drawer stacked behind it.
+    // Delegated to the drawer and matched on the LEAF buttons -- the section
+    // headers (#menu-knowledge-btn etc.) only expand an accordion and must
+    // keep the drawer open, so binding to those would close it on the way in.
+    //
+    // Reached via .closest() from a button known to be in the GAME menu bar,
+    // never document.querySelector(".menu-bar"): the title screen has its own
+    // .menu-bar earlier in the DOM, so a bare query returns that one and this
+    // silently never fires. Same trap setupMenuBar documents above.
+    $("menu-file-btn")?.closest(".menu-bar")?.addEventListener("click", (e) => {
+      if (e.target.closest(".menu-dropdown-btn")) setMobileMenuOpen(false);
+    });
+
+    $("m-rotate-dismiss")?.addEventListener("click", () => {
+      rotateNoticeDismissed = true;
+      updateRotateNotice();
+    });
+    // Rotation fires resize on every browser this needs to support, so this
+    // rides the same event resizeMapCanvas already listens to rather than
+    // needing its own 'orientationchange' binding.
+    window.addEventListener("resize", updateRotateNotice);
+    updateRotateNotice();
+
+    updateMobileStatus();
+  }
+
   function showSetupScreen() {
+    if (detectMobile()) document.body.classList.add("mobile");
     window.UI.motion.init();
     applyMuteUrlSwitch();
     $("title-build-stamp").textContent = renderBuildStamp();
@@ -1162,6 +1476,12 @@
   function finishStartGame() {
     hideLoadingScreen();
     $("game-screen").style.display = "flex";
+    // Phone layout: bottom sheet, FAB, status pill, menu drawer. Wired here
+    // rather than at setup because the sheet measures itself on open, and
+    // getBoundingClientRect returns zeros while #game-screen is display:none.
+    // No-ops on desktop.
+    window.UI.input.onTileSelected = revealSheetForSelection;
+    setupMobileShell();
     // Match the two canvases' visibility to viewState.is3D (always false --
     // the 3D toggle was removed, but the 3D canvas elements/renderer are
     // still left in place, so keep them hidden explicitly rather than
@@ -1566,26 +1886,65 @@
     return { x: fb.x, y: fb.y, landmassSize: preferred.length };
   }
 
-  /** Match #map-canvas's pixel buffer to its CSS layout size so there's no
-   *  scaling. getBoundingClientRect() (and so this) returns all zeros for a
-   *  display:none element -- since 3D is now the default view, the 2D
-   *  canvas starts out hidden, so this must be re-run when switching TO 2D
-   *  as well as on every real window resize, or the 2D canvas stays stuck
-   *  at the 0x0 buffer size it captured while hidden (confirmed live: 2D
-   *  view was solid-blank after toggling away from the 3D default). */
+  /** Match #map-canvas's pixel buffer to its CSS layout size, scaled by the
+   *  display's pixel ratio. getBoundingClientRect() (and so this) returns all
+   *  zeros for a display:none element -- since 3D is now the default view,
+   *  the 2D canvas starts out hidden, so this must be re-run when switching
+   *  TO 2D as well as on every real window resize, or the 2D canvas stays
+   *  stuck at the 0x0 buffer size it captured while hidden (confirmed live:
+   *  2D view was solid-blank after toggling away from the 3D default).
+   *
+   *  DEVICE PIXEL RATIO (2026-08-25, mobile phase 0): this used to size the
+   *  buffer in CSS pixels flat, which on a 2-3x phone screen meant every
+   *  sprite and label was upscaled by the compositor and visibly soft. The
+   *  buffer is now DPR-scaled and the context pre-scaled to match, so all
+   *  drawing code keeps working in CSS-pixel coordinates and nothing
+   *  downstream (screenToTile, the ring menu's tile anchoring, hit testing)
+   *  has to know this happened.
+   *
+   *  The old comment's warning still holds and is why both canvases scale
+   *  TOGETHER: #map-clouds is layered pixel-for-pixel over the map, so if the
+   *  two ever disagree the cursor hole lands offset from the actual cursor.
+   *
+   *  Capped at 2x deliberately. A 3x phone would be asked to fill 9x the
+   *  pixels of a 1x screen for a difference nobody can see at arm's length,
+   *  and this canvas is fully repainted every frame.
+   *
+   *  Guarded against no-op resizes. Assigning canvas.width ALWAYS clears the
+   *  canvas and reallocates the buffer even when the value is unchanged, so
+   *  an unconditional write here (this runs on every resize event, and mobile
+   *  browsers fire those continuously as their chrome slides in and out)
+   *  produces exactly the repaint-every-frame flicker the project's
+   *  no-flashing rule exists to prevent. */
+  const MAX_CANVAS_DPR = 2;
   function resizeMapCanvas() {
     const canvas = $("map-canvas");
     const rect = canvas.getBoundingClientRect();
-    canvas.width = Math.floor(rect.width);
-    canvas.height = Math.floor(rect.height);
-    // Cloud overlay is layered pixel-for-pixel
-    // over the map canvas, so it has to track the exact same size -- same
-    // CSS-pixel convention (no devicePixelRatio scaling) as above, or the
-    // cursor hole would land offset from the actual cursor.
+    const dpr = Math.min(MAX_CANVAS_DPR, window.devicePixelRatio || 1);
+    const w = Math.max(1, Math.floor(rect.width * dpr));
+    const h = Math.max(1, Math.floor(rect.height * dpr));
+
     const cloudCanvas = $("map-clouds");
+    const unchanged = canvas.width === w && canvas.height === h
+      && (!cloudCanvas || (cloudCanvas.width === w && cloudCanvas.height === h));
+    if (unchanged) return;
+
+    canvas.width = w;
+    canvas.height = h;
+    // Pre-scale so every drawing call downstream still speaks CSS pixels.
+    canvas.getContext("2d").setTransform(dpr, 0, 0, dpr, 0, 0);
+    // ...and publish that logical size, because canvas.width no longer IS it.
+    // Screen-space math (scroll clamping, off-screen culling, centring, ring
+    // anchoring) has to keep working in the same CSS-pixel space the context
+    // draws in -- see render.js's cssW/cssH, which read these.
+    canvas.__cssW = rect.width;
+    canvas.__cssH = rect.height;
     if (cloudCanvas) {
-      cloudCanvas.width = canvas.width;
-      cloudCanvas.height = canvas.height;
+      cloudCanvas.width = w;
+      cloudCanvas.height = h;
+      cloudCanvas.getContext("2d").setTransform(dpr, 0, 0, dpr, 0, 0);
+      cloudCanvas.__cssW = rect.width;
+      cloudCanvas.__cssH = rect.height;
     }
     redraw();
   }
@@ -3464,6 +3823,9 @@
       window.UI.render.render($("map-canvas"), gameState, viewState);
     }
     window.UI.sidebar.render($("sidebar"), gameState, viewState);
+    // Mirrors turn/stockpile/awaiting-orders into the mobile status pill and
+    // FAB badge. No-ops entirely on desktop.
+    updateMobileStatus();
     const zoomLabel = $("zoom-level-label");
     if (zoomLabel) zoomLabel.textContent = `${Math.round((viewState.zoomLevel || 1) * 100)}%`;
     // Unit verbs and city production live in the radial map menu
@@ -3786,7 +4148,9 @@
     const center = window.UI.render.tileCenterOnMap(menu.x, menu.y, canvas, gameState, viewState);
     const ctx = {
       cx: center.x, cy: center.y, ts: center.ts,
-      mapW: canvas.width, mapH: canvas.height, split,
+      // CSS pixels: the ring is positioned in DOM space, and the canvas
+      // buffer is DPR-scaled (see resizeMapCanvas).
+      mapW: canvas.__cssW || canvas.width, mapH: canvas.__cssH || canvas.height, split,
     };
 
     // A sub-page (build list, level-up picker) replaces the ring rather than
@@ -5384,8 +5748,9 @@
   function centerViewOn(x, y) {
     const canvas = $("map-canvas");
     const ts = window.UI.render.TILE_SIZE * (viewState.zoomLevel || 1);
-    viewState.scrollX = (x + 0.5) * ts - canvas.width / 2;
-    viewState.scrollY = (y + 0.5) * ts - canvas.height / 2;
+    // CSS-pixel size, not the DPR-scaled buffer size -- see resizeMapCanvas.
+    viewState.scrollX = (x + 0.5) * ts - (canvas.__cssW || canvas.width) / 2;
+    viewState.scrollY = (y + 0.5) * ts - (canvas.__cssH || canvas.height) / 2;
   }
 
   function handleBuildRoad() {
@@ -5537,5 +5902,25 @@
     animFrameId = requestAnimationFrame(frame);
   }
 
+  /** Registers sw.js -- see that file's own header for the network-first
+   *  strategy and why it's safe to leave on during active development (a
+   *  cache-first shell would otherwise keep serving a stale js/main.js after
+   *  every edit until a hard refresh).
+   *
+   *  Fire-and-forget, after `load` rather than DOMContentLoaded: registering
+   *  a service worker triggers its own network activity, which has no
+   *  reason to compete with the title screen's own asset loading for
+   *  bandwidth or main-thread time on a slow connection. Guarded on
+   *  serviceWorker existing in navigator at all, so this is silently a
+   *  no-op for file:// or any browser without support -- never a console
+   *  error blocking anything else. */
+  function registerServiceWorker() {
+    if (!("serviceWorker" in navigator)) return;
+    navigator.serviceWorker.register("sw.js").catch((err) => {
+      console.warn("Service worker registration failed:", err);
+    });
+  }
+
   document.addEventListener("DOMContentLoaded", showSetupScreen);
+  window.addEventListener("load", registerServiceWorker);
 })();

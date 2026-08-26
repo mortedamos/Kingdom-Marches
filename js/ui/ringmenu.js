@@ -43,8 +43,20 @@
 window.UI = window.UI || {};
 
 (function () {
-  const PILL_H = 30;        // must match .map-ring-item's rendered height
-  const PITCH = 38;         // vertical centre-to-centre gap; PILL_H + 8px of air
+  // PILL_H/PITCH are functions, not consts, and read body.mobile LIVE
+  // (2026-08-26, mobile phase 3) -- the mode is decided once at startup (see
+  // main.js's detectMobile) and never changes mid-session, but a plain const
+  // would freeze whichever value happened to be true when this file first
+  // ran, which is script-load order, not game state. A function call costs
+  // nothing here; layout() only runs when a ring actually opens or moves.
+  //
+  // 44px is the touch-target floor; 30px was sized for a mouse pointer,
+  // where the target is the label's whole clickable pill rather than a
+  // fingertip. PITCH grows by the same amount so the existing "PILL_H + 8px
+  // of air" spacing ratio holds instead of pills touching edge to edge.
+  function isMobile() { return document.body.classList.contains("mobile"); }
+  function PILL_H() { return isMobile() ? 44 : 30; }  // must match .map-ring-item's rendered height (see mobile.css)
+  function PITCH() { return isMobile() ? 52 : 38; }   // vertical centre-to-centre gap; PILL_H() + 8px of air
   const PILL_W_MIN = 96;    // narrower than this and labels are unreadable -- used for the "does this side fit" test
   // Some real labels ("Gather More Resources (+3H +2C +5L)", "Build Road to
   // This Tile") need more room than this looks generous for. Safe to raise:
@@ -81,11 +93,14 @@ window.UI = window.UI || {};
    */
   function layout(n, ctx) {
     const { cx, cy, mapW, mapH, ts } = ctx;
+    // Snapshot once per call -- body.mobile cannot change mid-call, and
+    // re-reading the class list on every reference below would be silly.
+    const pillH = PILL_H(), pitch = PITCH();
     // Never let the ring sit on top of the subject's own art, which grows
     // with zoom -- but never collapse smaller than a comfortable click
     // target either, which is what the 96px floor is for at low zoom.
     const rMin = Math.max(0.9 * ts, 96);
-    const radiusFor = (k) => Math.max(rMin, ((k - 1) / 2) * PITCH + BOW);
+    const radiusFor = (k) => Math.max(rMin, ((k - 1) / 2) * pitch + BOW);
 
     const roomRight = mapW - cx;
     const roomLeft = cx;
@@ -131,7 +146,7 @@ window.UI = window.UI || {};
     // ~600px tall), so it stays a documented fallback rather than a case the
     // geometry has to be contorted around.
     const tallest = Math.max(rightCount, leftCount);
-    if ((tallest - 1) * PITCH + PILL_H > mapH - 2 * PAD) {
+    if ((tallest - 1) * pitch + pillH > mapH - 2 * PAD) {
       const side = roomRight >= roomLeft ? "right" : "left";
       return { mode: "list", side, items: [] };
     }
@@ -148,7 +163,7 @@ window.UI = window.UI || {};
       // largest |yOff| it is asked about.
       const placed = [];
       for (let j = 0; j < count; j++) {
-        const yOff = (j - (count - 1) / 2) * PITCH;
+        const yOff = (j - (count - 1) / 2) * pitch;
         placed.push({ yOff, xOff: Math.sqrt(Math.max(0, R * R - yOff * yOff)) });
       }
 
@@ -157,8 +172,8 @@ window.UI = window.UI || {};
       // reads as broken -- the pills stop describing a circle and the eye
       // notices immediately -- whereas a rigid shift just looks like the ring
       // slid, which is what actually happened.
-      const minTop = cy + placed[0].yOff - PILL_H / 2;
-      const maxBot = cy + placed[count - 1].yOff + PILL_H / 2;
+      const minTop = cy + placed[0].yOff - pillH / 2;
+      const maxBot = cy + placed[count - 1].yOff + pillH / 2;
       let dy = 0;
       if (minTop < PAD) dy = PAD - minTop;
       else if (maxBot > mapH - PAD) dy = mapH - PAD - maxBot;

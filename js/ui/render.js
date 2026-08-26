@@ -210,9 +210,25 @@ window.UI = window.UI || {};
     return { boxX, boxY };
   }
 
+  /** The map canvas's size in CSS pixels.
+   *
+   *  canvas.width is NOT this: as of 2026-08-25 the backing store is scaled
+   *  by devicePixelRatio (see main.js's resizeMapCanvas) so the map is sharp
+   *  on high-density screens, and the 2D context is pre-scaled to match. That
+   *  means every drawing call in this module still works in CSS pixels -- but
+   *  so must every SCREEN-SPACE calculation: scroll clamping, off-screen
+   *  culling, centring, hit testing. Reading canvas.width in those places
+   *  would silently double them on a 2x display.
+   *
+   *  Falls back to the raw buffer size when __cssW is absent, which is the
+   *  case for the sprite/fringe scratch canvases further down this file --
+   *  those are never DPR-scaled and their width IS their coordinate space. */
+  function cssW(c) { return c.__cssW || c.width; }
+  function cssH(c) { return c.__cssH || c.height; }
+
   function clampOffset(offsetX, offsetY, canvas, map, ts) {
-    const maxX = Math.max(0, map.width  * ts - canvas.width);
-    const maxY = Math.max(0, map.height * ts - canvas.height);
+    const maxX = Math.max(0, map.width  * ts - cssW(canvas));
+    const maxY = Math.max(0, map.height * ts - cssH(canvas));
     return {
       x: Math.max(0, Math.min(offsetX, maxX)),
       y: Math.max(0, Math.min(offsetY, maxY)),
@@ -245,7 +261,7 @@ window.UI = window.UI || {};
     const offsetX = -Math.round(clamped.x);
     const offsetY = -Math.round(clamped.y);
 
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.clearRect(0, 0, cssW(canvas), cssH(canvas));
 
     const visible = humanCivId
       ? (gameState.visibility[humanCivId] || new Set())
@@ -330,7 +346,7 @@ window.UI = window.UI || {};
         const idx = y * map.width + x;
         const screenX = x * ts + offsetX;
         const screenY = y * ts + offsetY;
-        if (screenX < -ts || screenX > canvas.width || screenY < -ts || screenY > canvas.height) continue;
+        if (screenX < -ts || screenX > cssW(canvas) || screenY < -ts || screenY > cssH(canvas)) continue;
 
         const tile = map.tiles[idx];
         const isVisible = visible.has(idx);
@@ -1182,7 +1198,7 @@ window.UI = window.UI || {};
     for (const { x, y, cost } of reach.values()) {
       const screenX = x * ts + offsetX;
       const screenY = y * ts + offsetY;
-      if (screenX < -ts || screenX > ctx.canvas.width || screenY < -ts || screenY > ctx.canvas.height) continue;
+      if (screenX < -ts || screenX > cssW(ctx.canvas) || screenY < -ts || screenY > cssH(ctx.canvas)) continue;
       // Cheap tiles read as "comfortably in reach", expensive ones as "this
       // uses your whole turn" -- same information the cost number carries,
       // but available without hovering every tile.
@@ -1199,7 +1215,7 @@ window.UI = window.UI || {};
     for (const { x, y } of reach.values()) {
       const screenX = x * ts + offsetX;
       const screenY = y * ts + offsetY;
-      if (screenX < -ts || screenX > ctx.canvas.width || screenY < -ts || screenY > ctx.canvas.height) continue;
+      if (screenX < -ts || screenX > cssW(ctx.canvas) || screenY < -ts || screenY > cssH(ctx.canvas)) continue;
       ctx.beginPath();
       if (!reach.has(`${x},${y - 1}`)) { ctx.moveTo(screenX, screenY); ctx.lineTo(screenX + ts, screenY); }
       if (!reach.has(`${x},${y + 1}`)) { ctx.moveTo(screenX, screenY + ts); ctx.lineTo(screenX + ts, screenY + ts); }
@@ -1233,7 +1249,7 @@ window.UI = window.UI || {};
     for (const slot of placement.slots) {
       const screenX = slot.x * ts + offsetX;
       const screenY = slot.y * ts + offsetY;
-      if (screenX < -ts || screenX > ctx.canvas.width || screenY < -ts || screenY > ctx.canvas.height) continue;
+      if (screenX < -ts || screenX > cssW(ctx.canvas) || screenY < -ts || screenY > cssH(ctx.canvas)) continue;
       const isHovered = hover && hover.x === slot.x && hover.y === slot.y;
       if (placement.targeting) {
         drawTargetReticle(ctx, screenX, screenY, ts, isHovered, pulse);
@@ -1263,7 +1279,7 @@ window.UI = window.UI || {};
         const x = hover.x + off.dx, y = hover.y + off.dy;
         const screenX = x * ts + offsetX;
         const screenY = y * ts + offsetY;
-        if (screenX < -ts || screenX > ctx.canvas.width || screenY < -ts || screenY > ctx.canvas.height) continue;
+        if (screenX < -ts || screenX > cssW(ctx.canvas) || screenY < -ts || screenY > cssH(ctx.canvas)) continue;
         ctx.fillStyle = "rgba(255, 90, 40, 0.32)";
         ctx.fillRect(screenX, screenY, ts, ts);
         ctx.strokeStyle = "rgba(255, 130, 60, 0.9)";
@@ -1406,8 +1422,8 @@ window.UI = window.UI || {};
       // more than the bounds check).
       const xs = points.map((p) => p.x).concat(targetX);
       const ys = points.map((p) => p.y).concat(targetY);
-      if (Math.max(...xs) < -ts || Math.min(...xs) > ctx.canvas.width + ts
-        || Math.max(...ys) < -ts || Math.min(...ys) > ctx.canvas.height + ts) continue;
+      if (Math.max(...xs) < -ts || Math.min(...xs) > cssW(ctx.canvas) + ts
+        || Math.max(...ys) < -ts || Math.min(...ys) > cssH(ctx.canvas) + ts) continue;
 
       const color = PLANNED_PATH_COLORS[plan.kind] || PLANNED_PATH_COLORS.goto;
 
@@ -1476,7 +1492,7 @@ window.UI = window.UI || {};
         if (enemy.carriedBy) continue; // not a real, targetable board presence
         if (!ai.canAttackUnitNow(civ, unit, enemy, gameState)) continue;
         const screenX = enemy.x * ts + offsetX, screenY = enemy.y * ts + offsetY;
-        if (screenX < -ts || screenX > ctx.canvas.width || screenY < -ts || screenY > ctx.canvas.height) continue;
+        if (screenX < -ts || screenX > cssW(ctx.canvas) || screenY < -ts || screenY > cssH(ctx.canvas)) continue;
         const cx = screenX + ts / 2, cy = screenY + ts / 2;
 
         ctx.save();
@@ -2553,7 +2569,7 @@ window.UI = window.UI || {};
     const offsetY = -Math.round(clamped.y);
     const screenX = x * ts + offsetX;
     const screenY = y * ts + offsetY;
-    return !(screenX < -ts || screenX > canvas.width || screenY < -ts || screenY > canvas.height);
+    return !(screenX < -ts || screenX > cssW(canvas) || screenY < -ts || screenY > cssH(canvas));
   }
 
   /**
