@@ -585,8 +585,13 @@
   /** Drag-to-resize on the sheet. Only claims presses landing in the top
    *  strip, so the panel's own content stays scrollable everywhere else --
    *  the grabber is a ::before pseudo-element and can't take listeners of its
-   *  own (see css/mobile.css). */
-  const SHEET_GRAB_ZONE_PX = 44;
+   *  own (see css/mobile.css). 48px (2026-08-26, user-reported) to exactly
+   *  match css/mobile.css's `#sidebar > *` padding-top -- that padding is
+   *  what actually keeps the tab strip's own tap targets out of this zone;
+   *  the two have to move together or a real touch can land past this JS
+   *  cutoff but still inside the tab strip's old higher position, or vice
+   *  versa. */
+  const SHEET_GRAB_ZONE_PX = 48;
   function setupSheetDrag(sheet) {
     let startY = 0, startTranslate = 0, translate = 0, dragging = false;
 

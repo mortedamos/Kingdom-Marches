@@ -366,9 +366,12 @@ body.mobile .m-scrim {
    single translate -- so the drag handler only ever sets one property and
    dragging can interrupt the transition cleanly.
 
-   --m-sheet-peek is how much stays on screen at rest. */
+   --m-sheet-peek is how much stays on screen at rest -- tall enough to
+   clear the grab strip below AND still show the full tab row beneath it
+   (2026-08-26: was 4.6rem, sized only for the tab row -- see the padding-top
+   note on `#sidebar > *` below for why both grew together). */
 body.mobile #sidebar {
-  --m-sheet-peek: 4.6rem;
+  --m-sheet-peek: 6.85rem;
   position: fixed;
   left: 0;
   right: 0;
@@ -402,7 +405,7 @@ body.mobile #sidebar.m-dragging { transition: none; }
 body.mobile #sidebar::before {
   content: "";
   position: absolute;
-  top: .55rem;
+  top: 1.35rem;
   left: 50%;
   width: 2.4rem;
   height: .25rem;
@@ -414,12 +417,23 @@ body.mobile #sidebar::before {
   pointer-events: none;
 }
 
-/* Sheet contents scroll internally, below the grabber. */
+/* Sheet contents scroll internally, below the grabber.
+   padding-top (2026-08-26, user-reported): was 1.15rem, which left the tab
+   strip starting at ~18px from the sheet's top -- well inside
+   SHEET_GRAB_ZONE_PX's 44px "this press is a drag" band in main.js's
+   setupSheetDrag. A finger landing on a tab (the most visually prominent
+   thing in the peek strip, and the natural place to land a thumb) fell
+   inside that band roughly two-thirds of the time, so touches meant as
+   "grab and slide" kept landing as tab taps instead -- read by the user as
+   the sheet simply not being draggable. 3rem clears the whole grab band
+   with a hair of margin; SHEET_GRAB_ZONE_PX was widened to match exactly,
+   so there's no dead strip between "definitely a drag" and "definitely
+   content" either. */
 body.mobile #sidebar > * {
   max-height: 100%;
   overflow-y: auto;
   overscroll-behavior: contain;
-  padding-top: 1.15rem;
+  padding-top: 3rem;
   -webkit-overflow-scrolling: touch;
 }
 
