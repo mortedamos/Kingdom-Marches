@@ -618,10 +618,17 @@ window.GameEngine = window.GameEngine || {};
     const baseUnit = window.GameData.getUnit(unit.typeId);
     const race = window.GameData.getRace(civ.raceId);
     const ov = getUnitOverride(civ, unit.typeId);
-    let atk = baseUnit.attack + (ov.attack || 0) + (unit.levelBonuses?.attack || 0);
+    // buildingBonuses: permanent stat stamped on at build time by the city's
+    // structures (Dwarf Deep Forge's +1 attack) -- see ai.js's
+    // BUILDING_UNIT_STAMPS for why it's separate from levelBonuses.
+    let atk = baseUnit.attack + (ov.attack || 0) + (unit.levelBonuses?.attack || 0)
+      + (unit.buildingBonuses?.attack || 0);
 
     // Orc Bog Witch curse (death-curse or Malefic Malediction): -50% attack while active.
     if (unit.conditions?.curse) atk *= unit.conditions.curse.attackMult;
+    // Orc Ancestral Dolmen: +25% attack while roused by a fallen kinsman --
+    // see ai.js's maybeAncestralRage.
+    if (unit.conditions?.ancestralRage) atk *= unit.conditions.ancestralRage.attackMult;
     // Human "Freezing Touch": -25% attack while Frozen (movement is separately
     // zeroed in ai.js's moveUnitToward -- this condition is generic, not
     // Human-specific, so it applies to whichever race's unit gets frozen).
@@ -646,13 +653,14 @@ window.GameEngine = window.GameEngine || {};
       atk *= 1.75;
     }
 
-    // Tech: Elf "Strike from the Shadows"/"Sudden Doom" -- bonus attack while
-    // Hidden, same shape as Knife in the Dark above. Mutually exclusive --
-    // Sudden Doom's own wording ("replacing Strike from the Shadows") means
-    // it always supersedes the lesser bonus once known, never stacks with it.
-    if (unit.conditions?.hidden && civ.unlockedMechanics) {
-      if (civ.unlockedMechanics.has("sudden_doom")) atk *= 2.0;
-      else if (civ.unlockedMechanics.has("strike_from_the_shadows")) atk *= 1.5;
+    // Tech: Elf "Strike from the Shadows" -- +100% attack while Hidden, same
+    // shape as Knife in the Dark above. (Mechanic id is still `sudden_doom`,
+    // the tech's former name -- see techs.js's elf_sudden_doom. The separate
+    // L2 tech that granted a lesser +50% `strike_from_the_shadows` tier was
+    // removed 2026-08-24, so there's no longer a two-tier comparison here.)
+    if (unit.conditions?.hidden && civ.unlockedMechanics
+        && civ.unlockedMechanics.has("sudden_doom")) {
+      atk *= 2.0;
     }
 
     if (race.forestCombatBonus && context.attackerInForest) atk *= race.forestCombatBonus;
@@ -706,7 +714,10 @@ window.GameEngine = window.GameEngine || {};
     const baseUnit = window.GameData.getUnit(unit.typeId);
     const race = window.GameData.getRace(civ.raceId);
     const ov = getUnitOverride(civ, unit.typeId);
-    let def = (baseUnit.defense + (ov.defense || 0) + (unit.levelBonuses?.defense || 0)) * (race.defenseMult || 1.0);
+    // buildingBonuses: Elf Silverleaf Atelier's +1 defense, stamped at build
+    // time -- see ai.js's BUILDING_UNIT_STAMPS.
+    let def = (baseUnit.defense + (ov.defense || 0) + (unit.levelBonuses?.defense || 0)
+      + (unit.buildingBonuses?.defense || 0)) * (race.defenseMult || 1.0);
 
     // Undead "Zombie": same reduced-stats condition as effectiveAttack above.
     if (unit.conditions?.zombie) def *= unit.conditions.zombie.statMult;
@@ -770,6 +781,18 @@ window.GameEngine = window.GameEngine || {};
     // Tech: garrison_defense_bonus (e.g. Human "Defense of the Kingdom") -- only
     // while the unit is standing in a city or on a friendly structure tile.
     if (context.garrisoned && ov.garrisonDefenseBonus) def += ov.garrisonDefenseBonus;
+
+    // Dwarf Great Hall ("Meeting of the Clans"): +50% defense while actively
+    // Resting and Defending on any of this civ's cities, buildings, or walls
+    // -- context.garrisoned is exactly that "on one of our cities or
+    // structures" test (see ai.js's isGarrisoned; walls live in
+    // city.structures, so they're covered, while bridges live on civ.bridges
+    // and deliberately are not). Civ-wide off a single standing Great Hall,
+    // same revocable civHasBuiltBuilding shape as Marketcraft/hedge_walls.
+    if (context.garrisoned && unit.channeling === "restAndDefend"
+        && window.GameEngine.cities.civHasBuiltBuilding(civ, "great_hall")) {
+      def *= 1.5;
+    }
 
     if (context.isMelee && baseUnit.weakInMeleeDef) def *= baseUnit.weakInMeleeDef;
     if (context.defenderTerrainBonus) def *= context.terrainDefenseModifier || 1.25;
@@ -1159,7 +1182,12 @@ window.GameEngine = window.GameEngine || {};
    */
   function initUnitHP(unit, civ) {
     const baseUnit = window.GameData.getUnit(unit.typeId);
-    unit.maxHp = window.GameData.unitMaxHP(baseUnit.attack || 0, baseUnit.defense || 0, unit.typeId);
+    // buildingBonuses.maxHp: Halfellow Farmers Market's "Well Fed" bonus,
+    // stamped at build time (see ai.js's applyBuildingUnitStamps). Re-added
+    // here so a defensive re-init never silently reverts the unit to base
+    // HP. Absent (0) for every unit not built in a Farmers Market city.
+    unit.maxHp = window.GameData.unitMaxHP(baseUnit.attack || 0, baseUnit.defense || 0, unit.typeId)
+      + (unit.buildingBonuses?.maxHp || 0);
     unit.hp = unit.maxHp;
     if (civ && civ.raceId && !unit.name) {
       // nameSpecial (ship/machine/construct/beast, see units.js's doc
@@ -1242,13 +1270,12 @@ window.GameEngine = window.GameEngine || {};
   /**
    * Halfellow "Rouse the People": once researched, a defended city/wall/
    * building fights back. Gains an attack stat (at least the Militia's,
-   * never less than whatever it already had). No First-Strike discount --
-   * Human's Ramparts has its own separate copy of that discount in
-   * wallCounterattack below. A deliberate, confirmed exception to
-   * "structures never counterattack" everywhere else in the game.
+   * never less than whatever it already had). A deliberate, confirmed
+   * exception to "structures never counterattack" everywhere else in the
+   * game -- and, since Human's Ramparts was removed in 2026-08-24, now one
+   * of only two sources of structure counterattack (with Orc's Spikes!).
    *
-   * Reach: derived from the Militia's own range (same convention as Human's
-   * wallCounterattack deriving its reach from the Archer's range below) --
+   * Reach: derived from the Militia's own range --
    * Militia has no `range` property, so this is melee-only (1 tile). An
    * attacker striking from further away (a Ranged unit standing off at
    * distance) is simply out of the structure's retaliatory reach and takes
@@ -1266,46 +1293,12 @@ window.GameEngine = window.GameEngine || {};
     return dmg;
   }
 
-  /**
-   * Human "Ramparts": walls AND cities (not other buildings) can
-   * counterattack ONLY while a unit is Resting and Defending (unit.channeling
-   * === "restAndDefend", 2026-08-19 -- merged with the old separate Garrison
-   * action, user-directed) in this city -- see attackStructure (walls) and
-   * attackCity (cities) for the two call sites. No one resting and
-   * defending there, no counterattack at all. The wall's attack rating AND
-   * reach both become that unit's own effectiveAttack/effectiveRange. Same
-   * structure-specific 25% First-Strike discount as Rouse the People/
-   * Spikes! use. Mutates attackerUnit.hp; returns the raw counter damage
-   * dealt (0 if no one's resting and defending there, or the attacker is
-   * out of that unit's reach).
-   */
-  function wallCounterattack(structureRecord, defenderCiv, attackerUnit, attackerCiv, gameState) {
-    if (!gameState) return 0;
-    // A wall segment can sit anywhere in the city's radius, not necessarily
-    // on the city's own tile (unlike attackCity's call, where
-    // structureRecord IS the city -- its x/y already ARE the city's own).
-    // Resolve via the tile's structure pointer (cityX/cityY, same fields
-    // cities.js's findStructureAt reads) when there is one; falls back to
-    // structureRecord's own x/y otherwise, which is exactly correct for the
-    // city-attack call.
-    const { map } = gameState;
-    const tile = map.tiles[structureRecord.y * map.width + structureRecord.x];
-    const ptr = tile && tile.structure;
-    const cityX = ptr ? ptr.cityX : structureRecord.x;
-    const cityY = ptr ? ptr.cityY : structureRecord.y;
-    const garrison = defenderCiv.units.find((u) =>
-      u.channeling === "restAndDefend" && u.x === cityX && u.y === cityY);
-    if (!garrison) return 0;
-    const range = effectiveRange(garrison, defenderCiv);
-    const dist = Math.max(Math.abs(attackerUnit.x - structureRecord.x), Math.abs(attackerUnit.y - structureRecord.y));
-    if (dist > range) return 0;
-    const atk = effectiveAttack(garrison, defenderCiv, {});
-    const defStat = effectiveDefense(attackerUnit, attackerCiv, {});
-    let dmg = mitigatedDamage(atk, defStat);
-    if (hasFirstStrike(attackerUnit, attackerCiv)) dmg = Math.round(dmg * 0.75);
-    attackerUnit.hp -= dmg;
-    return dmg;
-  }
+  // (2026-08-24: wallCounterattack lived here -- Human "Ramparts", which let
+  // walls and cities strike back with the attack and reach of a unit Resting
+  // and Defending in the city. The tech was removed and this was its only
+  // consumer, so it went with it. Elf's Warden of the Trees uses the same
+  // "inherit the resting unit's attack" idea, but as a proactive per-turn
+  // wall shot -- see ai.js's tickWallDefense, not a counterattack.)
 
   /** Orc "Spikes!"/"Bigger Spikes!": the higher tech (if known) always wins
    *  rather than stacking with the lower one -- same "upgrade tech"
@@ -1318,13 +1311,13 @@ window.GameEngine = window.GameEngine || {};
     return 0;
   }
 
-  /** Orc "Spikes!"/"Bigger Spikes!": structurally identical to Human's
-   *  Ramparts above (same Archer-derived reach, same 25% First-Strike
-   *  discount, no militia spawn) but with a FLAT attack rating
-   *  (spikesAttackRating) instead of deriving from the Archer -- never
-   *  LOWERS the structure's existing attack, same max() convention as
-   *  wallCounterattack/structureCounterattack. Mutates attackerUnit.hp;
-   *  returns the raw counter damage dealt (0 if out of reach). */
+  /** Orc "Spikes!"/"Bigger Spikes!": Archer-derived reach and a 25%
+   *  First-Strike discount, with a FLAT attack rating (spikesAttackRating)
+   *  -- never LOWERS the structure's existing attack, same max() convention
+   *  as structureCounterattack. (It used to be described as "identical to
+   *  Human's Ramparts"; that tech was removed 2026-08-24.) Mutates
+   *  attackerUnit.hp; returns the raw counter damage dealt (0 if out of
+   *  reach). */
   function spikesCounterattack(structureRecord, defenderCiv, attackerUnit, attackerCiv, flatAttack) {
     const archer = window.GameData.getUnit("archer");
     const dist = Math.max(Math.abs(attackerUnit.x - structureRecord.x), Math.abs(attackerUnit.y - structureRecord.y));
@@ -1430,8 +1423,12 @@ window.GameEngine = window.GameEngine || {};
     const isAdjacent = Math.max(Math.abs(unit.x - structureRecord.x), Math.abs(unit.y - structureRecord.y)) <= 1;
     const isSiege = isAdjacent || !!window.GameData.getUnit(unit.typeId).siegeAtRange;
     const atk = effectiveAttack(unit, attackerCiv, { isSiege, opposingCivId: defenderCiv && defenderCiv.id });
+    // Siege bypasses part of a wall/bridge's defense the same way it does a
+    // city's (2026-08-25) -- see siegeAdjustedDefense. Only meaningful for
+    // structures that HAVE a defense value (walls and bridges); a defenceless
+    // building already takes the raw roll.
     const rollHit = () => building.defense && !gateUnlocked
-      ? mitigatedDamage(atk, building.defense)
+      ? mitigatedDamage(atk, siegeAdjustedDefense(building.defense, unit, attackerCiv))
       : Math.round(damageRoll(atk));
     const dmg = rollHit();
     structureRecord.hp -= dmg;
@@ -1455,8 +1452,11 @@ window.GameEngine = window.GameEngine || {};
     } else if (defenderCiv && defenderCiv.unlockedMechanics && defenderCiv.unlockedMechanics.has("rouse_the_people")) {
       counterDamage = structureCounterattack(structureRecord, defenderCiv, unit, attackerCiv);
       if (gameState) militiaSpawned = maybeSpawnMilitia(defenderCiv, structureRecord.x, structureRecord.y, gameState.map, gameState.civs);
-    } else if (building.isWall && defenderCiv && defenderCiv.unlockedMechanics && defenderCiv.unlockedMechanics.has("ramparts")) {
-      counterDamage = wallCounterattack(structureRecord, defenderCiv, unit, attackerCiv, gameState);
+    // (2026-08-24: a Human "Ramparts" branch used to sit here, letting walls
+    // strike back with the attack of a unit Resting and Defending in the
+    // city. That tech was removed -- Human keeps its per-turn wall potshot,
+    // renamed "Ramparts!", but no longer counterattacks. wallCounterattack
+    // went with it; recover from git if a future tech wants it back.)
     } else if (defenderCiv && spikesAttackRating(defenderCiv) > 0) {
       // Orc "Spikes!"/"Bigger Spikes!": scope
       // widened from walls-only to any structure (walls, buildings, and
@@ -1488,6 +1488,37 @@ window.GameEngine = window.GameEngine || {};
   const CITY_DEFENSE_PER_STRUCTURE = CFG.cityDefensePerStructure;
   const CITY_DEFENSE_PER_WALL = CFG.cityDefensePerWall;
   const CITY_HP_PER_LEVEL = CFG.cityHpPerLevel;
+  const SIEGE_BYPASS_PER_PCT = CFG.siegeDefenseBypassPerPct;
+  const SIEGE_BYPASS_MAX = CFG.siegeDefenseBypassMax;
+
+  /** Expected damage `unit` would do to `city` on one attack, using the same
+   *  attack/defense/siege-bypass chain attackCity itself uses but with the
+   *  average damage roll instead of a random one (2026-08-25). Pure -- the AI
+   *  calls this to decide whether an attack is worth making at all (see
+   *  ai.js's futility gate), so it must not mutate or consume randomness.
+   *  Returns 1 for a unit that can only chip the minimum. */
+  function expectedCityDamage(unit, city, attackerCiv) {
+    const isAdjacent = Math.max(Math.abs(unit.x - city.x), Math.abs(unit.y - city.y)) <= 1;
+    const isSiege = isAdjacent || !!window.GameData.getUnit(unit.typeId).siegeAtRange;
+    const atk = effectiveAttack(unit, attackerCiv, { isSiege });
+    const def = siegeAdjustedDefense(cityDefenseValue(city), unit, attackerCiv);
+    // damageRoll averages to the attack stat itself (its +/- 3d6% swing is
+    // symmetric), so the expected value is atk * atk/(atk+def).
+    return Math.max(1, Math.round(atk * (atk / (atk + def || 1))));
+  }
+
+  /** Structural defense left after `unit`'s Siege property bypasses part of
+   *  it (2026-08-25). Applies to cities, walls, bridges and buildings alike
+   *  -- everything with a structural defense value. A unit with no siegePct
+   *  gets the full defense, unchanged; the bypass scales with how much Siege
+   *  the unit actually has and is capped so no unit ever ignores defense
+   *  entirely. See config.js's siegeDefenseBypassPerPct for the reasoning. */
+  function siegeAdjustedDefense(defStat, unit, civ) {
+    const siegePct = effectiveSiegePct(unit, civ);
+    if (!(siegePct > 0)) return defStat;
+    const bypass = Math.min(SIEGE_BYPASS_MAX, siegePct * SIEGE_BYPASS_PER_PCT);
+    return defStat * (1 - bypass);
+  }
 
   /** Higher for a bigger, more built-up city -- deliberately has no defender
    *  garrison bonus of its own (that's the job of an actual defending unit;
@@ -1553,7 +1584,7 @@ window.GameEngine = window.GameEngine || {};
     const isSiege = isAdjacent || !!window.GameData.getUnit(unit.typeId).siegeAtRange;
     const atk = effectiveAttack(unit, attackerCiv, { isSiege, opposingCivId: defenderCiv && defenderCiv.id });
     const def = cityDefenseValue(city);
-    const dmg = mitigatedDamage(atk, def);
+    const dmg = mitigatedDamage(atk, siegeAdjustedDefense(def, unit, attackerCiv));
     if (city.hp == null) city.hp = cityMaxHp(city); // defensive -- a city from an older save may predate this field
     city.hp -= dmg;
     // Growth pause: a city attacked this round
@@ -1561,23 +1592,29 @@ window.GameEngine = window.GameEngine || {};
     // tick -- see cities.js's tickCity, which checks and clears this flag.
     city.attackedThisTurn = true;
     let destroyed = false, populationLost = false;
-    if (city.hp <= 0) {
+    // Overkill now CARRIES (2026-08-25, user-directed "no special damage
+    // cap"). Previously each population level refilled to its own fresh max
+    // and the excess was discarded, so a 50-damage siege hit accomplished
+    // exactly as much as an 18-damage one: a single level. That capped how
+    // much a real siege engine could ever do per swing and was a large part
+    // of why conquest never happened. The loop keeps spending leftover
+    // damage into successive levels until the city runs out of population
+    // (destroyed) or the damage runs out.
+    while (city.hp <= 0 && !destroyed) {
       const level = Math.floor(city.population);
-      if (level <= 1) {
-        destroyed = true;
-      } else {
-        city.population = level - 1;
-        city.harvestSurplus = 0; // same reset starvation already applies on a population loss
-        city.hp = cityMaxHp(city); // fresh pool at the new, smaller max -- no overkill carryover
-        populationLost = true;
-      }
+      if (level <= 1) { destroyed = true; break; }
+      const carry = -city.hp; // damage left over past this level
+      city.population = level - 1;
+      city.harvestSurplus = 0; // same reset starvation already applies on a population loss
+      city.hp = cityMaxHp(city) - carry;
+      populationLost = true;
     }
     let counterDamage = 0, militiaSpawned = null;
     if (defenderCiv && defenderCiv.unlockedMechanics && defenderCiv.unlockedMechanics.has("rouse_the_people")) {
       counterDamage = structureCounterattack(city, defenderCiv, unit, attackerCiv);
       if (gameState) militiaSpawned = maybeSpawnMilitia(defenderCiv, city.x, city.y, gameState.map, gameState.civs);
-    } else if (defenderCiv && defenderCiv.unlockedMechanics && defenderCiv.unlockedMechanics.has("ramparts")) {
-      counterDamage = wallCounterattack(city, defenderCiv, unit, attackerCiv, gameState);
+    // (2026-08-24: Human "Ramparts" branch removed here too -- see
+    // attackStructure's matching note above.)
     } else if (defenderCiv && spikesAttackRating(defenderCiv) > 0) {
       counterDamage = spikesCounterattack(city, defenderCiv, unit, attackerCiv, spikesAttackRating(defenderCiv));
     }
@@ -1714,6 +1751,22 @@ window.GameEngine = window.GameEngine || {};
           structFound.record.hp -= dmg;
           hits.push({ kind: "structure", x, y, damage: dmg, civId: structFound.civ.id, id: structFound.record.id, record: structFound.record });
         }
+        // City center (2026-08-24 bugfix): the blast never checked for a
+        // city occupying one of its 4 tiles at all, so Bombardment could
+        // level every wall/building around a city and never dent the city
+        // itself. Reuses attackCity -- same damage/defense/counterattack
+        // rules an ordinary city attack gets -- rather than a bespoke
+        // formula, for the "same way attackCity does" consistency an
+        // indiscriminate blast should still respect.
+        for (const otherCiv of Object.values(civs)) {
+          if (otherCiv.eliminated) continue;
+          const cityFound = otherCiv.cities.find((c) => c.x === x && c.y === y);
+          if (cityFound) {
+            const result = attackCity(casterUnit, cityFound, casterCiv, otherCiv, gameState);
+            hits.push({ kind: "city", x, y, damage: result.damage, civId: otherCiv.id, city: cityFound, civ: otherCiv, result });
+            break; // one city can ever occupy a given tile
+          }
+        }
       }
     }
     return hits;
@@ -1756,6 +1809,8 @@ window.GameEngine = window.GameEngine || {};
     applyBombardBlast,
     cityDefenseValue,
     cityMaxHp,
+    expectedCityDamage,
+    siegeAdjustedDefense,
     cityAttackWinProbability,
     attackCity,
     maybeSpawnMilitia,

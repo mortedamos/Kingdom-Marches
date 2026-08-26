@@ -444,7 +444,12 @@ window.GameEngine = window.GameEngine || {};
             return;
           }
           civ.stockpile.coin -= building.coinCost;
-          target.bridgeTurnsLeft = building.minBuildTurns;
+          // 2026-08-24 bugfix: bridge_section has no minBuildTurns field
+          // (removed 2026-08-21 -- build time went table-driven, same change
+          // that affected wall_section). Reading it here always produced
+          // undefined, so this counted down from NaN forever and never hit
+          // <=0 -- construction showed "NaN" and never completed.
+          target.bridgeTurnsLeft = window.GameEngine.ai.buildingBuildTurns(civ, "bridge_section");
         }
         target.bridgeTurnsLeft--;
         unit.usedThisTurn = true;
@@ -675,8 +680,11 @@ window.GameEngine = window.GameEngine || {};
     const passengerBase = window.GameData.getUnit(passengerUnit.typeId);
     if (carrierUnit.typeId === "shadowsteed") {
       // "It cannot carry an Awakened Oak, a Raptor, or a Galley." --
-      // techs.js's elf_shadowsteed.
-      if (passengerUnit.typeId === "awakened_oak" || passengerUnit.typeId === "raptor" || passengerUnit.typeId === "galley") return false;
+      // techs.js's elf_shadowsteed. Also excludes another Shadowsteed
+      // (2026-08-24 bugfix): nothing in that tech's design intends a
+      // Shadowsteed to ferry its own kind.
+      if (passengerUnit.typeId === "awakened_oak" || passengerUnit.typeId === "raptor"
+          || passengerUnit.typeId === "galley" || passengerUnit.typeId === "shadowsteed") return false;
     } else if (window.GameData.getUnit(carrierUnit.typeId).isNaval) {
       // A Galley (or any future naval carrier) doesn't ferry another boat,
       // or a flier that doesn't need ferrying -- mirrors ai.js's own
@@ -747,7 +755,7 @@ window.GameEngine = window.GameEngine || {};
   /** Elf "Nature's Grace": every allied unit actually missing HP within the
    *  caster's own effectiveRange and with a clear shot -- mirrors ai.js's
    *  maybeNaturesGrace scan exactly, minus its "pick the most injured" step.
-   *  Excludes the caster: a Druid can't heal itself with this. */
+   *  Includes the caster itself: a Druid can heal itself with this. */
   function naturesGraceTargets(unit, gameState, humanCivId) {
     const civ = gameState.civs[unit.civId];
     if (!civ || unit.usedThisTurn) return [];
@@ -760,7 +768,7 @@ window.GameEngine = window.GameEngine || {};
     const range = window.GameEngine.combat.effectiveRange(unit, civ);
     const out = [];
     for (const ally of civ.units) {
-      if (ally === unit || ally.carriedBy) continue;
+      if (ally.carriedBy) continue;
       if (ally.hp >= ally.maxHp) continue;
       if (window.GameEngine.influence.chebyshev(unit.x, unit.y, ally.x, ally.y) > range) continue;
       if (!window.GameEngine.ai.hasRangedLineOfSight(gameState.map, unit.x, unit.y, ally.x, ally.y)) continue;
@@ -1165,15 +1173,34 @@ window.GameEngine = window.GameEngine || {};
         options.push({ kind: "setTrap:fire", label: "Set Fire Trap" });
       }
 
-      // Halfellow "Banish the Darkness": single click, no placement mode
-      // needed -- same "lands on a random open adjacent tile" shape as
-      // Raptor/Shadowsteed above (ai.js's spawnUnitAdjacentToUnit), not a
-      // player-chosen destination like Wisp/the traps. Always offered (no
-      // civ-wide cap check like Wisp/traps) since summoning a new Bonfire
-      // simply dismisses this civ's old one rather than being blocked by it.
+      // Halfellow "Banish the Darkness": tile-placement mode (2026-08-24,
+      // same shape as Set the Trap just above, range 1 for true 8-neighbor
+      // adjacency) -- the player picks which open adjacent tile the Bonfire
+      // lands on rather than it landing on a random one (see main.js's
+      // startGreatBonfirePlacement). Always offered (no civ-wide cap check
+      // like Wisp/traps) since summoning a new Bonfire simply dismisses this
+      // civ's old one rather than being blocked by it.
       if (unit.typeId === "wanderer" && !unit.usedThisTurn
           && civ.unlockedMechanics?.has("banish_the_darkness")) {
         options.push({ kind: "createGreatBonfire", label: "Create The Great Bonfire" });
+      }
+
+      // Elf "Whirlwind Strike"/"Blade Storm": player-invoked version of the
+      // AI's own maybeBladeDancerSweep (ai.js) -- same underlying
+      // performBladeSweep, just without the AI's "only if it beats a normal
+      // attack" >=2-target heuristic; the player only needs at least one
+      // enemy in range to make the pill worth showing. Two separate pills
+      // (not one auto-pick-the-bigger-one like the AI) so the player chooses
+      // which radius to use.
+      if (unit.typeId === "blade_dancer" && !unit.usedThisTurn) {
+        if (civ.unlockedMechanics?.has("whirlwind_strike")
+            && window.GameEngine.ai.countEnemiesInRadius(civ, unit.x, unit.y, window.GameEngine.ai.WHIRLWIND_STRIKE_RADIUS, gameState) >= 1) {
+          options.push({ kind: "whirlwindStrike", label: "Whirlwind Strike" });
+        }
+        if (civ.unlockedMechanics?.has("blade_storm")
+            && window.GameEngine.ai.countEnemiesInRadius(civ, unit.x, unit.y, window.GameEngine.ai.BLADE_STORM_RADIUS, gameState) >= 1) {
+          options.push({ kind: "bladeStorm", label: "Blade Storm" });
+        }
       }
 
       // Hidden/stealth -- sidebar.js's stealthActions.

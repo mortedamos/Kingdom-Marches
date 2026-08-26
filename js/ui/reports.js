@@ -65,14 +65,14 @@ window.UI = window.UI || {};
       return { civId, label: race.label, color: race.color, values };
     });
 
-    // Computed fresh from the current map's claimable tile count
-    // (countTerritory), not a fixed number, since totalClaimable varies with
-    // map size/civ count. Same formula checkVictory (turns.js) uses.
+    // 2026-08-25: the victory line is now a FIXED tile count, identical on
+    // every map -- it used to be derived from each map's own totalClaimable
+    // via a percentage threshold. See config.js's victory.tileTarget.
+    // totalClaimable is still read for the "x% of the world" context label.
     let victoryThresholdTiles = null, totalClaimable = null;
     if (reportType !== "power" && window.GameEngine.influence) {
-      const territory = window.GameEngine.influence.countTerritory(gameState);
-      totalClaimable = territory.totalClaimable;
-      victoryThresholdTiles = Math.ceil(totalClaimable * window.GameEngine.turns.VICTORY_SHARE_THRESHOLD);
+      totalClaimable = window.GameEngine.influence.countTerritory(gameState).totalClaimable;
+      victoryThresholdTiles = window.GameEngine.turns.VICTORY_TILE_TARGET;
     }
 
     const n = turns.length;
@@ -130,9 +130,13 @@ window.UI = window.UI || {};
       victoryLine = `
         <line x1="${PAD_L}" y1="${y.toFixed(1)}" x2="${W - PAD_R}" y2="${y.toFixed(1)}" stroke="var(--accent)" stroke-width="1.5" stroke-dasharray="5,4" />
         <text x="${(W - PAD_R + 6).toFixed(1)}" y="${y.toFixed(1)}" dominant-baseline="middle" font-size="10" fill="var(--accent)">Victory</text>`;
-      const pct = Math.round(window.GameEngine.turns.VICTORY_SHARE_THRESHOLD * 100);
-      victorySubtitle = `<p class="reports-subtitle">Territorial victory needs ${pct}% of this map's claimable land —
-        ${victoryThresholdTiles.toLocaleString()} of ${totalClaimable.toLocaleString()} tiles.</p>`;
+      // The target is the same on every map; the percentage is shown only as
+      // context for how much of THIS world that happens to be.
+      const pctOfWorld = totalClaimable > 0
+        ? ` — about ${Math.round(100 * victoryThresholdTiles / totalClaimable)}% of this map's ${totalClaimable.toLocaleString()} tiles.`
+        : ".";
+      victorySubtitle = `<p class="reports-subtitle">Territorial victory needs
+        ${victoryThresholdTiles.toLocaleString()} owned tiles${pctOfWorld}</p>`;
     }
 
     return `

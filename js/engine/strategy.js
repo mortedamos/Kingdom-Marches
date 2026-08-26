@@ -5,9 +5,9 @@
  * the turn-local tactical AI in ai.js. Where ai.js's chooseStrategy() and
  * scoreNextResearch() re-score everything from scratch every single turn,
  * this module gives each civ a multi-turn plan derived from its race
- * personality traits, aimed squarely at the actual win condition (holding
- * >= VICTORY_SHARE_THRESHOLD of claimable land via influence -- see
- * turns.js checkVictory / VICTORY_SHARE_THRESHOLD).
+ * personality traits, aimed squarely at the actual win condition (owning
+ * >= VICTORY_TILE_TARGET tiles via influence -- see turns.js checkVictory /
+ * VICTORY_TILE_TARGET).
  *
  * civ.doctrine = {
  *   techSpine: "civic" | "building" | "military",
@@ -91,21 +91,28 @@ window.GameEngine = window.GameEngine || {};
     return best ? best.id : null;
   }
 
-  /** This civ's current share of claimable land (0..1) and whether it's
-   *  leading. Exported (2026-08-19, user-directed) so ai.js's chooseStrategy
-   *  can also read it every turn -- to react immediately once a civ nears
-   *  VICTORY_SHARE_THRESHOLD outright, rather than waiting for this
-   *  module's own every-8-turns doctrine recompute. */
+  /** This civ's owned-tile count (and share of claimable land, kept for
+   *  display) plus whether it's leading. Exported (2026-08-19, user-directed)
+   *  so ai.js's chooseStrategy can also read it every turn -- to react
+   *  immediately once a civ nears VICTORY_TILE_TARGET outright, rather than
+   *  waiting for this module's own every-8-turns doctrine recompute. */
   function landStanding(civ, gameState) {
     const { counts, totalClaimable } = window.GameEngine.influence.countTerritory(gameState);
     const myShare = totalClaimable > 0 ? (counts[civ.id] || 0) / totalClaimable : 0;
     let leadingShare = 0;
+    // Raw tile counts too (2026-08-25): victory is an absolute tile target
+    // now, so callers judging "how close is anyone to winning" need tiles,
+    // not shares. Shares are still returned for the relative comparisons
+    // (am I ahead or behind?) that don't care about the win line.
+    const myTiles = counts[civ.id] || 0;
+    let leadingTiles = 0;
     for (const [civId, count] of Object.entries(counts)) {
       if (civId === civ.id) continue;
       const share = totalClaimable > 0 ? count / totalClaimable : 0;
       if (share > leadingShare) leadingShare = share;
+      if (count > leadingTiles) leadingTiles = count;
     }
-    return { myShare, leadingShare, isLeading: myShare >= leadingShare };
+    return { myShare, leadingShare, myTiles, leadingTiles, isLeading: myShare >= leadingShare };
   }
 
   /** How strongly this race's traits + current land standing favor each of
@@ -140,11 +147,11 @@ window.GameEngine = window.GameEngine || {};
    *
    *  `runawayLeaderPressure` (2026-08-17): an additional, steeper conquest
    *  pull for every civ that ISN'T leading, scaling with how close the
-   *  actual leader sits to VICTORY_SHARE_THRESHOLD (game_config.js
-   *  victory.shareThreshold) -- not just the raw gap to this one civ.
+   *  actual leader sits to VICTORY_TILE_TARGET (config.js
+   *  victory.tileTarget) -- not just the raw gap to this one civ.
    *  `trailingBonus` above caps at a flat 0.4 once the gap passes 20 points
    *  and never scales further, so a leader closing in on outright victory
-   *  (e.g. 28% land share against a 30% threshold) pulled exactly as hard on
+   *  (e.g. 470 tiles against a 500 target) pulled exactly as hard on
    *  every trailing civ as one merely 20 points ahead of them -- nobody's
    *  response actually escalated as the game-ending threat got more real,
    *  which is how a single strong civ could snowball past every AI
@@ -168,7 +175,7 @@ window.GameEngine = window.GameEngine || {};
     const industriousness = race.industriousness ?? 0.5;
     const aggressiveness = race.aggressiveness ?? 0.5;
     const warlikeness = (militarism + aggressiveness) / 2;
-    const { myShare, leadingShare, isLeading } = standing;
+    const { myShare, leadingShare, leadingTiles, isLeading } = standing;
     const trailingBy = Math.max(0, leadingShare - myShare);
     const leadingBonus = isLeading || trailingBy < 0.05 ? 0.4 : 0;
     const trailingBonus = Math.min(0.4, trailingBy * 2);
@@ -178,9 +185,12 @@ window.GameEngine = window.GameEngine || {};
     // See this function's doc comment above for the full rationale and the
     // cityGateShortfall===0 gating -- only active when cityGateBonus itself
     // is guaranteed 0, so the two never compete.
-    const victoryThreshold = window.GameConfig.victory.shareThreshold;
+    // Measured against the absolute tile target now (2026-08-25), not a
+    // share of the map -- same 0.6-to-1.0 "how far along is the leader"
+    // ramp, just expressed in tiles.
+    const tileTarget = window.GameConfig.victory.tileTarget;
     const runawayLeaderPressure = (!isLeading && cityGateShortfall === 0)
-      ? Math.max(0, Math.min(1.5, (leadingShare / victoryThreshold - 0.6) * 3.75))
+      ? Math.max(0, Math.min(1.5, (leadingTiles / tileTarget - 0.6) * 3.75))
       : 0;
     return {
       conquest: warlikeness + (trailingBonus + runawayLeaderPressure) * warlikeness,

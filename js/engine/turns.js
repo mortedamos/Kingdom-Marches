@@ -15,8 +15,15 @@ window.GameEngine = window.GameEngine || {};
   // military/elimination are meant to be two genuinely opposite, equally
   // viable win conditions (Halfellow-style economy vs. Orc-style conquest),
   // not one dominant path with the other as a rare fallback.
-  const VICTORY_SHARE_THRESHOLD = window.GameConfig.victory.shareThreshold;
-  const VICTORY_SUSTAIN_TURNS = window.GameConfig.victory.sustainTurns;
+  //
+  // Both read config LIVE rather than snapshotting at module load, so the
+  // target can be retuned mid-session (headless balance runs set
+  // window.GameConfig.victory.tileTarget between batches) without a reload.
+  // The module's own export is a live getter for the same reason -- every
+  // consumer that displays the target (sidebar, reports, victory screen)
+  // goes through it, so they all stay in sync with whatever it's set to.
+  const victoryTileTarget = () => window.GameConfig.victory.tileTarget;
+  const victorySustainTurns = () => window.GameConfig.victory.sustainTurns;
 
   /** Computes each civ's currently-visible tile set (own territory + vision radius around units/cities) */
   function refreshVisibility(gameState) {
@@ -56,7 +63,20 @@ window.GameEngine = window.GameEngine || {};
       }
     }
 
-    for (const civ of Object.values(civs)) {
+    // Elf "Beast Sight" (2026-08-24 bugfix): the Wandering Monsters
+    // pseudo-civ is processed FIRST, before any real civ, so its own
+    // gameState.visibility[MONSTER_CIV_ID] is always fresh (this same
+    // pass, not last round's) by the time a beast_sight civ's own turn in
+    // the loop below reads it -- previously Object.values(civs)' natural
+    // insertion order could put Monsters after an Elf civ, leaving Beast
+    // Sight up to one round stale.
+    const monsterCivId = window.GameConfig.worldEncounters.monsters.civId;
+    const orderedCivs = Object.values(civs).sort((a, b) => {
+      if (a.id === monsterCivId) return -1;
+      if (b.id === monsterCivId) return 1;
+      return 0;
+    });
+    for (const civ of orderedCivs) {
       const visible = new Set();
       for (const city of civ.cities) {
         // Elf "Aelderwatch"/Treetop Watch: +vision radius for the specific
@@ -129,6 +149,34 @@ window.GameEngine = window.GameEngine || {};
           }
         }
       }
+      // Halfellow Historical Society ("Antiquarians"): every Ruin tile on
+      // the map, plus a 1-tile ring around each -- same shape as Passages in
+      // Stone just above, keyed to tile.isRuin with a radius of 1. The ring
+      // is deliberate: a bare ruin tile floating in fog says a site exists
+      // but not whether it's guarded or reachable, which is what makes the
+      // knowledge actionable. Building-gated, not tech-gated, so razing the
+      // Society takes the map knowledge with it.
+      if (window.GameEngine.cities.civHasBuiltBuilding(civ, "historical_society")) {
+        for (let i = 0; i < map.tiles.length; i++) {
+          if (!map.tiles[i].isRuin) continue;
+          const rx = i % map.width, ry = Math.floor(i / map.width);
+          for (let dy = -1; dy <= 1; dy++) {
+            for (let dx = -1; dx <= 1; dx++) {
+              const nx = rx + dx, ny = ry + dy;
+              if (nx < 0 || nx >= map.width || ny < 0 || ny >= map.height) continue;
+              visible.add(ny * map.width + nx);
+            }
+          }
+        }
+      }
+      // Human Bazaar ("Traders' Talk"): merchants know where the towns are --
+      // every rival civ's city tile is revealed. Only the city tile itself,
+      // not a ring: this is "we know that town is there", not eyes on the
+      // ground around it. Reads the cityAt index built once at the top of
+      // this function rather than re-walking every civ's city list.
+      if (window.GameEngine.cities.civHasBuiltBuilding(civ, "bazaar")) {
+        for (const idx of cityAt.keys()) visible.add(idx);
+      }
       // Mountains on the Horizon also reveals any Hills tile immediately
       // adjacent (8-neighbor) to a Mountain tile -- the foothills leading up
       // to a peak are visible from the peak itself, same reasoning as the
@@ -155,11 +203,11 @@ window.GameEngine = window.GameEngine || {};
       // gameState.visibility[MONSTER_CIV_ID]. Unioned in BEFORE this civ's
       // own visible set is assigned/snapshotted below, so the shared tiles
       // also feed explored/tileMemory normally, same as anything else this
-      // civ can see. May lag by up to one round if Monsters' own entry in
-      // civs hasn't been processed by this same loop yet this pass --
-      // acceptable for a "sensed a moment ago" flavor mechanic.
+      // civ can see. Always this SAME pass's fresh set, never stale --
+      // orderedCivs above guarantees Monsters is processed before any real
+      // civ reaches this branch.
       if (civ.unlockedMechanics && civ.unlockedMechanics.has("beast_sight")) {
-        const monsterVisible = gameState.visibility[window.GameConfig.worldEncounters.monsters.civId];
+        const monsterVisible = gameState.visibility[monsterCivId];
         if (monsterVisible) for (const idx of monsterVisible) visible.add(idx);
       }
       gameState.visibility[civ.id] = visible;
@@ -623,9 +671,12 @@ window.GameEngine = window.GameEngine || {};
   }
 
   /** True if (x,y) is Coast, Ocean, or carries the river feature -- nearby
-   *  water smothers Burning, so no damage is dealt this turn while standing
-   *  there (the condition's own countdown to expiry is unaffected -- only
-   *  the damage tick is skipped). */
+   *  water smothers Burning: no damage while standing there, AND (2026-08-24)
+   *  the condition itself is fully extinguished, not just paused -- see
+   *  tickBurningDamage, which checks this at the start of a civ's turn using
+   *  the unit/structure's position from before it's acted this turn, i.e.
+   *  wherever it ended its LAST turn, so "ends a turn on qualifying terrain"
+   *  and "is standing there right now" read the same at this check point. */
   function isBurningExempt(map, x, y) {
     const tile = map.tiles[y * map.width + x];
     if (!tile) return false;
@@ -666,7 +717,7 @@ window.GameEngine = window.GameEngine || {};
       const burn = unit.conditions && unit.conditions.burning;
       if (!burn) continue;
       if (turnNumber > burn.expiresAtTurn) { delete unit.conditions.burning; continue; }
-      if (isBurningExempt(map, unit.x, unit.y)) continue;
+      if (isBurningExempt(map, unit.x, unit.y)) { delete unit.conditions.burning; continue; }
       unit.hp = Math.max(0, unit.hp - 1);
       window.GameEngine.floatingText.spawnFloatingText(unit, "-1 (Burning)", "warning");
     }
@@ -678,7 +729,7 @@ window.GameEngine = window.GameEngine || {};
       for (const s of city.structures.slice()) {
         if (!s.burning) continue;
         if (turnNumber > s.burning.expiresAtTurn) { delete s.burning; continue; }
-        if (isBurningExempt(map, s.x, s.y)) continue;
+        if (isBurningExempt(map, s.x, s.y)) { delete s.burning; continue; }
         s.hp -= 1;
         // Floating text anchored to the structure record itself -- see
         // render.js's Structures draw loop, which matches this by object
@@ -811,12 +862,15 @@ window.GameEngine = window.GameEngine || {};
       return acc;
     }, { harvest: 0, coin: 0, lore: 0 });
 
-    // Human "Marketcraft": +10% to every mined/fished/farmed/hunted/delved
-    // channel-gathering payout below, civ-wide, while at least one Bazaar
-    // is built -- gated on the structure existing (civHasBuiltBuilding),
-    // not just the tech.
-    const marketcraftMult = 1 + ((civ.unlockedMechanics && civ.unlockedMechanics.has("marketcraft")
-      && window.GameEngine.cities.civHasBuiltBuilding(civ, "bazaar")) ? 0.10 : 0);
+    // Human "Marketcraft": used to give +10% to every mined/fished/farmed/
+    // hunted/delved channel-gathering payout below while a Bazaar stood.
+    // 2026-08-24: retired along with the rest of the economic building
+    // effects -- the Bazaar now reveals rival city locations instead (see
+    // refreshVisibility's "Traders' Talk" block). Left as a neutral 1.0
+    // rather than deleting the six multiplication sites below, so the
+    // channel payouts stay in one recognizable shape for whatever tunes
+    // them next.
+    const marketcraftMult = 1;
 
     // Dungeon Delve: a qualifying unit (any race/type, see
     // doc/world_encounters_design.md), channeling for 1+ turns (i.e. every
@@ -1857,22 +1911,31 @@ window.GameEngine = window.GameEngine || {};
     const eliminationResult = checkEliminationVictory(gameState);
     if (eliminationResult) return eliminationResult;
 
+    // Territorial victory is an ABSOLUTE tile count (2026-08-25), not a share
+    // of the map -- see config.js's victory.tileTarget for why. `counts` is
+    // now a plain owned-tile tally (every tile weighs 1), so this compares
+    // directly against the target with no denominator involved.
     const { counts, totalClaimable } = window.GameEngine.influence.countTerritory(gameState);
-    let leadingCiv = null, leadingShare = 0;
+    let leadingCiv = null, leadingTiles = 0;
     for (const [civId, count] of Object.entries(counts)) {
-      const share = totalClaimable > 0 ? count / totalClaimable : 0;
-      if (share > leadingShare) { leadingShare = share; leadingCiv = civId; }
+      if (count > leadingTiles) { leadingTiles = count; leadingCiv = civId; }
     }
 
     gameState.victoryTracking = gameState.victoryTracking || {};
-    if (leadingShare >= VICTORY_SHARE_THRESHOLD) {
+    if (leadingTiles >= victoryTileTarget()) {
       gameState.victoryTracking[leadingCiv] = (gameState.victoryTracking[leadingCiv] || 0) + 1;
       // Reset any other civ's streak
       for (const civId of Object.keys(gameState.victoryTracking)) {
         if (civId !== leadingCiv) gameState.victoryTracking[civId] = 0;
       }
-      if (gameState.victoryTracking[leadingCiv] >= VICTORY_SUSTAIN_TURNS) {
-        return { winner: leadingCiv, share: leadingShare, type: "territory" };
+      if (gameState.victoryTracking[leadingCiv] >= victorySustainTurns()) {
+        // `share` is kept in the result purely for display (the victory
+        // screen still likes to say what fraction of the world that was).
+        return {
+          winner: leadingCiv, type: "territory",
+          tiles: leadingTiles,
+          share: totalClaimable > 0 ? leadingTiles / totalClaimable : 0,
+        };
       }
     } else {
       for (const civId of Object.keys(gameState.victoryTracking)) gameState.victoryTracking[civId] = 0;
@@ -1893,10 +1956,19 @@ window.GameEngine = window.GameEngine || {};
     checkVictory,
     checkEliminationVictory,
     eliminateCiv,
-    VICTORY_SHARE_THRESHOLD,
-    VICTORY_SUSTAIN_TURNS,
     bankChannelStash,
     scheduleResourceRespawn,
     revealMapFragment,
   };
+
+  // Live getters, not plain values -- see the note at the top of this module.
+  // Consumers keep reading `turns.VICTORY_TILE_TARGET` exactly as before; the
+  // property just resolves against config each time instead of being frozen
+  // at load, so retuning victory.tileTarget takes effect immediately.
+  Object.defineProperty(window.GameEngine.turns, "VICTORY_TILE_TARGET", {
+    get: victoryTileTarget, enumerable: true,
+  });
+  Object.defineProperty(window.GameEngine.turns, "VICTORY_SUSTAIN_TURNS", {
+    get: victorySustainTurns, enumerable: true,
+  });
 })();

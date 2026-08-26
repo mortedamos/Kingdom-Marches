@@ -10,7 +10,18 @@
  * per occupied adjacent tile), which is exactly each race's 4-building roster.
  *
  * Every race has EXACTLY 4 buildings, and these are the only buildings that
- * race can build. Effect fields consumed by the engine:
+ * race can build.
+ *
+ * 2026-08-24: buildings were moved off economic adjustments (flat `yield`,
+ * `yieldPct`, `unitCostMult`) and onto real game effects -- vision, combat
+ * stats, unit prerequisites, timed buffs. Only Undead's Bone Reliquary still
+ * carries a `yield`. Most buildings therefore have NO effect field at all
+ * now: their effect lives in engine code gated on `cityHasStructure` /
+ * `civHasBuiltBuilding` (see cities.js), which also means destroying the
+ * structure revokes the effect for free. Each such building carries a
+ * comment naming its mechanic and where it's implemented.
+ *
+ * Effect fields consumed by the engine:
  *   yield: { harvest, coin, lore }   flat per-turn city yield (cities.js)
  *   influenceMult: 1.20              multiplies this city's influence projection
  *   radiusBonus: 1                   +1 influence radius for this city
@@ -40,9 +51,9 @@ window.GameData = window.GameData || {};
 
 window.GameData.BUILDINGS = {
   // ---------- HUMAN — see tech_tree_design.md for the full tree ----------
-  // No yield/yieldPct: Marketcraft's +10% mined/fished/farmed/hunted/delved
-  // bonus is civ-wide (see turns.js's channel-gathering loops), gated on
-  // civHasBuiltBuilding rather than a per-city yield multiplier.
+  // No yield/yieldPct: "Traders' Talk" reveals every rival civ's city tile
+  // on the map -- merchant gossip as map knowledge, not income. See
+  // turns.js's refreshVisibility, gated on civHasBuiltBuilding.
   bazaar: {
     id: "bazaar", label: "Bazaar", symbol: "$", raceOnly: "human",
     coinCost: 20, maxHp: 24,
@@ -54,9 +65,13 @@ window.GameData.BUILDINGS = {
     id: "guild_hall", label: "Guild Hall", symbol: "G", raceOnly: "human",
     coinCost: 25, maxHp: 24,
   },
+  // No yield/yieldPct: the Mage College IS the tower -- 75% chance each turn
+  // to strike the nearest enemy unit within range 5 for 3 attack (see ai.js's
+  // tickMageTowerDefense). Formerly gated behind a separate L4 "Mage Tower"
+  // tech, folded into the building itself 2026-08-24.
   mage_college: {
     id: "mage_college", label: "Mage College", symbol: "M", raceOnly: "human",
-    coinCost: 35, maxHp: 30, yieldPct: { lore: 0.20 },
+    coinCost: 35, maxHp: 30,
   },
   palace: {
     id: "palace", label: "Palace", symbol: "H", raceOnly: "human",
@@ -67,11 +82,15 @@ window.GameData.BUILDINGS = {
   // a city-wide healing grove (see techs.js's elf_* building techs) ----------
   treetop_watch: {
     id: "treetop_watch", label: "Treetop Watch", symbol: "◬", raceOnly: "elf",
-    coinCost: 20, maxHp: 22, visionRadiusBonus: 5,
+    coinCost: 20, maxHp: 22, visionRadiusBonus: 4,
   },
+  // No yield/yieldPct: "Silversteel Mail" -- units trained in this city are
+  // created with +1 defense, permanently (see ai.js's BUILDING_UNIT_STAMPS).
+  // Deliberate mirror of Dwarf's Deep Forge: dwarves forge weapons, elves
+  // forge armor.
   silverleaf_atelier: {
     id: "silverleaf_atelier", label: "Silverleaf Atelier", symbol: "☾", raceOnly: "elf",
-    coinCost: 30, maxHp: 26, yieldPct: { coin: 0.10, lore: 0.10 },
+    coinCost: 30, maxHp: 26,
   },
   // No yield/yieldPct: Altar of Ages' bonus is a +25% XP grant for units
   // trained in THIS city (unit.homeCityName-gated, same convention as
@@ -89,14 +108,20 @@ window.GameData.BUILDINGS = {
     coinCost: 55, maxHp: 30,
   },
 
-  // ---------- DWARF — deep production, few strong holds ----------
+  // ---------- DWARF — holding the hold: forged arms, self-healing walls,
+  // clan musters, and the Deep Roads network ----------
+  // No yield: "Forged Arms" -- units trained in this city are created with
+  // +1 attack, permanently (see ai.js's BUILDING_UNIT_STAMPS).
   deep_forge: {
     id: "deep_forge", label: "Deep Forge", symbol: "⚒", raceOnly: "dwarf",
-    coinCost: 25, maxHp: 28, yield: { coin: 3 }, requiresHillsAdjacent: true,
+    coinCost: 25, maxHp: 28, requiresHillsAdjacent: true,
   },
+  // No yield: "Meeting of the Clans" -- civ-wide, any Dwarf unit Resting and
+  // Defending on ANY of this civ's cities, buildings, or walls defends at
+  // +50% (see combat.js's effectiveDefense).
   great_hall: {
     id: "great_hall", label: "Great Hall", symbol: "⌂", raceOnly: "dwarf",
-    coinCost: 25, maxHp: 28, yield: { harvest: 1, lore: 1 },
+    coinCost: 25, maxHp: 28,
   },
   // No yield/yieldPct/influenceMult: Runewall's bonus is the "hedge_walls"
   // mechanic (walls self-heal 5% max HP/turn, civ-wide -- see cities.js
@@ -115,24 +140,35 @@ window.GameData.BUILDINGS = {
     coinCost: 55, maxHp: 34,
   },
 
-  // ---------- ORC — war economy: cheap units, plunder, ancestor-lore ----------
+  // ---------- ORC — the war host: fast units, blood-feasting, dragons, and
+  // ancestors who rouse the living ----------
+  // No unitCostMult: units built in this city are created with +1 movement,
+  // permanently (see ai.js's BUILDING_UNIT_STAMPS) -- the Orc rush identity
+  // expressed as speed on the board rather than a discount.
   war_camp: {
     id: "war_camp", label: "War Camp", symbol: "⚑", raceOnly: "orc",
-    // Also speeds up build TIME by the same fraction, not just resource
-    // cost (see ai.js buildUnitOption).
-    coinCost: 20, maxHp: 24, unitCostMult: 0.80,
+    coinCost: 20, maxHp: 24,
   },
+  // No yieldPct: "Blood Feast" -- while one stands, this civ's units heal
+  // 15% of max HP (minimum 1) on any kill. See ai.js's healOnKillPctFor.
   butchery: {
     id: "butchery", label: "Butchery", symbol: "X", raceOnly: "orc",
-    coinCost: 22, maxHp: 24, yieldPct: { harvest: 0.10 },
+    coinCost: 22, maxHp: 24,
   },
+  // No yieldPct: the Dragon Den is now a hard prerequisite for building
+  // Dragons at all -- only a city holding one may produce them (see ai.js's
+  // UNIT_BUILDING_PREREQ). Lose the Den, lose Dragon production.
   dragon_den: {
     id: "dragon_den", label: "Dragon Den", symbol: "⛉", raceOnly: "orc",
-    coinCost: 40, maxHp: 30, yieldPct: { coin: 0.10 },
+    coinCost: 40, maxHp: 30,
   },
+  // No yieldPct: "Ancestral Rage" -- when a unit whose home city is this one
+  // falls anywhere on the map, every friendly unit within 3 tiles of the
+  // death gains +25% attack for 3 turns (see ai.js's maybeAncestralRage).
+  // The fallen are honored by being avenged, not resurrected.
   ancestral_dolmen: {
     id: "ancestral_dolmen", label: "Ancestral Dolmen", symbol: "▲", raceOnly: "orc",
-    coinCost: 55, maxHp: 40, yieldPct: { lore: 0.10 },
+    coinCost: 55, maxHp: 40,
   },
 
   // ---------- UNDEAD — no harvest; occupation, dark lore, necromancy ----------
@@ -153,19 +189,31 @@ window.GameData.BUILDINGS = {
     coinCost: 60, maxHp: 40, radiusBonus: 1, raiseDeadPowerBonus: 0.15,
   },
 
-  // ---------- HALFELLOW — hearth-and-home economy: filled-tile yield%, then a
-  // per-home-city combat buff (Armory) rather than a per-city yield ----------
+  // ---------- HALFELLOW — hearth and home as a war footing: well-fed units,
+  // tales that make veterans, antiquarian map-lore, and the Armory ----------
+  // No yieldPct: "Well Fed" -- units built in this city are created with
+  // +25% max HP (minimum +1), permanently. A percentage rather than a flat
+  // bonus because unitMaxHP runs small (6-16 across this roster), so a flat
+  // one would be worth far more to a Wanderer than a Militia. See ai.js's
+  // applyBuildingUnitStamps.
   farmers_market: {
     id: "farmers_market", label: "Farmers Market", symbol: "$", raceOnly: "halfellow",
-    coinCost: 20, maxHp: 22, yieldPct: { harvest: 0.10 },
+    coinCost: 20, maxHp: 22,
   },
+  // No yieldPct: "It's Like the Great Stories" -- +25% XP for every unit this
+  // civ owns, civ-wide (see ai.js's grantXPAndAutoLevel). Formerly a separate
+  // L4 tech at +50%; folded into the building 2026-08-24 and cut to 25% to
+  // match Elf's Altar of Ages, which this already beats on scope and layer.
   neighborhood_pub: {
     id: "neighborhood_pub", label: "Neighborhood Pub", symbol: "♥", raceOnly: "halfellow",
-    coinCost: 25, maxHp: 22, yieldPct: { coin: 0.10 },
+    coinCost: 25, maxHp: 22,
   },
+  // No yieldPct: "Antiquarians" -- every Ruin tile on the map, plus a 1-tile
+  // ring around each, is permanently revealed (see turns.js's
+  // refreshVisibility).
   historical_society: {
     id: "historical_society", label: "Historical Society", symbol: "M", raceOnly: "halfellow",
-    coinCost: 35, maxHp: 26, yieldPct: { lore: 0.10 },
+    coinCost: 35, maxHp: 26,
   },
   // No yield/yieldPct: Armory's bonus is a combat stat boost (+50%
   // attack/defense) scoped to whichever city produced the
@@ -196,7 +244,7 @@ window.GameData.BUILDINGS = {
     // see units.js's Pioneer for the same fix. cityDefensePerWall (see
     // combat.js's cityDefenseValue) is a separate, additional defense bonus
     // per wall.
-    coinCost: 11, maxHp: 30, defense: 8,
+    coinCost: 11, maxHp: 25, defense: 8,
   },
 
   // ---------- BRIDGES — universal, every race can build these (not raceOnly) ----------

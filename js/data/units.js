@@ -202,7 +202,7 @@ window.GameData.UNITS = {
   scout: {
     id: "scout", label: "Tracker", symbol: "⊙", category: "civilian",
     attack: 1, defense: 1, movement: 3, visionRadius: 3, range: 2,
-    canExplore: true, canProspect: true, attackChars: ["➵", "➳"],
+    canExplore: true, canProspect: true, canBuildRoad: true, attackChars: ["➵", "➳"],
   },
   galley: {
     id: "galley", label: "Galley", symbol: "⛵", category: "military",
@@ -291,7 +291,6 @@ window.GameData.UNITS = {
   druid: {
     id: "druid", label: "Druid", symbol: "✦", category: "military", raceOnly: "elf",
     attack: 3, defense: 3, movement: 2, visionRadius: 3, range: 2, siegePct: 0.10, poisonChancePct: 0.10,
-    canFoundCity: true, // additional settler option alongside the shared Pioneer -- see elf_druidism
     // canProspect: orders.js's contextMenuOptions/turns.js's Hunt Game/Farm
     // Soil channels gate purely on this flag, no race/unit-type
     // restriction.
@@ -591,7 +590,12 @@ window.GameData.UNITS = {
   dragon: {
     id: "dragon", label: "Dragon", symbol: "🐉", category: "military", raceOnly: "orc",
     attack: 10, defense: 9, movement: 4, visionRadius: 5, flying: true, range: 2, siegePct: 1.00, burnChancePct: 0.50,
-    coinCost: 55, biggerPct: 1.0, attackChars: ["🔥", "💥", "彡"], rare: true,
+    coinCost: 55, biggerPct: 1.0, attackChars: ["🔥", "💥", "彡"],
+    // No `rare` (2026-08-24): the build-cost premium was how the Dragon was
+    // kept scarce back when Dragon Den was a +10% coin building. The Den is
+    // now a hard structural prerequisite instead (see ai.js's
+    // UNIT_BUILDING_PREREQ) -- scarcity comes from having to build and hold
+    // the Den, so charging the premium on top would double-tax it.
     nameSpecial: true, // a beast, not a person -- see unit-names.js
   },
 

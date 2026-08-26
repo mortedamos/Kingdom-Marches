@@ -2542,7 +2542,15 @@
       // behind the other if both happen the same round (see
       // openTechResearchedDialog/offerNextUnitBuiltNotice).
       if (!victoryResult && !humanLost) {
-        const afterUnitBuilt = () => offerNextTreasureNotice(civ, () => offerNextPendingIntent(civ, () => offerFoundCityIfPending(civ)));
+        // Keep-or-raze decisions lead the post-unit-built chain (2026-08-25):
+        // a city changing hands is the most consequential thing that can have
+        // happened during an automated unit's turn, and it's a DECISION the
+        // player still owes rather than an announcement, so it shouldn't sit
+        // behind treasure notices. A capture from a hand-clicked attack was
+        // already offered at the moment of the attack; this catches the
+        // automated-unit case, where the queue is drained at round end.
+        const afterUnitBuilt = () => offerNextCityCaptureDecision(civ,
+          () => offerNextTreasureNotice(civ, () => offerNextPendingIntent(civ, () => offerFoundCityIfPending(civ))));
         const afterTech = () => {
           if (finishedTechId) {
             openTechResearchedDialog(civ, finishedTechId, () => offerNextUnitBuiltNotice(civ, afterUnitBuilt));
@@ -2648,14 +2656,14 @@
    *  time since the game was created (gameState.startedAt), total turns,
    *  the winning civ's current military power (same flat sum-of-unitPower
    *  metric turns.js's recordHistory already uses for the Report screen's
-   *  line graph), influence level (territory share % alongside the
-   *  territorial-victory threshold it's being measured against -- see
-   *  turns.js's VICTORY_SHARE_THRESHOLD -- added 2026-08-20 so a win by
+   *  line graph), influence level (owned tiles alongside the fixed
+   *  territorial-victory target it's being measured against -- see
+   *  turns.js's VICTORY_TILE_TARGET -- added 2026-08-20 so a win by
    *  elimination or a narrow territorial win both read the same number the
    *  same way), unit kills/losses (civ.unitsKilled/unitsLostInBattle,
    *  tallied at every real combat death in the game -- see ai.js's
    *  otherCivRemoveDeadUnit), and every rival kingdom's own standing
-   *  (2026-08-20) -- territory share if still in the game, or "Eliminated"
+   *  (2026-08-20) -- owned tiles if still in the game, or "Eliminated"
    *  if not (civ.eliminated), skipping the wandering-monsters pseudo-civ
    *  (window.GameConfig.worldEncounters.monsters.civId) since it's never
    *  treated as a real kingdom anywhere else in the UI either. */
@@ -2669,10 +2677,12 @@
     const seconds = totalSeconds % 60;
     const timeTaken = hours > 0 ? `${hours}h ${minutes}m ${seconds}s` : `${minutes}m ${seconds}s`;
     const militaryPower = Math.round(civ.units.reduce((sum, u) => sum + window.GameData.unitPower(u.typeId), 0));
-    const { counts, totalClaimable } = window.GameEngine.influence.countTerritory(gameState);
-    const sharePct = (civId) => totalClaimable > 0 ? ((counts[civId] || 0) / totalClaimable) * 100 : 0;
-    const thresholdPct = window.GameEngine.turns.VICTORY_SHARE_THRESHOLD * 100;
-    const influenceLevel = `${sharePct(winnerCivId).toFixed(1)}% / ${thresholdPct.toFixed(1)}%`;
+    const { counts } = window.GameEngine.influence.countTerritory(gameState);
+    const tilesOf = (civId) => Math.round(counts[civId] || 0);
+    // 2026-08-25: territorial victory is an absolute tile count, so the
+    // victory screen reports tiles rather than a share of the map.
+    const tileTarget = window.GameEngine.turns.VICTORY_TILE_TARGET;
+    const influenceLevel = `${tilesOf(winnerCivId)} / ${tileTarget} tiles`;
     const monsterCivId = window.GameConfig.worldEncounters.monsters.civId;
     const rivals = Object.values(gameState.civs)
       .filter((c) => c.id !== winnerCivId && c.id !== monsterCivId)
@@ -2680,7 +2690,7 @@
         const r = window.GameData.getRace(c.raceId);
         return {
           label: r.label, color: r.color, eliminated: !!c.eliminated,
-          territoryPct: `${sharePct(c.id).toFixed(1)}%`,
+          territoryPct: `${tilesOf(c.id)} tiles`,
         };
       });
     viewState.dialog = {
@@ -2957,6 +2967,52 @@
    *  disbanded) between being built and this notice firing -- shouldn't
    *  happen within the same round, but redraw()'s dialog rendering assumes
    *  a live unit. */
+  /** Keep-or-raze after the human player conquers a city (2026-08-25).
+   *  Drains civ.pendingCityCaptureDecisions one at a time, same chained shape
+   *  as offerNextUnitBuiltNotice below, so taking two cities in one turn asks
+   *  about both instead of silently keeping the second.
+   *
+   *  The city is ALREADY captured by the time this runs (see ai.js's conquest
+   *  branch) -- that keeps game state consistent whenever the modal is
+   *  answered, and makes "Raze it" simply destroyCity on a city the player
+   *  now owns. Defensively skips a city that's no longer theirs, which can
+   *  happen if it was retaken before they answered. */
+  /** Convenience wrapper: offers any queued keep-or-raze decisions for the
+   *  human civ, if there are any and no other modal is already up. Safe to
+   *  call after any action that might have taken a city. */
+  function maybeOfferCityCaptureDecisions(onDone) {
+    const civ = humanCivId && gameState.civs[humanCivId];
+    if (!civ || viewState.dialog) { if (onDone) onDone(); return; }
+    if (!civ.pendingCityCaptureDecisions || !civ.pendingCityCaptureDecisions.length) { if (onDone) onDone(); return; }
+    offerNextCityCaptureDecision(civ, onDone);
+  }
+
+  function offerNextCityCaptureDecision(civ, onDone) {
+    const queue = civ.pendingCityCaptureDecisions;
+    if (!queue || !queue.length) { if (onDone) onDone(); return; }
+    const { cityName, formerOwnerId, city } = queue.shift();
+    if (!civ.cities.includes(city)) { offerNextCityCaptureDecision(civ, onDone); return; }
+    const formerCiv = gameState.civs[formerOwnerId];
+    const formerRace = formerCiv ? window.GameData.getRace(formerCiv.raceId) : null;
+    const finish = () => { redraw(); offerNextCityCaptureDecision(civ, onDone); };
+    viewState.dialog = {
+      kind: "cityCaptured",
+      cityName,
+      formerOwnerLabel: formerRace ? `the ${formerRace.label} Kingdom` : formerOwnerId,
+      onAnswer: (keep) => {
+        if (!keep) {
+          window.GameEngine.cities.destroyCity(gameState, civ, city);
+          // Razing our own just-taken city can't eliminate anyone (the
+          // previous owner already lost it on capture), so no elimination
+          // re-check is needed here -- unlike the AI raze path in ai.js.
+          window.GameEngine.turns.refreshVisibility(gameState);
+        }
+        finish();
+      },
+    };
+    redraw();
+  }
+
   function offerNextUnitBuiltNotice(civ, onDone) {
     const notices = civ.pendingUnitBuiltNotices;
     if (!notices || !notices.length) { if (onDone) onDone(); return; }
@@ -3313,13 +3369,24 @@
           ? steppedUnit.pendingIntent : null;
         if (pendingAttack && pendingAttack.target.civ?.isHuman) {
           const targetUnit = pendingAttack.target.unit;
-          if (!window.UI.render.isTileOnScreen(targetUnit.x, targetUnit.y, $("map-canvas"), gameState, viewState)) {
-            centerViewOn(targetUnit.x, targetUnit.y);
-          }
+          const onScreen = window.UI.render.isTileOnScreen(targetUnit.x, targetUnit.y, $("map-canvas"), gameState, viewState);
+          if (!onScreen) centerViewOn(targetUnit.x, targetUnit.y);
           redraw();
-          const attackerBaseUnit = window.GameData.getUnit(steppedUnit.typeId);
+          // Already-visible skip (2026-08-24 bugfix): this branch used to
+          // always show the modal, only using onScreen to decide whether to
+          // recenter -- the fallback notice just below already skipped the
+          // whole modal when on-screen, this one now matches it.
+          if (onScreen) {
+            resolvePendingAIAttack(gameState.civs[steppedUnit.civId], steppedUnit);
+            redraw();
+            setTimeout(processBatch, ATTACK_RESULT_PAUSE_MS);
+            return;
+          }
+          const targetBaseUnit = window.GameData.getUnit(targetUnit.typeId);
           offerAttackNotice(
-            { x: targetUnit.x, y: targetUnit.y, label: steppedUnit.name || attackerBaseUnit.label },
+            // 2026-08-24 bugfix: this used to read the ATTACKER's
+            // (steppedUnit's) name/label instead of the defender's.
+            { x: targetUnit.x, y: targetUnit.y, label: targetUnit.name || targetBaseUnit.label },
             () => {
               resolvePendingAIAttack(gameState.civs[steppedUnit.civId], steppedUnit);
               redraw();
@@ -3590,9 +3657,16 @@
         // race-<raceId> class convention sidebar.js uses for the sidebar's
         // border, see style.css's ".sidebar.race-*"/".game-dialog-victory.
         // race-*" rules. Every other dialog kind keeps the plain base class.
+        // cityAutomation drops .game-dialog-modal deliberately: that class
+        // sets overflow-y:auto on the modal itself, which would scroll its
+        // X button away with the content. It supplies its own
+        // .techtree-modal-scroll body wrapper instead (see dialog.js), the
+        // same chrome-fixed/body-scrolls split the tech tree uses.
         modal.className = viewState.dialog.kind === "victoryStats"
           ? `techtree-modal game-dialog-modal game-dialog-victory race-${viewState.dialog.raceId}`
-          : "techtree-modal game-dialog-modal";
+          : viewState.dialog.kind === "cityAutomation"
+            ? "techtree-modal game-dialog-automation"
+            : "techtree-modal game-dialog-modal";
         lastRenderedDialog = viewState.dialog;
         wireDialogButtons(viewState.dialog);
         // Confirm-action sfx: fires once, right
@@ -3828,6 +3902,78 @@
           };
         }
       }
+    } else if (dialog.kind === "cityCaptured") {
+      // Confirm = keep, Cancel = raze. Reuses the standard confirm/cancel
+      // button ids; the markup gives Raze the danger treatment.
+      const keepBtn = $("game-dialog-confirm-btn");
+      const razeBtn = $("game-dialog-cancel-btn");
+      const finish = (keep) => {
+        viewState.dialog = null;
+        lastRenderedDialog = null;
+        dialog.onAnswer(keep);
+      };
+      if (keepBtn) keepBtn.onclick = () => finish(true);
+      if (razeBtn) razeBtn.onclick = () => finish(false);
+    } else if (dialog.kind === "cityAutomation") {
+      // Three sliders + OK + X. The live label update mirrors the launch
+      // screen's own slider wiring (index into a labels array, write the
+      // adjacent span). Reading values only at OK time -- and never
+      // rebuilding this modal mid-adjustment, which the lastRenderedDialog
+      // identity guard above guarantees as long as the dialog object isn't
+      // recreated per redraw -- is what keeps a half-set slider from being
+      // wiped by an unrelated redraw.
+      const LEVELS = window.UI.dialog.AUTOMATION_LEVELS;
+      const KEYS = ["research", "culture", "resources"];
+      const summary = $("city-auto-summary");
+      const readAll = () => {
+        const out = {};
+        for (const k of KEYS) {
+          const el = $(`city-auto-${k}`);
+          out[k] = el ? parseInt(el.value, 10) : 0;
+        }
+        return out;
+      };
+      // Live "what this actually means" line: the sliders are relative
+      // weights, so the same setting can read very differently depending on
+      // the other two. Showing the resolved percentages avoids the player
+      // having to do that arithmetic themselves.
+      const refreshSummary = () => {
+        const w = readAll();
+        const total = w.research + w.culture + w.resources;
+        const okBtn = $("game-dialog-confirm-btn");
+        if (!total) {
+          if (summary) summary.textContent = "Every slider is set to Never — this city would do nothing. Raise at least one.";
+          if (okBtn) okBtn.disabled = true;
+          return;
+        }
+        if (okBtn) okBtn.disabled = false;
+        if (summary) {
+          summary.textContent = KEYS
+            .filter((k) => w[k] > 0)
+            .map((k) => `${k === "resources" ? "Gather" : k === "culture" ? "Culture" : "Research"} ${Math.round((w[k] / total) * 100)}%`)
+            .join(" · ");
+        }
+      };
+      for (const k of KEYS) {
+        const el = $(`city-auto-${k}`);
+        if (!el) continue;
+        el.addEventListener("input", (e) => {
+          const lbl = $(`city-auto-${k}-label`);
+          if (lbl) lbl.textContent = LEVELS[parseInt(e.target.value, 10)];
+          refreshSummary();
+        });
+      }
+      refreshSummary();
+      const finish = (weights) => {
+        viewState.dialog = null;
+        lastRenderedDialog = null;
+        dialog.onAnswer(weights); // null => cancelled
+        redraw();
+      };
+      const okBtn = $("game-dialog-confirm-btn");
+      const closeBtn = $("city-auto-close-btn");
+      if (okBtn) okBtn.onclick = () => { if (!okBtn.disabled) finish(readAll()); };
+      if (closeBtn) closeBtn.onclick = () => finish(null);
     } else if (dialog.kind === "confirm") {
       const confirmBtn = $("game-dialog-confirm-btn");
       const cancelBtn = $("game-dialog-cancel-btn");
@@ -4295,6 +4441,10 @@
         endAutomationAndGoto(unit);
         const target = window.GameEngine.orders.attackTargetAt(unit, gameState, menu.x, menu.y, humanCivId);
         window.GameEngine.orders.attack(unit, gameState, target, humanCivId);
+        // A conquered city queues a keep-or-raze decision (see ai.js's
+        // conquest branch); ask about it immediately rather than making the
+        // player wait for End Turn to find out they took a city.
+        maybeOfferCityCaptureDecisions();
         break;
       }
       case "buildRoadHere":
@@ -4460,12 +4610,17 @@
           // as castFlight/carryUnit above.
           startTrapPlacement(unit, kind.slice("setTrap:".length));
         } else if (kind === "createGreatBonfire") {
-          // Halfellow "Banish the Darkness": single click, no placement mode
-          // -- lands on a random open adjacent tile, same shape as
-          // Raptor/Shadowsteed just below.
+          // Halfellow "Banish the Darkness": tile-placement mode
+          // (2026-08-24) -- the player picks which open adjacent tile the
+          // Bonfire lands on, same shape as Set the Trap.
+          startGreatBonfirePlacement(unit);
+        } else if (kind === "whirlwindStrike" || kind === "bladeStorm") {
+          // Elf "Whirlwind Strike"/"Blade Storm": single click, no
+          // placement mode -- it's a self-centered radius sweep, not a
+          // targeted tile (see ai.js's performPlayerBladeSweep).
           const civ = gameState.civs[humanCivId];
           if (civ) {
-            window.GameEngine.ai.performPlayerWandererBonfireSummon(civ, unit, gameState);
+            window.GameEngine.ai.performPlayerBladeSweep(civ, unit, kind, gameState);
             window.GameEngine.turns.refreshVisibility(gameState);
           }
         } else if (kind === "summonRaptor" || kind === "summonShadowsteed") {
@@ -4812,6 +4967,44 @@
     redraw();
   }
 
+  /** Halfellow "Banish the Darkness" (2026-08-24): same tile-placement
+   *  mechanism as Set the Trap just above, but range 1 -- true 8-neighbor
+   *  adjacency, matching the Bonfire's original random-pick reach (see
+   *  ai.js's spawnUnitAdjacentToUnit) -- rather than that range-2 bounding
+   *  box. Slot list built from ai.js's isValidGreatBonfirePlacementTile,
+   *  which already excludes occupied tiles (any unit, friend or foe),
+   *  water/impassable terrain, and enemy structures/cities -- same
+   *  occupancy rule every other instant-placement flow in this file uses. */
+  function startGreatBonfirePlacement(wanderer) {
+    if (!humanCivId) return;
+    const civ = gameState.civs[humanCivId];
+    if (!civ) return;
+    const slots = [];
+    for (let dy = -1; dy <= 1; dy++) {
+      for (let dx = -1; dx <= 1; dx++) {
+        if (dx === 0 && dy === 0) continue;
+        const x = wanderer.x + dx, y = wanderer.y + dy;
+        if (window.GameEngine.ai.isValidGreatBonfirePlacementTile(gameState, civ.id, x, y, wanderer)) slots.push({ x, y });
+      }
+    }
+    viewState.placement = {
+      slots,
+      label: "Create The Great Bonfire",
+      // previewUnitId/previewRaceId: render.js's drawPlacementOverlay draws
+      // a real, half-transparent Great Bonfire sprite on the hovered tile.
+      previewUnitId: "great_bonfire", previewRaceId: civ.raceId,
+      onPick: (slot) => {
+        viewState.placement = null;
+        if (slot) {
+          window.GameEngine.ai.performPlayerWandererBonfireSummon(civ, wanderer, gameState, slot.x, slot.y);
+          window.GameEngine.turns.refreshVisibility(gameState);
+        }
+        redraw();
+      },
+    };
+    redraw();
+  }
+
   /** Carry/Board: whichever ring the player opened decides which of the two
    *  is the acting unit and which was picked in target-selection mode -- the
    *  two call sites pass them in the right roles. Delegates the actual
@@ -5025,6 +5218,33 @@
   function handleToggleAutomateCity(city) {
     const civ = humanCivId && gameState.civs[humanCivId];
     if (!civ || !city || city.civId !== humanCivId) return;
+    // Switching ON opens the mix dialog first (2026-08-24) -- automation is
+    // driven by a player-set quota now, not a fixed priority order, so there
+    // are settings to collect before it can run. Cancelling (the X) leaves
+    // the city un-automated rather than automating it with defaults.
+    // Switching OFF is unchanged: no settings needed to stop.
+    if (!city.automated) {
+      viewState.dialog = {
+        kind: "cityAutomation",
+        cityName: city.name,
+        // Pre-filled from this city's own last-used mix, so re-automating a
+        // city the player already tuned doesn't make them redo it.
+        weights: city.automationWeights || { research: 2, culture: 2, resources: 2 },
+        onAnswer: (weights) => {
+          if (!weights) return; // cancelled -- leave automation off
+          city.automationWeights = weights;
+          // Counts are per-configuration: keeping the old tallies would make
+          // the quota spend its first turns "catching up" against a mix the
+          // player just replaced.
+          city.automationCounts = { research: 0, culture: 0, resources: 0 };
+          city.automated = true;
+          window.GameEngine.cities.runCityAutomation(civ, city, gameState);
+          redraw();
+        },
+      };
+      redraw();
+      return;
+    }
     city.automated = !city.automated;
     // A research boost that completes a tech raises the "research complete"
     // dialog through civ.lastCompletedTech, which runCityAutomation already

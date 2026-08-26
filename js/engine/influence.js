@@ -333,21 +333,28 @@ window.GameEngine = window.GameEngine || {};
   }
 
   /** Counts owned tiles per civ -- the actual victory-condition number.
-   *  Every tile is claimable, including deep ocean and tundra -- ordinary
-   *  land counts fully, while water (ocean+coast) and tundra each count for
-   *  only LOW_VALUE_TERRAIN_WEIGHT (25%) of a normal tile, both in a civ's
-   *  owned count and in the total claimable pool (so the victory-share
-   *  denominator reflects their lower ceiling too, not just the numerator).
-   *  Deep ocean is no longer a special-cased "permanently unclaimable"
-   *  terrain -- see the isDeepWater exclusions removed from
-   *  computeInfluenceMap/resolveOwnership/cities.js's advanceCityFill (and
-   *  the Dungeon Delve/Prospector's Claim fill loops in turns.js) -- it now
-   *  receives influence, fills in, and gets owned exactly like any other tile.
+   *  Every tile is claimable and, since 2026-08-25, every tile counts the
+   *  SAME (LOW_VALUE_TERRAIN_WEIGHT is now 1.0). Water and tundra used to
+   *  count a quarter, which existed only to stop a water-heavy map inflating
+   *  the denominator of the old percentage-based victory condition; victory
+   *  is an absolute tile count now (config.js's victory.tileTarget), so there
+   *  is no denominator and the weighting had no remaining purpose. `counts`
+   *  is therefore a plain tally of owned tiles.
+   *
+   *  Deep ocean is not special-cased as unclaimable -- see the isDeepWater
+   *  exclusions removed from computeInfluenceMap/resolveOwnership/cities.js's
+   *  advanceCityFill -- it receives influence, fills in, and gets owned like
+   *  any other tile. With full weighting that makes coastal and island
+   *  expansion genuinely valuable rather than quarter-priced.
+   *
+   *  `totalClaimable` is still returned, but only for DISPLAY (the "x% of the
+   *  world" readouts); nothing in the victory check divides by it any more.
+   *
    *  Dwarf "Council of the Deep": once unlocked, every owned tile this civ
-   *  holds counts as 1.25x toward this total -- deliberately ONLY here (the
-   *  victory-condition tally), not a real yield/influence multiplier
-   *  anywhere else, per the tech's own wording. Stacks multiplicatively with
-   *  the low-value weight (e.g. an owned Coast tile = 0.25*1.25 = 0.3125). */
+   *  holds counts as 1.25x toward its tally -- deliberately ONLY here (the
+   *  victory-condition count), not a real yield/influence multiplier
+   *  anywhere else, per the tech's own wording. It now reads as a straight
+   *  25% discount on the tile target. */
   function countTerritory(gameState) {
     const counts = {};
     for (const civId of Object.keys(gameState.civs)) counts[civId] = 0;

@@ -63,11 +63,11 @@ window.GameConfig = {
   // stamp, and the only cost of forgetting is being told the wrong thing.
   build: {
     /** Local date this build was cut, YYYY-MM-DD. */
-    date: "2026-08-23",
+    date: "2026-08-25",
     /** Local time this build was cut, 24-hour HH:MM. */
-    time: "10:10",
+    time: "22:59",
     /** Monotonic build counter -- increment it, don't recompute it. */
-    number: 170,
+    number: 171,
   },
 
   // =========================================================================
@@ -236,10 +236,21 @@ window.GameConfig = {
     contestedGraceTurns: 3,
 
     /** How much an ocean, coast, or tundra tile counts for in the victory
-     *  tally, relative to ordinary land. Applied to BOTH a civ's owned count
-     *  and the total claimable pool, so a water-heavy map doesn't inflate the
-     *  denominator against everyone. */
-    lowValueTerrainWeight: 0.25,
+     *  tally, relative to ordinary land.
+     *
+     *  2026-08-25: now 1.0 -- every owned tile counts the same. This used to
+     *  be 0.25, which existed to stop a water-heavy map inflating the
+     *  denominator of the old percentage-based victory condition. With
+     *  victory now an absolute tile count (see victory.tileTarget) there IS
+     *  no denominator, so the weighting's original purpose is gone. Keeping
+     *  it would only have meant a coastal tile counted as a quarter of a
+     *  step toward the target, which is hard to read on a progress
+     *  indicator and made naval expansion quietly worthless.
+     *
+     *  Known consequence, accepted deliberately: influence spreads with no
+     *  terrain restriction, so ocean IS claimable -- counting it fully is a
+     *  real buff to coastal and island play, not a neutral cleanup. */
+    lowValueTerrainWeight: 1.0,
 
     /** City influence falloff steepness. Influence is full strength at
      *  distance 0-1 and interpolates down to (1 - this) at the radius edge --
@@ -252,6 +263,27 @@ window.GameConfig = {
   // Growth pace, yields, and how quickly a city's radius fills in.
   // =========================================================================
   city: {
+    /** ADMINISTRATIVE UPKEEP (2026-08-25): each city past the first keeps
+     *  (1 - index * adminUpkeepPerCity) of its own yield, floored by
+     *  adminUpkeepMax. City 1 keeps 100%, city 2 keeps 92%, city 3 84%, and
+     *  so on down to the 45% floor at city 8+.
+     *
+     *  This is the economy's only recurring, scaling sink. Everything else a
+     *  civ can buy is finite (the whole tech tree costs ~1,500; four
+     *  buildings per city ~650) or hard-capped (unit upkeep, bounded by an
+     *  18-27 unit army cap), while income compounds past 1,100/turn -- so
+     *  kingdoms banked 65-86 turns of unspendable income. It is also the
+     *  brake that keeps the retapered settle drive (ai.js) from making
+     *  expansion free: a wide empire still out-earns a tall one, just
+     *  sub-linearly, so "how many cities can I actually run" becomes a real
+     *  decision and the "consolidate" doctrine goal gains a purpose.
+     *
+     *  Deliberately a yield share rather than a flat per-city bill: a flat
+     *  cost would fall hardest on small/new cities and effectively ban
+     *  frontier settling, which is the opposite of the intent. */
+    adminUpkeepPerCity: 0.08,
+    adminUpkeepMax: 0.55,
+
     /** Harvest needed for the next pop level is
      *  population^growthThresholdExponent * growthThresholdPerPop.
      *
@@ -338,6 +370,63 @@ window.GameConfig = {
     researchBoostCostBase: { coin: 5, lore: 2 },
     researchBoostCostPerPop: { coin: 2, lore: 1 },
 
+    /** How readily an AI city spends an otherwise-WASTED turn on a Research
+     *  boost, as `min(1, race.curiosity * this)` -- see ai.js's
+     *  maybeBoostResearch. 0 disables the behavior entirely; a value high
+     *  enough to saturate every race's curiosity (>= 10) makes it fire on
+     *  every eligible idle turn, untempered by race.
+     *
+     *  2026-08-25: added because the AI had NO path to Research at all --
+     *  applyResearchBoost was only ever reached from the human automation
+     *  quota (cities.js) and the human ring menu (main.js), so across four
+     *  full headless games the action fired exactly zero times for AI civs
+     *  while Spread Culture fired 49-236 times. Not a scoring bug; the
+     *  capability was simply never wired into chooseBuildAction, whose
+     *  options are only ever unit/building/pioneer.
+     *
+     *  It matters because the tech tree is about twice as long as a game:
+     *  finishing a race's own tree costs 389 (Human) to 471 (Halfellow)
+     *  turns of research at Normal speed, and games resolve around turn
+     *  125-155. Measured consequence -- across 15 games, layer 4 was
+     *  completed 13 times and layer 5 zero times, leaving 44 authored techs
+     *  as content no one ever sees. Research boost is the designed relief
+     *  valve for exactly that, and only the human player could reach it.
+     *
+     *  Genuinely spare city turns are RARER than they look: measured at the
+     *  branch itself, cities are progressing an existing build queue 61-73%
+     *  of the time and chooseBuildAction comes back empty only 3-19% of the
+     *  time. (An earlier "24-28% of city-turns are idle" read was wrong --
+     *  it counted end-of-turn buildQueue==null, which also catches cities
+     *  that had just FINISHED a build that turn.) The action still lands
+     *  ~82 times per 5 games at 0.3, because a failed roll doesn't consume
+     *  the opportunity -- the city idles and rolls again next turn, so the
+     *  realized rate runs well above the per-roll probability.
+     *
+     *  Same-seed comparison across 5 games, best civ's completed techs and
+     *  total layer-4/5 completions:
+     *
+     *      rate 0 (before)   0 boosts   32 techs   L4: 1    L5: 0
+     *      rate 0.3          82 boosts  37 techs   L4: 11   L5: 5
+     *      rate 100 (always) 205 boosts 46 techs   L4: 25   L5: 13
+     *
+     *  Gating rather than firing always is a PACING call. A race's reachable
+     *  tree is 35-40 paid techs plus 11 auto-completed layer-0, so the
+     *  ungated arm's 46 means the leader essentially completes its tree
+     *  every game -- and the mechanic has no per-civ cap, so five pop-6
+     *  cities cut 25+ research-turns per turn for ~125 stockpile, free
+     *  against a late-game bank of ~78,000. Ungated, pacing's
+     *  researchTurnsByLayer stops being the gate on research at all.
+     *
+     *  Curiosity is the natural trait to gate on -- it's the trait's
+     *  already-documented job (races.js: "research-focus weighting"),
+     *  matching how expansionism gates Pioneers. NOT yet demonstrated,
+     *  though: that it produces real race differentiation. A per-race
+     *  breakdown at n=2-4 per race showed depth tracking who was WINNING,
+     *  not curiosity (Human at 0.9 came out lowest). Treat the race spread
+     *  as unverified until a larger run says otherwise; the justification
+     *  that holds today is pacing. */
+    researchBoostCuriosityRate: 0.3,
+
     /** FILL-IN: a tile inside a city's radius contributes nothing to
      *  influence OR yield until it has individually "filled in". This delay
      *  is the main brake on the growth feedback loop (bigger radius -> more
@@ -346,13 +435,28 @@ window.GameConfig = {
      *  progress; each time that crosses fillThreshold, one random unfilled
      *  offset within the current radius fills. Filled tiles are never lost.
      *
-     *  At the current values that's ~2.7 turns/tile at industriousness 0.3
-     *  (Orc) down to ~1.7 at 1.0 (Halfellow) -- both bases cut 10%
-     *  (2026-08-20, user-directed: "reduce rate of influence spread by
-     *  10%") from their prior 0.9/1.08. */
+     *  History: 0.9/1.08 originally, cut 10% (2026-08-20) to 0.81/0.972, cut
+     *  another 10% (2026-08-24) to 0.729/0.8748, then raised 1.5x
+     *  (2026-08-25) to the current values as part of moving victory to an
+     *  absolute 500-tile target (see victory.tileTarget).
+     *
+     *  Why the reversal: measurement showed fill-in, not population, was the
+     *  rate limiter on the entire territorial win condition. A capital took
+     *  ~85 turns to reach population 6 but ~137 turns to actually fill the
+     *  169 tiles that population entitles it to, and only 10 of 17 tracked
+     *  capitals ever finished filling inside 200 turns. Territory was still
+     *  climbing when games hit the clock -- the map sat unclaimed because
+     *  filling never caught up with settlement, not because kingdoms stopped
+     *  expanding.
+     *
+     *  1.5x is deliberately modest. Fill rate has sharply diminishing
+     *  returns: a 50x test buff produced only ~1.7x the claimed tiles,
+     *  because the real ceiling is the city radius (= floor(population)) and
+     *  contested borders, not the fill clock. This is sized to land 500
+     *  tiles around turn 150, not to make filling instant. */
     fillThreshold: 3,
-    fillRateBase: 0.81,
-    fillRatePerIndustriousness: 0.972,
+    fillRateBase: 1.0935,
+    fillRatePerIndustriousness: 1.3122,
 
     /** How much the fill rate above scales with the city's CURRENT radius:
      *  the per-turn rate is multiplied by (1 + (influenceRadius - 1) * this).
@@ -499,10 +603,43 @@ window.GameConfig = {
      *  Exponent is the raw layer. Level 0 sits at exponent 0, genuinely
      *  free of this premium -- moot in practice since every Level 0 tech is
      *  auto-completed and never actually pays it, but still the number the
-     *  tree DISPLAYS. tierGrowth: 2.0 gives Level0=10, L1=20, L2=40, L3=80,
-     *  L4=160, L5=320. */
-    baseCost: 10,
-    tierGrowth: 2.0,
+     *  tree DISPLAYS. These values give Level0=80, L1=176, L2=387, L3=852,
+     *  L4=1874, L5=4124.
+     *
+     *  2026-08-25: was baseCost 10 / tierGrowth 2.0 (L1=20 ... L5=320).
+     *  Headless measurement showed that curve had come completely unmoored
+     *  from the economy it was meant to price against. Timestamping every
+     *  tech completion across 8 games gave each layer's median research
+     *  turn; cross-referencing the median leader's income at that turn
+     *  showed EVERY layer costing under a third of a single turn's income:
+     *
+     *      layer   median turn   old cost   turns of income
+     *        1         24           20           0.3
+     *        2         88           40           0.1
+     *        3        141           80           0.1
+     *        4        177          160           0.1
+     *        5        192          320           0.3
+     *
+     *  The doubling was never the problem -- income grows ~16x over a game
+     *  (67/turn at T25 to 1,100/turn at T200) while prices were fixed at
+     *  authoring time, so by T88 a kingdom held ~16,000 banked against a
+     *  40-cost tech. The stockpile payment had become decorative and the
+     *  turn-count timer (pacing.researchTurnsByLayer) was the only real
+     *  gate on research.
+     *
+     *  Raising the base ~8x and steepening slightly puts cost back in the
+     *  same order of magnitude as income at each layer's actual research
+     *  time (L1 ~2.6 turns, L5 ~3.8). Deliberately the conservative end of
+     *  the options measured -- steeper curves were available, but cost and
+     *  the turn timer are meant to be CO-gates, and pricing much past this
+     *  makes cost the only binding constraint and the timer inert, which
+     *  just inverts the original problem. Note also that these income
+     *  figures were measured under the old free-research regime; pricier
+     *  research slows yield-building too, so the curve it's priced against
+     *  flattens once this lands -- expect this to bite somewhat harder than
+     *  the table above predicts. */
+    baseCost: 80,
+    tierGrowth: 2.2,
   },
 
   // =========================================================================
@@ -529,19 +666,51 @@ window.GameConfig = {
     unyieldingForcedRestChance: 0.5,
 
     /** How tough a city is to crack: base, plus per population level, plus
-     *  per structure built in it. */
-    cityBaseDefense: 4,
-    cityDefensePerLevel: 2.5,
-    cityDefensePerStructure: 1.5,
+     *  per structure built in it.
+     *
+     *  2026-08-25 recomposition. These were 4 / 2.5 / 1.5, which put a
+     *  developed pop-6 city at defense 45 -- and since mitigatedDamage is
+     *  roll(atk) * atk/(atk+def), that floored EVERY line unit in the game at
+     *  the minimum 1 damage, taking 63 hits to raze one city. Headless
+     *  testing found kingdoms launching 58-173 city attacks per game and
+     *  capturing a median of zero. Conquest wasn't expensive, it was
+     *  arithmetically closed.
+     *
+     *  The numbers are now derived from a target rather than guessed: for an
+     *  attacker to clear 1 damage it needs atk^2/(atk+def) >= 1.5, so a
+     *  typical attack-5 line unit needs def <= 11. Base 2 + 0.5/level puts an
+     *  unwalled pop-6 city at 5 (soft -- an undefended boomtown SHOULD fall),
+     *  and 2/wall puts the cutover between 3 and 4 walls: at 3 walls def is
+     *  11 and a line unit still does 2, at 4 walls it drops to 1 and siege
+     *  becomes required. Buildings contribute nothing now -- fortification is
+     *  what walls are FOR, and a Mage College fortifying a city more than a
+     *  wall did was always backwards. */
+    cityBaseDefense: 2,
+    cityDefensePerLevel: 0.5,
+    cityDefensePerStructure: 0,
 
-    /** +defense per alive Wall structure, ON TOP of the generic
-     *  cityDefensePerStructure every structure already gives -- a wall is
-     *  still a structure, so it already contributes that 1.5; this is the
-     *  wall-specific premium for actually being a wall. See
-     *  combat.js's cityDefenseValue for where the two add together, and
-     *  sidebar.js's renderCityPanel for the "Defense" row that surfaces the
-     *  total (base + level + structures + walls) to the player. */
-    cityDefensePerWall: 1,
+    /** +defense per alive Wall structure. With cityDefensePerStructure now 0
+     *  this is the ONLY structural contribution -- walls alone decide how
+     *  fortified a city is. See combat.js's cityDefenseValue, and
+     *  sidebar.js's renderCityPanel for the "Defense" row shown to the
+     *  player. */
+    cityDefensePerWall: 2,
+
+    /** Siege defense bypass: a unit with the Siege property ignores this
+     *  fraction of a city/wall/building's defense PER POINT of siegePct,
+     *  capped by siegeDefenseBypassMax. Applied on top of the existing
+     *  isSiege attack multiplier (see combat.js's effectiveAttack).
+     *
+     *  Why bypass rather than just more attack (2026-08-25): mitigatedDamage
+     *  divides by (atk+def), so simply scaling attack hits diminishing
+     *  returns against exactly the high-defense targets siege exists to
+     *  crack. Bypassing defense instead makes siege read as DEFEATING
+     *  fortification rather than out-muscling it. At these values a
+     *  Battering Ram (siegePct 2.0) ignores 50% of a city's defense and
+     *  razes a developed pop-6 city in ~5 hits; an Ogre (0.5) takes ~11; a
+     *  Raider (no siege) still takes 63. */
+    siegeDefenseBypassPerPct: 0.25,
+    siegeDefenseBypassMax: 0.75,
 
     /** City HP: a city has a real, damage-accumulating HP pool -- maxHp =
      *  this * population level, same mitigatedDamage formula
@@ -589,7 +758,7 @@ window.GameConfig = {
     bonusValues: {
       attack: 1,
       defense: 1,
-      siegePct: 0.10,
+      siegePct: 0.20,
       firstStrikePct: 0.04,
       doubleStrikePct: 0.07,
       visionRadius: 1,
@@ -601,20 +770,50 @@ window.GameConfig = {
   // VICTORY & TURN LOOP  (js/engine/turns.js)
   // =========================================================================
   victory: {
-    /** Share of the map's total claimable weight one civ must hold to win
-     *  territorially, and how many consecutive turns they must hold it.
-     *  Lowering this makes territorial victory dominate; the sustain
-     *  requirement stops a one-turn border flicker from ending the game. */
-    shareThreshold: 0.30,
+    /** Tiles a civ must hold to win territorially, and how many consecutive
+     *  turns they must hold them. The sustain requirement stops a one-turn
+     *  border flicker from ending the game.
+     *
+     *  2026-08-25: this replaced a 30% SHARE of the map's claimable weight.
+     *  A share threshold silently changed difficulty with every map variable
+     *  -- the map scales with player count, so 30% meant 0.6x a fair share at
+     *  2 players but 1.5x at 5, and headless testing found 2-player games
+     *  resolving 83% of the time against 0% at 5 players. World type made it
+     *  worse still: deep ocean counted toward the denominator, so an Islands
+     *  map required ~59% of its claimable weight, which no game ever reached.
+     *
+     *  An absolute tile count removes every one of those couplings at once --
+     *  no denominator, no player-count table, no world-type special case --
+     *  and gives the player a legible goal ("312 / 400") instead of a
+     *  percentage.
+     *
+     *  400 is calibrated against a 42-game headless sweep that recorded each
+     *  game's full 200-turn tile trajectory, so every candidate target could
+     *  be scored against the SAME games. Results (median winning turn, and
+     *  share of games that resolved at all inside 200 turns):
+     *
+     *      300 -> 98% resolve, turn 100     500 -> 57% resolve, turn 155
+     *      400 -> 90% resolve, turn 125
+     *
+     *  500 left 43% of games unfinished -- though not stalled: 14 of those 22
+     *  sat between 419 and 497 tiles and would have crossed by turn ~210-240.
+     *  300 resolved almost everything but compressed 90% of games into turns
+     *  80-115, and its faster clock beat conquest to the finish so reliably
+     *  that military wins fell to 5% of decided games (against 15% at 500).
+     *  400 keeps resolution high without that compression, and is the largest
+     *  target measured that still resolves 90% of games. */
+    tileTarget: 400,
     sustainTurns: 2,
   },
 
   world: {
     /** Per-turn chance a worked resource tile is exhausted and removed. */
-    resourceExhaustionChance: 0.05,
+    resourceExhaustionChance: 0.10,
     /** Same, for a civ with Elf's "Tending to the Earth" tech researched --
-     *  see turns.js's resourceExhaustionChanceFor. */
-    resourceExhaustionChanceTendingToTheEarth: 0.02,
+     *  see turns.js's resourceExhaustionChanceFor. Scaled up alongside the
+     *  base rate above (2026-08-24) to preserve the tech's original ~60%
+     *  relative reduction rather than letting it passively double in value. */
+    resourceExhaustionChanceTendingToTheEarth: 0.04,
   },
 
   // =========================================================================

@@ -60,7 +60,8 @@ window.UI = window.UI || {};
     resting: "⛺",
     webbed: "🕸️",
     poisoned: "🤢",
-    greatBonfireAura: "♨️"
+    greatBonfireAura: "♨️",
+    ancestralRage: "🗿"
   };
   const CARRYING_ICON = "🫴";
 
@@ -156,6 +157,8 @@ window.UI = window.UI || {};
     summon: "210,200,255", // creature/object summon poof (Raptor/Shadowsteed/Wisp/Trap)
     zombie_raise: "150,110,180", // Undead raise-dead -- necrotic purple
     curse: "140,60,190", // Orc Bog Witch curse -- matches CURSE_TINT_COLOR
+    dire_bear_transform: "110,75,45", // Elf Druid -> Dire Bear -- earthy brown fur/claws
+    druid_revert: "120,205,95", // Elf Dire Bear -> Druid -- matches natures_grace's living green
     default: "255,255,255",
   };
 
@@ -176,6 +179,8 @@ window.UI = window.UI || {};
     summon: { chars: ["💫", "⭐", "✨"], drift: -0.6 },
     zombie_raise: { chars: ["💀", "👻", "✨"], drift: -0.5 },
     curse: { chars: ["💀", "🌀", "💜"], drift: -0.3 },
+    dire_bear_transform: { chars: ["🐾", "🍂", "🐾"], drift: -0.3 },
+    druid_revert: { chars: ["🍃", "✨", "🍃"], drift: -0.5 },
   };
   const AREA_EFFECT_GLYPH_COUNT = 7;
 
@@ -1413,6 +1418,13 @@ window.UI = window.UI || {};
     if (!civ.unlockedMechanics) return null;
     if (unit.typeId === "paladin" && civ.unlockedMechanics.has("crusade")) {
       return { radius: 1, color: "#ffd54f", label: "Crusade" }; // holy gold
+    }
+    // Halfellow "Banish the Darkness" (2026-08-24 bugfix): The Great
+    // Bonfire's light was never actually visible on the map -- radius
+    // matches its own visionRadius/aura reach (units.js's great_bonfire,
+    // turns.js's beginCivTurn), warm fire color to read as its light.
+    if (unit.typeId === "great_bonfire") {
+      return { radius: 8, color: "#ff7043", label: "Banish the Darkness" };
     }
     if (unit.typeId === "troubadour"
         && (civ.unlockedMechanics.has("heavy_metal") || civ.unlockedMechanics.has("power_metal"))

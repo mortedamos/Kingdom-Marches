@@ -24,6 +24,9 @@
  * Every kind rendered here needs a matching branch in main.js's
  * wireDialogButtons -- the markup below only names the buttons, it doesn't
  * attach anything to them.
+ *
+ * Kinds (2026-08-25 additions): "cityCaptured" (keep-or-raze after a
+ * conquest) and "cityAutomation" (the three-slider automation mix).
  */
 
 window.UI = window.UI || {};
@@ -34,6 +37,13 @@ window.UI = window.UI || {};
       "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
     }[c]));
   }
+
+  /** Labels for the city-automation sliders' five discrete levels, indexed by
+   *  the raw 0-4 slider value (which IS the weight -- see cities.js's
+   *  cityAutomationChoice). "Never" is a real setting: a zero-weight action
+   *  is never chosen at all. Exported so main.js's live label updates read
+   *  the same array this markup was built from. */
+  const AUTOMATION_LEVELS = ["Never", "Rarely", "Sometimes", "Often", "Always"];
 
   function render(dialog) {
     if (dialog.kind === "foundCity") {
@@ -106,6 +116,59 @@ window.UI = window.UI || {};
         <div class="game-dialog-actions">
           <button class="menu-dropdown-btn" id="game-dialog-cancel-btn">Cancel</button>
           <button class="menu-dropdown-btn ${dialog.danger ? "game-dialog-danger" : "game-dialog-primary"}" id="game-dialog-confirm-btn">${escapeHtml(dialog.confirmLabel || "Confirm")}</button>
+        </div>`;
+    }
+    if (dialog.kind === "cityCaptured") {
+      // Keep-or-raze, offered after the city has already changed hands (see
+      // ai.js's conquest branch). Keep is the primary action: taking a rival's
+      // land is normally the point of the war, and razing is the deliberate,
+      // destructive exception -- hence the danger treatment on Raze, matching
+      // the Disband convention.
+      return `
+        <h2>${escapeHtml(dialog.cityName)} has fallen</h2>
+        <p>Your forces have taken ${escapeHtml(dialog.cityName)} from ${escapeHtml(dialog.formerOwnerLabel)}. The city is yours at population 1 — its walls and buildings were destroyed in the siege.</p>
+        <p class="game-dialog-hint">Keeping it claims its territory and counts toward a territorial victory, but it will need defending and adds to your administrative upkeep. Razing it denies the site to everyone and leaves ruins behind.</p>
+        <div class="game-dialog-actions">
+          <button class="menu-dropdown-btn game-dialog-danger" id="game-dialog-cancel-btn">Raze it</button>
+          <button class="menu-dropdown-btn game-dialog-primary" id="game-dialog-confirm-btn">Keep the city</button>
+        </div>`;
+    }
+    if (dialog.kind === "cityAutomation") {
+      // City automation mix: three 5-level sliders whose relative weights
+      // become the city's per-turn action quota (see cities.js's
+      // cityAutomationChoice). Slider markup mirrors the launch screen's
+      // discrete-level rows verbatim -- .launch-row / .launch-row-slider with
+      // a labels array indexed by value and a live-updating span -- rather
+      // than inventing a second slider style (see main.js's buildLaunchOptions
+      // and css/style.css's .launch-row-slider).
+      //
+      // The X close button and .techtree-modal-scroll wrapper are load-bearing
+      // together: .game-dialog-modal sets overflow-y:auto on the modal itself,
+      // and a .techtree-close-btn inside a scrolling modal scrolls away with
+      // the content (see the comment above .techtree-modal-scroll in
+      // style.css). Wrapping the body restores the "chrome fixed, body
+      // scrolls" split that convention depends on.
+      const row = (id, label, value) => `
+        <label class="launch-row">
+          <span>${escapeHtml(label)}</span>
+          <span class="launch-row-slider">
+            <input type="range" min="0" max="4" step="1" value="${value}" id="city-auto-${id}">
+            <span id="city-auto-${id}-label">${escapeHtml(AUTOMATION_LEVELS[value])}</span>
+          </span>
+        </label>`;
+      const w = dialog.weights || { research: 2, culture: 2, resources: 2 };
+      return `
+        <button class="techtree-close-btn" id="city-auto-close-btn" aria-label="Close">&times;</button>
+        <div class="techtree-modal-scroll">
+          <h2>Automate ${escapeHtml(dialog.cityName)}</h2>
+          <p class="game-dialog-hint">Set how often this city should do each thing. It performs one action per turn, keeping to the mix you choose here.</p>
+          ${row("research", "Research", w.research)}
+          ${row("culture", "Grow Culture", w.culture)}
+          ${row("resources", "Gather Resources", w.resources)}
+          <p class="launch-hint" id="city-auto-summary"></p>
+          <div class="game-dialog-actions">
+            <button class="menu-dropdown-btn game-dialog-primary" id="game-dialog-confirm-btn">OK</button>
+          </div>
         </div>`;
     }
     if (dialog.kind === "chooseTech") {
@@ -288,5 +351,5 @@ window.UI = window.UI || {};
       </div>`;
   }
 
-  window.UI.dialog = { render };
+  window.UI.dialog = { render, AUTOMATION_LEVELS };
 })();

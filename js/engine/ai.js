@@ -532,10 +532,26 @@ window.GameEngine = window.GameEngine || {};
       // When cityCount=0, settle is an existential priority — clamp explore low so
       // even low-expansionism races don't wander instead of founding their first city.
       explore:    (cityCount === 0 ? 2 : 0) + (unitCount < 2 ? 5 : 0) + 3,
-      // The 15-vs-5 base multiplier normally drops once a civ has settled 3+
-      // cities -- but not while a tech is still blocked purely on city count,
-      // since abandoning settling there would stall research for no reason.
-      settle:     (cityCount < 3 || cityGateShortfall > 0 ? 15 : 5) * expansionism * 2 + (hasSettler ? 8 : 0),
+      // Settle drive now TAPERS with city count instead of falling off a
+      // cliff (2026-08-25). It used to drop 15 -> 5 the moment a civ had 3
+      // cities and no tech-gate shortfall; since the tech city-gate tops out
+      // at layer 5 (a layer-L tech needs >= L cities), every civ was told to
+      // stop expanding at 5 cities, permanently. Headless testing found the
+      // consequence: kingdoms plateau at 3-5 cities and all five together
+      // claim only ~48% of the map, so nobody ever approaches the 30%
+      // territory threshold and games never resolve.
+      //
+      // The taper keeps early settling just as urgent (a 0-2 city civ still
+      // scores ~15) while leaving a real, decaying incentive to keep taking
+      // land afterwards, scaled by the race's own expansionism. It never
+      // reaches zero -- an expansionist race should always be a little
+      // interested in another city -- but it falls off fast enough that a
+      // wide empire eventually prefers other work. The tech-gate override is
+      // unchanged: a civ blocked purely on city count still settles at full
+      // urgency. Pairs with the per-city administrative upkeep in
+      // cities.js's tickCity, which is what stops this becoming free
+      // infinite expansion.
+      settle:     (cityGateShortfall > 0 ? 15 : Math.max(4, 15 - cityCount * 1.6)) * expansionism * 2 + (hasSettler ? 8 : 0),
       tech:       (!hasResearch ? 10 : 2) * curiosity * 2,
       military:   (militaryCount < militaryCap ? 12 : 4) * militarism * 2,
       // Currently-visible contact still dominates (6/enemy) when there IS
@@ -579,20 +595,21 @@ window.GameEngine = window.GameEngine || {};
     if (cityGateShortfall > 0) scores.settle += cityGateShortfall * 10 * cityLossTaper;
 
     // Closing out an influence victory (2026-08-19, user-directed): once
-    // this civ's own land share is within 10% of VICTORY_SHARE_THRESHOLD
-    // (relative -- 90% of the way there, e.g. 27% share against a 30%
-    // threshold), reacted to every turn here rather than waiting on
-    // strategy.js's own every-8-turn doctrine recompute, since a civ this
-    // close to winning shouldn't sit on the news for over a week of turns.
-    // Push hard toward settling (more cities = more claimable-land
-    // footprint = the fastest way to close the remaining gap) and pull back
-    // from picking fights (aggression/military) that risk losing ground or
-    // getting bogged down in a war instead of just finishing the game --
-    // still allowed to win the focus if a real threat is actually pressing
-    // (this only multiplies down, it doesn't zero them out).
-    const victoryThreshold = window.GameConfig.victory.shareThreshold;
-    const { myShare } = window.GameEngine.strategy.landStanding(civ, gameState);
-    const nearVictory = myShare >= victoryThreshold * 0.9;
+    // this civ is within 10% of the victory TILE TARGET (relative -- 90% of
+    // the way there, e.g. 450 tiles against a 500 target), reacted to every
+    // turn here rather than waiting on strategy.js's own every-8-turn
+    // doctrine recompute, since a civ this close to winning shouldn't sit on
+    // the news for over a week of turns. Push hard toward settling (more
+    // cities = more owned tiles = the fastest way to close the remaining
+    // gap) and pull back from picking fights (aggression/military) that risk
+    // losing ground or getting bogged down in a war instead of just
+    // finishing the game -- still allowed to win the focus if a real threat
+    // is actually pressing (this only multiplies down, it doesn't zero them
+    // out).
+    // 2026-08-25: compares raw owned tiles now, not a share of the map.
+    const tileTarget = window.GameConfig.victory.tileTarget;
+    const myTiles = (window.GameEngine.influence.countTerritory(gameState).counts[civ.id]) || 0;
+    const nearVictory = myTiles >= tileTarget * 0.9;
     if (nearVictory) {
       scores.settle += 20;
       scores.aggression *= 0.5;
@@ -2426,7 +2443,10 @@ window.GameEngine = window.GameEngine || {};
     // Halfellow "Banish the Darkness": +1 movement while inside The Great
     // Bonfire's aura -- see turns.js's beginCivTurn per-turn application.
     const bonfireMovement = unit.conditions?.greatBonfireAura?.movementBonus || 0;
-    let movement = baseUnit.movement + overrideMovement + levelMovement + bonfireMovement;
+    // Orc War Camp: +1 movement stamped on permanently at build time -- see
+    // BUILDING_UNIT_STAMPS.
+    const buildingMovement = unit.buildingBonuses?.movement || 0;
+    let movement = baseUnit.movement + overrideMovement + levelMovement + bonfireMovement + buildingMovement;
     // Tech-unlocked terrain movement bonus: extra movement points while standing
     // on the race's favored terrain at the start of this move (e.g. Human on Plains).
     // "river" is a pseudo-terrain key checked separately since rivers overlay
@@ -2779,14 +2799,39 @@ window.GameEngine = window.GameEngine || {};
     return !!(unit.summonBuild || (unit._ritualTurns || 0) >= 1);
   }
 
+  // Expansion Cycle (2026-08-21, user-directed): the "radius fully filled"
+  // pioneer (see its own _expansionCyclePioneer tag, chooseBuildAction)
+  // kicks off a few turns of military-building before the cycle is allowed
+  // to roll for another pioneer -- civ._expansionMilitaryTurnsLeft is the
+  // countdown, decremented once per civ-turn in maybeBuildInCities below.
+  // Boosts garrison/raid (offense) scoring specifically, the same two
+  // weight knobs chooseStrategy's own "military" focus already doubles for
+  // a single turn -- this just holds that boost up for several turns in a
+  // row instead of one, and only for a civ actually mid-cycle.
+  const EXPANSION_MILITARY_PHASE_TURNS = 6;
+  const EXPANSION_MILITARY_WEIGHT_MULT = 3;
+
   function maybeBuildInCities(civ, gameState, weights, log) {
+    const militaryPhaseActive = civ._expansionMilitaryTurnsLeft > 0;
+    if (militaryPhaseActive) civ._expansionMilitaryTurnsLeft--;
+    const cityWeights = militaryPhaseActive
+      ? { ...weights,
+          garrison: (weights.garrison || 1) * EXPANSION_MILITARY_WEIGHT_MULT,
+          raid: (weights.raid || 1) * EXPANSION_MILITARY_WEIGHT_MULT }
+      : weights;
+
     for (const city of civ.cities) {
       if (city.buildQueue) {
         progressBuildQueue(civ, city, gameState, log);
         continue;
       }
-      const choice = chooseBuildAction(civ, city, gameState, weights);
+      const choice = chooseBuildAction(civ, city, gameState, cityWeights);
       if (choice) {
+        // Expansion Cycle trigger: THIS is the "radius fully filled" pioneer
+        // (see chooseBuildAction's own doc comment on the option) -- start
+        // the military phase now, so it isn't immediately eligible to roll
+        // for a second one next turn.
+        if (choice._expansionCyclePioneer) civ._expansionMilitaryTurnsLeft = EXPANSION_MILITARY_PHASE_TURNS;
         if (choice.cost) {
           // Power-based unit cost (see buildUnitOption): pay the one-time
           // multi-resource cost from the civ's stockpile right now, then
@@ -2804,27 +2849,71 @@ window.GameEngine = window.GameEngine || {};
           city.buildQueue = { ...choice, progress: 0 };
         }
         log.push(`Build: ${city.name} started ${choice.kind} "${choice.id}"`);
+      } else if (cityHasUnclaimedInfluenceTile(city, gameState.map)
+                 && trySpreadCulture(civ, city, gameState, log)) {
+        // Spread Culture took the turn -- nothing further for this city.
       } else {
-        // Spread Culture as a genuine last resort --
-        // chooseBuildAction found nothing worth building/producing/
-        // researching for this city at all, so put its idle turn toward a
-        // cheap influence boost instead of doing nothing. Unlike a real
-        // build choice this isn't scored/queued -- it's an instant paid
-        // action (see cities.js's applyCultureSpread), so it's applied
-        // directly rather than going through the buildQueue branch above.
-        //
-        // targetTurn = turnNumber + 1: this runs from beginCivTurn, which
-        // fires AFTER this round's computeInfluenceMap already resolved
-        // (see turns.js's beginRound/beginCivTurn ordering) -- stamping the
-        // CURRENT turnNumber here would silently never take effect, since
-        // by the time the next computeInfluenceMap runs, turnNumber has
-        // already advanced past it. See cities.js's applyCultureSpread doc
-        // comment for the human-vs-AI timing difference in full.
-        if (window.GameEngine.cities.applyCultureSpread(city, civ, gameState, (gameState.turnNumber || 0) + 1)) {
-          log.push(`Build: ${city.name} spread culture (last resort)`);
-        }
+        // Nothing worth building AND culture either had nothing left to
+        // claim or couldn't be paid for: this turn is otherwise wasted
+        // outright, so offer it to Research instead. Deliberately LAST, so
+        // it never competes with territory growth -- it only ever consumes
+        // turns that were already going to be thrown away.
+        maybeBoostResearch(civ, city, gameState, log);
       }
     }
+  }
+
+  /** Spread Culture as a genuine last resort -- chooseBuildAction found
+   *  nothing worth building or producing for this city at all, so put its
+   *  idle turn toward a cheap influence boost instead of doing nothing.
+   *  Unlike a real build choice this isn't scored/queued -- it's an instant
+   *  paid action (see cities.js's applyCultureSpread), so it's applied
+   *  directly rather than going through the buildQueue branch. Returns
+   *  whether it actually fired (it can still fail on affordability), so the
+   *  caller can fall through to Research with a genuinely spare turn.
+   *
+   *  The caller skips this entirely once the city's own radius is fully
+   *  filled (2026-08-21, user-directed) -- there's nothing left for the
+   *  boosted influence to actually claim within this city's own radius, so
+   *  the turn is better spent (via the Expansion Cycle above, or on
+   *  Research) than on an action with nothing left to do.
+   *
+   *  targetTurn = turnNumber + 1: this runs from beginCivTurn, which fires
+   *  AFTER this round's computeInfluenceMap already resolved (see turns.js's
+   *  beginRound/beginCivTurn ordering) -- stamping the CURRENT turnNumber
+   *  here would silently never take effect, since by the time the next
+   *  computeInfluenceMap runs, turnNumber has already advanced past it. See
+   *  cities.js's applyCultureSpread doc comment for the human-vs-AI timing
+   *  difference in full. */
+  function trySpreadCulture(civ, city, gameState, log) {
+    if (!window.GameEngine.cities.applyCultureSpread(
+          city, civ, gameState, (gameState.turnNumber || 0) + 1)) return false;
+    log.push(`Build: ${city.name} spread culture (last resort)`);
+    return true;
+  }
+
+  /** Research boost on a turn that would otherwise be wasted outright. Fires
+   *  with probability min(1, race.curiosity * researchBoostCuriosityRate) --
+   *  see config.js's researchBoostCuriosityRate for why the AI needs this at
+   *  all (it previously had no path to Research whatsoever) and why the roll
+   *  is tempered by race rather than automatic.
+   *
+   *  applyResearchBoost does its own eligibility and affordability checks and
+   *  returns null when it declines, so this only has to decide WHETHER to
+   *  offer the turn. Rate read live so headless runs can retune between
+   *  batches. */
+  function maybeBoostResearch(civ, city, gameState, log) {
+    if (!civ.currentResearch) return false;
+    const rate = window.GameConfig.city.researchBoostCuriosityRate || 0;
+    if (rate <= 0) return false;
+    const curiosity = window.GameData.getRace(civ.raceId).curiosity ?? 0.5;
+    if (Math.random() >= Math.min(1, curiosity * rate)) return false;
+    const result = window.GameEngine.cities.applyResearchBoost(city, civ, gameState);
+    if (!result) return false;
+    log.push(result.completed
+      ? `Research: ${city.name} completed "${result.techLabel}"`
+      : `Research: ${city.name} cut ${result.amount} turns from "${result.techLabel}"`);
+    return true;
   }
 
   function findAdjacentWater(x, y, map) {
@@ -3418,6 +3507,10 @@ window.GameEngine = window.GameEngine || {};
       // OWN production decisions -- this loop, which feeds the player-facing
       // "Build Unit" menu (buildlist.js), had never actually checked it.
       if (unitData.cityBuildable === false) continue;
+      // Building prerequisite (Orc Dragon needs a Dragon Den in THIS city)
+      // -- hidden rather than greyed out, since it isn't a "save up for it"
+      // affordability problem but a "build the structure first" one.
+      if (!cityMeetsUnitBuildingPrereq(city, unitId)) continue;
       if (unitData.isNaval && !(city.isPort || isCoastalTile(map, city.x, city.y))) continue;
       const option = buildUnitOption(civ, unitId, 0, unitCostMult);
       if (option) {
@@ -3617,19 +3710,31 @@ window.GameEngine = window.GameEngine || {};
       if (opt) options.push(opt);
     }
 
-    // "Radius fully filled" auto-settler: once
-    // THIS city has nothing left to claim in its own radius, it should
-    // SOMETIMES spin off an extra pioneer regardless of the normal viable-
-    // site heuristics just above -- flagged (closestSpot) to skip tile-
-    // score entirely and just grab the nearest legal spot once built (see
-    // findClosestValidSettleSite/maybeFoundCity). Capped at one pioneer in
-    // flight at a time (any kind, via totalPioneers from just above) so a
-    // fully-grown empire doesn't spam settlers.
+    // "Radius fully filled" auto-settler / Expansion Cycle (2026-08-21,
+    // user-directed): once THIS city has nothing left to claim in its own
+    // radius, it should SOMETIMES spin off an extra pioneer regardless of
+    // the normal viable-site heuristics just above -- flagged (closestSpot)
+    // to skip tile-score entirely and just grab the nearest legal spot once
+    // built (see findClosestValidSettleSite/maybeFoundCity). Capped at one
+    // pioneer in flight at a time (any kind, via totalPioneers from just
+    // above) so a fully-grown empire doesn't spam settlers. Deliberately
+    // NOT gated on cityGateShortfall/tech-tree city-count need -- a civ
+    // that's already satisfied on cities for tech purposes (e.g. 5+ cities,
+    // nothing left gated) still keeps founding more, on the theory that
+    // more cities is a route to a territorial/influence victory in its own
+    // right, independent of the tech tree. Also skipped while
+    // civ._expansionMilitaryTurnsLeft is still counting down (see
+    // maybeBuildInCities, right below) -- the pioneer-then-military-then-
+    // pioneer cycle stays strictly sequential, not stacking a second
+    // pioneer mid-military-phase. _expansionCyclePioneer tags the option so
+    // maybeBuildInCities can recognize it was THIS pioneer (not some other
+    // reason a pioneer got built) and start that phase.
     const FULLY_FILLED_SETTLER_CHANCE = 0.10;
     if (totalPioneers === 0 && pioneerAffordable && !cityHasUnclaimedInfluenceTile(city, map)
+        && !(civ._expansionMilitaryTurnsLeft > 0)
         && Math.random() < FULLY_FILLED_SETTLER_CHANCE) {
       const opt = buildUnitOption(civ, "pioneer", 5 + expansionism * 6, unitCostMult);
-      if (opt) { opt.closestSpot = true; options.push(opt); }
+      if (opt) { opt.closestSpot = true; opt._expansionCyclePioneer = true; options.push(opt); }
     }
 
     // Galley — coastal expansion; needs a pioneer aboard, island-locked, multi-city
@@ -3660,8 +3765,11 @@ window.GameEngine = window.GameEngine || {};
         const u = window.GameData.getUnit(id);
         // cityBuildable: false (e.g. Elf's Raptor/Shadowsteed) -- only the
         // Druid's own summon action can ever produce these, never a city.
+        // cityMeetsUnitBuildingPrereq: Orc's Dragon needs a Dragon Den in
+        // this specific city -- same gate the player's build menu uses.
         return u.category === "military" && !u.isNaval && u.cityBuildable !== false
-          && (!u.raceOnly || u.raceOnly === civ.raceId);
+          && (!u.raceOnly || u.raceOnly === civ.raceId)
+          && cityMeetsUnitBuildingPrereq(city, id);
       });
 
     // Hoisted above the `unlockedMilitary.length > 0` block (was local to it)
@@ -3738,7 +3846,19 @@ window.GameEngine = window.GameEngine || {};
       // once learned, this civ keeps preferring siege-capable units for its
       // offense pick indefinitely instead of reverting to plain attack after
       // 2 owned/queued.
-      const SIEGE_UNIT_SATURATION = civ.learnedAntiTitanTactics ? Infinity : 2;
+      // 2026-08-25: the flat cap of 2 was a major reason conquest never
+      // happened. Headless testing found Orc and Halfellow finishing entire
+      // games having built ZERO siege units, and Elf/Dwarf peaking at one --
+      // while every kingdom threw 58-173 attacks per game at cities their
+      // line units could only chip for 1 damage. Two siege engines can never
+      // crack a defended empire, so the AI was capped below the threshold of
+      // ever winning a war. The cap now scales with how many enemy cities
+      // are actually within reach, so a civ facing a large neighbour builds
+      // a real siege train while one with nobody to besiege still doesn't
+      // waste production on engines it has no use for.
+      const siegeTargetCount = countReachableEnemyCities(civ, gameState);
+      const SIEGE_UNIT_SATURATION = civ.learnedAntiTitanTactics ? Infinity
+        : Math.max(2, Math.min(6, siegeTargetCount));
       const isSiegeUnit = (id) => (window.GameData.getUnit(id).siegePct || 0) > 0;
       const ownedSiegeUnits = civ.units.filter((u) => isSiegeUnit(u.typeId)).length
         + countQueuedUnits(civ, isSiegeUnit);
@@ -4259,7 +4379,10 @@ window.GameEngine = window.GameEngine || {};
       sum + c.structures.filter((s) => s.id === "wall_section").length, 0);
     const wallGateOk = militaryCount > 0 && totalWalls < militaryCount * wallsPerSoldierAllowed;
     if (wallGateOk && spareOpenTile && window.GameEngine.cities.findStructureSlot(city, civ, map, "wall_section", civs)) {
-      const wallMechanicBonus = ["ramparts", "rouse_the_people", "hedge_walls"]
+      // 2026-08-24: "ramparts" dropped (tech removed), "warden_of_the_trees"
+      // added -- Elf walls that inherit a resting Ranger/Druid's attack are
+      // at least as much reason to build walls as the others here.
+      const wallMechanicBonus = ["warden_of_the_trees", "rouse_the_people", "hedge_walls"]
         .filter((m) => civ.unlockedMechanics && civ.unlockedMechanics.has(m)).length;
       const wallMult = 1 + wallMechanicBonus;
       // Modern up-front-payment cost -- routes
@@ -4301,6 +4424,149 @@ window.GameEngine = window.GameEngine || {};
     return options[0];
   }
 
+  /** Buildings that permanently stamp a stat onto every unit trained in
+   *  their city (2026-08-24, part of moving buildings off economic yields
+   *  and onto real game effects). Data-driven rather than four near-copies
+   *  of the same cityHasStructure branch -- a future building granting a
+   *  flat unit stat just needs a row here.
+   *
+   *  The bonus lands on `unit.buildingBonuses`, a deliberate sibling of
+   *  `unit.levelBonuses` rather than a reuse of it: levelBonuses is
+   *  reverse-engineered by the AI to count how many times it invested in a
+   *  stat (see pickLevelUpStat's `timesInvested`), so folding a building
+   *  bonus in there would corrupt that inference. Both objects are read
+   *  side by side wherever a stat is resolved (combat.js's effectiveAttack/
+   *  effectiveDefense, computeMovementBudget, combat.js's initUnitHP). */
+  /** Raze a just-conquered city instead of keeping it? (2026-08-25)
+   *
+   *  Keeping is the default and the usual right answer -- a captured city is
+   *  land, and land is the victory condition. Razing is for the cases where
+   *  holding it is genuinely worse than denying it:
+   *
+   *   - It sits on a landmass this civ has no other city on. An isolated
+   *     overseas holding can't be reinforced overland, will be retaken, and
+   *     drags administrative upkeep (see cities.js's tickCity) the whole time.
+   *   - This civ is already running wide enough that the marginal city is
+   *     paying most of its yield out in that same admin upkeep, and the
+   *     captor is warlike enough to prefer denial to administration.
+   *
+   *  Undead deliberately never raze: occupation is the race's whole identity
+   *  (see races.js's "The Relentless Occupier"). */
+  function shouldRazeCity(civ, city, formerOwner, gameState) {
+    if (civ.raceId === "undead") return false;
+    const { map } = gameState;
+    const cityTile = map.tiles[city.y * map.width + city.x];
+    const lm = cityTile ? cityTile.landmassId : -1;
+    if (lm >= 0) {
+      const hasFoothold = civ.cities.some((c) => {
+        const t = map.tiles[c.y * map.width + c.x];
+        return t && t.landmassId === lm;
+      });
+      if (!hasFoothold) return true; // unreinforceable -- deny it instead
+    }
+    // Wide and warlike: past the point where another city pays for itself,
+    // an aggressive civ would rather remove the rival's base than run it.
+    const adminMax = window.GameConfig.city.adminUpkeepMax;
+    const perCity = window.GameConfig.city.adminUpkeepPerCity;
+    const atAdminCeiling = perCity > 0 && civ.cities.length >= (adminMax / perCity);
+    return atAdminCeiling && aggressivenessFor(civ) >= 0.8;
+  }
+
+  /** How many enemy cities this civ could plausibly besiege -- every
+   *  non-eliminated rival city on a landmass this civ has a city of its own
+   *  on (2026-08-25). Deliberately landmass-scoped rather than a raw count:
+   *  cities across an ocean this civ has no foothold on aren't targets it
+   *  can march a siege train to, and counting them would have it build
+   *  engines it can never use. Drives SIEGE_UNIT_SATURATION -- see that
+   *  constant's own comment in chooseBuildAction. */
+  function countReachableEnemyCities(civ, gameState) {
+    const { map, civs } = gameState;
+    const monsterCivId = window.GameConfig.worldEncounters.monsters.civId;
+    const myLandmasses = new Set();
+    for (const c of civ.cities) {
+      const t = map.tiles[c.y * map.width + c.x];
+      if (t && t.landmassId >= 0) myLandmasses.add(t.landmassId);
+    }
+    if (myLandmasses.size === 0) return 0;
+    let n = 0;
+    for (const other of Object.values(civs)) {
+      if (other.id === civ.id || other.id === monsterCivId || other.eliminated) continue;
+      for (const c of other.cities) {
+        const t = map.tiles[c.y * map.width + c.x];
+        if (t && myLandmasses.has(t.landmassId)) n++;
+      }
+    }
+    return n;
+  }
+
+  /** Units that may only be produced in a city holding a specific building
+   *  (2026-08-24). Orc's Dragon Den is the first: the Dragon used to be
+   *  merely `rare` (a build-cost premium, see buildUnitOption), which made
+   *  the Den's name mean nothing -- it's now a hard structural prerequisite,
+   *  and losing the Den cuts off Dragon production until it's rebuilt.
+   *  Checked by BOTH the player-facing build menu (availableBuilds) and the
+   *  AI's own production filter (chooseBuildAction) via
+   *  cityMeetsUnitBuildingPrereq, so the two can never disagree. */
+  const UNIT_BUILDING_PREREQ = { dragon: "dragon_den" };
+
+  function cityMeetsUnitBuildingPrereq(city, unitId) {
+    const required = UNIT_BUILDING_PREREQ[unitId];
+    if (!required) return true;
+    return window.GameEngine.cities.cityHasStructure(city, required);
+  }
+
+  /** Orc Butchery ("Blood Feast"): percentage-points of max HP healed on any
+   *  kill while a Butchery stands, on top of whatever the race already
+   *  grants. Same 0-100 scale as races.js's healOnKillPct (Undead 30). */
+  const BUTCHERY_HEAL_ON_KILL_PCT = 15;
+
+  /** Total heal-on-kill percentage for `civ` -- the race's own innate
+   *  healOnKillPct (Undead's 30) plus Orc's Butchery building bonus, which
+   *  is revocable the moment the structure is destroyed. Single source of
+   *  truth for both kill sites (the ordinary attack path and Blade Dancer's
+   *  sweep), so the two can't drift apart. */
+  function healOnKillPctFor(civ) {
+    const race = window.GameData.getRace(civ.raceId);
+    let pct = race.healOnKillPct || 0;
+    if (window.GameEngine.cities.civHasBuiltBuilding(civ, "butchery")) pct += BUTCHERY_HEAL_ON_KILL_PCT;
+    return pct;
+  }
+
+  const BUILDING_UNIT_STAMPS = [
+    { buildingId: "deep_forge", stat: "attack", amount: 1 },        // Dwarf "Forged Arms"
+    { buildingId: "silverleaf_atelier", stat: "defense", amount: 1 }, // Elf "Silversteel Mail"
+    { buildingId: "war_camp", stat: "movement", amount: 1 },        // Orc War Camp
+  ];
+
+  /** Halfellow Farmers Market ("Well Fed"): a PERCENTAGE of max HP rather
+   *  than a flat bonus, because unitMaxHP is attack+defense+techLayer and so
+   *  runs small (6-16 across the Halfellow roster) -- a flat bonus would be
+   *  worth wildly more to a Wanderer than to a Militia. At 25% (min +1) the
+   *  roster gains +2/+2/+3/+4, scaling with tier as intended. */
+  const FARMERS_MARKET_HP_PCT = 0.25;
+
+  /** Applies every BUILDING_UNIT_STAMPS row (plus Farmers Market's
+   *  percentage HP bonus) that `city` currently qualifies for onto a
+   *  freshly-spawned unit. Must run AFTER combat.initUnitHP, since the HP
+   *  bonus is computed off the base maxHp that call establishes. */
+  function applyBuildingUnitStamps(newUnit, city) {
+    const cities = window.GameEngine.cities;
+    for (const stamp of BUILDING_UNIT_STAMPS) {
+      if (!cities.cityHasStructure(city, stamp.buildingId)) continue;
+      newUnit.buildingBonuses = newUnit.buildingBonuses || {};
+      newUnit.buildingBonuses[stamp.stat] = (newUnit.buildingBonuses[stamp.stat] || 0) + stamp.amount;
+    }
+    if (cities.cityHasStructure(city, "farmers_market")) {
+      const bonus = Math.max(1, Math.round(newUnit.maxHp * FARMERS_MARKET_HP_PCT));
+      newUnit.buildingBonuses = newUnit.buildingBonuses || {};
+      // Recorded as well as applied so a later defensive initUnitHP re-init
+      // re-adds it instead of silently reverting the unit to base HP.
+      newUnit.buildingBonuses.maxHp = (newUnit.buildingBonuses.maxHp || 0) + bonus;
+      newUnit.maxHp += bonus;
+      newUnit.hp = newUnit.maxHp;
+    }
+  }
+
   /** Spawns a completed unit at `city` (or the nearest coastal water for
    *  naval units), pushing it onto civ.units. Returns false if a naval unit
    *  couldn't find anywhere to spawn yet -- caller should leave the build
@@ -4339,6 +4605,7 @@ window.GameEngine = window.GameEngine || {};
     // never silently override typeId/civId/position.
     const newUnit = { typeId: unitId, civId: civ.id, x: spawnX, y: spawnY, isCivilian: ["pioneer", "scout"].includes(unitId), homeCityName: city.name, ...extra };
     window.GameEngine.combat.initUnitHP(newUnit, civ);
+    applyBuildingUnitStamps(newUnit, city);
     civ.units.push(newUnit);
     // Human "Guild Charter": every new unit built in a city with a Guild
     // Hall receives a free level-up -- granted as XP equal to the first
@@ -4364,6 +4631,7 @@ window.GameEngine = window.GameEngine || {};
         || { x: city.x, y: city.y };
       const bonusUnit = { typeId: unitId, civId: civ.id, x: bonusSpot.x, y: bonusSpot.y, homeCityName: city.name };
       window.GameEngine.combat.initUnitHP(bonusUnit, civ);
+      applyBuildingUnitStamps(bonusUnit, city);
       civ.units.push(bonusUnit);
       if (window.GameEngine.cities.cityHasStructure(city, "guild_hall")) {
         applyComputedXP(bonusUnit, civ, window.GameEngine.combat.XP_LEVEL_THRESHOLDS[0]);
@@ -5277,19 +5545,23 @@ window.GameEngine = window.GameEngine || {};
       // 2026-08-19 user-directed), but no other AI play ever sets that
       // flag; reinforceHomeCity/maybeDefendCityUnderAttack above just leave
       // a defender standing on the tile. Same x2 "defending" bonus as an
-      // ordinary one-off Rest/Defend (see sidebar.js), just persistent and
-      // Ramparts-eligible, so there's no downside to a military unit that's
-      // ALREADY confirmed to have nothing better to do this turn (every
-      // branch above already fell through) resting and defending instead
-      // of just idling.
-      if (civ.unlockedMechanics && civ.unlockedMechanics.has("ramparts")
+      // ordinary one-off Rest/Defend (see sidebar.js), just persistent, so
+      // there's no downside to a military unit that's ALREADY confirmed to
+      // have nothing better to do this turn (every branch above already fell
+      // through) resting and defending instead of just idling.
+      //
+      // 2026-08-24: was gated on the (now-removed) "ramparts" mechanic.
+      // Re-pointed at restingInCityPaysOff, which covers every surviving
+      // reason to rest in a city -- otherwise removing one tech would have
+      // silently switched this behavior off for every race at once.
+      if (restingInCityPaysOff(civ)
           && window.GameData.getUnit(unit.typeId).category === "military"
           && civ.cities.some((c) => c.x === unit.x && c.y === unit.y)) {
         unit.channeling = "restAndDefend";
         window.GameEngine.combat.setCondition(unit, "defending", { expiresAtTurn: (gameState.turnNumber || 0) + 1 });
         unit.usedThisTurn = true;
         unit.resting = true;
-        unit.currentMission = "Resting and Defending (Ramparts)";
+        unit.currentMission = "Resting and Defending";
         continue;
       }
 
@@ -5687,8 +5959,36 @@ window.GameEngine = window.GameEngine || {};
         ignited++;
         if (hit.kind === "unit") applyBurning(hit.unit, "unit", gameState);
         else if (hit.kind === "structure") applyBurning(hit.record, "structure", gameState);
+        // Burning doesn't affect cities themselves (turns.js's
+        // tickBurningDamage doc) -- no city branch here.
       }
       if (hit.kind === "unit" && hit.unit.hp <= 0) otherCivRemoveDeadUnit(gameState.civs, hit.unit, civ.id);
+      if (hit.kind === "structure" && hit.record.hp <= 0) {
+        // 2026-08-24 bugfix: applyBombardBlast only applies the raw damage
+        // to structFound.record.hp (combat.js), same as attackStructure's
+        // own contract -- it never removes the structure itself. Every
+        // OTHER path that can destroy a structure (the ordinary single-
+        // target attack, burning ticks) already calls destroyStructure on a
+        // <=0 result; Bombardment's blast just never did, so a wall/
+        // building it reduced to 0 HP stayed on the map forever.
+        window.GameEngine.cities.destroyStructure(gameState, hit.x, hit.y);
+      }
+      if (hit.kind === "city") {
+        // Same destroyed-city bookkeeping the single-target city-attack path
+        // does (considerAttackOrGarrison's attackCity call above) -- markRival
+        // and destroyCity must both run here since applyBombardBlast only
+        // applies the raw damage via attackCity, it doesn't clean up after it.
+        if (hit.result.counterDamage) {
+          log.push(`Rouse the People: ${hit.civId}'s city struck back at ${civ.id}'s ${describeUnit(caster)} for ${hit.result.counterDamage}`);
+        }
+        if (hit.result.militiaSpawned) {
+          log.push(`Rouse the People: ${hit.civId} raised a Militia to defend at (${hit.result.militiaSpawned.x},${hit.result.militiaSpawned.y})`);
+        }
+        if (hit.result.destroyed) {
+          window.GameEngine.combat.markRival(hit.civ, civ.id);
+          window.GameEngine.cities.destroyCity(gameState, hit.civ, hit.city);
+        }
+      }
     }
     // Own attack-side visual: Bombardment never goes through the ordinary
     // attack path (noOrdinaryAttack), so without this the Bombard would
@@ -6902,7 +7202,8 @@ window.GameEngine = window.GameEngine || {};
    * forks on whether the unit is Ranged: the Ranger (Ranged 2) never draws a
    * counter at range, so it can repeatedly hide-shoot-hide against a wider
    * range of matchups without needing an ally to bait with (see
-   * elf_strike_from_the_shadows's own description). A melee unit (the Blade
+   * elf_sudden_doom's own description -- the tech labeled "Strike from the
+   * Shadows" since 2026-08-24). A melee unit (the Blade
    * Dancer) falls back to the exact bait-and-ambush shape Halfellow uses:
    * the single strongest nearby unit stays visible as bait while weaker
    * companions vanish to spring the trap.
@@ -6974,7 +7275,11 @@ window.GameEngine = window.GameEngine || {};
       return true;
     }
 
-    if (!civ.unlockedMechanics.has("strike_from_the_shadows")) return false;
+    // Gated on `sudden_doom` (2026-08-24): this used to check
+    // "strike_from_the_shadows", whose tech was removed -- leaving it would
+    // have silently stopped Elf AI from ever setting up an ambush again,
+    // since no tech grants that mechanic any more.
+    if (!civ.unlockedMechanics.has("sudden_doom")) return false;
 
     if (isRanged) {
       // No ally-bait needed -- a wider tolerance than the melee branch below,
@@ -7109,10 +7414,10 @@ window.GameEngine = window.GameEngine || {};
       if (target.hp <= 0) {
         killCount++;
         otherCivRemoveDeadUnit(civs, target, civ.id);
-        const attackerRace = window.GameData.getRace(civ.raceId);
-        if (attackerRace.healOnKillPct && unit.hp > 0) {
+        const sweepHealPct = healOnKillPctFor(civ);
+        if (sweepHealPct && unit.hp > 0) {
           const beforeKillHeal = unit.hp;
-          unit.hp = Math.min(unit.maxHp, unit.hp + Math.max(1, Math.round(unit.maxHp * attackerRace.healOnKillPct / 100)));
+          unit.hp = Math.min(unit.maxHp, unit.hp + Math.max(1, Math.round(unit.maxHp * sweepHealPct / 100)));
           window.GameEngine.floatingText.spawnHealGain(unit, unit.hp - beforeKillHeal);
         }
         if (target.carries) {
@@ -7175,6 +7480,29 @@ window.GameEngine = window.GameEngine || {};
         { label: "Whirlwind Strike", radius: WHIRLWIND_STRIKE_RADIUS, attackMult: WHIRLWIND_ATTACK_MULT, counterMult: WHIRLWIND_COUNTER_MULT });
     }
     return false;
+  }
+
+  /** Direct player-invoked Whirlwind Strike/Blade Storm (2026-08-24) --
+   *  the ring-menu pills call straight into this instead of going through
+   *  maybeBladeDancerSweep's AI-only "only if it beats a plain attack, and
+   *  prefer the wider radius" decision: a manual click already IS the
+   *  player's decision of which one to use, and orders.js's ring-option gate
+   *  only requires >=1 target in range (not maybeBladeDancerSweep's
+   *  BLADE_SWEEP_MIN_TARGETS >=2 usefulness heuristic), so this re-checks
+   *  that lower bar itself rather than trusting a menu that might be stale.
+   *  `kind` is "whirlwindStrike" or "bladeStorm" (see main.js's ring-click
+   *  dispatch). */
+  function performPlayerBladeSweep(civ, unit, kind, gameState) {
+    currentTurnNumber = gameState.turnNumber || 0;
+    currentGameStateRef = gameState;
+    const log = [];
+    const params = kind === "bladeStorm"
+      ? { label: "Blade Storm", radius: BLADE_STORM_RADIUS, attackMult: BLADE_STORM_ATTACK_MULT, counterMult: BLADE_STORM_COUNTER_MULT }
+      : { label: "Whirlwind Strike", radius: WHIRLWIND_STRIKE_RADIUS, attackMult: WHIRLWIND_ATTACK_MULT, counterMult: WHIRLWIND_COUNTER_MULT };
+    if (countEnemiesInRadius(civ, unit.x, unit.y, params.radius, gameState) < 1) return false;
+    const ok = performBladeSweep(civ, unit, gameState, log, params);
+    if (log.length) appendAIActionLog(gameState, civ.id, log);
+    return ok;
   }
 
   /** Elf "Nature's Grace": restores 30%-60% (random) of `target`'s max HP.
@@ -7864,8 +8192,16 @@ window.GameEngine = window.GameEngine || {};
    *
    *  `confirmed` (default false): same "propose once, re-invoke to commit"
    *  pendingIntent staging every other automated-unit summon in this file
-   *  uses -- see startDruidSummon's doc comment for why. */
-  function startWandererBonfireSummon(civ, wanderer, gameState, log, confirmed = false) {
+   *  uses -- see startDruidSummon's doc comment for why.
+   *
+   *  `targetXY` (optional, 2026-08-24): a player-picked `{x,y}` from
+   *  main.js's tile-placement mode (see isValidGreatBonfirePlacementTile) --
+   *  when given, the Bonfire lands there directly instead of on a random
+   *  open neighbor. Only the manual ring-click flow passes this; the
+   *  automated-Wanderer pendingIntent confirm flow (main.js's
+   *  offerNextPendingIntent) still omits it and keeps the original random
+   *  placement, since that path has no tile-picker UI of its own. */
+  function startWandererBonfireSummon(civ, wanderer, gameState, log, confirmed = false, targetXY = null) {
     if (wanderer.automated && !confirmed) {
       wanderer.pendingIntent = { kind: "createGreatBonfire", label: "Create The Great Bonfire" };
       wanderer.usedThisTurn = true;
@@ -7873,7 +8209,14 @@ window.GameEngine = window.GameEngine || {};
       log.push(`Wanderer proposing to create The Great Bonfire at (${wanderer.x},${wanderer.y}) — awaiting player confirmation`);
       return true; // consumes the turn either way -- same "decided, just paused" contract as the attack gates
     }
-    const spawned = spawnUnitAdjacentToUnit(civ, wanderer, "great_bonfire", gameState);
+    let spawned;
+    if (targetXY) {
+      spawned = { typeId: "great_bonfire", civId: civ.id, x: targetXY.x, y: targetXY.y };
+      window.GameEngine.combat.initUnitHP(spawned, civ);
+      civ.units.push(spawned);
+    } else {
+      spawned = spawnUnitAdjacentToUnit(civ, wanderer, "great_bonfire", gameState);
+    }
     if (!spawned) return false; // no open adjacent tile -- nothing spent, turn not consumed
     dismissExistingGreatBonfire(civ, spawned);
     spawned.bonfireExpiresAtTurn = (gameState.turnNumber || 0) + GREAT_BONFIRE_DURATION;
@@ -7894,14 +8237,36 @@ window.GameEngine = window.GameEngine || {};
    *  already IS the confirmation regardless of whether this Wanderer
    *  happens to be flagged automated from some earlier turn. Completes
    *  synchronously -- the new unit (and the old one's dismissal, if any)
-   *  are both reflected in civ.units by the time this returns. */
-  function performPlayerWandererBonfireSummon(civ, wanderer, gameState) {
+   *  are both reflected in civ.units by the time this returns.
+   *
+   *  `x`/`y` (optional, 2026-08-24): a player-picked tile from main.js's
+   *  startGreatBonfirePlacement -- see startWandererBonfireSummon's
+   *  targetXY doc. Omitted by the automated-Wanderer pendingIntent confirm
+   *  call site (main.js's offerNextPendingIntent), which has no tile-picker
+   *  UI and keeps the original random-adjacent-tile placement. */
+  function performPlayerWandererBonfireSummon(civ, wanderer, gameState, x = null, y = null) {
     currentTurnNumber = gameState.turnNumber || 0;
     currentGameStateRef = gameState;
     const log = [];
-    const ok = startWandererBonfireSummon(civ, wanderer, gameState, log, true);
+    const targetXY = (x != null && y != null) ? { x, y } : null;
+    const ok = startWandererBonfireSummon(civ, wanderer, gameState, log, true, targetXY);
     if (log.length) appendAIActionLog(gameState, civ.id, log);
     return ok;
+  }
+
+  /** Halfellow "Banish the Darkness" placement target (2026-08-24): any of
+   *  the Wanderer's 8 immediate neighbor tiles that isOpenPlacementTile
+   *  already allows a unit to land on -- not occupied by any unit, not
+   *  water/impassable terrain, not an enemy structure/city. Same underlying
+   *  rule startWandererBonfireSummon's own random pick already enforced;
+   *  this just exposes it per-tile so main.js's tile-placement mode can
+   *  build a slot list (see startGreatBonfirePlacement, same shape as
+   *  isValidTrapPlacementTile above). */
+  function isValidGreatBonfirePlacementTile(gameState, civId, x, y, wanderer) {
+    const { map, civs } = gameState;
+    if (window.GameEngine.influence.chebyshev(x, y, wanderer.x, wanderer.y) > 1) return false;
+    const occupied = buildOccupancySet(civs, null);
+    return isOpenPlacementTile(x, y, map, civs, occupied, civId);
   }
 
   /** Halfellow Trouble Maker AI: if Set the Trap is researched and there's a
@@ -8801,6 +9166,10 @@ window.GameEngine = window.GameEngine || {};
     const toBase = window.GameData.getUnit(toTypeId);
     const hpFrac = unit.maxHp > 0 ? unit.hp / unit.maxHp : 1;
     window.SfxSystem.playAction(civ.raceId, unit.typeId, fromDruid ? "become_dire_bear" : "revert_to_druid", unit.x, unit.y);
+    // Transform burst (2026-08-24): mirrors Undead's Raise Dead
+    // (spawnAreaEffect + overlays.js's AREA_EFFECT_COLORS/GLYPHS) -- a
+    // visual cue was otherwise entirely missing for this swap.
+    window.GameEngine.combat.spawnAreaEffect(unit.x, unit.y, 0, fromDruid ? "dire_bear_transform" : "druid_revert");
     unit.typeId = toTypeId;
     unit.maxHp = window.GameData.unitMaxHP(toBase.attack || 0, toBase.defense || 0, toTypeId);
     unit.hp = Math.max(1, Math.round(unit.maxHp * hpFrac));
@@ -12509,11 +12878,12 @@ window.GameEngine = window.GameEngine || {};
           defenderCiv.stockpile = defenderCiv.stockpile || { harvest: 0, coin: 0, lore: 0 };
           defenderCiv.stockpile.lore = (defenderCiv.stockpile.lore || 0) + defenderCiv.deathLoreBonus;
         }
-        const attackerRace = window.GameData.getRace(civ.raceId);
-        // Undead heal on kill
-        if (attackerRace.healOnKillPct && unit.hp > 0) {
+        // Heal on kill: Undead's innate race bonus, plus Orc's Butchery
+        // building if one is standing -- see healOnKillPctFor.
+        const killHealPct = healOnKillPctFor(civ);
+        if (killHealPct && unit.hp > 0) {
           const beforeKillHeal = unit.hp;
-          unit.hp = Math.min(unit.maxHp, unit.hp + Math.max(1, Math.round(unit.maxHp * attackerRace.healOnKillPct / 100)));
+          unit.hp = Math.min(unit.maxHp, unit.hp + Math.max(1, Math.round(unit.maxHp * killHealPct / 100)));
           window.GameEngine.floatingText.spawnHealGain(unit, unit.hp - beforeKillHeal);
         }
         // Orc plunder on kill: stockpile bonus (tech "Spoils of War" bonus)
@@ -12612,6 +12982,18 @@ window.GameEngine = window.GameEngine || {};
           const garrisonPresent = Object.values(civs).some((oc) =>
             oc.units.some((u) => u.x === cx && u.y === cy && !u.conditions?.hidden));
           if (garrisonPresent) continue; // defender intercepts -- city is safe for now
+          // Futility gate (2026-08-25): skip the city entirely if this unit
+          // can only chip it for the minimum 1 damage. Headless testing found
+          // kingdoms launching 58-173 city attacks per game and capturing a
+          // median of ZERO -- almost all of it line units grinding against a
+          // city they mathematically could not hurt, while taking wall-defense
+          // and counterattack damage for it. A unit that can't meaningfully
+          // dent the target should go do something useful (raid tiles, screen,
+          // wait for the siege train) instead. Deliberately a hard skip rather
+          // than a score penalty: at 1 damage per hit the attack is not a
+          // marginal call, it's wasted.
+          const expectedDmg = window.GameEngine.combat.expectedCityDamage(unit, targetCity, civ);
+          if (expectedDmg <= 1) continue;
           const winProb = window.GameEngine.combat.cityAttackWinProbability(unit, targetCity, civ);
           const level = Math.floor(targetCity.population);
           let score = winProb * 50 * (weights.attack || 1.0) + level * 5;
@@ -12713,8 +13095,35 @@ window.GameEngine = window.GameEngine || {};
             bestCity.civ, bestCity.city.x, bestCity.city.y, map, civs, 0.15);
           if (razeSpawn) log.push(`Rouse the People: ${bestCity.civ.id} raised a Militia from the ashes at (${razeSpawn.x},${razeSpawn.y})`);
         }
-        window.GameEngine.cities.destroyCity(gameState, bestCity.civ, bestCity.city);
-        log.push(`Siege: ${civ.id}'s ${describeUnit(unit)} razed ${bestCity.civ.id}'s city to the ground!`);
+        // Capture or raze (2026-08-25). Capturing is the default -- taking a
+        // rival's cities is what makes conquest advance the territorial win
+        // instead of just deleting land from the map (see cities.js's
+        // captureCity). Razing stays available for a city this civ genuinely
+        // cannot hold; shouldRazeCity decides which.
+        const cityName = bestCity.city.name;
+        const formerOwnerId = bestCity.civ.id;
+        // The HUMAN player decides keep-vs-raze themselves. The city is
+        // captured first so game state stays consistent no matter when (or
+        // whether) the modal is answered, and a pending decision is queued
+        // for main.js to offer -- razing afterwards is just destroyCity on a
+        // city they now own. Same deferred-notice shape as
+        // pendingUnitBuiltNotices, so a capture during an automated unit's
+        // turn surfaces correctly too, not only a hand-clicked attack.
+        if (civ.isHuman) {
+          window.GameEngine.cities.captureCity(gameState, bestCity.civ, civ, bestCity.city);
+          civ.pendingCityCaptureDecisions = civ.pendingCityCaptureDecisions || [];
+          civ.pendingCityCaptureDecisions.push({ cityName, formerOwnerId, city: bestCity.city });
+          log.push(`Conquest: ${civ.id}'s ${describeUnit(unit)} captured ${cityName} from ${formerOwnerId}!`);
+          unit.currentMission = `Captured ${cityName}`;
+        } else if (shouldRazeCity(civ, bestCity.city, bestCity.civ, gameState)) {
+          window.GameEngine.cities.destroyCity(gameState, bestCity.civ, bestCity.city);
+          log.push(`Siege: ${civ.id}'s ${describeUnit(unit)} razed ${formerOwnerId}'s city ${cityName} to the ground!`);
+          unit.currentMission = `Razed ${formerOwnerId}'s city to the ground`;
+        } else {
+          window.GameEngine.cities.captureCity(gameState, bestCity.civ, civ, bestCity.city);
+          log.push(`Conquest: ${civ.id}'s ${describeUnit(unit)} captured ${cityName} from ${formerOwnerId}!`);
+          unit.currentMission = `Captured ${cityName}`;
+        }
         if (bestCity.civ.hasFoundedCity && bestCity.civ.cities.length === 0 && !bestCity.civ.eliminated) {
           window.GameEngine.turns.eliminateCiv(gameState, bestCity.civ);
           log.push(`${bestCity.civ.id} has been eliminated!`);
@@ -12732,7 +13141,8 @@ window.GameEngine = window.GameEngine || {};
           // the Victory/Defeat dialog the instant it's set.
           gameState.immediateVictoryResult = window.GameEngine.turns.checkEliminationVictory(gameState);
         }
-        unit.currentMission = `Razed ${bestCity.civ.id}'s city to the ground`;
+        // (currentMission is set by the capture/raze branches above -- this
+        // used to unconditionally overwrite it with "Razed ...".)
       } else if (result.populationLost) {
         log.push(`Siege: ${civ.id}'s ${describeUnit(unit)} broke ${bestCity.civ.id}'s city's defenses, knocking it to level ${Math.floor(bestCity.city.population)} (${result.hp}/${result.maxHp} hp)`);
         unit.currentMission = `Besieging ${bestCity.civ.id}'s city at (${bestCity.city.x},${bestCity.city.y})`;
@@ -13002,11 +13412,15 @@ window.GameEngine = window.GameEngine || {};
       const bonus = (civ.mechanicValues && civ.mechanicValues.altar_of_ages) || 0.25;
       xpAmount *= (1 + bonus);
     }
-    // Halfellow "It's Like the Great Stories": +50% XP, civ-wide -- every
-    // unit, not gated to a specific city/building like Altar of Ages above.
-    if (civ.unlockedMechanics && civ.unlockedMechanics.has("great_stories")) {
-      const bonus = (civ.mechanicValues && civ.mechanicValues.great_stories) || 0.5;
-      xpAmount *= (1 + bonus);
+    // Halfellow Neighborhood Pub ("It's Like the Great Stories"): +25% XP,
+    // civ-wide -- every unit, not scoped to one city the way Altar of Ages
+    // above is. 2026-08-24: this used to be a separate L4 tech granting
+    // +50%; it's now intrinsic to the Pub building (destroying it revokes
+    // the bonus), and the rate was cut to 25% to match Elf's Altar of Ages
+    // -- the Pub already beats it on scope (civ-wide), tech layer, and
+    // price, so it kept the stronger of those axes rather than all four.
+    if (window.GameEngine.cities.civHasBuiltBuilding(civ, "neighborhood_pub")) {
+      xpAmount *= 1.25;
     }
     // Dwarf "Runeforged Tools": +25% XP, civ-wide -- same shape as Great
     // Stories above.
@@ -13038,14 +13452,41 @@ window.GameEngine = window.GameEngine || {};
   // wall per turn -- an upgrade relationship, not a stack.
   const WALL_DEFENSE_FIRE_CHANCE = 0.5;
   const WALL_DEFENSE_ATTACK_CHARS = ["➵", "➳"];
+  // 2026-08-24: "long_range_snipers" (range 3, attack 2) was removed along
+  // with its tech, replaced by Warden of the Trees -- which is NOT a tier.
+  // Warden leaves range alone (Elf keeps Treetop Snipers' range 2) and
+  // instead swaps the ATTACK for that of a qualifying unit Resting and
+  // Defending in the city. See WARDEN_UNIT_TYPES / tickWallDefense below.
   const WALL_DEFENSE_TIERS = [
     { mechanic: "treetop_snipers", range: 2, attack: 2 },
-    { mechanic: "long_range_snipers", range: 3, attack: 2 },
     { mechanic: "defend_the_walls_dwarf", range: 1, attack: 1 },
     { mechanic: "defend_the_walls_human", range: 1, attack: 2 },
     { mechanic: "defend_the_walls_halfellow", range: 1, attack: 1 },
     { mechanic: "defend_the_walls_orc", range: 1, attack: 2 },
   ];
+
+  /** Elf "Warden of the Trees": only these unit types lend their attack to
+   *  the walls while Resting and Defending. A Pioneer or Galley parked in
+   *  the city does nothing -- it's the woodland fighters who man the walls. */
+  const WARDEN_UNIT_TYPES = new Set(["scout", "ranger", "blade_dancer", "druid"]);
+
+  /** True if this civ has any reason to park a spare military unit on Rest
+   *  and Defend in one of its cities -- every wall-defense tier and the Mage
+   *  College tower gain +25pp fire chance and +2 attack from it, Warden of
+   *  the Trees needs a qualifying unit resting to fire at all, and Dwarf's
+   *  Great Hall grants +50% defense to the resting unit itself. Derived from
+   *  WALL_DEFENSE_TIERS rather than a hand-kept second list, so adding a
+   *  tier can't silently leave this behind (the mistake that removing
+   *  "ramparts" would otherwise have caused -- see maybeRestAndDefend's
+   *  caller). */
+  function restingInCityPaysOff(civ) {
+    if (!civ.unlockedMechanics) return false;
+    for (const t of WALL_DEFENSE_TIERS) if (civ.unlockedMechanics.has(t.mechanic)) return true;
+    if (civ.unlockedMechanics.has("warden_of_the_trees")) return true;
+    const cities = window.GameEngine.cities;
+    return cities.civHasBuiltBuilding(civ, "mage_college")
+      || cities.civHasBuiltBuilding(civ, "great_hall");
+  }
 
   /** Wall Defense: each of this civ's wall segments
    *  independently rolls a 50% chance, once per round, to take a single
@@ -13074,9 +13515,20 @@ window.GameEngine = window.GameEngine || {};
       // points to every wall's fire chance and +2 to its attack -- see
       // cities.js's tickCity for this same channel's structure-heal/
       // influence-gain siblings.
-      const restAndDefending = civ.units.some((u) => u.x === city.x && u.y === city.y && u.channeling === "restAndDefend");
+      const restingUnit = civ.units.find((u) => u.x === city.x && u.y === city.y && u.channeling === "restAndDefend");
+      const restAndDefending = !!restingUnit;
       const fireChance = WALL_DEFENSE_FIRE_CHANCE + (restAndDefending ? 0.25 : 0);
       const attackBonus = restAndDefending ? 2 : 0;
+      // Elf "Warden of the Trees": a Scout/Ranger/Blade Dancer/Druid resting
+      // here lends the walls its own attack strength and on-hit properties
+      // (poison/freeze via applyElfCombatMechanics, plus Double Strike)
+      // instead of the tier's flat value. Range is deliberately untouched --
+      // the walls still reach exactly as far as the civ's best tier allows.
+      // First Strike is not applied: it decides who swings first in an
+      // exchange, and a wall potshot is never answered, so it has no meaning
+      // here.
+      const warden = (civ.unlockedMechanics && civ.unlockedMechanics.has("warden_of_the_trees")
+        && restingUnit && WARDEN_UNIT_TYPES.has(restingUnit.typeId)) ? restingUnit : null;
       for (const s of city.structures) {
         if (!window.GameData.getBuilding(s.id).isWall) continue;
         // Halfellow "Unlock the Gate": suppressed the same as every other
@@ -13094,16 +13546,37 @@ window.GameEngine = window.GameEngine || {};
           }
         }
         if (!target) continue;
-        const dmg = window.GameEngine.combat.mitigatedDamage(
-          tier.attack + attackBonus, window.GameEngine.combat.effectiveDefense(target, targetCiv, {}));
-        target.hp = Math.max(0, target.hp - dmg);
-        window.GameEngine.combat.recordCombatEvent({
+        const combat = window.GameEngine.combat;
+        // Warden swaps the flat tier attack for the resting unit's own; the
+        // Rest-and-Defend +2 still applies on top either way.
+        const atk = (warden ? combat.effectiveAttack(warden, civ, {}) : tier.attack) + attackBonus;
+        const label = warden ? "Warden of the Trees" : "Wall Defense";
+        const strike = () => {
+          const d = combat.mitigatedDamage(atk, combat.effectiveDefense(target, targetCiv, {}));
+          target.hp = Math.max(0, target.hp - d);
+          return d;
+        };
+        let dmg = strike();
+        // Warden inherits the unit's on-hit properties. Poison/freeze go
+        // through applyElfCombatMechanics with the resting unit as the
+        // attacker, so the wall inflicts exactly what that unit would (it
+        // reads poisonChancePct/frozenChancePct off the unit and is itself
+        // gated on the civ's Poisonous Extracts / First Frost techs). The
+        // synthetic result marks a landed hit -- a wall shot can't be
+        // Flying-evaded or Invulnerability-negated.
+        if (warden) {
+          const dsPct = combat.effectiveDoubleStrikePct(warden, civ);
+          if (target.hp > 0 && dsPct > 0 && Math.random() < dsPct) dmg += strike();
+          applyElfCombatMechanics(warden, civ, target, targetCiv,
+            { fullNegated: false, fullMissed: false }, gameState);
+        }
+        combat.recordCombatEvent({
           ax: s.x, ay: s.y, atkUnit: { typeId: "wall_section" }, dx: target.x, dy: target.y, defUnit: target,
           attackChars: WALL_DEFENSE_ATTACK_CHARS,
         });
-        log.push(`Wall Defense: ${civ.id}'s wall at (${s.x},${s.y}) attacks ${targetCiv.id}'s ${describeUnit(target)} for ${dmg}`);
+        log.push(`${label}: ${civ.id}'s wall at (${s.x},${s.y}) attacks ${targetCiv.id}'s ${describeUnit(target)} for ${dmg}`);
         if (target.hp <= 0) {
-          log.push(`Wall Defense: ${targetCiv.id}'s ${describeUnit(target)} is slain by ${civ.id}'s wall at (${s.x},${s.y})`);
+          log.push(`${label}: ${targetCiv.id}'s ${describeUnit(target)} is slain by ${civ.id}'s wall at (${s.x},${s.y})`);
           otherCivRemoveDeadUnit(civs, target, civ.id);
         }
       }
@@ -13111,23 +13584,32 @@ window.GameEngine = window.GameEngine || {};
     if (log.length) appendAIActionLog(gameState, civ.id, log);
   }
 
-  // Human "Mage Tower": same "structure takes a potshot" shape as Wall
-  // Defense above, but keyed to a single specific building (Mage College)
-  // rather than every wall, with its own fixed range/attack rather than a
-  // tier list -- only one tech grants this, so no upgrade tiers to pick
-  // among.
-  const MAGE_TOWER_FIRE_CHANCE = 0.5;
+  // Human Mage College tower fire: same "structure takes a potshot" shape as
+  // Wall Defense above, but keyed to a single specific building (Mage
+  // College) rather than every wall, with its own fixed range/attack rather
+  // than a tier list.
+  //
+  // 2026-08-24: this used to sit behind a separate L4 "Mage Tower" tech
+  // (unlock_mechanic "mage_tower"). That tech is gone -- the behavior is now
+  // intrinsic to the Mage College building itself, part of the wider move of
+  // buildings away from economic yields and toward real game effects. The
+  // loop below already filtered to s.id === "mage_college", so the building
+  // WAS always the tower; only the flag in front of it has been removed.
+  // Fire chance raised 0.5 -> 0.75 at the same time (user-directed).
+  const MAGE_TOWER_FIRE_CHANCE = 0.75;
   const MAGE_TOWER_RANGE = 5;
   const MAGE_TOWER_ATTACK = 3;
   const MAGE_TOWER_ATTACK_CHARS = ["✨", "☄"];
 
-  /** Mage Tower: each of this civ's Mage College structures independently
-   *  rolls a 50% chance, once per round, to strike the nearest enemy unit
-   *  within MAGE_TOWER_RANGE -- ticked here directly from turns.js's
-   *  endRound (see tickWallDefense's own call site), same reasoning:
-   *  a passive structure ability with no unit or turn-order of its own. */
+  /** Mage College tower fire: each of this civ's Mage College structures
+   *  independently rolls MAGE_TOWER_FIRE_CHANCE, once per round, to strike
+   *  the nearest enemy unit within MAGE_TOWER_RANGE -- ticked here directly
+   *  from turns.js's endRound (see tickWallDefense's own call site), same
+   *  reasoning: a passive structure ability with no unit or turn-order of
+   *  its own. No mechanic gate -- owning a standing Mage College IS the
+   *  unlock (see MAGE_TOWER_FIRE_CHANCE's comment above); destroying the
+   *  structure revokes it, same as every other building-sourced effect. */
   function tickMageTowerDefense(gameState, civ) {
-    if (!civ.unlockedMechanics || !civ.unlockedMechanics.has("mage_tower")) return;
     const { civs } = gameState;
     const log = [];
     for (const city of civ.cities) {
@@ -13213,6 +13695,36 @@ window.GameEngine = window.GameEngine || {};
    *  below), so it's also the one place that needs to know how to play a
    *  death sound and queue the smoke/skull cosmetic (2026-08-07, user-
    *  directed -- see deathfx.js/overlays.js's drawDeathEffects). */
+  // Orc Ancestral Dolmen ("Ancestral Rage"): when a unit whose HOME CITY
+  // holds a Dolmen falls, nearby kin are roused to avenge it -- the fallen
+  // are honored by being avenged, not resurrected. Timed condition, same
+  // setCondition/expiresAtTurn shape as Burning/Frozen (see combat.js's
+  // tickConditions, which expires it generically).
+  const ANCESTRAL_RAGE_RADIUS = 3;
+  const ANCESTRAL_RAGE_DURATION = 3;
+  const ANCESTRAL_RAGE_ATTACK_MULT = 1.25;
+
+  /** Applies Ancestral Rage to every living unit of `civ` within
+   *  ANCESTRAL_RAGE_RADIUS of `deadUnit`, if that unit was built in a city
+   *  that still has a standing Ancestral Dolmen. No-op for every other race
+   *  and for units with no home city (summons, militia raised in the field).
+   *  The dead unit itself is already excluded -- it's removed from
+   *  civ.units by the caller before this runs. */
+  function maybeAncestralRage(civ, deadUnit) {
+    if (!deadUnit.homeCityName) return;
+    const home = civ.cities.find((c) => c.name === deadUnit.homeCityName);
+    if (!home || !window.GameEngine.cities.cityHasStructure(home, "ancestral_dolmen")) return;
+    for (const u of civ.units) {
+      if (u.carriedBy || u.hp <= 0) continue;
+      if (window.GameEngine.influence.chebyshev(deadUnit.x, deadUnit.y, u.x, u.y) > ANCESTRAL_RAGE_RADIUS) continue;
+      window.GameEngine.combat.setCondition(u, "ancestralRage", {
+        attackMult: ANCESTRAL_RAGE_ATTACK_MULT,
+        expiresAtTurn: currentTurnNumber + ANCESTRAL_RAGE_DURATION,
+      });
+      window.GameEngine.floatingText.spawnFloatingText(u, "Ancestral Rage!", "aura");
+    }
+  }
+
   function otherCivRemoveDeadUnit(civs, deadUnit, killerCivId = null) {
     const civ = civs[deadUnit.civId];
     if (civ) {
@@ -13222,6 +13734,9 @@ window.GameEngine = window.GameEngine || {};
       // See WISP_DEATH_AVOIDANCE_RADIUS/isValidWispSummonTile: the next
       // Bog Witch summon steers clear of wherever this one fell.
       if (deadUnit.typeId === "wisp") civ.lastWispDeathTile = { x: deadUnit.x, y: deadUnit.y };
+      // Runs AFTER the filter above, so the fallen unit can't rage at its
+      // own death -- see maybeAncestralRage.
+      maybeAncestralRage(civ, deadUnit);
       maybeSpawnDeathChest(deadUnit, currentGameStateRef);
       // Victory-stats tallies (2026-08-19, user-directed): every combat
       // death in the game funnels through this one chokepoint (see this
@@ -13597,6 +14112,11 @@ window.GameEngine = window.GameEngine || {};
     isNearActiveCombat,
     explorePostureFor,
     buildUnitOption,
+    // Building-sourced unit effects (2026-08-24). Exported so UI can preview
+    // what a given city's structures will stamp onto a unit built there, and
+    // explain why a unit is absent from a city's build list.
+    applyBuildingUnitStamps,
+    cityMeetsUnitBuildingPrereq,
     unitBuildTurns,
     buildingBuildTurns,
     maybeHalfellowRegroup,
@@ -13682,6 +14202,11 @@ window.GameEngine = window.GameEngine || {};
     performPlayerTrapSet,
     trapCapReached,
     performPlayerWandererBonfireSummon,
+    isValidGreatBonfirePlacementTile,
+    countEnemiesInRadius,
+    WHIRLWIND_STRIKE_RADIUS,
+    BLADE_STORM_RADIUS,
+    performPlayerBladeSweep,
     primeUnitForAutomation,
     runAutomatedUnitTurn,
   };

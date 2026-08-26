@@ -257,15 +257,19 @@ window.GameData.TECHS = {
   marketcraft: {
     id: "marketcraft", label: "Marketcraft", category: "building", layer: 1, cost: 20,
     prereqs: [], raceOnly: "human",
-    description: "Unlocks the Bazaar. While at least one is built, increases the yield of all mined/fished/farmed/hunted/delved tile resources by 10%.",
+    description: "Unlocks the Bazaar. While at least one is built, the location of every rival kingdom's cities is revealed on the map.",
     costBreakdown: { coin: 12, harvest: 8 },
     effects: [
       { type: "unlock_building", building: "bazaar" },
       { type: "unlock_mechanic", mechanic: "marketcraft" },
     ],
   },
+  // Labeled "Ramparts!" (2026-08-24) rather than "Defend the Walls" like the
+  // other three races' equivalents -- the name freed up by removing the old
+  // Human Ramparts tech. Mechanic id stays defend_the_walls_human: it's
+  // internal, and renaming it would strand the string in existing saves.
   human_defend_the_walls: {
-    id: "human_defend_the_walls", label: "Defend the Walls", category: "building", layer: 1, cost: 18,
+    id: "human_defend_the_walls", label: "Ramparts!", category: "building", layer: 1, cost: 18,
     prereqs: [], raceOnly: "human",
     description: "50% chance each turn a Human wall attacks an enemy unit within range 1 for 2 attack.",
     costBreakdown: { coin: 12, lore: 6 },
@@ -316,17 +320,11 @@ window.GameData.TECHS = {
     costBreakdown: { lore: 28, coin: 12 },
     effects: [{ type: "unlock_unit", unit: "catapult" }],
   },
-  // Moved L3 -> L2, for the same reason as
-  // catapult_engineering just above -- prereq (archery) is now L1.
-  ramparts: {
-    // category "building" despite unlocking no
-    // building of its own -- filed there anyway per the user's explicit call.
-    id: "ramparts", label: "Ramparts", category: "building", layer: 2, cost: 40,
-    prereqs: ["archery"], raceOnly: "human",
-    description: "While a unit is Resting and Defending in this city, the attack strength of this city's walls becomes the same as that unit.",
-    costBreakdown: { lore: 28, coin: 12 },
-    effects: [{ type: "unlock_mechanic", mechanic: "ramparts" }],
-  },
+  // 2026-08-24: the Human "Ramparts" tech stood here -- walls and cities
+  // counterattacking with a resting unit's attack. Removed; the name was
+  // reclaimed by human_defend_the_walls (now "Ramparts!"), and the
+  // inherit-a-resting-unit's-attack idea now lives on Elf's Warden of the
+  // Trees as a proactive wall shot instead. See combat.js's attackStructure.
 
   // --- Layer 3 ---
   guild_charter: {
@@ -416,22 +414,16 @@ window.GameData.TECHS = {
   // "dungeon_delve" itself is UNCHANGED and still what orders.js/ai.js/
   // turns.js check via civ.unlockedMechanics.has("dungeon_delve") -- only
   // the tech that grants it, and which units/races can use it, changed.
+  // 2026-08-24: the separate L4 "Mage Tower" tech that used to follow this
+  // one was removed -- its effect is now intrinsic to the Mage College
+  // building itself (see ai.js's tickMageTowerDefense), part of moving
+  // buildings off economic yields and onto real game effects.
   mage_college_tech: {
     id: "mage_college_tech", label: "Mage College", category: "building", layer: 3, cost: 50,
     prereqs: ["wizardry"], raceOnly: "human",
-    description: "Unlocks the Mage College (+20% lore/turn, this city only).",
+    description: "Unlocks the Mage College. Each turn, a Mage College has a 75% chance to attack an enemy unit within range 5 for 3 attack.",
     costBreakdown: { lore: 35, coin: 15 },
     effects: [{ type: "unlock_building", building: "mage_college" }],
-  },
-  // Unlocks no building of its own (see ai.js's tickMageTowerDefense) --
-  // filed as "building" category since it's an upgrade to an existing
-  // building, same convention Ramparts already established for walls.
-  mage_tower: {
-    id: "mage_tower", label: "Mage Tower", category: "building", layer: 4, cost: 160,
-    prereqs: ["mage_college_tech"], raceOnly: "human",
-    description: "50% chance each turn a Mage College attacks an enemy unit within range 5 for 3 attack.",
-    costBreakdown: { harvest: 16, coin: 96, lore: 48 },
-    effects: [{ type: "unlock_mechanic", mechanic: "mage_tower" }],
   },
   // Moved L4 -> L3, following catapult_engineering
   // down a layer. Its prereq is now L2, so the ordering stays sound.
@@ -604,26 +596,16 @@ window.GameData.TECHS = {
     costBreakdown: { lore: 32, coin: 18 },
     effects: [{ type: "unlock_mechanic", mechanic: "wind_from_distant_treetops" }],
   },
-  elf_vision_beyond_sight: {
-    id: "elf_vision_beyond_sight", label: "Vision Beyond Sight", category: "civic", layer: 5, cost: 90,
-    prereqs: ["elf_air_beneath_eyes_above"], raceOnly: "elf",
-    description: "All elf units gain +1 vision.",
-    costBreakdown: { lore: 55, coin: 25, harvest: 15 },
-    effects: [
-      { type: "unit_stat_upgrade", unit: "ranger", changes: { visionRadius: 1 } },
-      { type: "unit_stat_upgrade", unit: "blade_dancer", changes: { visionRadius: 1 } },
-      { type: "unit_stat_upgrade", unit: "druid", changes: { visionRadius: 1 } },
-      { type: "unit_stat_upgrade", unit: "raptor", changes: { visionRadius: 1 } },
-      { type: "unit_stat_upgrade", unit: "shadowsteed", changes: { visionRadius: 1 } },
-      { type: "unit_stat_upgrade", unit: "awakened_oak", changes: { visionRadius: 1 } },
-    ],
-  },
+  // 2026-08-24: "Vision Beyond Sight" (L5, +1 vision to the whole Elf
+  // roster) was removed. Elf units keep their base vision -- the bonus is
+  // simply gone, user-directed. It was also a prereq of Upon the Wind, which
+  // now depends on Hunter's Soul alone.
 
   // --- Building ---
   elf_aelderwatch: {
     id: "elf_aelderwatch", label: "Aelderwatch", category: "building", layer: 1, cost: 20,
     prereqs: [], raceOnly: "elf",
-    description: "Unlocks the Treetop Watch. The city this building is adjacent to gains +5 vision radius.",
+    description: "Unlocks the Treetop Watch. The city this building is adjacent to gains +4 vision radius.",
     costBreakdown: { coin: 12, lore: 8 },
     effects: [{ type: "unlock_building", building: "treetop_watch" }],
   },
@@ -634,19 +616,24 @@ window.GameData.TECHS = {
     costBreakdown: { coin: 24, lore: 16 },
     effects: [{ type: "unlock_mechanic", mechanic: "treetop_snipers" }],
   },
-  elf_long_range_snipers: {
-    id: "elf_long_range_snipers", label: "Long Range Snipers", category: "building", layer: 3, cost: 45,
+  // Replaced "Long Range Snipers" (2026-08-24), which was just a longer-
+  // ranged wall-defense tier. Warden of the Trees is not a tier at all: it
+  // leaves the walls' reach at Treetop Snipers' range 2 and instead lends
+  // them a resting woodland fighter's own attack and on-hit properties.
+  // See ai.js's tickWallDefense / WARDEN_UNIT_TYPES.
+  elf_warden_of_the_trees: {
+    id: "elf_warden_of_the_trees", label: "Warden of the Trees", category: "building", layer: 3, cost: 45,
     prereqs: ["elf_treetop_snipers"], raceOnly: "elf",
-    description: "50% chance each turn an elf wall attacks an enemy unit within range 3 for 2 attack.",
+    description: "While a Tracker, Ranger, Blade Dancer, or Druid is Resting and Defending in this city, its walls attack with that unit's attack strength and gain its attack properties (chance to poison, chance to freeze, Double Strike).",
     costBreakdown: { coin: 27, lore: 18 },
-    effects: [{ type: "unlock_mechanic", mechanic: "long_range_snipers" }],
+    effects: [{ type: "unlock_mechanic", mechanic: "warden_of_the_trees" }],
   },
   // Moved L3 -> L2. Prereq elf_gems_of_starlight
   // (L3) stays put -- one-layer inversion, same policy as above.
   elf_silverleaf_atelier: {
     id: "elf_silverleaf_atelier", label: "Silverleaf Atelier", category: "building", layer: 2, cost: 35,
     prereqs: [], raceOnly: "elf",
-    description: "Unlocks the Silverleaf Atelier (+10% coin and +10% lore, this city only).",
+    description: "Unlocks the Silverleaf Atelier. Units trained in this city are armored in elven silversteel: +1 defense, permanently.",
     costBreakdown: { coin: 20, lore: 15 },
     effects: [{ type: "unlock_building", building: "silverleaf_atelier" }],
   },
@@ -719,13 +706,10 @@ window.GameData.TECHS = {
     // reuses the same flag rather than duplicating it under a new name.
     effects: [{ type: "unlock_mechanic", mechanic: "sneaking_around" }],
   },
-  elf_strike_from_the_shadows: {
-    id: "elf_strike_from_the_shadows", label: "Strike from the Shadows", category: "military", layer: 2, cost: 50,
-    prereqs: ["elf_shadowed_hush_unseen"], raceOnly: "elf",
-    description: "A Hidden elf unit gains +50% bonus to attack score. Attacking uses this bonus, then ends Hidden as normal.",
-    costBreakdown: { lore: 50 },
-    effects: [{ type: "unlock_mechanic", mechanic: "strike_from_the_shadows" }],
-  },
+  // 2026-08-24: the L2 "Strike from the Shadows" (+50% attack while Hidden)
+  // was removed and the two-step progression collapsed into one. The former
+  // "Sudden Doom" below now carries this name and grants the full +100% /
+  // +10% First Strike outright.
   elf_druidism: {
     id: "elf_druidism", label: "Druidism", category: "mystic", layer: 2, cost: 32,
     prereqs: ["elf_murmuring_of_leaves", "elf_whispering_waters"], raceOnly: "elf",
@@ -822,10 +806,16 @@ window.GameData.TECHS = {
       { type: "unit_stat_upgrade", unit: "awakened_oak", changes: { visionRadius: 1 } },
     ],
   },
+  // Was "Sudden Doom" until 2026-08-24, when the L2 tech it used to upgrade
+  // was removed and this inherited its name. Mechanic id stays sudden_doom:
+  // it's internal, and renaming it would strand the string in existing
+  // saves' unlockedMechanics (same reasoning as human_defend_the_walls).
+  // Prereq re-pointed to elf_shadowed_hush_unseen, the deleted tech's own
+  // prereq, so the stealth line stays connected instead of dead-ending.
   elf_sudden_doom: {
-    id: "elf_sudden_doom", label: "Sudden Doom", category: "military", layer: 3, cost: 50,
-    prereqs: ["elf_strike_from_the_shadows"], raceOnly: "elf",
-    description: "Replaces Strike from the Shadows: while Hidden, a unit's bonus to attack score rises to +100% (up from +50%), and it also gains +10% First Strike. Both bonuses end as soon as the unit is no longer Hidden.",
+    id: "elf_sudden_doom", label: "Strike from the Shadows", category: "military", layer: 3, cost: 50,
+    prereqs: ["elf_shadowed_hush_unseen"], raceOnly: "elf",
+    description: "While Hidden, an elf unit gains +100% bonus to attack score and +10% First Strike. Attacking uses these bonuses, then ends Hidden as normal.",
     costBreakdown: { lore: 50 },
     effects: [{ type: "unlock_mechanic", mechanic: "sudden_doom" }],
   },
@@ -845,7 +835,11 @@ window.GameData.TECHS = {
   },
   elf_quick_as_a_shadow: {
     id: "elf_quick_as_a_shadow", label: "Quick as a Shadow", category: "military", layer: 4, cost: 50,
-    prereqs: ["elf_strike_from_the_shadows"], raceOnly: "elf",
+    // Re-pointed 2026-08-24 from the removed L2 elf_strike_from_the_shadows
+    // to elf_sudden_doom (L3, now labeled "Strike from the Shadows") --
+    // keeps this L4 tech downstream of the stealth-attack line rather than
+    // jumping straight from the L1 Shadowed Hush, Unseen.
+    prereqs: ["elf_sudden_doom"], raceOnly: "elf",
     description: "A Hidden elf unit can move at full speed, unlike most Hidden units.",
     costBreakdown: { lore: 50 },
     effects: [{ type: "unlock_mechanic", mechanic: "quick_as_a_shadow" }],
@@ -893,7 +887,7 @@ window.GameData.TECHS = {
   },
   elf_upon_the_wind: {
     id: "elf_upon_the_wind", label: "Upon the Wind", category: "military", layer: 5, cost: 90,
-    prereqs: ["elf_hunters_soul", "elf_vision_beyond_sight"], raceOnly: "elf",
+    prereqs: ["elf_hunters_soul"], raceOnly: "elf", // elf_vision_beyond_sight removed 2026-08-24
     description: "All Ranger and Blade Dancer units gain 40% Double Strike. Ranger units gain +1 range while being carried (by a Shadowsteed).",
     costBreakdown: { lore: 55, coin: 20, harvest: 15 },
     effects: [
@@ -1022,14 +1016,14 @@ window.GameData.TECHS = {
   dwarf_forgecraft: {
     id: "dwarf_forgecraft", label: "Forgecraft", category: "building", layer: 1, cost: 22,
     prereqs: [], raceOnly: "dwarf",
-    description: "Unlocks the Deep Forge (+10% coin per turn, this city only).",
+    description: "Unlocks the Deep Forge. Units trained in this city carry forge-worked arms: +1 attack, permanently.",
     costBreakdown: { coin: 16, lore: 6 },
     effects: [{ type: "unlock_building", building: "deep_forge" }],
   },
   dwarf_meeting_of_the_clans: {
     id: "dwarf_meeting_of_the_clans", label: "Meeting of the Clans", category: "building", layer: 3, cost: 36,
     prereqs: ["dwarf_imported_goods"], raceOnly: "dwarf",
-    description: "Unlocks the Great Hall (+5% harvest and +5% lore per turn, this city only).",
+    description: "Unlocks the Great Hall. All Dwarf units Resting and Defending on any of this kingdom's cities, buildings, or walls defend at +50%.",
     costBreakdown: { coin: 20, lore: 16 },
     effects: [{ type: "unlock_building", building: "great_hall" }],
   },
@@ -1245,7 +1239,7 @@ window.GameData.TECHS = {
   orc_warcraft: {
     id: "orc_warcraft", label: "War Camp", category: "building", layer: 1, cost: 22,
     prereqs: [], raceOnly: "orc",
-    description: "Unlocks the War Camp (-10% unit cost, across all resources -- not just coin).",
+    description: "Unlocks the War Camp. Units built in this city march harder: +1 movement, permanently.",
     costBreakdown: { lore: 18, coin: 4 },
     effects: [{ type: "unlock_building", building: "war_camp" }],
   },
@@ -1324,7 +1318,7 @@ window.GameData.TECHS = {
   orc_butchery_rites: {
     id: "orc_butchery_rites", label: "Butchery", category: "building", layer: 2, cost: 35,
     prereqs: [], raceOnly: "orc",
-    description: "Unlocks the Butchery (+10% harvest, any time harvest is gained).",
+    description: "Unlocks the Butchery. While at least one stands, your units heal 15% of their maximum health (minimum 1) whenever they kill an enemy.",
     costBreakdown: { lore: 28, coin: 7 },
     effects: [{ type: "unlock_building", building: "butchery" }],
   },
@@ -1487,7 +1481,7 @@ window.GameData.TECHS = {
   orc_dragon_den_rite: {
     id: "orc_dragon_den_rite", label: "Dragon Den", category: "building", layer: 3, cost: 55,
     prereqs: [], raceOnly: "orc",
-    description: "Unlocks the Dragon Den (+10% coin, any time coin is gained).",
+    description: "Unlocks the Dragon Den. Dragons may only be built in a city that has one -- lose the Den and that city can no longer raise them.",
     costBreakdown: { lore: 40, coin: 15 },
     effects: [{ type: "unlock_building", building: "dragon_den" }],
   },
@@ -1518,7 +1512,7 @@ window.GameData.TECHS = {
   orc_ancestral_dolmen_rite: {
     id: "orc_ancestral_dolmen_rite", label: "Ancestral Dolmen", category: "building", layer: 4, cost: 95,
     prereqs: ["orc_the_old_ways"], raceOnly: "orc",
-    description: "Unlocks the Ancestral Dolmen (+10% lore, any time lore is gained).",
+    description: "Unlocks the Ancestral Dolmen. When a unit built in this city falls anywhere on the map, every friendly unit within 3 tiles is roused to avenge it: +25% attack for 3 turns.",
     costBreakdown: { lore: 95 },
     effects: [{ type: "unlock_building", building: "ancestral_dolmen" }],
   },
@@ -1693,7 +1687,7 @@ window.GameData.TECHS = {
   halfellow_farmers_market: {
     id: "halfellow_farmers_market", label: "Farmers Market", category: "building", layer: 1, cost: 20,
     prereqs: [], raceOnly: "halfellow",
-    description: "Unlocks the Farmers Market (+10% harvest/turn, this city only).",
+    description: "Unlocks the Farmers Market. Units built in this city are well fed: +25% maximum health, permanently.",
     costBreakdown: { coin: 12, harvest: 8 },
     effects: [{ type: "unlock_building", building: "farmers_market" }],
   },
@@ -1799,7 +1793,7 @@ window.GameData.TECHS = {
   halfellow_neighborhood_pub: {
     id: "halfellow_neighborhood_pub", label: "Neighborhood Pub", category: "building", layer: 2, cost: 35,
     prereqs: [], raceOnly: "halfellow",
-    description: "Unlocks the Neighborhood Pub (+10% coin/turn, this city only).",
+    description: "Unlocks the Neighborhood Pub. Tales told over a pint make veterans of everyone: all Halfellow units gain +25% XP whenever they earn XP.",
     costBreakdown: { coin: 20, harvest: 15 },
     effects: [{ type: "unlock_building", building: "neighborhood_pub" }],
   },
@@ -1902,7 +1896,7 @@ window.GameData.TECHS = {
   halfellow_historical_society: {
     id: "halfellow_historical_society", label: "Historical Society", category: "building", layer: 3, cost: 52,
     prereqs: ["halfellow_road_goes_ever_on"], raceOnly: "halfellow",
-    description: "Unlocks the Historical Society (+10% lore/turn, this city only).",
+    description: "Unlocks the Historical Society. Its antiquarians map every Ruin on the world, revealing each one and the land immediately around it.",
     costBreakdown: { lore: 32, coin: 20 },
     effects: [{ type: "unlock_building", building: "historical_society" }],
   },
@@ -1920,13 +1914,11 @@ window.GameData.TECHS = {
     costBreakdown: { lore: 30, harvest: 25 },
     effects: [{ type: "unlock_mechanic", mechanic: "devoted_companions" }],
   },
-  halfellow_great_stories: {
-    id: "halfellow_great_stories", label: "It's Like the Great Stories", category: "military", layer: 4, cost: 50,
-    prereqs: ["halfellow_historical_society"], raceOnly: "halfellow",
-    description: "All Halfellow units gain an extra +50% XP whenever they earn XP.",
-    costBreakdown: { lore: 28, harvest: 22 },
-    effects: [{ type: "unlock_mechanic", mechanic: "great_stories", value: 0.5 }],
-  },
+  // 2026-08-24: "It's Like the Great Stories" (L4, +50% XP civ-wide) was
+  // removed as a separate tech -- its effect is now intrinsic to the
+  // Neighborhood Pub building at +25% (see ai.js's grantXPAndAutoLevel and
+  // halfellow_neighborhood_pub), part of moving buildings off economic
+  // yields and onto real game effects.
   // Trouble Maker's third trick, plus Wanderer (not civ-wide -- only these
   // two unit types). Ranged debuff: target
   // resists at (their race's curiosity * 0.75), so even a maximally curious

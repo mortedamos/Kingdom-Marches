@@ -332,6 +332,30 @@ window.MusicSystem = (function () {
     return resolveTrack(race, "default");
   }
 
+  /** Round-robin over the race-less neutral_N.mp3 tracks (2026-08-24,
+   *  user-directed: "sometimes play the neutral default music... 1/3 as
+   *  much as the kingdom's own music") -- same rotation shape as
+   *  pickVariant, just keyed to a fixed "neutral_default" slot instead of a
+   *  race+situation pair, since there's no race/situation to key it by.
+   *  Used only by resolveCurrent's currentRace branch below; falls back to
+   *  the kingdom's own track (the caller's job) if no neutral track is
+   *  available at all. */
+  function resolveNeutralDefaultTrack() {
+    if (!availability) return null;
+    const variants = [];
+    for (let v = 1; v <= MAX_VARIANTS; v++) {
+      const key = `neutral_${v}`;
+      if (availability.get(key) && !failedTracks.has(key)) variants.push(v);
+    }
+    if (variants.length === 0) return null;
+    const pairKey = "neutral_default";
+    const last = lastVariantPlayed[pairKey];
+    const lastIdx = last == null ? -1 : variants.indexOf(last);
+    const choice = variants[(lastIdx + 1) % variants.length];
+    lastVariantPlayed[pairKey] = choice;
+    return { path: `assets/music/neutral_${choice}.mp3`, key: `neutral_${choice}` };
+  }
+
   /** Resolves the manually-pinned track (see setManualTrack), or null if it's
    *  gone missing/failed since being picked (falls back to automatic mode). */
   function resolveManualTrack(key) {
@@ -367,7 +391,19 @@ window.MusicSystem = (function () {
     // track yet just gets a generic fanfare instead of going silent at the
     // exact moment the game ends.
     if (victoryRace) return resolveVictoryTrack(victoryRace);
-    return currentRace ? resolveTrack(currentRace, activeSituation) : resolveSpectatorTrack();
+    if (currentRace) {
+      // Neutral mix-in (2026-08-24, user-directed): a 1-in-4 roll each time
+      // a new track is picked (single-player track-end rotation, see
+      // playResolved's loop below) gives a neutral:kingdom ratio of 1:3 --
+      // "1/3 as much as the kingdom's own music." Falls back to the
+      // kingdom track if no neutral track exists at all.
+      if (Math.random() < 0.25) {
+        const neutral = resolveNeutralDefaultTrack();
+        if (neutral) return neutral;
+      }
+      return resolveTrack(currentRace, activeSituation);
+    }
+    return resolveSpectatorTrack();
   }
 
   function playResolved(resolved) {
@@ -462,6 +498,41 @@ window.MusicSystem = (function () {
   function notifyVictory(raceId) {
     victoryRace = raceId;
     refreshNowPlaying();
+    ensureVictoryTracksScanned(raceId);
+  }
+
+  /** 2026-08-24 bugfix: `${raceId}_victory_*` and `neutral_victory_*` are
+   *  only ever scanned in scanAvailability's fire-and-forget BACKGROUND
+   *  tier, which init() never awaits (see its own doc comment) -- so a game
+   *  that ends early can reach here before that scan finishes, at which
+   *  point availability.get(key) reads undefined (not "false", just
+   *  "unknown") for BOTH the race's own victory track and the neutral_
+   *  victory fallback, and resolveVictoryTrack falls all the way through to
+   *  the race's plain default track instead. This does a small targeted
+   *  probe of just the keys notifyVictory actually needs RIGHT NOW (reusing
+   *  probeFile, same existence check scanAvailability itself uses) and
+   *  re-resolves once they're known -- upgrades from the wrong fallback to
+   *  the correct track within moments instead of staying wrong for the rest
+   *  of the game. `scanGeneration`/`victoryRace` guards mirror
+   *  scanAvailability's own "am I still the scan that matters" checks, in
+   *  case a new game started (setRace) or re-scanned (init) while this was
+   *  still in flight. No-ops entirely once the background tier has already
+   *  reached these keys (the common case -- a normal-length game). */
+  async function ensureVictoryTracksScanned(raceId) {
+    const myGeneration = scanGeneration;
+    const keys = [];
+    for (let v = 1; v <= MAX_VARIANTS; v++) keys.push({ key: `${raceId}_victory_${v}`, path: trackPath(raceId, "victory", v) });
+    for (let v = 1; v <= MAX_VARIANTS; v++) keys.push({ key: `neutral_victory_${v}`, path: `assets/music/neutral_victory_${v}.mp3` });
+    let learnedSomething = false;
+    for (const { key, path } of keys) {
+      if (myGeneration !== scanGeneration) return; // superseded -- see scanGeneration's doc comment
+      if (availability && availability.get(key) !== undefined) continue; // background scan already reached it
+      const exists = await probeFile(path);
+      if (myGeneration !== scanGeneration || !availability) return;
+      availability.set(key, exists);
+      learnedSomething = true;
+    }
+    if (learnedSomething && victoryRace === raceId) refreshNowPlaying();
   }
 
   /** Public: the human player has lost -- switch to the fixed game_over.mp3

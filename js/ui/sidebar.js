@@ -126,32 +126,34 @@ window.UI = window.UI || {};
     // Rendered here in the always-visible footer, next to the turn counter,
     // for the same reason the research button was hoisted out of the
     // Kingdom panel (see its own comment above). Reuses the identical
-    // countTerritory + VICTORY_SHARE_THRESHOLD math checkVictory and
-    // reports.js already share, so all three can't drift.
+    // countTerritory + VICTORY_TILE_TARGET math checkVictory and reports.js
+    // already share, so all three can't drift.
+    //
+    // 2026-08-25: reads as an absolute tile count ("412 / 500 tiles") rather
+    // than a percentage of the map. Victory is an absolute target now (see
+    // config.js's victory.tileTarget), and a raw count is something the
+    // player can watch tick up tile by tile -- a percentage of a map whose
+    // size they never chose was far harder to read progress from.
     let territoryHtml = "";
     if (viewState.humanCivId && window.GameEngine.influence) {
       const civ = civs[viewState.humanCivId];
       if (civ) {
-        const { counts, totalClaimable } = window.GameEngine.influence.countTerritory(gameState);
-        const threshold = window.GameEngine.turns.VICTORY_SHARE_THRESHOLD;
-        const myShare = totalClaimable > 0 ? (counts[civ.id] || 0) / totalClaimable : 0;
-        // Bar fill is progress toward the THRESHOLD (not toward 100% of the
-        // map) -- at 15% of a 30% threshold the player is genuinely halfway
-        // to winning, and a bar showing 15% full would badly understate it.
-        const progressPct = threshold > 0 ? Math.min(100, (myShare / threshold) * 100) : 0;
+        const { counts } = window.GameEngine.influence.countTerritory(gameState);
+        const target = window.GameEngine.turns.VICTORY_TILE_TARGET;
+        const myTiles = counts[civ.id] || 0;
+        const progressPct = target > 0 ? Math.min(100, (myTiles / target) * 100) : 0;
         // Leader callout: only when someone else is actually ahead, so this
         // stays quiet in the common case rather than adding a permanent row.
-        let leadId = null, leadShare = 0;
+        let leadId = null, leadTiles = 0;
         for (const [cid, count] of Object.entries(counts)) {
-          const share = totalClaimable > 0 ? count / totalClaimable : 0;
-          if (share > leadShare) { leadShare = share; leadId = cid; }
+          if (count > leadTiles) { leadTiles = count; leadId = cid; }
         }
         const leaderTag = (leadId && leadId !== civ.id)
-          ? ` <span class="territory-leader">${escapeHtml(window.GameData.getRace(civs[leadId].raceId).label)} ${(leadShare * 100).toFixed(1)}%</span>`
+          ? ` <span class="territory-leader">${escapeHtml(window.GameData.getRace(civs[leadId].raceId).label)} ${Math.round(leadTiles)}</span>`
           : "";
-        territoryHtml = `<div class="territory-progress" title="Territorial victory needs ${Math.round(threshold * 100)}% of the map's claimable land, held for ${window.GameEngine.turns.VICTORY_SUSTAIN_TURNS} consecutive turns.">
+        territoryHtml = `<div class="territory-progress" title="Territorial victory needs ${target} owned tiles, held for ${window.GameEngine.turns.VICTORY_SUSTAIN_TURNS} consecutive turns.">
           <div class="territory-progress-label">
-            <span>Territory ${(myShare * 100).toFixed(1)}% / ${Math.round(threshold * 100)}%</span>${leaderTag}
+            <span>Territory ${Math.round(myTiles)} / ${target} tiles</span>${leaderTag}
           </div>
           <div class="territory-progress-track"><div class="territory-progress-fill" style="width:${progressPct.toFixed(1)}%"></div></div>
         </div>`;
@@ -508,6 +510,39 @@ window.UI = window.UI || {};
       </div>`;
   }
 
+  /** Effect lines for buildings whose effect is implemented in engine code
+   *  gated on cityHasStructure/civHasBuiltBuilding rather than carried as a
+   *  data field on the building (see buildings.js's header comment). Without
+   *  this the structure panel would list no effects at all for most of the
+   *  roster. Phrased to match the data-driven lines above them: terse, lower
+   *  case, no trailing period. "(kingdom-wide)" marks the effects that apply
+   *  off ANY standing copy rather than only in this structure's own city. */
+  const BUILDING_EFFECT_TEXT = {
+    // Human
+    bazaar: ["reveals rival kingdoms' cities (kingdom-wide)"],
+    guild_hall: ["units built here get a free level-up"],
+    mage_college: ["75% chance/turn to strike an enemy within 5 for 3 attack"],
+    // Elf
+    silverleaf_atelier: ["+1 defense for units built here"],
+    altar_of_ages: ["+25% XP for units built here"],
+    wellspring_grove: ["allies in this city's radius heal 5%/turn (kingdom-wide)"],
+    // Dwarf
+    deep_forge: ["+1 attack for units built here"],
+    great_hall: ["+50% defense while Resting on any of your holdings (kingdom-wide)"],
+    runewall: ["walls heal 5% of max HP per turn (kingdom-wide)"],
+    deep_gate: ["Dwarf units may travel between Deep Gates (kingdom-wide)"],
+    // Orc
+    war_camp: ["+1 movement for units built here"],
+    butchery: ["units heal 15% of max HP on a kill (kingdom-wide)"],
+    dragon_den: ["required to build Dragons in this city"],
+    ancestral_dolmen: ["a unit built here falling rouses allies within 3: +25% attack for 3 turns"],
+    // Halfellow
+    farmers_market: ["+25% max HP for units built here"],
+    neighborhood_pub: ["+25% XP for all your units (kingdom-wide)"],
+    historical_society: ["reveals every Ruin on the map (kingdom-wide)"],
+    armory: ["+50% attack and defense for units built here"],
+  };
+
   function renderStructurePanel(sel) {
     const b = sel.building;
     const rec = sel.record;
@@ -521,11 +556,17 @@ window.UI = window.UI || {};
     }
     if (b.influenceMult) effects.push(`Influence ×${b.influenceMult}`);
     if (b.radiusBonus) effects.push(`+${b.radiusBonus} radius`);
+    if (b.visionRadiusBonus) effects.push(`+${b.visionRadiusBonus} vision radius`);
     if (b.coinPerAdjacentRoad) effects.push(`+${b.coinPerAdjacentRoad} coin / adjacent road`);
     if (b.lorePerAdjacentForest) effects.push(`+${b.lorePerAdjacentForest} lore / adjacent forest`);
     if (b.contestedYieldPenaltyOverride) effects.push(`contested tiles yield ${Math.round(b.contestedYieldPenaltyOverride * 100)}%`);
     if (b.unitCostMult) effects.push(`unit cost ×${b.unitCostMult}`);
     if (b.raiseDeadPowerBonus) effects.push(`+${Math.round(b.raiseDeadPowerBonus * 100)}% raised power`);
+    // Buildings whose effect lives in engine code rather than a data field
+    // (see buildings.js's header) have nothing for the checks above to find,
+    // so their effect line comes from BUILDING_EFFECT_TEXT instead. Kept
+    // here next to the data-driven lines so both render identically.
+    for (const line of BUILDING_EFFECT_TEXT[b.id] || []) effects.push(line);
 
     // A bridge segment doesn't belong to any one city (see cities.js's
     // findStructureAt doc comment -- unlike every other structure, it's
@@ -869,7 +910,10 @@ window.UI = window.UI || {};
     if (!civ) return `<div class="panel"><em>Spectator mode -- no civ selected</em></div>`;
     const race = window.GameData.getRace(civ.raceId);
     const { counts, totalClaimable } = window.GameEngine.influence.countTerritory(gameState);
-    const myShare = totalClaimable > 0 ? ((counts[civ.id] || 0) / totalClaimable * 100) : 0;
+    const myTiles = counts[civ.id] || 0;
+    // Percentage kept alongside the count purely as context for how much of
+    // the world that is -- the win line itself is the tile count.
+    const myShare = totalClaimable > 0 ? (myTiles / totalClaimable * 100) : 0;
     const isOwn = !viewState.humanCivId || civ.id === viewState.humanCivId;
     const UNKNOWN = `<span style="opacity:0.6">Unknown</span>`;
 
@@ -944,7 +988,8 @@ window.UI = window.UI || {};
         <div class="stat-row"><span>Population</span><span>${totalPop}</span></div>
         <div class="stat-row"><span>Units</span><span>${civ.units.length}</span></div>
         <div class="stat-row"><span>Military (cap)</span><span>${militaryCount} / ${militaryCap}</span></div>
-        <div class="stat-row"><span>Territory Share</span><span>${myShare.toFixed(1)}%</span></div>
+        <div class="stat-row"><span>Territory</span><span>${Math.round(myTiles)} / ${window.GameEngine.turns.VICTORY_TILE_TARGET} tiles</span></div>
+        <div class="stat-row"><span>Share of World</span><span>${myShare.toFixed(1)}%</span></div>
         <h3>Economy</h3>
         ${economyHtml}
         <h3>Research</h3>

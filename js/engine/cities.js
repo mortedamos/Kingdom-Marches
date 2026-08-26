@@ -53,6 +53,8 @@ window.GameEngine = window.GameEngine || {};
   const FLAT_CITY_COIN    = CFG.flatCoin;
   const FLAT_CITY_LORE    = CFG.flatLore;
   const LORE_TRICKLE_RATE = CFG.loreTrickleRate;  // influence bonus per point of Lore/turn
+  const ADMIN_UPKEEP_PER_CITY = CFG.adminUpkeepPerCity;
+  const ADMIN_UPKEEP_MAX = CFG.adminUpkeepMax;
   // Share of its own yield a city adds when its turn's production goes into
   // resources instead of a unit/building -- see applyResourceProduction.
   const RESOURCE_PRODUCTION_BONUS = CFG.resourceProductionBonus;
@@ -446,7 +448,10 @@ window.GameEngine = window.GameEngine || {};
   }
 
   /** Removes a structure from its city (or, for a bridge, from
-   *  civ.bridges) and clears its tile pointer. */
+   *  civ.bridges) and clears its tile pointer. 20% independent chance
+   *  (2026-08-24, user-directed) the tile is left a Ruin -- same plain
+   *  isRuin flag destroyCity's own city-tile ruin uses below, so it's
+   *  claimable/scoreable identically to any other Ruin. */
   function destroyStructure(gameState, x, y) {
     const found = findStructureAt(gameState, x, y);
     if (!found) return false;
@@ -455,7 +460,9 @@ window.GameEngine = window.GameEngine || {};
     } else {
       found.civ.bridges = (found.civ.bridges || []).filter((s) => s !== found.record);
     }
-    delete gameState.map.tiles[y * gameState.map.width + x].structure;
+    const tile = gameState.map.tiles[y * gameState.map.width + x];
+    delete tile.structure;
+    if (Math.random() < 0.20) tile.isRuin = true;
     return true;
   }
 
@@ -619,7 +626,30 @@ window.GameEngine = window.GameEngine || {};
         + (buildingCountBonus.lore || 0) * buildingCount)
       * (1 + struct.yieldPct.lore);
 
-    city.lastYield = { harvest: totalHarvest, coin: totalCoin, lore: totalLore };
+    // ADMINISTRATIVE UPKEEP (2026-08-25). Every city past the first costs a
+    // share of its own output to run, scaling with how many cities the civ
+    // already has -- the classic 4X corruption/distance brake.
+    //
+    // Two problems it solves at once. (1) The economy had NO recurring sink:
+    // headless testing found the entire tech tree costs ~1,500 (one-time),
+    // buildings ~650 (one-time), and unit upkeep is bounded by a hard army
+    // cap of 18-27 units, while income reached ~1,100/turn and was still
+    // climbing at turn 200 -- kingdoms ended with 65-86 turns of income
+    // banked and nothing to spend it on. (2) With the settle cliff removed
+    // (see ai.js's settle score), expansion needed a cost or it would be
+    // free and unbounded. This is that cost: a wide empire still out-earns a
+    // tall one, just not linearly, so "how many cities can I actually run"
+    // becomes a real decision and "consolidate" becomes a meaningful goal.
+    //
+    // Applied to the city's own yield rather than as a civ-wide bill so the
+    // marginal city visibly pays for itself (or doesn't), and so it shows up
+    // in the per-city yield the player already reads.
+    const cityIndex = Math.max(0, civ.cities.indexOf(city));
+    const adminRate = Math.min(ADMIN_UPKEEP_MAX, cityIndex * ADMIN_UPKEEP_PER_CITY);
+    const keep = 1 - adminRate;
+    city.adminUpkeepRate = adminRate; // surfaced in the city panel
+
+    city.lastYield = { harvest: totalHarvest * keep, coin: totalCoin * keep, lore: totalLore * keep };
     city.coinBanked += city.lastYield.coin;
 
     city.loreInfluenceTrickle = city.lastYield.lore * LORE_TRICKLE_RATE;
@@ -906,23 +936,26 @@ window.GameEngine = window.GameEngine || {};
    * large empire tedious. An automated city that queued builds on its own
    * would be taking over the fun part.
    *
-   * Priority, per the requested design:
-   *   1. Spread Culture, whenever the civ can afford it.
-   *   2. Gather Resources, when the stockpile can't currently cover the most
-   *      expensive unit this city has unlocked -- i.e. automation banks
-   *      toward being ABLE to build the civ's best unit, without ever
-   *      building one itself.
-   *   3. Research, as the fallback once neither of the above applies.
+   * 2026-08-24: the old fixed priority (culture whenever affordable, else
+   * gather, else research) was replaced by a PLAYER-SET QUOTA. When a city is
+   * automated the player sets three 0-4 sliders -- research / culture /
+   * resources (see main.js's handleToggleAutomateCity and the
+   * "cityAutomation" dialog) -- stored on city.automationWeights. Each turn
+   * the city performs whichever action is furthest BEHIND its target share,
+   * so the realized split converges on the sliders instead of one action
+   * always winning. city.automationCounts tracks what's actually been done.
    *
-   * NOTE on (1): Spread Culture is paid from the stockpile and does NOT
-   * consume the city's production for the turn (see applyCultureSpread's own
-   * doc comment), unlike Gather/Research which do. Since a solvent civ can
-   * usually afford culture every turn, an automated city will in practice
-   * spend most turns on culture alone and leave its production slot idle.
-   * That follows the requested "choose from ... cultural influence if
-   * affordable" ordering exactly, and is called out here rather than
-   * silently "improved" -- see runCityAutomation's own note for the one-line
-   * change that would let culture and a production action both fire.
+   * Exactly ONE action fires per turn (user-directed). Note this differs
+   * from the old behavior: Spread Culture is paid from the stockpile and does
+   * NOT consume production (see applyCultureSpread), so a solvent civ used to
+   * do culture every turn AND leave its production slot idle. Under the quota
+   * a turn resolves to a single action, so cities do fewer things per turn
+   * but distribute them the way the player asked.
+   *
+   * An action that can't run this turn (culture unaffordable, nothing being
+   * researched, production already spoken for) is skipped in favour of the
+   * next-most-owed one that can; it stays owed, so it's picked up as soon as
+   * it's viable again.
    */
 
   /** The most expensive single unit `city` could currently build, by total
@@ -940,53 +973,83 @@ window.GameEngine = window.GameEngine || {};
     return best;
   }
 
-  /** Which automated action `city` should take this turn, or null if none is
-   *  currently possible. Pure -- the ring menu and sidebar call this to label
-   *  the toggle, so it must not mutate anything. */
-  function cityAutomationChoice(civ, city, gameState) {
-    if (!civ || !city) return null;
+  /** Default slider weights (an even split) for a city automated before the
+   *  quota existed, or one somehow missing its settings. */
+  const DEFAULT_AUTOMATION_WEIGHTS = { research: 2, culture: 2, resources: 2 };
 
-    // 1. Culture, whenever affordable. Checked against the turn stamp
-    //    applyCultureSpread would actually WRITE (see runCityAutomation's
-    //    targetTurn note) rather than the current turn, so a city that
-    //    already has this turn's boost banked doesn't re-pick it and then
-    //    silently no-op.
-    const cultureTurn = (gameState.turnNumber || 0) + 1;
-    if (city.cultureSpreadTurn !== cultureTurn) {
+  function automationWeightsFor(city) {
+    const w = city.automationWeights || DEFAULT_AUTOMATION_WEIGHTS;
+    return {
+      research: Math.max(0, w.research || 0),
+      culture: Math.max(0, w.culture || 0),
+      resources: Math.max(0, w.resources || 0),
+    };
+  }
+
+  /** Which of the three automated actions `city` could actually perform right
+   *  now. Split out of cityAutomationChoice so the quota can ask "is this one
+   *  viable?" per action instead of walking a fixed priority order. Pure. */
+  function canPerformAutomationAction(civ, city, gameState, action) {
+    if (action === "culture") {
+      // Checked against the turn stamp applyCultureSpread would actually
+      // WRITE (see runCityAutomation's targetTurn note) rather than the
+      // current turn, so a city that already has this turn's boost banked
+      // doesn't re-pick it and then silently no-op.
+      const cultureTurn = (gameState.turnNumber || 0) + 1;
+      if (city.cultureSpreadTurn === cultureTurn) return false;
       const cost = spreadCultureCost(city);
       const stock = civ.stockpile || {};
-      if (Object.entries(cost).every(([k, v]) => (stock[k] || 0) >= v)) return "culture";
+      return Object.entries(cost).every(([k, v]) => (stock[k] || 0) >= v);
     }
-
-    // 2. Gather, while the stockpile can't cover this city's best unit.
-    //    Skipped outright if the city's production is already spoken for
-    //    this turn (a queued build, or an action already taken), since
-    //    applyResourceProduction would refuse anyway.
+    // Both remaining actions consume the city's production for the turn, so
+    // neither is possible once it's spoken for (a queued build, or an action
+    // already taken) -- applyResourceProduction/applyResearchBoost would
+    // refuse anyway.
     const productionFree = !city.buildQueue
       && !isProducingResources(city, gameState) && !isBoostingResearch(city, gameState);
-    if (productionFree) {
-      const target = mostExpensiveUnlockedUnitCost(civ, city, gameState);
-      const stock = civ.stockpile || {};
-      const shortOnUnit = target && Object.entries(target).some(([k, v]) => (stock[k] || 0) < v);
-      if (shortOnUnit) {
-        // resourceProductionPreview is 0 for a city founded this turn (no
-        // lastYield yet); applyResourceProduction rejects that case, so don't
-        // pick it either -- fall through to research instead.
-        const gain = resourceProductionPreview(city);
-        if (gain.harvest || gain.coin || gain.lore) return "resources";
-      }
-
-      // 3. Research fallback -- only meaningful while something is actually
-      //    in progress to accelerate.
-      if (civ.currentResearch) return "research";
-
-      // Nothing to research: gathering is still strictly better than idling,
-      // even with the unit target already affordable.
+    if (!productionFree) return false;
+    if (action === "research") return !!civ.currentResearch;
+    if (action === "resources") {
+      // resourceProductionPreview is 0 for a city founded this turn (no
+      // lastYield yet); applyResourceProduction rejects that case, so don't
+      // pick it either.
       const gain = resourceProductionPreview(city);
-      if (gain.harvest || gain.coin || gain.lore) return "resources";
+      return !!(gain.harvest || gain.coin || gain.lore);
     }
+    return false;
+  }
 
-    return null;
+  /** Which automated action `city` should take this turn, or null if none is
+   *  currently possible.
+   *
+   *  Deterministic quota (see the section header): for each action,
+   *  `owed = share * totalActionsTaken - timesTaken`. The most-owed VIABLE
+   *  action wins, so a blocked action defers rather than stalling the city,
+   *  and stays owed until it can run. A zero-weight action is never picked.
+   *
+   *  PURE -- the ring menu (orders.js's cityRingOptions) and the sidebar both
+   *  call this just to label the automation toggle, so it must not mutate.
+   *  Only runCityAutomation increments city.automationCounts, and only after
+   *  the action actually succeeds. */
+  function cityAutomationChoice(civ, city, gameState) {
+    if (!civ || !city) return null;
+    const weights = automationWeightsFor(city);
+    const total = weights.research + weights.culture + weights.resources;
+    if (total <= 0) return null; // every slider at zero -- city deliberately idle
+    const counts = city.automationCounts || {};
+    const taken = (counts.research || 0) + (counts.culture || 0) + (counts.resources || 0);
+
+    let best = null, bestOwed = -Infinity;
+    for (const action of ["research", "culture", "resources"]) {
+      if (weights[action] <= 0) continue;
+      if (!canPerformAutomationAction(civ, city, gameState, action)) continue;
+      // +1 so the comparison is against the share this action WOULD hold once
+      // it runs; with all counts at 0 this reduces to picking the heaviest
+      // slider, which is the intuitive opening move.
+      const owed = (weights[action] / total) * (taken + 1) - (counts[action] || 0);
+      if (owed > bestOwed) { bestOwed = owed; best = action; }
+    }
+    return best;
   }
 
   /**
@@ -1014,11 +1077,21 @@ window.GameEngine = window.GameEngine || {};
     const choice = cityAutomationChoice(civ, city, gameState);
     if (!choice) return null;
 
+    /** Records one completed action against the quota. Only called on
+     *  SUCCESS -- an action that was chosen but then refused by its own
+     *  apply* function must stay owed, or the city would drift away from
+     *  the player's sliders by being "credited" for work it never did. */
+    const credit = (action) => {
+      city.automationCounts = city.automationCounts || { research: 0, culture: 0, resources: 0 };
+      city.automationCounts[action] = (city.automationCounts[action] || 0) + 1;
+      return action;
+    };
+
     if (choice === "culture") {
-      return applyCultureSpread(city, civ, gameState, (gameState.turnNumber || 0) + 1) ? "culture" : null;
+      return applyCultureSpread(city, civ, gameState, (gameState.turnNumber || 0) + 1) ? credit("culture") : null;
     }
     if (choice === "resources") {
-      return applyResourceProduction(city, civ, gameState) ? "resources" : null;
+      return applyResourceProduction(city, civ, gameState) ? credit("resources") : null;
     }
     if (choice === "research") {
       const result = applyResearchBoost(city, civ, gameState);
@@ -1027,7 +1100,7 @@ window.GameEngine = window.GameEngine || {};
       // "research complete" dialog via civ.lastCompletedTech, which
       // finishRoundBookkeeping reads and clears each round.
       if (result && result.completed) civ.lastCompletedTech = result.techId;
-      return result ? "research" : null;
+      return result ? credit("research") : null;
     }
     return null;
   }
@@ -1415,10 +1488,74 @@ window.GameEngine = window.GameEngine || {};
    * so it can immediately take over on the very next influence recompute
    * if its own influence already dominates there.
    */
+  /**
+   * Transfers a conquered city to its captor instead of razing it
+   * (2026-08-25). Without this, winning a war REMOVED cities from the world
+   * -- headless testing showed conquest destroying ~6 cities per game while
+   * total claimed territory stayed pinned at 48% and the map's city count
+   * fell from ~25 to 16. Military success could not advance a kingdom toward
+   * the territorial win, so the two victory conditions actively worked
+   * against each other. Capture is what couples them: take a rival's cities
+   * and you take their land with it.
+   *
+   * The captured city is sacked, not inherited intact:
+   *  - population drops to 1 (the siege gutted it) and HP refills at that level
+   *  - every structure is destroyed -- a captor shouldn't inherit a finished
+   *    wall ring and four buildings; those were what it just fought through.
+   *    Each still rolls the usual 20% ruin chance via destroyStructure.
+   *  - filled influence tiles reset, so the new owner re-earns the radius
+   *    rather than instantly flipping the whole footprint
+   *  - production state (build queue, automation, channel actions) is cleared
+   * The name is kept deliberately: a captured city keeping its name is both
+   * thematic and how the player recognizes what just changed hands.
+   */
+  function captureCity(gameState, fromCiv, toCiv, city) {
+    const { map } = gameState;
+    // Structures fall with the city -- routed through destroyStructure so the
+    // ruin roll and tile-pointer cleanup stay in one place.
+    for (const s of city.structures.slice()) destroyStructure(gameState, s.x, s.y);
+    city.structures = [];
+
+    fromCiv.cities = fromCiv.cities.filter((c) => c !== city);
+    fromCiv.cityEvents = fromCiv.cityEvents || [];
+    fromCiv.cityEvents.push({ turn: gameState.turnNumber || 0, type: "razed" }); // lost, from the previous owner's view
+
+    city.civId = toCiv.id;
+    city.population = 1;
+    city.hp = window.GameConfig.combat.cityHpPerLevel;
+    city.harvestSurplus = 0;
+    city.coinBanked = 0;
+    city.filledOffsets = new Set();
+    city.fillProgress = 0;
+    city.buildQueue = null;
+    city.automated = false;
+    city.automationCounts = { research: 0, culture: 0, resources: 0 };
+    city.attackedThisTurn = true;
+    city.cultureSpreadTurn = null;
+    toCiv.cities.push(city);
+    toCiv.hasFoundedCity = true; // a captor with cities is no longer "never founded"
+    toCiv.usedCityNames = toCiv.usedCityNames || [];
+    if (!toCiv.usedCityNames.includes(city.name)) toCiv.usedCityNames.push(city.name);
+    toCiv.cityEvents = toCiv.cityEvents || [];
+    toCiv.cityEvents.push({ turn: gameState.turnNumber || 0, type: "founded" });
+
+    // The city tile itself flips immediately; the surrounding radius re-fills
+    // normally from filledOffsets above rather than being handed over.
+    const tile = map.tiles[city.y * map.width + city.x];
+    if (tile) { tile.ownerCivId = toCiv.id; tile.status = "owned"; tile.contestedTurns = 0; }
+    return city;
+  }
+
   function destroyCity(gameState, civ, city) {
     const { map } = gameState;
     for (const s of city.structures) {
-      delete map.tiles[s.y * map.width + s.x].structure;
+      const sTile = map.tiles[s.y * map.width + s.x];
+      delete sTile.structure;
+      // 20% independent chance per wall/structure (2026-08-24, user-
+      // directed) -- same isRuin flag the city's own tile gets below,
+      // separately rolled for each one removed as a side effect of the
+      // city itself being destroyed.
+      if (Math.random() < 0.20) sTile.isRuin = true;
     }
     civ.cities = civ.cities.filter((c) => c !== city);
     // Founded/razed event log -- see foundCity's matching "founded" push
@@ -1475,6 +1612,7 @@ window.GameEngine = window.GameEngine || {};
     industriousnessInfluenceMult,
     foundCity,
     destroyCity,
+    captureCity,
     cityHasStructure,
     civHasBuiltBuilding,
     findStructureSlot,

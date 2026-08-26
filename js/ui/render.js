@@ -222,7 +222,7 @@ window.UI = window.UI || {};
   function render(canvas, gameState, viewState) {
     const ctx = canvas.getContext("2d");
     const { map, civs } = gameState;
-    const { showInfluence, showGrid, selectedUnit, selectedCity, humanCivId } = viewState;
+    const { showInfluence, showGrid, selectedUnit, selectedCity, selectedStructure, humanCivId } = viewState;
     // Rounded to a whole pixel count -- with a fractional ts (e.g. zoomLevel
     // 1.37 * TILE_SIZE 34), per-tile screenX/screenY below would land on
     // sub-pixel positions, and default canvas image smoothing then blends a
@@ -740,6 +740,30 @@ window.UI = window.UI || {};
     // pass.
     const quipBubbleQueue = [];
     const floatingTextQueue = [];
+    // Name label for whatever the player currently has selected, drawn at the
+    // very end of the frame. Deferred for the same reason as the queues
+    // above: the city/structure/unit passes run early and are painted over by
+    // villagers, planned paths, the order preview and the overlay passes, so
+    // drawing the label inline at each selection outline would let any of
+    // those bury it. Resolved here in ONE place rather than pushed from the
+    // three loops -- resolveSelection (input.js) guarantees at most one
+    // selected* is set, and the city loop runs before these queues exist
+    // anyway (same constraint the city floating-text pass below works
+    // around). A unit shows its TYPE, not its proper name.
+    let selectionLabel = null;
+    if (selectedUnit) {
+      selectionLabel = { x: selectedUnit.x, y: selectedUnit.y, text: window.GameData.getUnit(selectedUnit.typeId).label };
+    } else if (selectedCity) {
+      selectionLabel = { x: selectedCity.x, y: selectedCity.y, text: selectedCity.name };
+    } else if (selectedStructure && selectedStructure.record) {
+      // findStructureAt returns { civ, city, record, building } -- the label
+      // is already resolved on it, no second getBuilding lookup needed.
+      selectionLabel = {
+        x: selectedStructure.record.x, y: selectedStructure.record.y,
+        text: selectedStructure.building.label,
+      };
+    }
+    if (selectionLabel && !visible.has(selectionLabel.y * map.width + selectionLabel.x)) selectionLabel = null;
 
     // Cities can raise floating text too ("Resource Production" -- see
     // cities.js's applyResourceProduction), matched by object identity
@@ -1116,6 +1140,26 @@ window.UI = window.UI || {};
     for (const { unit, screenX, screenY } of floatingTextQueue) {
       overlays.drawFloatingTexts(ctx, unit, screenX, screenY, ts, now);
     }
+    if (selectionLabel) {
+      drawSelectionLabel(ctx, selectionLabel.text,
+        selectionLabel.x * ts + offsetX + ts / 2, selectionLabel.y * ts + offsetY);
+    }
+  }
+
+  /** Persistent name label above the selected unit/city/structure. Wraps
+   *  drawPreviewLabel with the two things that helper's transient
+   *  order-preview callers handle externally and a permanent label can't do
+   *  without: its own save/restore (drawPreviewLabel sets font/align/baseline
+   *  and never restores them), and clamping so a selection on the top map row
+   *  draws its pill just below the tile instead of off-screen. */
+  function drawSelectionLabel(ctx, text, cx, tileTopY) {
+    const PILL_H = 14;
+    ctx.save();
+    // Above the tile normally; flipped to just below its top edge when there
+    // isn't room, so the label never leaves the canvas.
+    const bottomY = tileTopY - 2 >= PILL_H ? tileTopY - 2 : tileTopY + PILL_H + 2;
+    drawPreviewLabel(ctx, text, cx, bottomY, "#ffeb3b"); // matches the selection outline
+    ctx.restore();
   }
 
   // --- Player order overlays ----------------------------------------------

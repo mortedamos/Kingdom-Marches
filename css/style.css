@@ -1020,6 +1020,12 @@ html, body {
    rendering -- its own OK/Cancel/etc. buttons live inside the scrollable
    content), so it never had this bug and keeps scrolling the old way. */
 .game-dialog-modal { overflow-y: auto; }
+/* The city-automation dialog DOES have a close-X, so it deliberately opts out
+   of .game-dialog-modal above and scrolls via its own .techtree-modal-scroll
+   body wrapper instead -- otherwise the X would scroll away with the content.
+   Same width as the other game dialogs so it doesn't read as a different
+   class of window. */
+.game-dialog-automation { width: min(420px, 92vw); }
 .techtree-close-btn {
   background: transparent;
   border: none;
