@@ -1710,12 +1710,35 @@ window.GameEngine = window.GameEngine || {};
   }
 
   /**
+   * The 2x2 blast's 4 {dx,dy} offsets from the TARGETED tile, given where
+   * the Bombard itself is standing (2026-08-26, user-directed). A 2x2 block
+   * has no single center tile, so the targeted tile is always one of its
+   * corners -- which corner depends on which side of the Bombard the target
+   * sits on, so the block always extends back toward the Bombard rather
+   * than continuing to bulge away from it (which can also run it off the
+   * edge of the placement range on the far side). Target left of (or under)
+   * the Bombard -> targeted tile is the block's upper-left corner, extends
+   * right+down. Target right of the Bombard -> targeted tile is the upper-
+   * right corner, extends left+down. Vertical direction is unaffected --
+   * only left/right of the Bombard flips which way the block extends.
+   * Shared by the placement preview (main.js's startBombardmentPlacement)
+   * and the real blast application just below, so they can never drift
+   * apart.
+   */
+  function bombardBlastOffsets(bombardX, targetX) {
+    const dxs = targetX >= bombardX ? [-1, 0] : [0, 1];
+    const offs = [];
+    for (let dy = 0; dy <= 1; dy++) for (const dx of dxs) offs.push({ dx, dy });
+    return offs;
+  }
+
+  /**
    * Dwarf "Bombardment" (see ai.js's performDwarfBombardment): same
    * standalone-targeted-blast shape as Human's Fireball just above, but a
    * 2x2 area (not 3x3) and anchored differently -- a 2x2 block has no
    * single center tile, so per the tech's own design the TARGETED tile is
-   * the block's top-left corner: (centerX, centerY), (centerX+1, centerY),
-   * (centerX, centerY+1), (centerX+1, centerY+1). Unlike Fireball, unit
+   * one of the block's corners (see bombardBlastOffsets above for which
+   * one, and why). Unlike Fireball, unit
    * and structure damage are computed SEPARATELY: structure hits go
    * through effectiveAttack's own isSiege context so Bombard's siegePct
    * (its whole identity as a wall-breaker) actually applies, the same way
@@ -1729,43 +1752,41 @@ window.GameEngine = window.GameEngine || {};
     const atkUnit = effectiveAttack(casterUnit, casterCiv, {});
     const atkStruct = effectiveAttack(casterUnit, casterCiv, { isSiege: true });
     const hits = [];
-    for (let dy = 0; dy <= 1; dy++) {
-      for (let dx = 0; dx <= 1; dx++) {
-        const x = centerX + dx, y = centerY + dy;
-        if (x < 0 || x >= map.width || y < 0 || y >= map.height) continue;
-        for (const otherCiv of Object.values(civs)) {
-          if (otherCiv.eliminated) continue;
-          const hitUnit = otherCiv.units.find((u) => u.x === x && u.y === y);
-          if (hitUnit) {
-            const dmg = mitigatedDamage(atkUnit, effectiveDefense(hitUnit, otherCiv, {}));
-            hitUnit.hp -= dmg;
-            // Hidden: an AoE blast isn't "aimed," so it can still catch a
-            // Hidden unit by accident -- being hit this way reveals it.
-            revealHidden(hitUnit, gameState.turnNumber || 0);
-            hits.push({ kind: "unit", x, y, damage: dmg, civId: otherCiv.id, typeId: hitUnit.typeId, unit: hitUnit });
-          }
+    for (const { dx, dy } of bombardBlastOffsets(casterUnit.x, centerX)) {
+      const x = centerX + dx, y = centerY + dy;
+      if (x < 0 || x >= map.width || y < 0 || y >= map.height) continue;
+      for (const otherCiv of Object.values(civs)) {
+        if (otherCiv.eliminated) continue;
+        const hitUnit = otherCiv.units.find((u) => u.x === x && u.y === y);
+        if (hitUnit) {
+          const dmg = mitigatedDamage(atkUnit, effectiveDefense(hitUnit, otherCiv, {}));
+          hitUnit.hp -= dmg;
+          // Hidden: an AoE blast isn't "aimed," so it can still catch a
+          // Hidden unit by accident -- being hit this way reveals it.
+          revealHidden(hitUnit, gameState.turnNumber || 0);
+          hits.push({ kind: "unit", x, y, damage: dmg, civId: otherCiv.id, typeId: hitUnit.typeId, unit: hitUnit });
         }
-        const structFound = window.GameEngine.cities.findStructureAt(gameState, x, y);
-        if (structFound) {
-          const dmg = mitigatedDamage(atkStruct, 0);
-          structFound.record.hp -= dmg;
-          hits.push({ kind: "structure", x, y, damage: dmg, civId: structFound.civ.id, id: structFound.record.id, record: structFound.record });
-        }
-        // City center (2026-08-24 bugfix): the blast never checked for a
-        // city occupying one of its 4 tiles at all, so Bombardment could
-        // level every wall/building around a city and never dent the city
-        // itself. Reuses attackCity -- same damage/defense/counterattack
-        // rules an ordinary city attack gets -- rather than a bespoke
-        // formula, for the "same way attackCity does" consistency an
-        // indiscriminate blast should still respect.
-        for (const otherCiv of Object.values(civs)) {
-          if (otherCiv.eliminated) continue;
-          const cityFound = otherCiv.cities.find((c) => c.x === x && c.y === y);
-          if (cityFound) {
-            const result = attackCity(casterUnit, cityFound, casterCiv, otherCiv, gameState);
-            hits.push({ kind: "city", x, y, damage: result.damage, civId: otherCiv.id, city: cityFound, civ: otherCiv, result });
-            break; // one city can ever occupy a given tile
-          }
+      }
+      const structFound = window.GameEngine.cities.findStructureAt(gameState, x, y);
+      if (structFound) {
+        const dmg = mitigatedDamage(atkStruct, 0);
+        structFound.record.hp -= dmg;
+        hits.push({ kind: "structure", x, y, damage: dmg, civId: structFound.civ.id, id: structFound.record.id, record: structFound.record });
+      }
+      // City center (2026-08-24 bugfix): the blast never checked for a
+      // city occupying one of its 4 tiles at all, so Bombardment could
+      // level every wall/building around a city and never dent the city
+      // itself. Reuses attackCity -- same damage/defense/counterattack
+      // rules an ordinary city attack gets -- rather than a bespoke
+      // formula, for the "same way attackCity does" consistency an
+      // indiscriminate blast should still respect.
+      for (const otherCiv of Object.values(civs)) {
+        if (otherCiv.eliminated) continue;
+        const cityFound = otherCiv.cities.find((c) => c.x === x && c.y === y);
+        if (cityFound) {
+          const result = attackCity(casterUnit, cityFound, casterCiv, otherCiv, gameState);
+          hits.push({ kind: "city", x, y, damage: result.damage, civId: otherCiv.id, city: cityFound, civ: otherCiv, result });
+          break; // one city can ever occupy a given tile
         }
       }
     }
@@ -1807,6 +1828,7 @@ window.GameEngine = window.GameEngine || {};
     applySplashDamage,
     applyFireballBlast,
     applyBombardBlast,
+    bombardBlastOffsets,
     cityDefenseValue,
     cityMaxHp,
     expectedCityDamage,

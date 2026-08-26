@@ -428,20 +428,23 @@ body.mobile #sidebar > * {
    stays in the DOM -- the FAB forwards taps to it. */
 body.mobile #sidebar .end-turn-btn { display: none; }
 
-/* Tab strip -> horizontally scrolling chips. */
-body.mobile #sidebar .sidebar-tabs,
-body.mobile #sidebar .tab-strip {
-  display: flex;
+/* Tab strip -> horizontally scrolling chips. Selector matches sidebar.js's
+   actual markup (.tile-tabs/.tile-tab, see renderTabStrip) -- without this,
+   the desktop `flex-wrap: wrap` rule (style.css) was still active here, so
+   tabs wrapped onto a second row on a narrow phone. That second row then
+   got clipped by the generic `#sidebar > *` overflow-y:auto/max-height:100%
+   rule just above (each direct child of the sheet scrolls independently),
+   reading as the tab strip's bottom edge being overlapped by the panel
+   content immediately below it in the flow. */
+body.mobile #sidebar .tile-tabs {
   flex-wrap: nowrap;
   overflow-x: auto;
   overscroll-behavior-x: contain;
   scrollbar-width: none;
-  gap: .35rem;
+  margin-bottom: 8px;
 }
-body.mobile #sidebar .sidebar-tabs::-webkit-scrollbar,
-body.mobile #sidebar .tab-strip::-webkit-scrollbar { display: none; }
-body.mobile #sidebar .sidebar-tabs > *,
-body.mobile #sidebar .tab-strip > * {
+body.mobile #sidebar .tile-tabs::-webkit-scrollbar { display: none; }
+body.mobile #sidebar .tile-tab {
   flex: 0 0 auto;
   min-height: 38px;
 }
@@ -503,6 +506,12 @@ body.mobile .m-status {
 }
 body.mobile .m-status-turn { font-size: .76rem; opacity: .72; }
 body.mobile .m-status-res  { font-size: .82rem; font-weight: 600; white-space: nowrap; }
+body.mobile .m-status-res .resource-icon {
+  width: 11px;
+  height: 11px;
+  vertical-align: -1px;
+  color: var(--accent);
+}
 
 /* End Turn: the most-pressed control in the game, so it gets the bottom-right
    thumb arc and sits above the sheet's peek height. */
@@ -740,10 +749,10 @@ body.mobile .knowledge-nav-item {
    -------------------------------------------------------------------------- */
 
 body.mobile .map-ring-item {
-  height: 44px;
+  height: 40px;
   padding: 0 9px;
   font-size: 11px;
-  border-radius: 22px;
+  border-radius: 20px;
 }
 /* -webkit-box + line-clamp is the only widely-supported way to cap wrapped
    text at N lines; it's implemented in every engine this game runs on
@@ -760,6 +769,9 @@ body.mobile .map-ring-item-label {
   text-overflow: clip;
 }
 body.mobile .map-ring-item-shortcut { display: none; }
+/* Same reasoning for the hamburger menu's "Enter Full Screen -- F11" row:
+   a keyboard shortcut hint is noise on a device with no keyboard. */
+body.mobile .menu-shortcut { display: none; }
 /* The listed fallback gets the same treatment, and drops the desktop
    min-width -- on a phone the list is sized by applyList's own maxWidth
    against the map area, and a 170px floor could push it past that. */
@@ -778,4 +790,16 @@ body.mobile .map-ring-item-armed {
   color: #16181c;
   transform: translateY(-50%) scale(1.06);
   box-shadow: 0 3px 14px rgba(0, 0, 0, .55);
+}
+/* A LISTED pill (style.css's .map-ring-item-listed, the "too many options"
+   fallback -- see ringmenu.js's layout()) sits in normal document flow, not
+   ring-positioned. The lift/scale transform above assumes the latter; on a
+   listed row it visually detaches the pill from its own flow slot and
+   overlaps the row above it while arming. Two classes beat .map-ring-item-
+   listed's one on specificity alone, so this has to explicitly win back the
+   transform reset rather than relying on source order. Background/border/
+   box-shadow keep working exactly as before -- only the geometry-breaking
+   transform is dropped. */
+body.mobile .map-ring-item-listed.map-ring-item-armed {
+  transform: none;
 }

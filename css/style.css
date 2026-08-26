@@ -1952,41 +1952,49 @@ html, body {
 }
 .launch-section {
   break-inside: avoid;
-  margin: 0 0 14px;
-  padding: 14px 16px;
+  margin: 0 0 12px;
+  padding: 12px 14px;
   border: 1px solid var(--border);
   border-radius: 6px;
   background: var(--bg-panel-raised);
 }
 .launch-section-label {
-  font-size: 11px;
+  font-size: 10px;
   text-transform: uppercase;
   letter-spacing: 0.14em;
   color: var(--text-dim);
-  margin-bottom: 10px;
+  margin-bottom: 9px;
 }
 .launch-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
-  margin-bottom: 8px;
-  font-size: 13px;
+  gap: 10px;
+  margin-bottom: 7px;
+  font-size: 12px;
   color: var(--text-main);
 }
 .launch-row:last-child { margin-bottom: 0; }
 .launch-row-check { cursor: pointer; }
+/* min-width: 0 overrides the flex-item default of min-width: auto, which
+   otherwise refuses to shrink a <select>/<input> below its own content's
+   intrinsic width -- a native <select>'s rendered width varies by OS/
+   browser (2026-08-26, user-reported: content spilling past the card edge
+   on some environments this test browser didn't reproduce), so without
+   this a wide-rendered dropdown could hold its row open past the card's
+   ~260px inner width instead of actually shrinking to fit it. */
 .launch-row select,
 .launch-row input[type="text"] {
   flex: 1;
+  min-width: 0;
   max-width: 260px;
   background: var(--bg-panel-raised);
   border: 1px solid var(--border);
   border-radius: 3px;
   color: var(--text-main);
   font-family: inherit;
-  font-size: 13px;
-  padding: 5px 7px;
+  font-size: 12px;
+  padding: 4px 6px;
 }
 .launch-row select:focus,
 .launch-row input[type="text"]:focus { outline: none; border-color: var(--accent); }
@@ -1996,23 +2004,30 @@ html, body {
 .launch-row-slider {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   flex: 1;
+  min-width: 0;
   max-width: 260px;
 }
+/* min-width: 0 here too -- a <input type=range> has its own non-zero
+   intrinsic min-content width in some browsers, which without this can
+   refuse to shrink the same way a <select> can (see .launch-row's own
+   min-width: 0 note just above). */
 .launch-row-slider input[type="range"] {
   flex: 1;
+  min-width: 0;
   accent-color: var(--accent);
 }
 .launch-row-slider span {
-  min-width: 40px;
+  min-width: 34px;
+  font-size: 11px;
   text-align: right;
   font-variant-numeric: tabular-nums;
 }
 .launch-hint {
-  margin: 8px 0 0 0;
-  font-size: 11px;
-  line-height: 1.5;
+  margin: 6px 0 0 0;
+  font-size: 10px;
+  line-height: 1.45;
   color: var(--text-dim);
 }
 /* Race checklist: a wrapping grid rather than the old single nowrap row,

@@ -65,9 +65,9 @@ window.GameConfig = {
     /** Local date this build was cut, YYYY-MM-DD. */
     date: "2026-08-26",
     /** Local time this build was cut, 24-hour HH:MM. */
-    time: "10:53",
+    time: "13:18",
     /** Monotonic build counter -- increment it, don't recompute it. */
-    number: 174,
+    number: 175,
   },
 
   // =========================================================================
@@ -333,8 +333,8 @@ window.GameConfig = {
     /** Flat per-city, per-turn yield, before any tiles are worked -- keeps a
      *  brand-new city from producing literally nothing. */
     flatHarvest: 2,
-    flatCoin: 2,
-    flatLore: 2,
+    flatCoin: 3,
+    flatLore: 3,
 
     /** Extra influence a city projects per point of Lore it makes per turn. */
     loreTrickleRate: 0.0,
@@ -345,7 +345,7 @@ window.GameConfig = {
     /** "Resource Production" (see cities.js's applyResourceProduction): the
      *  fraction of its own yield a city adds when the player spends THIS
      *  turn's production on resources instead of a unit or building. */
-    resourceProductionBonus: 0.5,
+    resourceProductionBonus: 1.0,
 
     /** "Spread Culture" (see cities.js's applyCultureSpread): a paid,
      *  one-turn boost to a city's influence spread, independent of what the
@@ -358,8 +358,8 @@ window.GameConfig = {
      *  scale, so the price keeps pace with a growing city the same way
      *  researchBoostAmount's payoff already does. */
     cultureSpreadInfluenceMult: 1.5,
-    cultureSpreadCostBase: { harvest: 5, lore: 3 },
-    cultureSpreadCostPerPop: { harvest: 2, lore: 1 },
+    cultureSpreadCostBase: { harvest: 5, coin: 5, lore: 5 },
+    cultureSpreadCostPerPop: { harvest: 5, coin: 5, lore: 5 },
 
     /** "Research" (see cities.js's applyResearchBoost/researchBoostAmount):
      *  spending a city's production turn to cut the civ's current research
@@ -367,8 +367,8 @@ window.GameConfig = {
      *  { base, perPop } shape as Spread Culture just above -- unlike Spread
      *  Culture, this is paid on TOP of consuming the city's turn, not
      *  instead of it. */
-    researchBoostCostBase: { coin: 5, lore: 2 },
-    researchBoostCostPerPop: { coin: 2, lore: 1 },
+    researchBoostCostBase: { harvest: 5, coin: 10, lore: 10 },
+    researchBoostCostPerPop: { harvest: 5, coin: 10, lore: 10 },
 
     /** "Expedite Unit Build" (see cities.js's applyExpediteBuild) -- the
      *  Human Bazaar's city action: pay stockpile to knock one turn off the
@@ -701,8 +701,8 @@ window.GameConfig = {
      *  becomes required. Buildings contribute nothing now -- fortification is
      *  what walls are FOR, and a Mage College fortifying a city more than a
      *  wall did was always backwards. */
-    cityBaseDefense: 2,
-    cityDefensePerLevel: 0.5,
+    cityBaseDefense: 1,
+    cityDefensePerLevel: 0.0,
     cityDefensePerStructure: 0,
 
     /** +defense per alive Wall structure. With cityDefensePerStructure now 0
@@ -850,11 +850,17 @@ window.GameConfig = {
       /** A non-trapped chest pays out one reward, picked with equal weight
        *  from this list. "mapFragment" ignores `rewardAmount` entirely --
        *  see turns.js's revealMapFragment -- everything else banks
-       *  `rewardAmount` of that resource (or grants it as XP). Equal
+       *  `rewardAmount` of that resource (or grants it as XP). "reduceResearch"
+       *  also ignores `rewardAmount`: it cuts 1-3 rounds off the civ's
+       *  in-progress research instead (see tech.js's reduceResearchTurns) --
+       *  both it and mapFragment fall back to a flat coin payout when there's
+       *  nothing for them to do (no research in progress / map fully
+       *  explored), same as a reward that does nothing would be a worse
+       *  outcome than the trap. Equal
        *  weighting is a placeholder same as everything else here -- a
        *  temporary map reveal and a flat resource payout aren't obviously
        *  worth the same amount, that's a balancing-pass question. */
-      rewardTypes: ["coin", "lore", "xp", "mapFragment"],
+      rewardTypes: ["coin", "lore", "xp", "mapFragment", "reduceResearch"],
       rewardAmount: 15,
     },
     ruin: {

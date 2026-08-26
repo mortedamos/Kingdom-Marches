@@ -169,7 +169,15 @@ window.UI = window.UI || {};
       // Right mouse button is the desktop radial-menu gesture and is handled
       // by the contextmenu listener below -- starting a pan on it would drag
       // the map out from under the menu that's about to open.
-      if (e.pointerType === "mouse" && e.button === 2) return;
+      if (e.pointerType === "mouse" && e.button === 2) {
+        // Still reset dragMoved: a right-click starts a fresh gesture and
+        // must not inherit true from whatever came before it (e.g. a prior
+        // pan) -- otherwise contextmenu's own dragMoved guard below wrongly
+        // swallows the menu open on a unit that was only auto-selected as
+        // "next needing orders," never explicitly clicked.
+        dragMoved = false;
+        return;
+      }
 
       // Capture keeps a pan alive if the finger slides off the canvas, but it
       // throws when the pointer isn't active -- never let that abort the

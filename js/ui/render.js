@@ -1416,7 +1416,13 @@ window.UI = window.UI || {};
     // aoeOffsets (every other placement flow -- structures, summons,
     // teleport, traps -- is unaffected).
     if (placement.aoeOffsets && hover && placement.slots.some((s) => s.x === hover.x && s.y === hover.y)) {
-      for (const off of placement.aoeOffsets) {
+      // Bombardment's offsets depend on which side of the caster the
+      // hovered tile is on (see combat.js's bombardBlastOffsets) -- so
+      // aoeOffsets may be a function of the hovered tile instead of a
+      // fixed list; Fireball's stays a plain array, always centered.
+      const offsets = typeof placement.aoeOffsets === "function"
+        ? placement.aoeOffsets(hover) : placement.aoeOffsets;
+      for (const off of offsets) {
         const x = hover.x + off.dx, y = hover.y + off.dy;
         const screenX = x * ts + offsetX;
         const screenY = y * ts + offsetY;
@@ -1626,6 +1632,13 @@ window.UI = window.UI || {};
     if (!orders || !ai || !orders.canCommand(unit, gameState, viewState.humanCivId)) return;
     const civ = gameState.civs[unit.civId];
     if (!civ) return;
+    // canAttackUnitNow only checks range/visibility/line-of-sight, not
+    // whether the caster can attack AT ALL -- traps and the Great Bonfire
+    // (attack: 0, see units.js) still pass it because effectiveRange
+    // defaults an unset range to 1, so without this guard they'd show a
+    // "targets in range" reticle they can never actually act on.
+    const baseUnit = window.GameData.getUnit(unit.typeId);
+    if (!baseUnit || !(baseUnit.attack > 0)) return;
 
     for (const otherCiv of Object.values(gameState.civs)) {
       if (otherCiv.id === civ.id) continue;

@@ -55,19 +55,19 @@ window.UI = window.UI || {};
   // fingertip. PITCH grows by the same amount so the existing "PILL_H + 8px
   // of air" spacing ratio holds instead of pills touching edge to edge.
   function isMobile() { return document.body.classList.contains("mobile"); }
-  function PILL_H() { return isMobile() ? 44 : 30; }  // must match .map-ring-item's rendered height (see mobile.css)
+  function PILL_H() { return isMobile() ? 40 : 30; }  // must match .map-ring-item's rendered height (see mobile.css)
   // Vertical centre-to-centre gap. Desktop keeps PILL_H() + 8px of air;
   // mobile settles for +4 (2026-08-26) -- a phone's map area is short, and
   // every px of pitch spent on air pushes the ring's radius out, which on a
   // narrow screen is exactly what runs the pills off the edge. The pills
   // themselves keep their full 44px touch height, which is the number that
   // actually matters for hitting them.
-  function PITCH() { return isMobile() ? 48 : 38; }
+  function PITCH() { return isMobile() ? 44 : 38; }
   // Narrower than this and labels are unreadable -- used for the "does this
   // side fit" test. Lower on mobile, where the pill wraps to two lines
   // rather than ellipsizing (see mobile.css's .map-ring-item-label), so a
   // narrower pill still carries a whole label instead of trailing off.
-  function PILL_W_MIN() { return isMobile() ? 84 : 96; }
+  function PILL_W_MIN() { return isMobile() ? 78 : 96; }
   // Some real labels ("Gather More Resources (+3H +2C +5L)", "Build Road to
   // This Tile") need more room than this looks generous for. Safe to raise:
   // `place()` below still clamps the actual per-pill width to whatever room
@@ -114,7 +114,7 @@ window.UI = window.UI || {};
     // floor plus a pill's own width leaves nothing on either side of a
     // centred subject, and the ring gets pushed off the screen.
     const pillWMin = PILL_W_MIN();
-    const rMin = mobile ? Math.max(0.6 * ts, 56) : Math.max(0.9 * ts, 96);
+    const rMin = mobile ? Math.max(0.6 * ts, 50) : Math.max(0.9 * ts, 96);
     const radiusFor = (k) => Math.max(rMin, ((k - 1) / 2) * pitch + BOW);
 
     const roomRight = mapW - cx;

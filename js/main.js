@@ -402,7 +402,7 @@
             <span id="game-speed-pct">${GAME_SPEED_LEVELS[GAME_SPEED_DEFAULT_INDEX].label}</span>
           </span>
         </label>
-        <p class="launch-hint">How many turns units, buildings, and research take to complete -- Slowest takes longest, Fastest takes fewest turns. Normal (the middle) is the default pace.</p>
+        <p class="launch-hint">How long units, buildings, and research take to finish. Normal is the default pace.</p>
         <label class="launch-row">
           <span>AI Aggression</span>
           <span class="launch-row-slider">
@@ -410,7 +410,7 @@
             <span id="ai-aggression-label">${window.GameConfig.aiAggression.levels[AI_AGGRESSION_DEFAULT_INDEX].label}</span>
           </span>
         </label>
-        <p class="launch-hint">How readily AI-controlled kingdoms commit to fights -- applies to every AI civ, in Single Player and Spectator alike. Doesn't change how quickly they settle cities or research tech -- Normal (the default) fights more than Low without falling behind economically.</p>
+        <p class="launch-hint">How often AI kingdoms pick fights, in Single Player and Spectator alike. Doesn't affect their economy or tech pace.</p>
         <label class="launch-row">
           <span>Max Monsters</span>
           <span class="launch-row-slider">
@@ -418,7 +418,7 @@
             <span id="monster-cap-label">2 per kingdom</span>
           </span>
         </label>
-        <p class="launch-hint">Caps how many Wandering Monsters can exist at once, scaled by the number of kingdoms in play. 0 turns them off entirely.</p>
+        <p class="launch-hint">Caps Wandering Monsters, scaled by kingdom count. 0 disables them.</p>
       </div>
       </div>
 
@@ -528,7 +528,13 @@
     if (civ && resEl) {
       const s = civ.stockpile || {};
       const n = (v) => Math.round(v || 0).toLocaleString();
-      resEl.textContent = `${n(s.harvest)} · ${n(s.coin)} · ${n(s.lore)}`;
+      // Icons, not just numbers -- a bare "1,240 · 88 · 42" doesn't say
+      // which figure is which at a glance (unlike the Kingdom tab's economy
+      // table, which already pairs each row with an icon; see sidebar.js's
+      // RESOURCE_ROWS).
+      resEl.innerHTML = ["harvest", "coin", "lore"].map((k) =>
+        `<svg class="resource-icon"><use href="#icon-${k}"></use></svg>${n(s[k])}`
+      ).join(" ");
     } else if (resEl) {
       resEl.textContent = "";
     }
@@ -3317,8 +3323,11 @@
       // finishRoundBookkeeping). If the player had ALREADY picked a next
       // tech by then (civ.currentResearch is set again), offering "Choose
       // Next Research" here would re-prompt for a decision that's already
-      // made -- dialog.js hides that button whenever this is true.
-      alreadyResearching: !!civ.currentResearch,
+      // made -- dialog.js hides that button whenever this is true. Also
+      // true when nothing on the tech tree is currently affordable (see
+      // tech.js's hasAffordableResearch) -- prompting to pick a tech the
+      // kingdom can't yet pay for isn't a real choice, just a nag.
+      alreadyResearching: !!civ.currentResearch || !window.GameEngine.tech.hasAffordableResearch(civ),
       onChooseResearch: () => {
         // Defer onDone until the tech tree is actually CLOSED, rather than
         // firing it the instant the player clicks through to the tech tree
@@ -5242,9 +5251,10 @@
   /** Dwarf "Bombardment": same tile-placement shape as Fireball! just
    *  above -- Bombard's ONLY offense (see units.js's noOrdinaryAttack), so
    *  this is unconditional rather than gated behind a second tech. The
-   *  picked tile becomes the TOP-LEFT corner of the 2x2 blast (see
-   *  combat.js's applyBombardBlast), not a center -- same convention
-   *  orders.js's ring pill/ai.js's scoreBombardBlast use. */
+   *  picked tile becomes one CORNER of the 2x2 blast (see combat.js's
+   *  bombardBlastOffsets/applyBombardBlast), not a center -- which corner
+   *  depends on which side of the Bombard the hovered tile is on, so the
+   *  same convention orders.js's ring pill/ai.js's scoreBombardBlast use. */
   function startBombardmentPlacement(caster) {
     if (!humanCivId) return;
     const civ = gameState.civs[humanCivId];
@@ -5264,16 +5274,14 @@
       slots,
       label: "Bombardment",
       // Blast preview (render.js's drawPlacementOverlay): the hovered
-      // tile's own 2x2 blast (see combat.js's applyBombardBlast -- the
-      // picked tile is the block's TOP-LEFT corner, not its center) drawn
-      // as an offset list, not just the single anchor tile -- so the
-      // player can actually see the other 3 tiles that would also get hit
-      // before committing.
-      aoeOffsets: (() => {
-        const offs = [];
-        for (let dy = 0; dy <= 1; dy++) for (let dx = 0; dx <= 1; dx++) offs.push({ dx, dy });
-        return offs;
-      })(),
+      // tile's own 2x2 blast (see combat.js's bombardBlastOffsets --
+      // extends toward the Bombard, so which corner the hovered tile is
+      // depends on which side of the Bombard it's on) drawn as an offset
+      // list, not just the single anchor tile -- so the player can
+      // actually see the other 3 tiles that would also get hit before
+      // committing. A function of the hovered tile, not a fixed list --
+      // see render.js's drawPlacementOverlay for the caller side.
+      aoeOffsets: (tile) => window.GameEngine.combat.bombardBlastOffsets(caster.x, tile.x),
       onPick: (slot) => {
         viewState.placement = null;
         if (slot) window.GameEngine.ai.performPlayerBombardment(civ, caster, slot.x, slot.y, gameState);

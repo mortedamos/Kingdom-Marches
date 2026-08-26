@@ -6182,24 +6182,26 @@ window.GameEngine = window.GameEngine || {};
   const BOMBARDMENT_MIN_TARGETS = 1;
   const BOMBARDMENT_ALLY_RISK_WEIGHT = 1.5;
 
-  /** Dry-run of how a Bombardment anchored at (cx, cy) (top-left corner of
-   *  the 2x2 area) would net out -- same shape as scoreFireballBlast, just
-   *  over combat.js's 2x2 footprint instead of a 3x3 centered one. */
+  /** Dry-run of how a Bombardment targeted at (cx, cy) would net out --
+   *  same shape as scoreFireballBlast, just over combat.js's 2x2 footprint
+   *  instead of a 3x3 centered one. Must use the SAME offsets
+   *  applyBombardBlast will actually apply (combat.js's
+   *  bombardBlastOffsets, direction-dependent on which side of the caster
+   *  cx is on) -- otherwise this scores one set of tiles while
+   *  performDwarfBombardment fires on a different one. */
   function scoreBombardBlast(cx, cy, casterUnit, civs, casterCivId, gameState) {
     const { map } = gameState;
     let enemy = 0, allied = 0;
-    for (let dy = 0; dy <= 1; dy++) {
-      for (let dx = 0; dx <= 1; dx++) {
-        const x = cx + dx, y = cy + dy;
-        if (x < 0 || x >= map.width || y < 0 || y >= map.height) continue;
-        for (const otherCiv of Object.values(civs)) {
-          if (otherCiv.eliminated) continue;
-          if (!otherCiv.units.some((u) => u.x === x && u.y === y && !u.conditions?.hidden)) continue;
-          if (otherCiv.id === casterCivId) allied++; else enemy++;
-        }
-        const struct = window.GameEngine.cities.findStructureAt(gameState, x, y);
-        if (struct) { if (struct.civ.id === casterCivId) allied++; else enemy++; }
+    for (const { dx, dy } of window.GameEngine.combat.bombardBlastOffsets(casterUnit.x, cx)) {
+      const x = cx + dx, y = cy + dy;
+      if (x < 0 || x >= map.width || y < 0 || y >= map.height) continue;
+      for (const otherCiv of Object.values(civs)) {
+        if (otherCiv.eliminated) continue;
+        if (!otherCiv.units.some((u) => u.x === x && u.y === y && !u.conditions?.hidden)) continue;
+        if (otherCiv.id === casterCivId) allied++; else enemy++;
       }
+      const struct = window.GameEngine.cities.findStructureAt(gameState, x, y);
+      if (struct) { if (struct.civ.id === casterCivId) allied++; else enemy++; }
     }
     return enemy - allied * BOMBARDMENT_ALLY_RISK_WEIGHT;
   }
@@ -8573,6 +8575,21 @@ window.GameEngine = window.GameEngine || {};
       window.GameEngine.floatingText.spawnFloatingText(unit, `+${amount} coin`, "resource");
       return { trapped: false, rewardType, amount };
     }
+    if (rewardType === "reduceResearch") {
+      // Falls back to a coin payout if nothing's currently being
+      // researched -- same "a reward that does nothing would be a worse
+      // outcome than the trap" reasoning as the mapFragment branch above.
+      if (civ.currentResearch) {
+        const amount = 1 + Math.floor(Math.random() * 3); // 1-3 rounds
+        const result = window.GameEngine.tech.reduceResearchTurns(civ, amount);
+        window.GameEngine.floatingText.spawnFloatingText(unit, `Research -${amount} rounds!`, "resource");
+        return { trapped: false, rewardType, amount, researchResult: result };
+      }
+      const amount = jitterChestReward(cfg.rewardAmount);
+      civ.stockpile.coin = (civ.stockpile.coin || 0) + amount;
+      window.GameEngine.floatingText.spawnFloatingText(unit, `+${amount} coin`, "resource");
+      return { trapped: false, rewardType: "coin", amount };
+    }
     civ.stockpile[rewardType] = (civ.stockpile[rewardType] || 0) + cfg.rewardAmount;
     window.GameEngine.floatingText.spawnFloatingText(unit, `+${cfg.rewardAmount} ${rewardType}`, "resource");
     return { trapped: false, rewardType, amount: cfg.rewardAmount };
@@ -8866,6 +8883,17 @@ window.GameEngine = window.GameEngine || {};
       }
       window.GameEngine.floatingText.spawnFloatingText(unit, "Map Fragment!", "resource");
       return { trapped: false, rewardType: "mapFragment", revealed };
+    }
+    if (rewardType === "reduceResearch") {
+      if (civ.currentResearch) {
+        const amount = 1 + Math.floor(Math.random() * 3); // 1-3 rounds
+        const result = window.GameEngine.tech.reduceResearchTurns(civ, amount);
+        window.GameEngine.floatingText.spawnFloatingText(unit, `Research -${amount} rounds!`, "resource");
+        return { trapped: false, rewardType, amount, researchResult: result };
+      }
+      civ.stockpile.coin = (civ.stockpile.coin || 0) + cfg.rewardAmount;
+      window.GameEngine.floatingText.spawnFloatingText(unit, `+${cfg.rewardAmount} coin`, "resource");
+      return { trapped: false, rewardType: "coin", amount: cfg.rewardAmount };
     }
     civ.stockpile[rewardType] = (civ.stockpile[rewardType] || 0) + cfg.rewardAmount;
     window.GameEngine.floatingText.spawnFloatingText(unit, `+${cfg.rewardAmount} ${rewardType}`, "resource");
