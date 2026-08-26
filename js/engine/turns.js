@@ -169,14 +169,12 @@ window.GameEngine = window.GameEngine || {};
           }
         }
       }
-      // Human Bazaar ("Traders' Talk"): merchants know where the towns are --
-      // every rival civ's city tile is revealed. Only the city tile itself,
-      // not a ring: this is "we know that town is there", not eyes on the
-      // ground around it. Reads the cityAt index built once at the top of
-      // this function rather than re-walking every civ's city list.
-      if (window.GameEngine.cities.civHasBuiltBuilding(civ, "bazaar")) {
-        for (const idx of cityAt.keys()) visible.add(idx);
-      }
+      // The Human Bazaar used to reveal every rival civ's city tile here
+      // ("Traders' Talk"). Retired 2026-08-26, user-directed: the effect
+      // didn't stack (one Bazaar revealed everything, a second did nothing),
+      // and it self-obsoleted, since cities are large and static enough that
+      // you find them anyway. The Bazaar now grants its city the "Expedite
+      // Unit Build" action instead -- see cities.js's applyExpediteBuild.
       // Mountains on the Horizon also reveals any Hills tile immediately
       // adjacent (8-neighbor) to a Mountain tile -- the foothills leading up
       // to a peak are visible from the peak itself, same reasoning as the

@@ -622,7 +622,16 @@ window.GameEngine = window.GameEngine || {};
     const reasons = {
       explore:    `only ${cityCount} cit${cityCount === 1 ? 'y' : 'ies'}, need to scout`,
       settle:     (nearVictory
-        ? `closing in on victory (${Math.round(myShare * 100)}% land share) -- founding more cities to seal it`
+        // 2026-08-26: read myTiles/tileTarget, not the long-gone `myShare`.
+        // The 2026-08-25 switch from a percentage-of-map victory condition
+        // to an absolute tile count deleted myShare but left this one
+        // reference behind, and since the whole template literal only
+        // evaluates when nearVictory is true, it sat here as a
+        // ReferenceError that fired for the first time the moment a civ
+        // reached 90% of the tile target -- aborting that civ's ENTIRE
+        // turn (turns.js catches and logs "AI turn error for X"), every
+        // turn, for exactly the leader, for the rest of the game.
+        ? `closing in on victory (${myTiles}/${tileTarget} tiles) -- founding more cities to seal it`
         : cityGateShortfall > 0
         ? `need ${cityGateShortfall} more cit${cityGateShortfall === 1 ? 'y' : 'ies'} to unlock further research`
         : `expanding to ${cityCount + 1} cities`) + losingCitiesNote,
@@ -723,6 +732,12 @@ window.GameEngine = window.GameEngine || {};
         }
       }
     }
+
+    // Contested-border pressure: which enemy CITIES are actually pushing
+    // back on this civ's own influence right now, recomputed fresh every
+    // civ-turn (an influence contest can start or end in a single turn as
+    // cities grow, fill in, or get razed). See computeContestPressure.
+    civ._contestPressure = computeContestPressure(civ, gameState);
 
     // Every turn-based condition (Orc curse, Violent Momentum, ...) expires
     // here via one centralized call -- see combat.js's tickConditions/setCondition.
@@ -2634,6 +2649,17 @@ window.GameEngine = window.GameEngine || {};
     // Nothing clears it -- a unit standing on its own last target draws
     // nothing, and the next move overwrites it.
     unit.lastMoveTarget = { x: targetX, y: targetY };
+    // Visual route breadcrumb (2026-08-26, user-requested): the renderer
+    // used to see only "this unit's x/y changed" and glided it in a straight
+    // line from wherever it was to wherever it ended up -- straight over
+    // mountains, bays and walls the unit had actually walked AROUND. The
+    // step loop below is the one place that knows the real route, so it
+    // records it here and render.js's getVisualPos walks it tile by tile.
+    // Purely cosmetic, same convention as lastMoveTarget just above: rebuilt
+    // from scratch on every move and never read by game logic. _walkSeq is
+    // what tells the renderer "this is a NEW route", since a route can
+    // legitimately end on the same tile a previous one did.
+    unit._walkPath = null;
     if (unit.movesRemaining == null) unit.movesRemaining = computeMovementBudget(unit, map, civs);
     const rules = buildMoveRules(unit, civs, map);
     const { flying, costFn } = rules;
@@ -2645,6 +2671,9 @@ window.GameEngine = window.GameEngine || {};
     const path = window.GameEngine.pathfinding.findPath(unit.x, unit.y, targetX, targetY, map, costFn);
     if (!path) return unit.movesRemaining;
     window.GameEngine.quips.maybeQuip(unit, civs?.[unit.civId], "move", currentGameStateRef);
+    // Seeded with the ORIGIN tile so the renderer has a start point for the
+    // first leg -- see the _walkPath note at the top of this function.
+    const walked = [{ x: unit.x, y: unit.y }];
     for (let i = 0; i < path.length; i++) {
       if (unit.movesRemaining <= 0) break;
       const step = path[i];
@@ -2681,12 +2710,21 @@ window.GameEngine = window.GameEngine || {};
       }
       unit.x = step.x;
       unit.y = step.y;
+      walked.push({ x: step.x, y: step.y });
       unit.movesRemaining -= step.cost;
 
       // Halfellow "Set the Trap": a hidden trap adjacent to (or under) this
       // landing spot springs immediately, same "something interrupted this
       // move" break as the Hidden-enemy reveal above.
       if (checkTrapSpring(civs, unit, currentTurnNumber)) break;
+    }
+    // Only worth handing to the renderer if the unit actually went
+    // somewhere: a 1-entry array is a move that got blocked before its
+    // first step, which should keep the plain no-op the renderer already
+    // does for an unchanged position.
+    if (walked.length > 1) {
+      unit._walkPath = walked;
+      unit._walkSeq = (unit._walkSeq || 0) + 1;
     }
     return unit.movesRemaining;
   }
@@ -2822,6 +2860,11 @@ window.GameEngine = window.GameEngine || {};
 
     for (const city of civ.cities) {
       if (city.buildQueue) {
+        // Human Bazaar "Expedite Unit Build": buy a turn off this build
+        // BEFORE counting it down, so a turn bought this turn is a turn
+        // actually saved rather than one the countdown was about to spend
+        // anyway. See maybeExpediteBuild.
+        maybeExpediteBuild(civ, city, gameState, log);
         progressBuildQueue(civ, city, gameState, log);
         continue;
       }
@@ -2843,8 +2886,17 @@ window.GameEngine = window.GameEngine || {};
           }
           // totalTurns kept alongside the countdown (2026-07-21) purely so
           // the UI (sidebar.js) can display a progress percentage -- the
-          // countdown itself only ever reads turnsRemaining.
-          city.buildQueue = { kind: choice.kind, id: choice.id, turnsRemaining: choice.turns, totalTurns: choice.turns };
+          // countdown itself only ever reads turnsRemaining. `cost` is the
+          // price actually paid just above, stamped on for the same
+          // read-only reason (2026-08-26): "Expedite Unit Build" prices one
+          // turn as a share of it, and re-deriving that price later would
+          // silently disagree the moment a rarity premium or war-economy
+          // discount moved -- see cities.js's expediteBuildCost.
+          city.buildQueue = {
+            kind: choice.kind, id: choice.id,
+            turnsRemaining: choice.turns, totalTurns: choice.turns,
+            cost: { ...choice.cost },
+          };
         } else {
           city.buildQueue = { ...choice, progress: 0 };
         }
@@ -2885,6 +2937,70 @@ window.GameEngine = window.GameEngine || {};
    *  computeInfluenceMap runs, turnNumber has already advanced past it. See
    *  cities.js's applyCultureSpread doc comment for the human-vs-AI timing
    *  difference in full. */
+  /**
+   * "Expedite Unit Build" -- the AI half of the Human Bazaar's city action
+   * (2026-08-26, user-directed: "the AI player should know how to use this
+   * action, if it is available"). See cities.js's applyExpediteBuild for the
+   * rules; everything here is only about WHEN it's worth the stockpile.
+   *
+   * Two gates, in cost order:
+   *
+   * 1. RESERVE. The stockpile is also what pays for the next build outright
+   *    (see this function's caller -- unit and building costs are paid up
+   *    front, not accumulated), so a civ that rushes itself broke stops
+   *    STARTING anything, which costs it far more turns than it just bought.
+   *    Requires EXPEDITE_RESERVE_MULT times the price on hand, not merely
+   *    the price.
+   *
+   * 2. URGENCY. Buying turns is deliberately a bad deal in the steady state
+   *    (EXPEDITE_COST_MULT is above 1.0 precisely so it is), so the AI only
+   *    takes it when a turn is worth more than its price:
+   *      - a MILITARY unit while a threat is actually visible near this
+   *        civ's cities (detectThreat), or while an enemy city is contesting
+   *        its border (civ._contestPressure -- the same signal that redirects
+   *        its armies, see computeContestPressure);
+   *      - a PIONEER while the civ still has somewhere worth settling, since
+   *        expansion races are won by arriving first;
+   *      - nothing else. A Galley or a support unit finishing a turn early
+   *        rarely changes anything, and the reserve is better spent.
+   *
+   * Rolled probabilistically rather than taken every eligible turn, weighted
+   * by aggressiveness for the military case, so two civs in the same
+   * position don't rush identically and a long build isn't silently halved
+   * the moment one enemy scout wanders into view.
+   */
+  const EXPEDITE_RESERVE_MULT = 2.5;
+  const EXPEDITE_MILITARY_CHANCE = 0.6;
+  const EXPEDITE_PIONEER_CHANCE = 0.4;
+  function maybeExpediteBuild(civ, city, gameState, log) {
+    const cities = window.GameEngine.cities;
+    const item = cities.canExpediteBuild(city, civ);
+    if (!item) return false;
+    if (cities.isExpeditingBuild(city, gameState)) return false;
+    const cost = cities.expediteBuildCost(city, civ);
+    if (!cost) return false;
+
+    const stock = civ.stockpile || {};
+    if (!Object.entries(cost).every(([k, v]) => (stock[k] || 0) >= v * EXPEDITE_RESERVE_MULT)) return false;
+
+    const unitData = window.GameData.getUnit(item.id);
+    let chance = 0;
+    if (unitData.category === "military") {
+      const contested = !!(civ._contestPressure && Object.keys(civ._contestPressure).length);
+      if (contested || detectThreat(civ, gameState)) {
+        chance = EXPEDITE_MILITARY_CHANCE * (0.5 + aggressivenessFor(civ));
+      }
+    } else if (item.id === "pioneer" && civHasReachableSettleSite(civ, gameState)) {
+      chance = EXPEDITE_PIONEER_CHANCE;
+    }
+    if (chance <= 0 || Math.random() >= chance) return false;
+
+    const receipt = cities.applyExpediteBuild(city, civ, gameState);
+    if (!receipt) return false;
+    log.push(`Expedite: ${civ.id}'s ${city.name} pays to rush ${receipt.unitLabel} (${receipt.turnsRemaining} turn${receipt.turnsRemaining === 1 ? "" : "s"} left)`);
+    return true;
+  }
+
   function trySpreadCulture(civ, city, gameState, log) {
     if (!window.GameEngine.cities.applyCultureSpread(
           city, civ, gameState, (gameState.turnNumber || 0) + 1)) return false;
@@ -5082,7 +5198,14 @@ window.GameEngine = window.GameEngine || {};
         // dies in the exchange, considerAttackOrGarrison already drops its
         // cargo onto the tile, same as any other carrier's death.
         if (considerAttackOrGarrison(civ, unit, gameState, weights, difficulty, log)) continue;
-        if (unit.typeId === "galley" && maybeGalleyFishingPlay(civ, unit, gameState, log)) continue;
+        // Fishing is resource gathering like any other, so it gets the same
+        // "not with an enemy in sight" treatment the land channels get
+        // further down the cascade -- wired in here rather than there
+        // because the naval branch returns before ever reaching that tier.
+        // See threatBlocksGathering/maybeBreakOffGathering.
+        if (unit.typeId === "galley" && maybeBreakOffGathering(civ, unit, gameState, log)) continue;
+        if (unit.typeId === "galley" && !threatBlocksGathering(civ, unit, gameState)
+            && maybeGalleyFishingPlay(civ, unit, gameState, log)) continue;
         operateGalley(civ, unit, gameState, log);
         continue;
       }
@@ -5286,6 +5409,20 @@ window.GameEngine = window.GameEngine || {};
       if (civ.raceId === "human"
           && maybeHumanDefendStructure(civ, unit, gameState, nearActiveCombat, log)) continue;
 
+      // Enemy in sight? Then this is no time to be mining, delving or
+      // cracking open a chest (2026-08-26, user-requested). `gatheringVeto`
+      // switches off the whole economic side-mission tier below, so no
+      // individual play needs a threat check of its own and none of them can
+      // drift apart on where the line is; maybeBreakOffGathering handles the
+      // harder half -- a unit ALREADY mid-channel banks what it has earned
+      // and then either goes for the enemy (massing with allies first if
+      // it's out here alone) or falls back. A unit that merely WOULD have
+      // started gathering needs nothing special: it just falls through to
+      // the ordinary idle cascade below, which already knows how to hunt,
+      // reinforce, muster and retreat.
+      const gatheringVeto = threatBlocksGathering(civ, unit, gameState);
+      if (gatheringVeto && maybeBreakOffGathering(civ, unit, gameState, log)) continue;
+
       // Dwarf Mining: an otherwise-idle Dwarf unit (nothing better to fight
       // or defend) pursues/protects a Gold or Iron Vein instead of falling
       // through to generic explore/patrol. Dwarf-only proactive AI play --
@@ -5294,20 +5431,20 @@ window.GameEngine = window.GameEngine || {};
       // maybeProspectorsClaimPlay's own doc comment. Checked here so it
       // only fires once combat/reinforcement priorities above have already
       // passed on this unit.
-      if (civ.raceId === "dwarf" && civ.unlockedMechanics && civ.unlockedMechanics.has("mining")
+      if (!gatheringVeto && civ.raceId === "dwarf" && civ.unlockedMechanics && civ.unlockedMechanics.has("mining")
           && maybeProspectorsClaimPlay(civ, unit, gameState, log)) continue;
 
       // Universal Ruin Delve (see doc/world_encounters_design.md); not
       // Wizard/Human-only.
       // Granted free to every race via the Level 0 "ruin_delving" tech, same
       // priority tier as Prospector's Claim just above.
-      if (civ.unlockedMechanics && civ.unlockedMechanics.has("dungeon_delve")
+      if (!gatheringVeto && civ.unlockedMechanics && civ.unlockedMechanics.has("dungeon_delve")
           && maybeDungeonDelvePlay(civ, unit, gameState, log)) continue;
 
       // Treasure Chest: opens one on the spot if already standing on it,
       // otherwise curiosity-weighted pursuit of the nearest known chest.
       // Race-agnostic, tech-free -- see openTreasureChest above.
-      if (maybeOpenChestPlay(civ, unit, gameState, log)) continue;
+      if (!gatheringVeto && maybeOpenChestPlay(civ, unit, gameState, log)) continue;
 
       // Caves: jumps through one on the spot if it's a real shortcut toward
       // the front line, otherwise pursues a known cave when doing so would
@@ -9654,7 +9791,12 @@ window.GameEngine = window.GameEngine || {};
     const visible = gameState.visibility[civ.id] || new Set();
     const unitTile = map.tiles[unit.y * map.width + unit.x];
     const unitLandmassId = unitTile ? unitTile.landmassId : -1;
-    let nearest = null, nearestDist = Infinity, nearestCivId = null;
+    // Contest-weighted like the other two city pickers (see
+    // targetRankDistance). A Titan commits to one target for the long haul,
+    // so this is the single most valuable place to get the choice right --
+    // pick the quiet city and the whole march is wasted on a front that
+    // isn't costing this civ any territory.
+    let nearest = null, nearestRank = Infinity, nearestCivId = null;
     for (const other of Object.values(civs)) {
       if (other.id === civ.id || other.eliminated) continue;
       for (const c of other.cities) {
@@ -9662,7 +9804,8 @@ window.GameEngine = window.GameEngine || {};
         const cTile = map.tiles[c.y * map.width + c.x];
         if (unitLandmassId >= 0 && cTile.landmassId !== unitLandmassId) continue;
         const dist = window.GameEngine.influence.chebyshev(unit.x, unit.y, c.x, c.y);
-        if (dist < nearestDist) { nearestDist = dist; nearest = c; nearestCivId = other.id; }
+        const rank = targetRankDistance(civ, other.id, c.x, c.y, dist);
+        if (rank < nearestRank) { nearestRank = rank; nearest = c; nearestCivId = other.id; }
       }
     }
     if (!nearest) return null;
@@ -9991,6 +10134,105 @@ window.GameEngine = window.GameEngine || {};
   }
 
   /**
+   * NO PROSPECTING WITH THE ENEMY IN SIGHT (2026-08-26, user-requested:
+   * "units should not engage in resource gathering (delve, farming, etc.) if
+   * there are enemy units nearby that they can see, instead they should
+   * consider falling back or gathering forces to eliminate that enemy unit")
+   * ---------------------------------------------------------------------
+   * Every channelled economic play -- Prospector's Claim (mining), Dungeon
+   * Delve, Galley Fishing, opening a Treasure Chest -- takes a unit out of
+   * the fight for multiple turns, standing still, on a tile chosen for its
+   * resource rather than its defensibility. Each of those plays used to have
+   * its own narrow carve-out for an ADJACENT enemy only (nearestEnemyDist <=
+   * 1, "that's a fight, let the attack dispatch handle it"), which meant a
+   * unit would happily settle in to mine with an enemy warband two tiles
+   * away and visibly closing.
+   *
+   * This is the one gate for all of them, checked immediately before that
+   * whole tier of the cascade. Wider than adjacency (GATHER_THREAT_RADIUS)
+   * because the point is to react BEFORE contact, and it does more than veto:
+   * it banks whatever the unit has already channelled (never throw the stash
+   * away -- maybeCashOutChannel's own reasoning) and then picks one of the
+   * two responses the request names:
+   *
+   *   - Strong enough locally -> go kill it (huntNearestEnemy), or mass with
+   *     allies first if this unit is out on its own
+   *     (maybeMusterBeforeOffensive, the existing "gathering forces" play).
+   *   - Outmatched -> fall back away from the threat (findFleeTile), or hold
+   *     with allies / brace if cornered -- exactly handleCorneredCombat's
+   *     ladder, reused rather than re-derived.
+   *
+   * An already-adjacent enemy is deliberately left alone here: the attack
+   * dispatch and the nearActiveCombat branch further down the cascade both
+   * run BEFORE this and have already had their say about a fight in
+   * progress. This is about the fight that hasn't started yet.
+   */
+  const GATHER_THREAT_RADIUS = 3;
+
+  /** The veto half: a visible enemy close enough that starting (or
+   *  continuing) resource work is a bad idea. An ALREADY-adjacent enemy
+   *  returns false on purpose -- that's a fight in progress, and the attack
+   *  dispatch plus the nearActiveCombat branch, both of which run earlier in
+   *  the cascade, own it. This is about the fight that hasn't started yet. */
+  function threatBlocksGathering(civ, unit, gameState) {
+    const threat = findNearestVisibleEnemy(civ, unit.x, unit.y, gameState);
+    if (!threat) return null;
+    const dist = window.GameEngine.influence.chebyshev(unit.x, unit.y, threat.x, threat.y);
+    if (dist > GATHER_THREAT_RADIUS || dist <= 1) return null;
+    return threat;
+  }
+
+  /** Total military power every rival civ has within `radius` of (x,y) --
+   *  the enemy-side counterpart to nearbyMilitaryPower, which only ever
+   *  sums ONE civ's units. Summed across all rivals rather than just the
+   *  threat's own civ: two enemies converging on the same spot are two
+   *  enemies to weigh, whoever they answer to. */
+  function enemyMilitaryPowerNear(civ, gameState, x, y, radius) {
+    let total = 0;
+    for (const other of Object.values(gameState.civs)) {
+      if (other.id === civ.id || other.eliminated) continue;
+      total += nearbyMilitaryPower(other, x, y, radius, null);
+    }
+    return total;
+  }
+
+  /** The reaction half, for a unit that is ALREADY mid-channel when a threat
+   *  turns up. A unit that merely WOULD have started gathering needs no
+   *  special handling -- threatBlocksGathering vetoes that tier and the
+   *  ordinary idle cascade below it (hunt, reinforce, muster, patrol) picks
+   *  the unit's job as it always has. Returns true if it consumed the turn. */
+  function maybeBreakOffGathering(civ, unit, gameState, log) {
+    if (unit.channeling !== "mining" && unit.channeling !== "delving" && unit.channeling !== "fishing") return false;
+    const threat = threatBlocksGathering(civ, unit, gameState);
+    if (!threat) return false;
+
+    // Whatever was already earned is banked rather than abandoned, same
+    // reasoning as maybeCashOutChannel: a partial payout beats losing it all.
+    // bankChannelStash is a no-op on an empty stash.
+    unit.channeling = null;
+    window.GameEngine.turns.bankChannelStash(unit, civ);
+    log.push(`${civ.id}'s ${describeUnit(unit)} breaks off resource work at (${unit.x},${unit.y}) -- enemy in sight`);
+
+    const ownPower = nearbyMilitaryPower(civ, unit.x, unit.y, MUSTER_RADIUS, null);
+    const enemyPower = enemyMilitaryPowerNear(civ, gameState, threat.x, threat.y, MUSTER_RADIUS);
+    if (ownPower >= enemyPower) {
+      // Confident: mass first if this unit is out here on its own (the same
+      // muster check an offensive march makes), then go for the enemy.
+      if (maybeMusterBeforeOffensive(civ, unit, gameState, log)) return true;
+      if (huntNearestEnemy(civ, unit, gameState)) {
+        unit.currentMission = `Broke off resource work to deal with an enemy ${describeUnit(threat)} nearby`;
+        return true;
+      }
+    }
+
+    // Outmatched (or nothing chaseable after all): retreat, hold with
+    // allies, or brace -- handleCorneredCombat's exact ladder, reused rather
+    // than re-derived. It always consumes the turn.
+    handleCorneredCombat(civ, unit, gameState, log);
+    return true;
+  }
+
+  /**
    * Moves a unit toward the nearest visible enemy unit -- a tactical, in-the-
    * moment opportunity chase. Whether this triggers at all is gated by
    * aggressiveness (see maybeMoveUnits). A Ranged unit stops at standoff
@@ -10113,11 +10355,27 @@ window.GameEngine = window.GameEngine || {};
    *  of -- this function is what decides whether an idle unit goes looking
    *  for one at all (huntEnemyInfrastructure, offense) vs falls back to
    *  reinforceHomeCity (defense). See this function's own call site. */
+  /** How far toward pure offense a live border contest may drag the
+   *  posture. Contest pressure means an enemy city is actively taking this
+   *  civ's territory -- the exact situation where sitting on your own cities
+   *  loses the game slowly, and where the pressure is relieved by razing the
+   *  offending city's structures (see the MILITARY STRATEGY note above).
+   *  Kept as a partial pull toward 1 rather than a hard override, so a
+   *  defense-minded race under contest fights harder without turning into
+   *  Orc. */
+  const CONTEST_PRESSURE_OFFENSE_PULL = 0.4;
   function militaryPostureFor(civ) {
     const agg = aggressivenessFor(civ) * aiAggressionLevel().combatWeightMult;
     const mil = effectiveMilitarism(civ);
     const total = agg + mil;
-    return total > 0 ? agg / total : 0.5;
+    const base = total > 0 ? agg / total : 0.5;
+    // huntEnemyInfrastructure (the offense branch) is what actually marches
+    // on the contesting city -- see targetRankDistance. Leaning the posture
+    // toward offense is what gets units INTO that branch in the first place;
+    // without this a defense-postured civ would keep re-picking
+    // reinforceHomeCity and never send anyone at the city taking its land.
+    if (!(civ._contestPressure && Object.keys(civ._contestPressure).length)) return base;
+    return base + (1 - base) * CONTEST_PRESSURE_OFFENSE_PULL;
   }
 
   /**
@@ -10332,19 +10590,117 @@ window.GameEngine = window.GameEngine || {};
   }
 
   /**
+   * CONTESTED-BORDER PRESSURE (2026-08-26, user-requested: "if an AI player
+   * has a contested influence tile with a nearby city, it should focus
+   * military efforts against that nearby city")
+   * -------------------------------------------------------------------
+   * Influence, not conquest, is this game's win condition -- but the AI's
+   * target selection was blind to it. huntEnemyInfrastructure and
+   * huntKnownEnemyTerritory both picked purely by DISTANCE, so a civ losing
+   * a whole flank to the city pressing on its border would happily march
+   * past that city toward a slightly closer one that was costing it nothing.
+   *
+   * This scores enemy cities by how much they are actually contesting THIS
+   * civ's territory. A tile counts when it is "contested" (see influence.js's
+   * resolveOwnership) AND this civ has real influence on it -- i.e. ground
+   * this civ is holding or trying to hold, not some distant tile two other
+   * rivals are squabbling over. The rival influence on that tile is then
+   * charged to whichever of that rival's cities are close enough to be
+   * projecting it (within influenceRadius + 1, matching
+   * cityInfluenceFalloff's own cutoff), split evenly when more than one
+   * qualifies -- cheaper than re-deriving each city's exact falloff
+   * contribution, and precise enough for a ranking.
+   *
+   * The result is a plain object of "civId:x,y" -> score, read by the three
+   * city-target pickers below via contestPressureFor. A plain object rather
+   * than a Map because this lives on the civ, and savegame.js only
+   * special-cases Sets -- a Map would round-trip through a save as `{}` and
+   * then throw on the first `.get()`. tile.influenceShares is the per-civ
+   * influence map resolveOwnership already leaves on every tile, so this
+   * costs one map walk per civ-turn and no new bookkeeping anywhere.
+   *
+   * Deliberately NOT fog-gated: a contested border is something a kingdom
+   * feels directly, since its OWN tiles are the ones being pushed on. Both
+   * callers still independently require the city itself to be visible or
+   * remembered before they will actually march on it.
+   */
+  function computeContestPressure(civ, gameState) {
+    const { map, civs } = gameState;
+    const pressure = {};
+    for (const tile of map.tiles) {
+      if (tile.status !== "contested" || !tile.influenceShares) continue;
+      // Live games leave a real Map here, but a save round-trips it into a
+      // plain object (same savegame.js Sets-only limitation noted above), and
+      // this can run before the next resolveOwnership has rebuilt it. Read
+      // whichever shape is actually present -- only for the handful of
+      // contested tiles, so the conversion costs nothing worth avoiding.
+      const shares = tile.influenceShares instanceof Map
+        ? tile.influenceShares
+        : new Map(Object.entries(tile.influenceShares));
+      if (!(shares.get(civ.id) > 0)) continue;
+      for (const [rivalId, amount] of shares) {
+        if (rivalId === civ.id || !(amount > 0)) continue;
+        const rival = civs[rivalId];
+        if (!rival || rival.eliminated) continue;
+        const sources = rival.cities.filter((c) =>
+          window.GameEngine.influence.chebyshev(c.x, c.y, tile.x, tile.y) <= c.influenceRadius + 1);
+        if (!sources.length) continue;
+        const each = amount / sources.length;
+        for (const c of sources) {
+          const key = `${rivalId}:${c.x},${c.y}`;
+          pressure[key] = (pressure[key] || 0) + each;
+        }
+      }
+    }
+    return pressure;
+  }
+
+  /** This civ's contested-border pressure score for one enemy city, or 0.
+   *  Keyed by owner + position rather than by city object, so a REMEMBERED
+   *  {x, y, name} record (which has no city object behind it -- see
+   *  huntKnownEnemyTerritory) looks up exactly the same way a live city
+   *  does. */
+  function contestPressureFor(civ, ownerCivId, x, y) {
+    const p = civ._contestPressure;
+    return p ? (p[`${ownerCivId}:${x},${y}`] || 0) : 0;
+  }
+
+  /** How much closer a non-contesting city has to be before it outranks one
+   *  that IS pressing on this civ's border. 2 means "worth marching up to
+   *  twice as far to hit the city that's actually costing us territory" --
+   *  enough to genuinely redirect a campaign, not so much that a unit
+   *  crosses the whole map ignoring a city on its own doorstep. */
+  const CONTEST_PRESSURE_DETOUR_FACTOR = 2;
+
+  /** Ranking distance for city target selection: true Chebyshev distance,
+   *  discounted for a city that's contesting this civ's influence, so
+   *  "nearest" in the two hunt functions below quietly becomes "nearest one
+   *  worth hitting". A city with no pressure score is unaffected, which
+   *  leaves every no-contest situation ranking exactly as it always did. */
+  function targetRankDistance(civ, ownerCivId, x, y, dist) {
+    return contestPressureFor(civ, ownerCivId, x, y) > 0
+      ? dist / CONTEST_PRESSURE_DETOUR_FACTOR
+      : dist;
+  }
+
+  /**
    * Seek-and-destroy: moves a unit toward the nearest visible enemy CITY (own
    * landmass only), so idle offense-postured units actively march on enemy
    * infrastructure instead of waiting for one to wander close. Getting
    * adjacent hands off to considerAttackOrGarrison's existing raze fallback,
    * which picks the actual highest-value structure to demolish once in range.
    * Returns true if a target city was found and the unit moved toward it.
+   *
+   * "Nearest" is contest-weighted -- see targetRankDistance: a city actively
+   * pressing on this civ's own influence is worth marching past a closer,
+   * quieter one for.
    */
   function huntEnemyInfrastructure(civ, unit, gameState) {
     const { map, civs } = gameState;
     const visible = gameState.visibility[civ.id] || new Set();
     const unitTile = map.tiles[unit.y * map.width + unit.x];
     const unitLandmassId = unitTile ? unitTile.landmassId : -1;
-    let nearest = null, nearestDist = Infinity;
+    let nearest = null, nearestRank = Infinity, nearestContested = false;
     for (const other of Object.values(civs)) {
       if (other.id === civ.id || other.eliminated) continue;
       for (const c of other.cities) {
@@ -10352,16 +10708,22 @@ window.GameEngine = window.GameEngine || {};
         const cTile = map.tiles[c.y * map.width + c.x];
         if (unitLandmassId >= 0 && cTile.landmassId !== unitLandmassId) continue;
         const dist = window.GameEngine.influence.chebyshev(unit.x, unit.y, c.x, c.y);
-        if (dist < nearestDist) { nearestDist = dist; nearest = c; }
+        const rank = targetRankDistance(civ, other.id, c.x, c.y, dist);
+        if (rank < nearestRank) {
+          nearestRank = rank;
+          nearest = c;
+          nearestContested = contestPressureFor(civ, other.id, c.x, c.y) > 0;
+        }
       }
     }
     if (!nearest) return false;
     if (unit.x === nearest.x && unit.y === nearest.y) return false; // already there, nothing to chase
     const usedGate = moveUnitTowardSmart(civ, unit, nearest.x, nearest.y, gameState);
     unit.usedThisTurn = true;
+    const why = nearestContested ? " to break its hold on our border" : "";
     unit.currentMission = usedGate
-      ? `Used a Deep Gate en route to raid ${nearest.name} at (${nearest.x},${nearest.y})`
-      : `Marching to raid ${nearest.name} at (${nearest.x},${nearest.y})`;
+      ? `Used a Deep Gate en route to raid ${nearest.name} at (${nearest.x},${nearest.y})${why}`
+      : `Marching to raid ${nearest.name} at (${nearest.x},${nearest.y})${why}`;
     return true;
   }
 
@@ -10392,14 +10754,21 @@ window.GameEngine = window.GameEngine || {};
     const unitTile = map.tiles[unit.y * map.width + unit.x];
     const unitLandmassId = unitTile ? unitTile.landmassId : -1;
 
-    let nearest = null, nearestDist = Infinity;
+    // Contest-weighted, same as huntEnemyInfrastructure -- see
+    // targetRankDistance. The memory key is "ownerCivId:cityName" (see
+    // beginAITurn), so the owner comes off the key and the position off the
+    // remembered record, which is exactly what contestPressureFor wants. A
+    // city can press hard on this civ's border while sitting outside its
+    // vision, which is precisely the case this branch exists for.
+    let nearest = null, nearestRank = Infinity;
     for (const key in memory) {
       const spot = memory[key];
       if (visible.has(spot.y * map.width + spot.x)) continue; // huntEnemyInfrastructure's job
       const spotTile = map.tiles[spot.y * map.width + spot.x];
       if (unitLandmassId >= 0 && spotTile.landmassId !== unitLandmassId) continue; // seekOverseasInvasion's job
       const dist = window.GameEngine.influence.chebyshev(unit.x, unit.y, spot.x, spot.y);
-      if (dist < nearestDist) { nearestDist = dist; nearest = spot; }
+      const rank = targetRankDistance(civ, key.slice(0, key.indexOf(":")), spot.x, spot.y, dist);
+      if (rank < nearestRank) { nearestRank = rank; nearest = spot; }
     }
     if (!nearest) return false;
     if (unit.x === nearest.x && unit.y === nearest.y) return false; // already there, nothing to chase

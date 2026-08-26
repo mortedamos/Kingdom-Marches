@@ -44,6 +44,15 @@ window.MusicSystem = (function () {
   // volume preference already saved.
   let musicVolume = 0.75;
   let muted = false;
+  // Window/tab focus suspension (2026-08-26, user-reported: "in mobile view
+  // the sound and music continue when the user does not have focus on the
+  // browser window"). Deliberately a SEPARATE flag from `muted` rather than
+  // driving setMuted: the player's own mute choice is persisted and
+  // reflected in every mute control (see main.js's syncAllMuteControls), and
+  // a tab switch must not overwrite it -- coming back has to restore exactly
+  // what they left, whichever state that was. Not persisted, for the same
+  // reason main.js's ?mute switch isn't.
+  let focusSuspended = false;
   let trackChangeListeners = []; // notified with getCurrentTrackLabel()'s result whenever currentKey changes
   // Manual track override: when set, playback is pinned to this exact track
   // (looping it directly, ignoring the automatic race/situation resolution)
@@ -86,7 +95,7 @@ window.MusicSystem = (function () {
    *  underlying master/music volume levels (which are preserved, not reset,
    *  so un-muting restores exactly where the sliders were left). */
   function effectiveVolume() {
-    return muted ? 0 : masterVolume * musicVolume;
+    return (muted || focusSuspended) ? 0 : masterVolume * musicVolume;
   }
 
   function trackPath(race, situation, variant) {
@@ -428,10 +437,16 @@ window.MusicSystem = (function () {
     const oldAudio = currentAudio;
     currentAudio = newAudio;
     setCurrentKey(resolved.key);
-    newAudio.play().catch((e) => {
-      console.log(`[music] play() rejected for ${resolved.key}.mp3: ${e.message}`);
-      failedTracks.add(resolved.key);
-    });
+    // Don't start a track nobody can hear -- a loop that came due while the
+    // tab was in the background would otherwise begin playing (silently)
+    // there. setFocusSuspended(false) calls play() on currentAudio when
+    // focus returns, which is exactly this element.
+    if (!focusSuspended) {
+      newAudio.play().catch((e) => {
+        console.log(`[music] play() rejected for ${resolved.key}.mp3: ${e.message}`);
+        failedTracks.add(resolved.key);
+      });
+    }
     crossfade(oldAudio, newAudio);
   }
 
@@ -575,6 +590,34 @@ window.MusicSystem = (function () {
   }
   function isMuted() { return muted; }
 
+  /** Public: silence (and actually PAUSE) playback while the game's window
+   *  or tab isn't focused, restoring it untouched on the way back -- see
+   *  main.js's setupFocusMuting for what drives this and why.
+   *
+   *  Pausing, not just zeroing the volume, because a phone that backgrounds
+   *  the tab keeps a playing <audio> element alive: it would carry on
+   *  advancing the track, holding the media session, and burning battery for
+   *  audio nobody can hear. Any in-flight crossfade is cancelled first --
+   *  it captured its target volume when it started and would otherwise fade
+   *  the element right back up to it. */
+  function setFocusSuspended(v) {
+    const next = !!v;
+    if (next === focusSuspended) return;
+    focusSuspended = next;
+    if (!currentAudio) return;
+    if (focusSuspended) {
+      clearInterval(fadeIntervalId);
+      currentAudio.volume = 0;
+      currentAudio.pause();
+    } else {
+      currentAudio.volume = effectiveVolume();
+      // Rejection here just means the browser won't resume without a fresh
+      // gesture; the next track change will try again. Never throw.
+      currentAudio.play().catch(() => {});
+    }
+  }
+  function isFocusSuspended() { return focusSuspended; }
+
   /**
    * Public: pin playback to one specific track (by its "race_situation_n" or
    * "neutral_n" key, as returned by getAvailableTracks), looping it directly
@@ -635,6 +678,8 @@ window.MusicSystem = (function () {
     getMusicVolume: () => musicVolume,
     setMuted,
     isMuted,
+    setFocusSuspended,
+    isFocusSuspended,
     setManualTrack,
     getManualTrack,
     getAvailableTracks,

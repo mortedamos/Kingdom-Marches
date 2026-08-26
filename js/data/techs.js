@@ -257,7 +257,7 @@ window.GameData.TECHS = {
   marketcraft: {
     id: "marketcraft", label: "Marketcraft", category: "building", layer: 1, cost: 20,
     prereqs: [], raceOnly: "human",
-    description: "Unlocks the Bazaar. While at least one is built, the location of every rival kingdom's cities is revealed on the map.",
+    description: "Unlocks the Bazaar. A city with a Bazaar can spend resources to Expedite Unit Build, cutting one turn off the unit it is currently building.",
     costBreakdown: { coin: 12, harvest: 8 },
     effects: [
       { type: "unlock_building", building: "bazaar" },

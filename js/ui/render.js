@@ -19,7 +19,15 @@ window.UI = window.UI || {};
   const MAX_ZOOM = window.GameConfig.view.maxZoom;
   const RUIN_ICON_SCALE = .75; // ruins read as a little bigger than a tile-fill resource icon (see per-resource iconScale in terrain.js)
   const CAVE_ICON_SCALE = .75; // same treatment as Ruin -- caves reuse Ruin's old art 1:1 (see doc/art_style_guide.md's Ruin entry)
-  const MOVE_ANIM_MS = window.GameConfig.view.moveAnimMs; // purely visual glide duration for unit movement
+  const MOVE_ANIM_MS = window.GameConfig.view.moveAnimMs; // purely visual glide duration for a ONE-tile hop
+  // Multi-tile routes (see getVisualPos) use a shorter per-step time and a
+  // ceiling on the whole walk, so a long march reads as a march rather than
+  // a slideshow. MOVE_STEP_MIN_MS is the floor that ceiling may compress to
+  // -- below roughly this, consecutive steps blur into the straight-line
+  // glide this whole mechanism exists to replace.
+  const MOVE_STEP_MS = window.GameConfig.view.moveStepAnimMs;
+  const MOVE_ANIM_MAX_MS = window.GameConfig.view.moveAnimMaxMs;
+  const MOVE_STEP_MIN_MS = 60;
   // Very slight footstep bounce while a unit glides between tiles
   // (2026-08-18, user-requested) -- see getVisualPos's `bounce` field and
   // the unit draw loop below for where this gets applied. CYCLES is how
@@ -41,12 +49,64 @@ window.UI = window.UI || {};
    * Units move instantly in game logic (a whole turn resolves in one call),
    * but the map re-renders every animation frame regardless of turn timing.
    * This tracks each unit's on-screen ("visual") position separately from
-   * its logical grid position, and glides visual->logical over MOVE_ANIM_MS
-   * whenever the logical position changes -- so a unit slides to its
-   * destination instead of popping there instantly. Purely cosmetic state,
-   * stored on the unit object itself (mirrors the pattern used for other
-   * transient per-unit tracking fields like _lastRitualX).
+   * its logical grid position and animates visual->logical whenever the
+   * logical position changes -- so a unit travels to its destination instead
+   * of popping there instantly. Purely cosmetic state, stored on the unit
+   * object itself (mirrors the pattern used for other transient per-unit
+   * tracking fields like _lastRitualX).
+   *
+   * WALKING THE ROUTE, NOT CUTTING ACROSS IT (2026-08-26, user-requested)
+   * A move used to be animated as a single straight-line glide from the old
+   * tile to the new one. For any move longer than one tile that line is a
+   * lie: the unit's real route detours around mountains, bays and walls, so
+   * the glide slid it straight over terrain it never actually crossed. So
+   * ai.js's spendMovement -- the one funnel every move (player and AI alike)
+   * goes through -- now records the tiles it actually stepped on as
+   * unit._walkPath, and this walks that list one leg at a time.
+   *
+   * _walkSeq (bumped by spendMovement per move) is what identifies a NEW
+   * route: a position change alone can't, since a route may legitimately end
+   * on the tile a previous one did. Moves with no recorded path -- a
+   * teleport, a Deep Gate jump, a spawn, a unit yanked to a tile by ai.js
+   * writing unit.x/unit.y directly -- still fall back to the original
+   * straight-line glide, which is the right look for them anyway.
    */
+
+  /** Per-leg duration for a route of `steps` legs -- the slower, more
+   *  deliberate MOVE_ANIM_MS for a single hop, and a compressed
+   *  MOVE_STEP_MS for a real march, itself squeezed further (never below
+   *  MOVE_STEP_MIN_MS) so the whole walk fits inside MOVE_ANIM_MAX_MS. */
+  function stepDurationFor(steps) {
+    if (steps <= 1) return MOVE_ANIM_MS;
+    return Math.max(MOVE_STEP_MIN_MS, Math.min(MOVE_STEP_MS, MOVE_ANIM_MAX_MS / steps));
+  }
+
+  /** Starts a fresh animation for `unit` along `path` (a list of {x,y}
+   *  tiles, origin first). The first leg starts from wherever the unit is
+   *  currently DRAWN rather than from path[0], so interrupting a walk in
+   *  progress re-aims from the visible position instead of snapping back.
+   *
+   *  The route is only guaranteed to end where the unit ACTUALLY is if
+   *  nothing relocated it after spendMovement returned -- a sprung trap, a
+   *  landing-spot nudge (ai.js writes unit.x/unit.y directly in a few
+   *  places) or a cave/gate jump all can. A final leg to the unit's real
+   *  tile is appended whenever they disagree, so the animation can never
+   *  park the sprite somewhere the unit isn't. */
+  function beginWalk(unit, path, now) {
+    const end = path[path.length - 1];
+    const legs = (end.x === unit.x && end.y === unit.y)
+      ? path
+      : path.concat([{ x: unit.x, y: unit.y }]);
+    unit._walkLegs = legs;
+    unit._walkLegIndex = 0;
+    unit._walkStepMs = stepDurationFor(legs.length - 1);
+    unit._animFromX = unit._renderX;
+    unit._animFromY = unit._renderY;
+    unit._animToX = legs[1].x;
+    unit._animToY = legs[1].y;
+    unit._animStart = now;
+  }
+
   function getVisualPos(unit) {
     const now = performance.now();
     if (unit._lastLogicalX === undefined) {
@@ -56,20 +116,46 @@ window.UI = window.UI || {};
       unit._renderX = unit.x;
       unit._renderY = unit.y;
       unit._animStart = 0;
+      unit._walkLegs = null;
+      unit._lastWalkSeq = unit._walkSeq || 0;
+    } else if ((unit._walkSeq || 0) !== unit._lastWalkSeq
+        && unit._walkPath && unit._walkPath.length > 1) {
+      // A recorded route this renderer hasn't animated yet -- walk it.
+      unit._lastWalkSeq = unit._walkSeq || 0;
+      unit._lastLogicalX = unit.x;
+      unit._lastLogicalY = unit.y;
+      beginWalk(unit, unit._walkPath, now);
     } else if (unit.x !== unit._lastLogicalX || unit.y !== unit._lastLogicalY) {
-      // Logical position changed since we last checked -- glide from wherever
-      // it's currently drawn (in case a prior glide was interrupted) to the new spot.
+      // Position changed with no route behind it (teleport, gate jump, a
+      // direct unit.x/unit.y write) -- glide from wherever it's currently
+      // drawn (in case a prior animation was interrupted) to the new spot.
+      unit._walkLegs = null;
       unit._animFromX = unit._renderX;
       unit._animFromY = unit._renderY;
       unit._animToX = unit.x;
       unit._animToY = unit.y;
       unit._animStart = now;
+      unit._walkStepMs = MOVE_ANIM_MS;
       unit._lastLogicalX = unit.x;
       unit._lastLogicalY = unit.y;
     }
     let bounce = 0;
     if (unit._animStart) {
-      const t = Math.min(1, (now - unit._animStart) / MOVE_ANIM_MS);
+      const legMs = unit._walkStepMs || MOVE_ANIM_MS;
+      let t = Math.min(1, (now - unit._animStart) / legMs);
+      // Advance through however many legs elapsed since the last frame --
+      // a loop, not a single step, so a dropped frame (or a background tab
+      // resuming) skips ahead along the route instead of stalling on one
+      // leg and stretching the walk out by the time it was away.
+      while (t >= 1 && unit._walkLegs && unit._walkLegIndex + 2 < unit._walkLegs.length) {
+        unit._walkLegIndex++;
+        unit._animStart += legMs;
+        unit._animFromX = unit._walkLegs[unit._walkLegIndex].x;
+        unit._animFromY = unit._walkLegs[unit._walkLegIndex].y;
+        unit._animToX = unit._walkLegs[unit._walkLegIndex + 1].x;
+        unit._animToY = unit._walkLegs[unit._walkLegIndex + 1].y;
+        t = Math.min(1, (now - unit._animStart) / legMs);
+      }
       unit._renderX = unit._animFromX + (unit._animToX - unit._animFromX) * t;
       unit._renderY = unit._animFromY + (unit._animToY - unit._animFromY) * t;
       // Footstep bounce (see WALK_BOUNCE_CYCLES/AMOUNT above) -- abs(sin(...))
@@ -81,7 +167,10 @@ window.UI = window.UI || {};
       if (!(window.UI.motion && window.UI.motion.isReduced())) {
         bounce = Math.abs(Math.sin(t * Math.PI * WALK_BOUNCE_CYCLES)) * WALK_BOUNCE_AMOUNT;
       }
-      if (t >= 1) unit._animStart = 0;
+      if (t >= 1) {
+        unit._animStart = 0;
+        unit._walkLegs = null;
+      }
     }
     return { x: unit._renderX, y: unit._renderY, bounce };
   }
@@ -850,6 +939,19 @@ window.UI = window.UI || {};
             ctx.fillStyle = "#5fbf5f";
             ctx.fillRect(bx, by, bw * Math.max(0, s.hp) / s.maxHp, bh);
           }
+          // Selected-structure outline (2026-08-26): the unit and city
+          // passes have always drawn one for their own selection; a
+          // structure had none at all, so clicking a wall or a building
+          // lit up the sidebar and changed nothing on the map. Same
+          // solid-yellow box as the other two. selectedStructure is
+          // findStructureAt's {civ, city, record, building} wrapper, so
+          // identity is compared against `.record`, the object this loop
+          // actually iterates.
+          if (selectedStructure && selectedStructure.record === s) {
+            ctx.strokeStyle = "#ffeb3b";
+            ctx.lineWidth = 2;
+            ctx.strokeRect(screenX + 1, screenY + 1, ts - 2, ts - 2);
+          }
           // Floating text anchored to a STRUCTURE record rather than a unit
           // (burning walls/buildings) -- matched by object identity against
           // activeFloatingTexts, same convention as the per-unit queue
@@ -1156,10 +1258,49 @@ window.UI = window.UI || {};
     for (const { unit, screenX, screenY } of floatingTextQueue) {
       overlays.drawFloatingTexts(ctx, unit, screenX, screenY, ts, now);
     }
+    // The selected TILE itself, always -- see drawSelectedTileMarker.
+    drawSelectedTileMarker(ctx, viewState, offsetX, offsetY, ts);
     if (selectionLabel) {
       drawSelectionLabel(ctx, selectionLabel.text,
         selectionLabel.x * ts + offsetX + ts / 2, selectionLabel.y * ts + offsetY);
     }
+  }
+
+  /**
+   * Dashed outline on the tile the player currently has selected
+   * (2026-08-26, user-reported: "sometimes I can see it is selected in the
+   * side bar but not on the map").
+   *
+   * Every other selection cue in this file is drawn from INSIDE the loop
+   * that draws the selected thing -- the yellow box around a selected unit
+   * comes from the unit pass, the one around a city from the city pass. So
+   * any selection whose subject isn't drawn this frame silently loses its
+   * cue while the sidebar happily keeps showing it. That happens for real,
+   * in several ordinary ways: a passenger aboard a carrier (skipped by the
+   * unit pass entirely, `unit.carriedBy`), anything on a tile that isn't
+   * currently visible (all three passes skip fogged tiles, but input.js's
+   * buildTileTabs doesn't), a selected STRUCTURE (which had no outline
+   * anywhere at all until this change -- see the structure pass), and in 3D
+   * any billboard whose texture hasn't finished loading.
+   *
+   * Rather than chase each of those, this draws off viewState.selection --
+   * the one piece of state that is true whenever the sidebar shows
+   * anything at all -- so the map can never disagree with the sidebar about
+   * WHERE the selection is, whatever is or isn't standing there. Dashed and
+   * inset so it reads as secondary to the solid box on the specific subject
+   * rather than competing with it, and deliberately NOT fog-gated: it marks
+   * where the player clicked, which is worth showing even on a tile they
+   * can't currently see into.
+   */
+  function drawSelectedTileMarker(ctx, viewState, offsetX, offsetY, ts) {
+    const sel = viewState.selection;
+    if (!sel) return;
+    ctx.save();
+    ctx.strokeStyle = "rgba(255, 235, 59, 0.75)";
+    ctx.lineWidth = 2;
+    ctx.setLineDash([5, 4]);
+    ctx.strokeRect(sel.x * ts + offsetX + 1, sel.y * ts + offsetY + 1, ts - 2, ts - 2);
+    ctx.restore();
   }
 
   /** Persistent name label above the selected unit/city/structure. Wraps

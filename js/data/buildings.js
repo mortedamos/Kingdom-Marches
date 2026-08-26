@@ -51,9 +51,14 @@ window.GameData = window.GameData || {};
 
 window.GameData.BUILDINGS = {
   // ---------- HUMAN — see tech_tree_design.md for the full tree ----------
-  // No yield/yieldPct: "Traders' Talk" reveals every rival civ's city tile
-  // on the map -- merchant gossip as map knowledge, not income. See
-  // turns.js's refreshVisibility, gated on civHasBuiltBuilding.
+  // No yield/yieldPct: grants its OWN city the "Expedite Unit Build" action
+  // -- pay stockpile to cut a turn off the unit it's building, once per turn
+  // (see cities.js's applyExpediteBuild, gated on cityHasStructure).
+  // 2026-08-26, user-directed: replaces "Traders' Talk", which revealed every
+  // rival civ's city tile while any one Bazaar stood. That effect didn't
+  // stack (the second Bazaar did nothing) and self-obsoleted once the map was
+  // known; this one is per-city, stacks by building more, and is what a
+  // market is for -- turning coin into labour.
   bazaar: {
     id: "bazaar", label: "Bazaar", symbol: "$", raceOnly: "human",
     coinCost: 20, maxHp: 24,

@@ -317,10 +317,18 @@ window.UI = window.UI || {};
       const turnsTag = item.turnsRemaining !== undefined
         ? `${item.turnsRemaining} turn${item.turnsRemaining === 1 ? "" : "s"} left`
         : `${buildQueuePct(item)}%`;
+      // Receipt for a turn already bought this turn via the Bazaar's
+      // "Expedite Unit Build" (see cities.js's applyExpediteBuild). Same
+      // "the action is a ring pill, the receipt lives here" split every
+      // other city action in this panel uses -- and it's what tells the
+      // player why the pill has gone until next turn.
+      const expediteHtml = window.GameEngine.cities.isExpeditingBuild(city, gameState)
+        ? `<div class="stat-row"><span>Expedited</span><span>-1 turn this turn</span></div>` : '';
       return `<h3>Building</h3>
         ${autoHtml}
         <div class="stat-row"><span>${escapeHtml(label)}${placeTag}</span><span>${escapeHtml(turnsTag)}</span></div>
         <div class="build-progress"><div class="build-progress-fill" style="width:${buildQueuePct(item)}%"></div></div>
+        ${expediteHtml}
         ${hint}`;
     }
 
@@ -519,7 +527,7 @@ window.UI = window.UI || {};
    *  off ANY standing copy rather than only in this structure's own city. */
   const BUILDING_EFFECT_TEXT = {
     // Human
-    bazaar: ["reveals rival kingdoms' cities (kingdom-wide)"],
+    bazaar: ["this city can pay to Expedite Unit Build (-1 turn)"],
     guild_hall: ["units built here get a free level-up"],
     mage_college: ["75% chance/turn to strike an enemy within 5 for 3 attack"],
     // Elf

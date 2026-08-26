@@ -65,9 +65,9 @@ window.GameConfig = {
     /** Local date this build was cut, YYYY-MM-DD. */
     date: "2026-08-26",
     /** Local time this build was cut, 24-hour HH:MM. */
-    time: "08:44",
+    time: "10:32",
     /** Monotonic build counter -- increment it, don't recompute it. */
-    number: 172,
+    number: 173,
   },
 
   // =========================================================================
@@ -369,6 +369,22 @@ window.GameConfig = {
      *  instead of it. */
     researchBoostCostBase: { coin: 5, lore: 2 },
     researchBoostCostPerPop: { coin: 2, lore: 1 },
+
+    /** "Expedite Unit Build" (see cities.js's applyExpediteBuild) -- the
+     *  Human Bazaar's city action: pay stockpile to knock one turn off the
+     *  unit this city is currently building.
+     *
+     *  The price is ONE TURN'S SHARE of that unit's own up-front cost
+     *  (cost / totalTurns), times this multiplier. Deriving it from the unit
+     *  rather than from a flat base is what keeps it honest at both ends of
+     *  the roster: rushing a Militia is cheap, rushing a Dragon is not, and
+     *  nothing has to be re-tuned when a unit's cost changes. Above 1.0
+     *  because buying a turn is a premium over doing the work -- at 1.5 you
+     *  pay 150% of a turn's labour to skip it, so expediting a build from
+     *  start to finish costs about half the unit again on top of its price.
+     *  Lower this to make rush-buying a routine tempo play; raise it to make
+     *  it an emergency lever. */
+    expediteCostMult: 3,
 
     /** How readily an AI city spends an otherwise-WASTED turn on a Research
      *  boost, as `min(1, race.curiosity * this)` -- see ai.js's
@@ -911,8 +927,25 @@ window.GameConfig = {
      *  revert (see js/ui/input.js's wheel handler). */
     wheelZooms: true,
 
-    /** Purely visual glide duration for a unit moving between tiles. */
+    /** Purely visual glide duration for a unit moving between ONE pair of
+     *  adjacent tiles. A unit that walks several tiles in a turn animates
+     *  the whole route step by step (see render.js's getVisualPos and
+     *  ai.js's spendMovement, which records the tiles actually walked), so
+     *  this is a per-STEP duration, not the duration of a whole move. */
     moveAnimMs: 350,
+
+    /** Per-step duration used INSTEAD of moveAnimMs once a route is longer
+     *  than one tile. A full 350ms per tile makes a six-tile march take over
+     *  two seconds, which reads as sluggish when a whole AI civ is moving; a
+     *  single hop still gets the slower, more deliberate moveAnimMs. */
+    moveStepAnimMs: 170,
+
+    /** Hard ceiling on how long one unit's whole multi-tile walk may take.
+     *  A mounted unit crossing ten tiles of road compresses its per-step
+     *  time to fit inside this instead of holding the eye for seconds;
+     *  render.js's MOVE_STEP_MIN_MS keeps that compression from collapsing
+     *  the walk into an invisible blur. */
+    moveAnimMaxMs: 1500,
 
     /**
      * Drifting cloud layer -- purely cosmetic atmosphere drawn on its own

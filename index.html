@@ -118,6 +118,20 @@
       <div class="title-content">
         <img class="title-logo" src="assets/img/logo.png" alt="Kingdom Marches">
         <button id="title-options-btn" class="title-options-btn">Begin</button>
+        <!-- Mute Audio (2026-08-26, user-directed): replaces the Game
+             Options modal's old "Audio" section, which held nothing but a
+             Play/Stop Title Music toggle. Sitting under Begin rather than
+             behind a menu means it can be set BEFORE the click that starts
+             title music, which is the moment it actually matters. Drives
+             the same setGlobalMuted/syncAllMuteControls pair as the menu
+             bar's Mute checkbox and the "M" shortcut, so all three always
+             agree (see main.js's setupTitleAudioControls). -->
+        <div>
+          <label class="title-mute-row">
+            <input type="checkbox" id="title-mute-checkbox">
+            <span>Mute Audio</span>
+          </label>
+        </div>
       </div>
       <!-- "Which copy of the game is this" -- moved here from under the
            Start Game button inside the Game Options modal (2026-08-07,

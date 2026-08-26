@@ -133,21 +133,16 @@
       const code = titleAudio.error?.code ?? 0;
       console.error(`[title music] load failed for ${src}: ${MEDIA_ERROR_MEANING[code] || "unknown error"} (code ${code})`);
       console.error(`[title music] open ${new URL(src, location.href).href} directly to see what the server returns`);
-      // Drop the element so the next click builds a FRESH one (with the
+      // Drop the element so the next attempt builds a FRESH one (with the
       // cache-buster above) rather than retrying a permanently-errored one.
       titleAudio = null;
-      setMusicBtnState("error");
     });
     titleAudio.addEventListener("canplay", () =>
       console.log("[title music] canplay — file buffered and ready to play"));
-    titleAudio.addEventListener("playing", () => {
-      console.log("[title music] playing event — audio output confirmed");
-      setMusicBtnState("playing");
-    });
-    titleAudio.addEventListener("pause", () => {
-      console.log("[title music] paused");
-      setMusicBtnState("idle");
-    });
+    titleAudio.addEventListener("playing", () =>
+      console.log("[title music] playing event — audio output confirmed"));
+    titleAudio.addEventListener("pause", () =>
+      console.log("[title music] paused"));
     return titleAudio;
   }
 
@@ -169,26 +164,13 @@
       .catch((err) => {
         console.warn(`[title music] play() rejected — ${err.name}: ${err.message}`);
         // Only NotAllowedError is a real autoplay block. Anything else
-        // (typically NotSupportedError, which follows a failed load) means
-        // the error listener above has already logged the true cause and put
-        // the button into its retry state -- resetting to "idle" here would
-        // clobber that and wrongly blame autoplay for a missing file.
+        // (typically NotSupportedError, which follows a failed load) has
+        // already been logged with its true cause by the error listener
+        // above, so there's nothing to add here.
         if (err.name === "NotAllowedError") {
-          console.warn("[title music] autoplay blocked; click the button to start");
-          setMusicBtnState("idle");
+          console.warn("[title music] autoplay blocked; needs another user gesture");
         }
       });
-  }
-
-  function toggleTitleMusic() {
-    const audio = initTitleAudio();
-    if (!audio.paused) {
-      console.log("[title music] button: pausing");
-      audio.pause();
-    } else {
-      console.log("[title music] button: playing");
-      playTitleMusic();
-    }
   }
 
   function stopTitleMusic() {
@@ -196,23 +178,6 @@
     console.log("[title music] fading out for game start");
     const audio = titleAudio;
     fadeAudioTo(audio, 0, 1000, () => audio.pause());
-  }
-
-  function setMusicBtnState(state) {
-    const btn = document.getElementById("title-music-btn");
-    if (!btn) return;
-    if (state === "playing") {
-      btn.textContent = "♪ Stop Title Music";
-      btn.disabled    = false;
-    } else if (state === "idle") {
-      btn.textContent = "♪ Play Title Music";
-      btn.disabled    = false;
-    } else if (state === "error") {
-      // Stays CLICKABLE -- clicking rebuilds the element with a cache-buster
-      // (see initTitleAudio). The console line names the real cause.
-      btn.textContent = "♪ Music failed — click to retry";
-      btn.disabled    = false;
-    }
   }
 
   function fadeAudioTo(audio, targetVolume, durationMs, onDone) {
@@ -442,12 +407,6 @@
           <input type="text" id="seed-input" placeholder="random">
         </label>
         <p class="launch-hint">Leave the seed blank for a random map, or reuse one to replay the same world.</p>
-      </div>
-
-      <div class="launch-section">
-        <div class="launch-section-label">Audio</div>
-        <button id="title-music-btn" class="launch-music-btn">♪ Play Title Music</button>
-        <p class="launch-hint">In-game music and sound effect volumes are under the Audio menu once a game starts.</p>
       </div>
       </div>
 
@@ -848,11 +807,6 @@
 
     $("start-game-btn").addEventListener("click", startGame);
 
-    $("title-music-btn").addEventListener("click", () => {
-      console.log("[title music] button clicked");
-      toggleTitleMusic();
-    });
-
     setupLaunchOptionsOverlay();
     setupCreditsOverlay();
     setupContextMenuDismissal();
@@ -862,6 +816,7 @@
     setupKnowledgeBase();
     setupTitleMenuBar();
     setupTitleAudioControls();
+    setupFocusMuting();
     setupTitleLoadGameControl();
     setupMotionControls();
   }
@@ -908,10 +863,10 @@
    *  the in-game checkbox before a game starts, is just skipped). */
   function syncAllMuteControls() {
     const muted = window.MusicSystem.isMuted();
-    const titleCheckbox = $("title-menu-audio-mute-checkbox");
-    if (titleCheckbox) titleCheckbox.checked = muted;
-    const gameCheckbox = $("audio-mute-checkbox");
-    if (gameCheckbox) gameCheckbox.checked = muted;
+    for (const id of ["title-menu-audio-mute-checkbox", "title-mute-checkbox", "audio-mute-checkbox"]) {
+      const el = $(id);
+      if (el) el.checked = muted;
+    }
   }
   function setGlobalMuted(muted) {
     window.MusicSystem.setMuted(muted);
@@ -927,6 +882,68 @@
     syncAllMuteControls();
   }
 
+  /**
+   * FOCUS MUTING (2026-08-26, user-reported: "in mobile view the sound and
+   * music continue when the user does not have focus on the browser window.
+   * Detect if the window has focus. If not, mute.")
+   * ----------------------------------------------------------------------
+   * Two signals, because neither alone covers both platforms: `blur`/`focus`
+   * is what fires when a desktop player switches to another window (the tab
+   * is still visible, so visibilitychange never fires), and
+   * `visibilitychange` is what fires when a phone backgrounds the browser or
+   * the player switches tabs (blur is not reliably delivered there). Both
+   * funnel through the same resolver so the two can't disagree.
+   *
+   * Deliberately NOT routed through setGlobalMuted: that is the player's own
+   * mute preference -- persisted, mirrored into every mute checkbox, and
+   * theirs to set. A tab switch must leave it exactly as they left it, so
+   * the audio systems carry a separate "suspended" flag that stacks on top
+   * of it (see music.js/sfx.js's setFocusSuspended). Coming back therefore
+   * restores whatever the player chose, muted or not.
+   *
+   * titleAudio is handled here rather than in music.js because it is a
+   * standalone <audio> element outside MusicSystem entirely (see
+   * initTitleAudio) -- the same reason setGlobalMuted has to poke at it by
+   * hand. Whether it was actually PLAYING is captured on the way out, so
+   * coming back doesn't start title music that wasn't running.
+   */
+  let audioFocusSuspended = false;
+  let titleAudioWasPlaying = false;
+
+  function windowHasAudioFocus() {
+    if (typeof document === "undefined") return true;
+    if (document.visibilityState === "hidden") return false;
+    return typeof document.hasFocus === "function" ? document.hasFocus() : true;
+  }
+
+  function applyAudioFocus() {
+    const suspended = !windowHasAudioFocus();
+    if (suspended === audioFocusSuspended) return;
+    audioFocusSuspended = suspended;
+    window.MusicSystem.setFocusSuspended(suspended);
+    window.SfxSystem.setFocusSuspended(suspended);
+    if (!titleAudio) return;
+    if (suspended) {
+      titleAudioWasPlaying = !titleAudio.paused;
+      titleAudio.volume = 0;
+      titleAudio.pause();
+    } else if (titleAudioWasPlaying && !titleAudioMuted) {
+      titleAudio.volume = 1.0;
+      titleAudio.play().catch(() => { /* needs a fresh gesture -- nothing to do */ });
+    }
+  }
+
+  function setupFocusMuting() {
+    window.addEventListener("blur", applyAudioFocus);
+    window.addEventListener("focus", applyAudioFocus);
+    document.addEventListener("visibilitychange", applyAudioFocus);
+    // pagehide covers the iOS/Android case where a tab is frozen without a
+    // visibilitychange ever landing; pageshow is its restore counterpart
+    // (including a back-forward-cache restore, where no focus event fires).
+    window.addEventListener("pagehide", applyAudioFocus);
+    window.addEventListener("pageshow", applyAudioFocus);
+  }
+
   /** Title menu bar's Audio dropdown -- same Mute/Music/SFX controls as the
    *  in-game Audio menu (setupAudioControls), just without "Now Playing" or
    *  "Track" (nothing is playing/selectable until a race is actually in a
@@ -935,8 +952,14 @@
    *  setGlobalMuted/syncAllMuteControls above so it never disagrees with the
    *  standalone "Mute Sound" button. */
   function setupTitleAudioControls() {
+    // The splash screen's own "Mute Audio" box, under Begin. Wired first and
+    // separately from the menu-bar controls below, which early-return
+    // together if their dropdown isn't in the DOM.
+    const splashMute = $("title-mute-checkbox");
+    if (splashMute) splashMute.addEventListener("change", () => setGlobalMuted(splashMute.checked));
+
     const checkbox = $("title-menu-audio-mute-checkbox");
-    if (!checkbox) return;
+    if (!checkbox) { syncAllMuteControls(); return; }
     syncAllMuteControls();
     checkbox.addEventListener("change", () => setGlobalMuted(checkbox.checked));
 
@@ -1012,10 +1035,9 @@
       overlay.style.display = "flex";
       // Start title music the moment "Begin" is clicked -- a click IS a real
       // user gesture, so this satisfies the browser's autoplay-permission
-      // requirement the same way a direct button press would; playTitleMusic
-      // (not toggleTitleMusic) since re-opening this modal on a later click
-      // should never STOP music that's already playing -- play() on an
-      // already-playing element is already a harmless no-op.
+      // requirement the same way a direct button press would. Re-opening
+      // this modal on a later click never STOPS music that's already
+      // playing -- play() on an already-playing element is a harmless no-op.
       playTitleMusic();
     };
     const close = () => { overlay.style.display = "none"; };
@@ -4734,6 +4756,9 @@
       case "city:spreadCulture":
         handleSpreadCulture(city);
         break;
+      case "city:expediteBuild":
+        handleExpediteBuild(city);
+        break;
       case "city:toggleAutomate":
         handleToggleAutomateCity(city);
         break;
@@ -5563,6 +5588,20 @@
     const civ = humanCivId && gameState.civs[humanCivId];
     if (!civ || !city || city.civId !== humanCivId) return;
     if (!window.GameEngine.cities.applyCultureSpread(city, civ, gameState)) return;
+    redraw();
+  }
+
+  /** "Expedite Unit Build" -- the Human Bazaar's city action (see cities.js's
+   *  applyExpediteBuild). Same shape as handleSpreadCulture just above: paid
+   *  from stockpile rather than the city's production turn, so it neither
+   *  spends this city's build slot nor moves the selection anywhere -- the
+   *  player is most likely to want to look at (or expedite again next turn)
+   *  the very city they just clicked. */
+  function handleExpediteBuild(city) {
+    const civ = humanCivId && gameState.civs[humanCivId];
+    if (!civ || !city || city.civId !== humanCivId) return;
+    if (!window.GameEngine.cities.applyExpediteBuild(city, civ, gameState)) return;
+    window.SfxSystem.playConfirmAction();
     redraw();
   }
 

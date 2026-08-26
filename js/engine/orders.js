@@ -1346,6 +1346,20 @@ window.GameEngine = window.GameEngine || {};
     // A city already building something has spent its production; the only
     // thing left to decide is whether to abandon it.
     if (city.buildQueue) {
+      // "Expedite Unit Build" -- the Human Bazaar's city action (see
+      // cities.js's applyExpediteBuild). Offered only where it can actually
+      // do something: canExpediteBuild covers the Bazaar, the unit-only
+      // scope and the ">1 turn left" floor, expediteBuildCost prices it, and
+      // the stockpile check below matches Spread Culture's own convention of
+      // hiding a pill the civ can't pay for rather than offering a dead one.
+      const expediteCost = !cities.isExpeditingBuild(city, gameState)
+        ? cities.expediteBuildCost(city, civ) : null;
+      if (expediteCost && Object.entries(expediteCost)
+          .every(([k, v]) => ((civ.stockpile && civ.stockpile[k]) || 0) >= v)) {
+        const expediteLabel = Object.entries(expediteCost)
+          .map(([k, v]) => `${Math.ceil(v)}${k[0].toUpperCase()}`).join(" ");
+        options.push({ kind: "city:expediteBuild", label: `Expedite Unit Build (-1 turn, -${expediteLabel})` });
+      }
       options.push({ kind: "city:cancelBuild", label: "Cancel Build", danger: true });
     } else if (!cities.isProducingResources(city, gameState)) {
       const builds = window.GameEngine.ai.availableBuilds(civ, city, gameState);
@@ -1561,6 +1575,10 @@ window.GameEngine = window.GameEngine || {};
       city.buildQueue = {
         kind: option.kind, id: option.id,
         turnsRemaining: option.turns, totalTurns: option.turns,
+        // The price actually paid, kept for "Expedite Unit Build" to take a
+        // per-turn share of -- see cities.js's expediteBuildCost and the
+        // matching stamp in ai.js's maybeBuildInCities.
+        cost: { ...option.cost },
       };
     } else {
       city.buildQueue = {

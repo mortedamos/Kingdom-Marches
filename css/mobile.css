@@ -717,18 +717,53 @@ body.mobile .knowledge-nav-item {
    ring-drag handling in attach() for the touch-move/haptic side of this;
    these rules are its visual half.
 
-   ringmenu.js's layout() already grows PILL_H/PITCH to 44px/52px under
-   body.mobile, so the geometry and this height agree without either module
-   knowing about the other's number directly -- both just read the same
-   mobile flag.
+   ringmenu.js's layout() already grows PILL_H to 44px under body.mobile, so
+   the geometry and this height agree without either module knowing about
+   the other's number directly -- both just read the same mobile flag.
+
+   TYPE AND PADDING (2026-08-26, user-reported: "the text of the ring menu
+   often appears truncated within the menu option, making it unreadable")
+   The mobile pill used to be set LARGER than the desktop one -- 13px type
+   in 14px of side padding -- while the space available to it is a fraction
+   of a desktop window's. Every px of padding is a px the label doesn't get,
+   and a single nowrap line then ellipsized most real labels ("Build Road to
+   This Tile", "Gather More Resources") down to nothing useful.
+
+   Three changes, in order of how much each buys:
+     - the label wraps to TWO lines instead of ellipsizing on one. A 44px
+       touch target has room for two 11px lines with air to spare, so this
+       roughly doubles what fits at no cost in target size.
+     - smaller type (11px) and tighter padding (9px), which is a further
+       ~30% more characters per line.
+     - the keyboard-shortcut badge is hidden outright -- a phone has no
+       keyboard, so it was pure width tax.
    -------------------------------------------------------------------------- */
 
 body.mobile .map-ring-item {
   height: 44px;
-  padding: 0 14px;
-  font-size: 13px;
+  padding: 0 9px;
+  font-size: 11px;
   border-radius: 22px;
 }
+/* -webkit-box + line-clamp is the only widely-supported way to cap wrapped
+   text at N lines; it's implemented in every engine this game runs on
+   (including Firefox since 68), and `overflow: hidden` on the pill keeps
+   the failure mode graceful anywhere it isn't. The flex parent still
+   vertically centres this box inside the 44px pill. */
+body.mobile .map-ring-item-label {
+  white-space: normal;
+  line-height: 1.2;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  text-overflow: clip;
+}
+body.mobile .map-ring-item-shortcut { display: none; }
+/* The listed fallback gets the same treatment, and drops the desktop
+   min-width -- on a phone the list is sized by applyList's own maxWidth
+   against the map area, and a 170px floor could push it past that. */
+body.mobile .map-ring-item-listed { min-width: 0; }
 
 /* The pill currently under the dragging finger -- input.js toggles this as
    the finger crosses from one pill to the next, WITHOUT firing a real

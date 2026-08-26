@@ -2663,7 +2663,20 @@ window.UI = window.UI || {};
     const hud = ctx.canvas;
     ctx.clearRect(0, 0, hud.width, hud.height);
     const overlays = window.UI.overlays;
-    const { selectedUnit, selectedCity, humanCivId } = viewState;
+    const { selectedUnit, selectedCity, selectedStructure, humanCivId } = viewState;
+
+    // Selected-tile marker -- the 3D twin of render.js's
+    // drawSelectedTileMarker (see that function for the full rationale).
+    // It matters MORE here than in 2D: every selection ring below is drawn
+    // from the per-billboard loop, so a subject whose texture hasn't loaded
+    // yet, or whose anchor projects behind the camera, silently loses its
+    // ring while the sidebar keeps showing it selected. This is drawn off
+    // viewState.selection instead, which is always true whenever the
+    // sidebar shows anything at all. Radius 0 = the tile's own footprint.
+    if (viewState.selection) {
+      strokeProjectedFootprint(ctx, canvas, map,
+        viewState.selection.x, viewState.selection.y, 0, "#ffeb3b", 0.75, true);
+    }
 
     // Tile City Score debug overlay (Interface menu) -- independent of the
     // CURRENT viewer's own fog, same as render.js's own tileScoreMemory
@@ -2759,6 +2772,15 @@ window.UI = window.UI || {};
           const bx = boxX + barPad, by = boxY + boxSize - barPad - bh;
           ctx.fillStyle = "rgba(0,0,0,0.6)"; ctx.fillRect(bx, by, bw, bh);
           ctx.fillStyle = "#5fbf5f"; ctx.fillRect(bx, by, bw * Math.max(0, s.hp) / s.maxHp, bh);
+        }
+        // Selection ring -- structures had none in either renderer until
+        // 2026-08-26 (see render.js's structure pass). selectedStructure is
+        // findStructureAt's {civ, city, record, building} wrapper, so
+        // identity is compared against `.record`, which is what
+        // collectBillboards puts on b.structure.
+        if (selectedStructure && selectedStructure.record === s) {
+          ctx.strokeStyle = "#ffeb3b"; ctx.lineWidth = 2;
+          ctx.strokeRect(boxX + 1, boxY + 1, boxSize - 2, boxSize - 2);
         }
         if (overlays.hasActiveFloatingText(s)) floatQueue.push({ unit: s, screenX, screenY, ts });
       } else if (b.kind === "city") {

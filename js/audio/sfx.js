@@ -59,6 +59,11 @@ window.SfxSystem = (function () {
   let masterVolume = 1.0;
   let sfxVolume = 1.0;
   let muted = false;
+  // Window/tab focus suspension -- mirrors music.js's own flag exactly (see
+  // its comment for why this is separate from `muted` rather than driving
+  // it). Every entry point below returns early while it's set, so an
+  // off-screen tab doesn't even allocate voices, let alone play them.
+  let focusSuspended = false;
   // Optional (x, y) -> boolean predicate, registered by main.js once a game
   // is running (see setVisibilityCheck) -- lets playAction() skip sounds for
   // units currently off-screen. null = no gating, e.g. before a game starts,
@@ -219,6 +224,9 @@ window.SfxSystem = (function () {
    *  instead of overlapping it. */
   function playAction(raceId, unitId, action, x, y, delayMs) {
     if (delayMs) { setTimeout(() => playAction(raceId, unitId, action, x, y), delayMs); return; }
+    // Re-checked AFTER the delay resolves, not before it -- the point is
+    // whether the window has focus when the clip would actually sound.
+    if (focusSuspended) return;
     if (visibilityCheck && x !== undefined && y !== undefined && !visibilityCheck(x, y)) return;
 
     const variants = candidateVariants(raceId, unitId, action);
@@ -274,6 +282,7 @@ window.SfxSystem = (function () {
   /** Plays a single already-preloaded (or lazily-loaded) system clip by its
    *  literal key -- shared tail end for both public functions below. */
   function playSystemKey(key) {
+    if (focusSuspended) return;
     const voice = acquireVoice(key);
     voice.playbackRate = 1;
     voice.volume = effectiveVolume();
@@ -323,6 +332,12 @@ window.SfxSystem = (function () {
   }
   function setMuted(v) { muted = !!v; }
   function isMuted() { return muted; }
+  /** Public: suppress sfx entirely while the window/tab isn't focused --
+   *  see music.js's setFocusSuspended and main.js's setupFocusMuting. No
+   *  in-flight clip to stop: sfx are a few hundred ms long, so by the time
+   *  a tab switch registers they are already over. */
+  function setFocusSuspended(v) { focusSuspended = !!v; }
+  function isFocusSuspended() { return focusSuspended; }
 
   /** Public: register the (x, y) -> boolean predicate playAction() uses to
    *  skip off-screen sounds (see playAction's doc comment). Pass null to
@@ -375,6 +390,8 @@ window.SfxSystem = (function () {
     setSfxVolume,
     setMuted,
     isMuted,
+    setFocusSuspended,
+    isFocusSuspended,
     setVisibilityCheck,
     getMasterVolume: () => masterVolume,
     getSfxVolume: () => sfxVolume,

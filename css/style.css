@@ -105,9 +105,8 @@ html, body {
   width: auto;
   margin: 0 auto;
 }
-/* The splash screen's main button -- opens the launch options modal. Sits
-   where the old "♪ Play Music" button did (that control moved into the
-   modal's Audio section). */
+/* The splash screen's main button -- opens the launch options modal, with
+   the Mute Audio checkbox tucked underneath it (see .title-mute-row). */
 .title-options-btn {
   margin-top: 36px;
   padding: 11px 34px;
@@ -126,6 +125,25 @@ html, body {
   border-color: var(--accent);
   color: #1a1a1a;
 }
+/* "Mute Audio", directly under Begin (2026-08-26, user-directed -- replaces
+   the Game Options modal's old Audio section). Deliberately quiet: this sits
+   on the splash art under the one button that matters, so it reads as a
+   footnote to Begin rather than a second call to action. text-shadow because
+   it sits on a photographic background, same reason title-build-stamp has
+   one. */
+.title-mute-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  margin-top: 14px;
+  color: var(--text-dim);
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
+}
+.title-mute-row:hover { color: var(--accent); }
+.title-mute-row input { cursor: pointer; margin: 0; }
 /* --- Loading screen: between clicking Begin and the game being ready --- */
 .loading-screen {
   position: fixed;
@@ -1129,6 +1147,11 @@ html, body {
   transform: translateY(-50%);
   pointer-events: auto;
   box-sizing: border-box;
+  /* A flex row so the label span is the only part that shrinks -- the cost
+     and shortcut badges keep their natural width instead of being
+     ellipsized away first. See ringmenu.js's itemHtml. */
+  display: flex;
+  align-items: center;
   height: 30px;            /* must match ringmenu.js's PILL_H */
   padding: 0 10px;
   background: var(--bg-panel-raised);
@@ -1140,13 +1163,20 @@ html, body {
   cursor: pointer;
   white-space: nowrap;
   overflow: hidden;
-  text-overflow: ellipsis;
   box-shadow: 0 2px 10px rgba(0, 0, 0, 0.5);
 }
-/* Labels grow away from the subject, so each side aligns its text against
+/* min-width:0 is load-bearing: a flex item's default min-width:auto refuses
+   to shrink below its content, which would push the badges out of the pill
+   instead of ellipsizing the label. */
+.map-ring-item-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* Labels grow away from the subject, so each side aligns its content against
    the edge that is pinned to the circle. */
-.map-ring-item-right { text-align: left; }
-.map-ring-item-left  { text-align: right; }
+.map-ring-item-right { text-align: left; justify-content: flex-start; }
+.map-ring-item-left  { text-align: right; justify-content: flex-end; }
 .map-ring-item:hover { background: var(--bg-panel); border-color: var(--accent); color: var(--accent); }
 /* City-action pills (2026-08-07, user-directed) -- a step lighter than
    --bg-panel-raised's #262b34, so the two columns of a merged unit+city
@@ -1253,7 +1283,9 @@ html, body {
   background: transparent;
   box-shadow: none;
   text-align: left;
+  justify-content: flex-start;
   min-width: 170px;
+  flex-shrink: 0;   /* the list is a column; don't let tall rows squash */
 }
 .techtree-column-title {
   color: var(--accent);
@@ -1979,19 +2011,7 @@ html, body {
   cursor: pointer;
 }
 .launch-race-item input[type="checkbox"] { accent-color: var(--accent); margin: 0; }
-.launch-music-btn {
-  width: 100%;
-  padding: 7px 8px;
-  background: var(--bg-panel-raised);
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  color: var(--text-main);
-  font-family: inherit;
-  font-size: 12px;
-  cursor: pointer;
-}
-.launch-music-btn:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
-.launch-music-btn:disabled { cursor: default; opacity: 0.5; }
+
 .launch-actions {
   padding-top: 16px;
   border-top: 1px solid var(--border);

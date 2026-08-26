@@ -66,6 +66,8 @@ window.GameEngine = window.GameEngine || {};
   // "Research" (see applyResearchBoost below).
   const RESEARCH_BOOST_COST_BASE = CFG.researchBoostCostBase;
   const RESEARCH_BOOST_COST_PER_POP = CFG.researchBoostCostPerPop;
+  // "Expedite Unit Build" (see applyExpediteBuild below).
+  const EXPEDITE_COST_MULT = CFG.expediteCostMult;
 
   // city.influenceRadius is now the SINGLE radius governing both territory
   // influence (influence.js's computeInfluenceMap) and worked-tile yield
@@ -920,6 +922,111 @@ window.GameEngine = window.GameEngine || {};
   }
 
   /**
+   * EXPEDITE UNIT BUILD (2026-08-26, user-directed -- the Human Bazaar's
+   * replacement effect)
+   * ---------------------------------------------------------------------
+   * A city with a standing Bazaar can spend stockpile to knock ONE turn off
+   * the unit it is currently building. Once per city per turn.
+   *
+   * The Bazaar used to grant "Traders' Talk" -- reveal every rival civ's
+   * city tile while at least one Bazaar stood anywhere. That effect had
+   * three structural problems: it didn't stack (a second Bazaar did
+   * literally nothing, in a roster where a city has four structure slots),
+   * it self-obsoleted (cities are large and static, so you find them anyway
+   * and the effect decays to zero by mid-game), and it read as scouting
+   * rather than commerce. This is per-city, stacks by building more, and is
+   * what a market is actually for: turning coin into labour.
+   *
+   * Shape notes, in the terms the other three city actions already
+   * established just above:
+   *   - Paid from STOCKPILE, not the city's production turn -- like Spread
+   *     Culture, unlike Resource Production/Research. It has to be: the city
+   *     is by definition already building something, so its production is
+   *     spoken for. It does NOT set any of the production-consuming stamps.
+   *   - Turn-stamped (expediteTurn), the same transient-field idiom as
+   *     cultureSpreadTurn/researchBoostTurn, which is what caps it at one
+   *     turn bought per city per turn. Without that cap a solvent civ could
+   *     drain its stockpile into finishing anything instantly.
+   *   - Units only, per the request ("reduces the time to build current in
+   *     progress unit by 1 turn"). Extending it to buildings would be a
+   *     one-word change to canExpediteBuild's `kind` check.
+   */
+
+  /** The queued item `city` could expedite right now, or null. Pure -- the
+   *  ring menu calls this every render to decide whether to offer the pill.
+   *
+   *  Requires more than one turn left: at exactly one, the build completes
+   *  on the next progressBuildQueue tick regardless, so there is no turn
+   *  left to buy. Requires turnsRemaining at all, which excludes the legacy
+   *  coin-accumulation queue shape (see ai.js's progressBuildQueue) -- that
+   *  one has no turn counter to decrement. */
+  function canExpediteBuild(city, civ) {
+    if (!city || !civ || !cityHasStructure(city, "bazaar")) return null;
+    const item = city.buildQueue;
+    if (!item || item.kind !== "unit") return null;
+    if (item.turnsRemaining === undefined || item.turnsRemaining <= 1) return null;
+    return item;
+  }
+
+  /** Stockpile price of buying one turn off `city`'s current unit build, or
+   *  null if there's nothing expediteable. One turn's share of the unit's own
+   *  up-front cost, times EXPEDITE_COST_MULT -- see the config note.
+   *
+   *  `item.cost` is the actual discounted price this civ paid when it queued
+   *  the build (war-economy multipliers, rarity premiums and the cheap-unit
+   *  discount are all already baked into it -- see ai.js's buildUnitOption),
+   *  which is why it's stamped onto the queue item at both queue sites rather
+   *  than recomputed here: re-deriving it would silently disagree the moment
+   *  the civ's own unit count moved a rarity premium. The undiscounted
+   *  GameData lookup is only a fallback for a save queued before that stamp
+   *  existed. Pure -- the ring menu calls this every render to label the
+   *  pill. */
+  function expediteBuildCost(city, civ) {
+    const item = canExpediteBuild(city, civ);
+    if (!item) return null;
+    const full = item.cost || window.GameData.unitBuildCost(item.id);
+    if (!full) return null;
+    const spread = Math.max(1, item.totalTurns || item.turnsRemaining || 1);
+    const out = {};
+    for (const [k, v] of Object.entries(full)) {
+      const per = Math.ceil((v / spread) * EXPEDITE_COST_MULT);
+      if (per > 0) out[k] = per;
+    }
+    return Object.keys(out).length ? out : null;
+  }
+
+  function isExpeditingBuild(city, gameState) {
+    return !!city && city.expediteTurn === (gameState.turnNumber || 0);
+  }
+
+  /** Buys one turn off `city`'s current unit build. Returns a receipt
+   *  { unitId, unitLabel, cost, turnsRemaining }, or null if it wasn't
+   *  allowed (no Bazaar, nothing expediteable, already expedited this turn,
+   *  or the civ can't afford it). */
+  function applyExpediteBuild(city, civ, gameState) {
+    if (!city || !civ) return null;
+    if (isExpeditingBuild(city, gameState)) return null;
+    const item = canExpediteBuild(city, civ);
+    if (!item) return null;
+    const cost = expediteBuildCost(city, civ);
+    if (!cost) return null;
+
+    civ.stockpile = civ.stockpile || { harvest: 0, coin: 0, lore: 0 };
+    if (!Object.entries(cost).every(([k, v]) => (civ.stockpile[k] || 0) >= v)) return null;
+    for (const [k, v] of Object.entries(cost)) {
+      civ.stockpile[k] = Math.max(0, (civ.stockpile[k] || 0) - v);
+    }
+
+    item.turnsRemaining -= 1;
+    city.expediteTurn = gameState.turnNumber || 0;
+    city.expediteCost = cost;
+
+    const unitLabel = (window.GameData.getUnit(item.id) || {}).label || item.id;
+    window.GameEngine.floatingText.spawnFloatingText(city, `${unitLabel} expedited`, "resource");
+    return { unitId: item.id, unitLabel, cost, turnsRemaining: item.turnsRemaining };
+  }
+
+  /**
    * CITY AUTOMATION (2026-08-17, user-directed)
    * -------------------------------------------
    * A city the player has flagged `city.automated` picks and runs ONE of the
@@ -1532,6 +1639,11 @@ window.GameEngine = window.GameEngine || {};
     city.automationCounts = { research: 0, culture: 0, resources: 0 };
     city.attackedThisTurn = true;
     city.cultureSpreadTurn = null;
+    // Same reason as cultureSpreadTurn just above: the new owner shouldn't
+    // inherit "already used its action this turn" from the old one. Moot in
+    // practice while buildQueue is cleared right above (the Bazaar fell with
+    // the city anyway), but the two stamps should not drift apart.
+    city.expediteTurn = null;
     toCiv.cities.push(city);
     toCiv.hasFoundedCity = true; // a captor with cities is no longer "never founded"
     toCiv.usedCityNames = toCiv.usedCityNames || [];
@@ -1601,6 +1713,10 @@ window.GameEngine = window.GameEngine || {};
     spreadCultureCost,
     isSpreadingCulture,
     applyCultureSpread,
+    canExpediteBuild,
+    expediteBuildCost,
+    isExpeditingBuild,
+    applyExpediteBuild,
     cityAutomationChoice,
     runCityAutomation,
     isCityIdle,

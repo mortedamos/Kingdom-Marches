@@ -56,8 +56,18 @@ window.UI = window.UI || {};
   // of air" spacing ratio holds instead of pills touching edge to edge.
   function isMobile() { return document.body.classList.contains("mobile"); }
   function PILL_H() { return isMobile() ? 44 : 30; }  // must match .map-ring-item's rendered height (see mobile.css)
-  function PITCH() { return isMobile() ? 52 : 38; }   // vertical centre-to-centre gap; PILL_H() + 8px of air
-  const PILL_W_MIN = 96;    // narrower than this and labels are unreadable -- used for the "does this side fit" test
+  // Vertical centre-to-centre gap. Desktop keeps PILL_H() + 8px of air;
+  // mobile settles for +4 (2026-08-26) -- a phone's map area is short, and
+  // every px of pitch spent on air pushes the ring's radius out, which on a
+  // narrow screen is exactly what runs the pills off the edge. The pills
+  // themselves keep their full 44px touch height, which is the number that
+  // actually matters for hitting them.
+  function PITCH() { return isMobile() ? 48 : 38; }
+  // Narrower than this and labels are unreadable -- used for the "does this
+  // side fit" test. Lower on mobile, where the pill wraps to two lines
+  // rather than ellipsizing (see mobile.css's .map-ring-item-label), so a
+  // narrower pill still carries a whole label instead of trailing off.
+  function PILL_W_MIN() { return isMobile() ? 84 : 96; }
   // Some real labels ("Gather More Resources (+3H +2C +5L)", "Build Road to
   // This Tile") need more room than this looks generous for. Safe to raise:
   // `place()` below still clamps the actual per-pill width to whatever room
@@ -95,21 +105,34 @@ window.UI = window.UI || {};
     const { cx, cy, mapW, mapH, ts } = ctx;
     // Snapshot once per call -- body.mobile cannot change mid-call, and
     // re-reading the class list on every reference below would be silly.
+    const mobile = isMobile();
     const pillH = PILL_H(), pitch = PITCH();
     // Never let the ring sit on top of the subject's own art, which grows
     // with zoom -- but never collapse smaller than a comfortable click
-    // target either, which is what the 96px floor is for at low zoom.
-    const rMin = Math.max(0.9 * ts, 96);
+    // target either, which is what the floor is for at low zoom. The mobile
+    // floor is lower (2026-08-26): a phone's map is ~375px wide, so a 96px
+    // floor plus a pill's own width leaves nothing on either side of a
+    // centred subject, and the ring gets pushed off the screen.
+    const pillWMin = PILL_W_MIN();
+    const rMin = mobile ? Math.max(0.6 * ts, 56) : Math.max(0.9 * ts, 96);
     const radiusFor = (k) => Math.max(rMin, ((k - 1) / 2) * pitch + BOW);
 
     const roomRight = mapW - cx;
     const roomLeft = cx;
-    const fits = (room, k) => room >= radiusFor(k) + PILL_W_MIN + PAD;
+    // Can `k` pills be drawn on `room` px of side, and if so at what radius
+    // and width? Returns null when they can't, which is now taken at face
+    // value (see the split logic below) instead of being overridden.
+    const solveSide = (room, k) => {
+      const R = radiusFor(k);
+      const w = Math.min(PILL_W_MAX, room - R - PAD);
+      return w >= pillWMin ? { R, maxW: w } : null;
+    };
+    const fits = (room, k) => !!solveSide(room, k);
 
     // Column split. Two columns only once there are enough items to be worth
     // it (N>=4) AND both sides have the room; otherwise everything goes on
-    // whichever single side can take it, and if neither can, on the roomier
-    // one with the labels allowed to ellipsize.
+    // whichever single side can take it, and if neither can, the whole ring
+    // gives way to the scrollable list (see listFallback below).
     //
     // ctx.split, when present, overrides all of that -- a merged unit+city
     // ring (see orders.js's mergeUnitCityOptions) wants unit actions on the
@@ -119,10 +142,18 @@ window.UI = window.UI || {};
     // order below differs between the two branches (auto mode reads
     // right-then-left off the front of the array; forced mode reads
     // left-then-right).
+    const listFallback = () => ({ mode: "list", side: roomRight >= roomLeft ? "right" : "left", items: [] });
+
     let rightCount, leftCount;
     if (ctx.split) {
       leftCount = ctx.split.leftCount;
       rightCount = ctx.split.rightCount;
+      // A forced split still has to physically fit. It didn't have to before
+      // -- see the "neither side fits" note just below for why that used to
+      // be survivable and no longer is.
+      if ((leftCount && !fits(roomLeft, leftCount)) || (rightCount && !fits(roomRight, rightCount))) {
+        return listFallback();
+      }
     } else {
       const half = Math.ceil(n / 2);
       if (n >= 4 && fits(roomRight, half) && fits(roomLeft, n - half)) {
@@ -132,31 +163,36 @@ window.UI = window.UI || {};
         rightCount = n; leftCount = 0;
       } else if (fits(roomLeft, n)) {
         rightCount = 0; leftCount = n;
-      } else if (roomRight >= roomLeft) {
-        rightCount = n; leftCount = 0;
       } else {
-        rightCount = 0; leftCount = n;
+        // Neither side fits (2026-08-26, user-reported: "in mobile view,
+        // parts of the ring menu can appear off-screen"). This used to pile
+        // everything onto the roomier side anyway "with the labels allowed
+        // to ellipsize" -- but place() then floored each pill's width at
+        // PILL_W_MIN regardless of how much room was actually left, so the
+        // pills didn't ellipsize, they just hung off the edge of the map.
+        // On a phone that's the COMMON case, not an exotic one: a 375px-wide
+        // map area can't seat a ~200px radius plus a pill on either side of
+        // a subject anywhere near the middle. The honest answer at that size
+        // is the list, which is scrollable, fully on-screen, and works with
+        // the same long-press-and-slide gesture the ring does (input.js
+        // hit-tests .map-ring-item, which listed pills also are).
+        return listFallback();
       }
     }
 
     // A column taller than the map area can't be placed on a circle at all --
     // no radius makes it fit. Rather than pretend, hand back a plain
-    // scrollable list; the caller renders that as a stacked container. Only
-    // reachable with a long option list in a short window (e.g. N=14 at
-    // ~600px tall), so it stays a documented fallback rather than a case the
-    // geometry has to be contorted around.
+    // scrollable list; the caller renders that as a stacked container.
     const tallest = Math.max(rightCount, leftCount);
-    if ((tallest - 1) * pitch + pillH > mapH - 2 * PAD) {
-      const side = roomRight >= roomLeft ? "right" : "left";
-      return { mode: "list", side, items: [] };
-    }
+    if ((tallest - 1) * pitch + pillH > mapH - 2 * PAD) return listFallback();
 
     const items = new Array(n);
     const place = (side, count, startIndex) => {
       if (!count) return;
-      const R = radiusFor(count);
       const room = side === "right" ? roomRight : roomLeft;
-      const maxW = Math.max(PILL_W_MIN, Math.min(PILL_W_MAX, room - R - PAD));
+      // Non-null by construction: every path that reaches place() has
+      // already run this exact side/count through fits() above.
+      const { R, maxW } = solveSide(room, count) || { R: radiusFor(count), maxW: pillWMin };
 
       // Solve X on the circle for an evenly-spaced Y. The sqrt is always real
       // because radiusFor's BOW term keeps R strictly greater than the
@@ -224,8 +260,16 @@ window.UI = window.UI || {};
     const cost = o.cost != null
       ? `<span class="map-ring-item-cost${o.affordable === false ? " map-ring-item-cost-unaffordable" : ""}">${escapeHtml(o.cost)}</span>`
       : "";
+    // The label lives in its own span (2026-08-26) so it can be the only
+    // shrinkable part of the pill: the button is a flex row, and the cost/
+    // shortcut badges keep their natural size while the label takes the
+    // squeeze. That's also what lets mobile wrap the label to two lines
+    // without the badges wrapping with it -- see mobile.css's
+    // .map-ring-item-label, added because a single 44px-tall line of 13px
+    // text was truncating most real labels on a phone.
     return `<button class="map-ring-item${sideClass}${cityClass}${o.danger ? " map-ring-item-danger" : ""}"`
-      + ` data-ring-kind="${escapeHtml(o.kind)}">${escapeHtml(o.label)}${cost}${shortcut}</button>`;
+      + ` data-ring-kind="${escapeHtml(o.kind)}" title="${escapeHtml(o.label)}">`
+      + `<span class="map-ring-item-label">${escapeHtml(o.label)}</span>${cost}${shortcut}</button>`;
   }
 
   /** Applies one layout to real elements. Shared by render (via a detached
@@ -256,12 +300,31 @@ window.UI = window.UI || {};
     });
   }
 
+  /** Narrower than this and the list is worse than useless -- see the
+   *  anchoring note in applyList. */
+  const LIST_MIN_W = 180;
   function applyList(container, lay, ctx) {
     const box = container.querySelector(".map-ring-list");
     if (!box) return;
-    box.style.left = lay.side === "right" ? `${Math.round(ctx.cx + PAD)}px` : "";
-    box.style.right = lay.side === "left" ? `${Math.round(ctx.mapW - ctx.cx + PAD)}px` : "";
+    const room = lay.side === "right" ? ctx.mapW - ctx.cx : ctx.cx;
+    // Anchor beside the subject when there is room there for a usable list;
+    // otherwise pin to that side of the map area instead (2026-08-26). A
+    // subject near a screen edge used to leave the box anchored a few px
+    // from that edge with a min-width still holding it open, which on a
+    // phone put most of the list off-screen -- the mobile ring's most
+    // visible symptom, since a phone reaches list mode far more often than
+    // a desktop ever did. maxWidth is set to whatever room the chosen
+    // anchor actually has, so the box can never grow past the map area.
+    const anchored = room - 2 * PAD >= LIST_MIN_W;
+    if (lay.side === "right") {
+      box.style.left = `${Math.round(anchored ? ctx.cx + PAD : PAD)}px`;
+      box.style.right = "";
+    } else {
+      box.style.right = `${Math.round(anchored ? ctx.mapW - ctx.cx + PAD : PAD)}px`;
+      box.style.left = "";
+    }
     box.style.top = `${PAD}px`;
+    box.style.maxWidth = `${Math.round((anchored ? room : ctx.mapW) - 2 * PAD)}px`;
     box.style.maxHeight = `${Math.round(ctx.mapH - 2 * PAD)}px`;
   }
 
