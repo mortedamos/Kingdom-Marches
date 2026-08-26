@@ -232,11 +232,11 @@ window.GameData.TECHS = {
   spirit_of_exploration: {
     id: "spirit_of_exploration", label: "Spirit of Exploration", category: "civic", layer: 1, cost: 14,
     prereqs: [], raceOnly: "human",
-    description: "Reduces the movement cost of Plains by 0.5. +0.2 lore per Plains tile under your influence.",
+    description: "Reduces the movement cost of Plains by 0.5. +0.1 lore per Plains tile under your influence.",
     costBreakdown: { lore: 14 },
     effects: [
       { type: "terrain_movement_discount", terrain: "plains", value: 0.5 },
-      { type: "lore_per_influence_tile", terrain: "plains", value: 0.2 },
+      { type: "lore_per_influence_tile", terrain: "plains", value: 0.1 },
     ],
   },
   rivercraft: {
@@ -396,7 +396,7 @@ window.GameData.TECHS = {
   sea_charts: {
     id: "sea_charts", label: "Sea Charts", category: "civic", layer: 3, cost: 45,
     prereqs: ["make_way"], raceOnly: "human",
-    description: "All Ocean and Coast tiles anywhere on the map are always revealed -- no fog of war on those tiles at all. +0.2 lore per Ocean and Coast tile under your influence.",
+    description: "All Ocean and Coast tiles anywhere on the map are always revealed -- no fog of war on those tiles at all. +0.1 lore per Ocean and Coast tile under your influence.",
     costBreakdown: { lore: 27, coin: 18 },
     // Same "unlock_mechanic" + turns.js hand-check pattern as Elf's Wind
     // From Distant Treetops and Dwarf's Mountains on the Horizon -- see
@@ -409,8 +409,8 @@ window.GameData.TECHS = {
     // totaled up each turn.
     effects: [
       { type: "unlock_mechanic", mechanic: "sea_charts" },
-      { type: "lore_per_influence_tile", terrain: "ocean", value: 0.2 },
-      { type: "lore_per_influence_tile", terrain: "coast", value: 0.2 },
+      { type: "lore_per_influence_tile", terrain: "ocean", value: 0.1 },
+      { type: "lore_per_influence_tile", terrain: "coast", value: 0.1 },
     ],
   },
   flight: {

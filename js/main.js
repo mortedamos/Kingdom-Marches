@@ -12,13 +12,23 @@
   let viewState = null;
   // Knowledge Base state is module-level rather than part of viewState --
   // the Knowledge menu has to work from the title screen too, before
-  // viewState (or gameState) exists. "units" | "conditions" | "stats" | null;
-  // knowledgeSelectedUnitId/knowledgeSelectedConditionKey/knowledgeSelectedStatKey
-  // each only matter for their own page. See setupKnowledgeBase/renderKnowledgeOverlay.
+  // viewState (or gameState) exists. "units" | "conditions" | "stats" |
+  // "techtrees" | null; knowledgeSelectedUnitId/knowledgeSelectedConditionKey/
+  // knowledgeSelectedStatKey/knowledgeSelectedRaceId each only matter for
+  // their own page. See setupKnowledgeBase/renderKnowledgeOverlay.
   let knowledgeView = null;
   let knowledgeSelectedUnitId = null;
   let knowledgeSelectedConditionKey = null;
   let knowledgeSelectedStatKey = null;
+  // Tech Trees page (2026-08-26, user-directed): which race's tree is
+  // showing. Reference-only, gameplay-free -- see buildReferenceCiv --
+  // unlike the sidebar's "View Tech Tree" (a specific LIVE civ's actual
+  // progress) or the spectator Report menu's "AI Tech Trees" (every civ
+  // CURRENTLY IN a running game); this browses any of the 5 playable
+  // races' full trees from a stock, freshly-started state, works before a
+  // game even exists, and is never interactive (always isPlayerCiv: false
+  // in the techtree.js render call, same as the spectator report).
+  let knowledgeSelectedRaceId = null;
   // Set when a unit profile's condition or stat cross-link is clicked --
   // remembers which unit to return to so the Conditions/Stats page's "Back"
   // button can jump straight back to it. null whenever that page was opened
@@ -1094,6 +1104,37 @@
     });
   }
 
+  /** A synthetic, gameplay-free civ for the Knowledge menu's Tech Trees
+   *  page -- same shape createNewGame stamps on a REAL civ at turn 0
+   *  (Level 0 techs already auto-completed via applyTechEffects, matching
+   *  the actual state every game truly begins in -- showing them as
+   *  un-researched would be misleading, since a player never actually
+   *  chooses to research them), just never placed on a map or given
+   *  units/cities. Enough for techtree.js's render (raceId, completedTechs,
+   *  currentResearch, cities.length, stockpile) and ai.js's
+   *  previewNextResearch (via racialWeights/scoreNextResearch) to run
+   *  safely -- neither needs anything more than that. */
+  function buildReferenceCiv(raceId) {
+    const civ = {
+      id: raceId.toUpperCase(), raceId, cities: [], units: [], eliminated: false,
+      isHuman: false, completedTechs: new Set(), currentResearch: null,
+      doctrine: null, unlockedUnits: new Set(), unlockedBuildings: new Set(),
+      civicInfluenceBonus: 0, radiusBonus: 0, usedCityNames: [],
+      stockpile: {
+        harvest: window.GameConfig.units.startingHarvest,
+        coin: window.GameConfig.units.startingCoin,
+        lore: window.GameConfig.units.startingLore,
+      },
+    };
+    const levelZeroTechs = window.GameData.techsForRace(raceId)
+      .filter((id) => window.GameData.getTech(id).layer === 0);
+    for (const techId of levelZeroTechs) {
+      civ.completedTechs.add(techId);
+      window.GameEngine.tech.applyTechEffects(civ, window.GameData.getTech(techId));
+    }
+    return civ;
+  }
+
   /** Renders whatever the Knowledge Base overlay is currently showing
    *  (knowledgeView/knowledgeSelectedUnitId) into #knowledge-content, and
    *  shows/hides the overlay itself. Standalone rather than folded into the
@@ -1149,6 +1190,30 @@
       }
       const backBtn = $("kb-back-btn");
       if (backBtn) backBtn.onclick = goBackToUnits;
+    } else if (knowledgeView === "techtrees") {
+      // Reference-only (see buildReferenceCiv) -- never a live civ, so
+      // there's no re-render key to chase the way the sidebar's own "View
+      // Tech Tree" does; the race picker is the only thing that can change
+      // this page, and it re-renders explicitly on its own onchange below.
+      if (!knowledgeSelectedRaceId) knowledgeSelectedRaceId = window.GameData.RACE_LIST[0];
+      const refCiv = buildReferenceCiv(knowledgeSelectedRaceId);
+      const raceOptionsHtml = window.GameData.RACE_LIST.map((r) =>
+        `<option value="${r}"${r === knowledgeSelectedRaceId ? " selected" : ""}>${window.GameData.getRace(r).label}</option>`
+      ).join("");
+      content.innerHTML = `
+        <div class="techtree-modal-scroll">
+          <div class="ai-action-log-controls">
+            <label>Race:
+              <select id="kb-techtree-race-select">${raceOptionsHtml}</select>
+            </label>
+          </div>
+          ${window.UI.techtree.render(refCiv, false, null, null)}
+        </div>`;
+      const raceSelect = $("kb-techtree-race-select");
+      if (raceSelect) raceSelect.onchange = () => {
+        knowledgeSelectedRaceId = raceSelect.value;
+        renderKnowledgeOverlay();
+      };
     } else {
       content.innerHTML = window.UI.knowledgebase.renderUnits(knowledgeSelectedUnitId);
       const canvas = content.querySelector(".kb-unit-portrait");
@@ -1178,6 +1243,7 @@
     knowledgeSelectedUnitId = null;
     knowledgeSelectedConditionKey = null;
     knowledgeSelectedStatKey = null;
+    knowledgeSelectedRaceId = null;
     knowledgeBackTarget = null;
     renderKnowledgeOverlay();
   }
@@ -1224,12 +1290,16 @@
     if (conditionsBtn) conditionsBtn.addEventListener("click", () => openKnowledge("conditions"));
     const statsBtn = $("kb-stats-btn");
     if (statsBtn) statsBtn.addEventListener("click", () => openKnowledge("stats"));
+    const techTreesBtn = $("kb-techtrees-btn");
+    if (techTreesBtn) techTreesBtn.addEventListener("click", () => openKnowledge("techtrees"));
     const titleUnitsBtn = $("title-kb-units-btn");
     if (titleUnitsBtn) titleUnitsBtn.addEventListener("click", () => openKnowledge("units"));
     const titleConditionsBtn = $("title-kb-conditions-btn");
     if (titleConditionsBtn) titleConditionsBtn.addEventListener("click", () => openKnowledge("conditions"));
     const titleStatsBtn = $("title-kb-stats-btn");
     if (titleStatsBtn) titleStatsBtn.addEventListener("click", () => openKnowledge("stats"));
+    const titleTechTreesBtn = $("title-kb-techtrees-btn");
+    if (titleTechTreesBtn) titleTechTreesBtn.addEventListener("click", () => openKnowledge("techtrees"));
     $("knowledge-close-btn").addEventListener("click", closeKnowledge);
     overlay.addEventListener("mousedown", (e) => { if (e.target === overlay) closeKnowledge(); });
     document.addEventListener("keydown", (e) => {
