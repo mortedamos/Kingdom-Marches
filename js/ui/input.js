@@ -168,6 +168,29 @@ window.UI = window.UI || {};
       };
     }
 
+    /** Coalesces onChange() to at most once per animation frame -- a 2-finger
+     *  pinch reports each finger's move as a SEPARATE pointermove, so one
+     *  visual frame of motion can be 2+ events, and a touchscreen can sample
+     *  well above 60Hz regardless. onChange (main.js's redraw()) is not
+     *  cheap -- it rebuilds the whole sidebar among other things -- so
+     *  calling it once per raw event rather than once per painted frame was
+     *  the other half of "pinch zoom feels jittery" (2026-08-26,
+     *  user-reported): the zoom MATH was already stable (see
+     *  pinchStartDist's own comment above), but a phone dropping frames
+     *  under that redraw load reads as jitter just the same. Deferring is
+     *  safe purely because every mutation that leads here (zoomAbout,
+     *  scrollX/scrollY) already lands on viewState synchronously before this
+     *  ever runs -- the deferred call always paints the LATEST state, never
+     *  a stale one, no matter how many events piled up first. */
+    let onChangeRAF = null;
+    function scheduleOnChange() {
+      if (onChangeRAF !== null) return;
+      onChangeRAF = requestAnimationFrame(() => {
+        onChangeRAF = null;
+        onChange();
+      });
+    }
+
     canvas.addEventListener("pointerdown", (e) => {
       pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
 
@@ -254,7 +277,7 @@ window.UI = window.UI || {};
         if (pinchStartDist > 0 && dist > 0 && Math.abs(dist - pinchStartDist) >= PINCH_DEADZONE_PX) {
           zoomAbout(cx, cy, pinchStartZoom * (dist / pinchStartDist));
         }
-        onChange();
+        scheduleOnChange();
         return;
       }
 
@@ -296,7 +319,7 @@ window.UI = window.UI || {};
       viewState.scrollY = (viewState.scrollY || 0) - dy;
       dragStartX = e.clientX;
       dragStartY = e.clientY;
-      onChange();
+      scheduleOnChange();
     });
 
     function endPointer(e) {
