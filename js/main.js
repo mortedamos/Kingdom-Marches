@@ -503,9 +503,13 @@
   // ==========================================================================
 
   /** Moves the sheet to a detent by name, clamped to the ends. Also syncs
-   *  #m-sheet-toggle-btn's icon/aria-expanded -- the single choke point for
-   *  that sync no matter which of this function's callers moved the sheet
-   *  (the button itself, revealSheetForSelection, or a new-turn reset). */
+   *  #m-sheet-toggle-btn -- the single choke point for that sync no matter
+   *  which of this function's callers moved the sheet (the button itself,
+   *  or a new-turn reset). The button gets its OWN copy of data-detent, not
+   *  just an icon update: it tracks the sheet's position via its own
+   *  `bottom` rather than sharing #sidebar's transform (see css/mobile.css's
+   *  `.m-sheet-toggle` rule block for why: a display:contents-wrapper
+   *  version of this didn't reliably repaint on real testing). */
   function setSheetDetent(name) {
     const sheet = $("sidebar");
     if (!sheet) return;
@@ -516,22 +520,12 @@
     sheet.style.setProperty("--m-fab-bottom", name === "peek" ? "5.6rem" : "1rem");
     const toggle = $("m-sheet-toggle-btn");
     if (toggle) {
+      toggle.dataset.detent = name;
       const open = name !== "peek";
       toggle.setAttribute("aria-expanded", open ? "true" : "false");
       toggle.setAttribute("aria-label", open ? "Collapse panel" : "Show panel");
-      toggle.innerHTML = open ? "&#8964;" : "&#8963;"; // down chevron / up chevron
+      toggle.innerHTML = open ? "&#8595;" : "&#8593;"; // down arrow / up arrow
     }
-  }
-
-  /** Raises a resting sheet to half height. Called when the player selects
-   *  something on the map: selection and sheet height should be ONE gesture,
-   *  not a tap followed by a separate action. Never lowers a sheet the
-   *  player deliberately opened. */
-  function revealSheetForSelection() {
-    if (!document.body.classList.contains("mobile")) return;
-    const sheet = $("sidebar");
-    if (!sheet) return;
-    if ((sheet.dataset.detent || "peek") === "peek") setSheetDetent("half");
   }
 
   /** Turn number, stockpile, and the awaiting-orders badge. Cheap enough to
@@ -592,12 +586,10 @@
   }
 
   /** Shows/hides the sheet via #m-sheet-toggle-btn (2026-08-26,
-   *  user-directed): peek and full are the two states this drives. Treats
-   *  "anything more open than peek" (i.e. half too, from
-   *  revealSheetForSelection) as "open" for the purposes of the toggle --
-   *  pressing it while at half still collapses straight to peek, same as
-   *  pressing it from full. Replaces an earlier drag-to-resize gesture; see
-   *  css/mobile.css's `#sidebar` rule block for why. */
+   *  user-directed): the only two states left since selection no longer
+   *  auto-raises it (see the removed revealSheetForSelection). Replaces an
+   *  earlier drag-to-resize gesture; see css/mobile.css's `#sidebar` rule
+   *  block for why. */
   function setupSheetToggle() {
     $("m-sheet-toggle-btn")?.addEventListener("click", () => {
       const sheet = $("sidebar");
@@ -1622,7 +1614,6 @@
     // rather than at setup because the sheet measures itself on open, and
     // getBoundingClientRect returns zeros while #game-screen is display:none.
     // No-ops on desktop.
-    window.UI.input.onTileSelected = revealSheetForSelection;
     setupMobileShell();
     // Match the two canvases' visibility to viewState.is3D (always false --
     // the 3D toggle was removed, but the 3D canvas elements/renderer are

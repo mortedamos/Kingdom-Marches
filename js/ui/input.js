@@ -552,14 +552,6 @@ window.UI = window.UI || {};
       const civ = gameState.civs[unit.civId];
       if (civ) window.SfxSystem.playAction(civ.raceId, unit.typeId, "move");
     }
-
-    // Optional post-selection hook. The mobile shell uses it to raise the
-    // bottom sheet, so that picking something up and seeing its panel are one
-    // gesture rather than a tap followed by a separate drag (main.js's
-    // revealSheetForSelection). An explicit hook rather than a listener on
-    // the canvas because selection is decided HERE -- a bystander would have
-    // to guess at handler ordering to know it had happened. Unset on desktop.
-    window.UI.input.onTileSelected?.(viewState, gameState);
   }
 
   /** Rebuilds viewState.selection.tabs from live game state and re-resolves

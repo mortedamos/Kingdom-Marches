@@ -362,23 +362,29 @@ body.mobile .m-scrim {
 
 /* --- the sheet ---------------------------------------------------------- */
 
-/* The sidebar, re-homed. Three resting heights, driven by data-detent and a
-   single translate. Peek/full are the two states the #m-sheet-toggle-btn
-   button drives; half also still happens on its own via
-   revealSheetForSelection when the player taps something on the map.
+/* The sidebar, re-homed. Three resting heights, driven by data-detent.
+   Peek/full are the two states #m-sheet-toggle-btn drives; half no longer
+   happens automatically (an earlier revealSheetForSelection auto-raise was
+   removed, 2026-08-26, user-reported: it "bounced" the sheet into view on
+   every map selection, which read as broken/unwanted once a manual show/hide
+   button existed) but the detent itself is kept for the status-pill
+   shortcut (see setupMobileShell's `m-status` click listener) and for
+   forward compatibility.
 
-   Button, not drag-to-resize (2026-08-26, user-directed): a drag gesture
-   used to live here, claiming presses in the sheet's top strip -- but that
-   strip is also where the tab row's own tap targets sit, and a thumb
-   landing on a tab (the natural place to land one, being the most visually
-   prominent thing in the peek strip) kept getting swallowed as a failed
-   drag instead of a tab tap. A button sidesteps that whole class of
-   touch-target conflict rather than continuing to tune the zone -- see
-   index.html's #m-sheet-toggle-btn and main.js's setupSheetToggle.
-
-   --m-sheet-peek is how much stays on screen at rest. */
+   --m-sheet-peek is how much stays on screen at rest -- just the gilded top
+   border plus a sliver of background, not a partial panel (2026-08-26,
+   user-directed: collapsed should read as "tucked away"). #m-sheet-toggle-btn
+   is a plain, independent position:fixed sibling, NOT nested in a shared
+   wrapper -- an earlier cut tried sharing one transform via a
+   display:contents wrapper so the button would ride along "for free," but
+   position:fixed descendants of a display:contents ancestor didn't reliably
+   repaint on attribute changes in testing (a real, documented class of
+   browser bug). Instead the button tracks the sheet via its own `bottom`,
+   driven by the SAME data-detent value (duplicated onto it in
+   setSheetDetent) -- see its rule block further down, whose three bottom
+   values must stay numerically in sync with the three transforms here. */
 body.mobile #sidebar {
-  --m-sheet-peek: 4.6rem;
+  --m-sheet-peek: 1.4rem;
   position: fixed;
   left: 0;
   right: 0;
@@ -440,8 +446,7 @@ body.mobile #sidebar .tile-tab {
 
 body.mobile .m-menu-btn,
 body.mobile .m-status,
-body.mobile .m-fab,
-body.mobile .m-sheet-toggle {
+body.mobile .m-fab {
   position: fixed;
   z-index: 45;
   font: inherit;
@@ -544,23 +549,41 @@ body.mobile .m-fab-badge {
 }
 body.mobile .m-fab-badge[hidden] { display: none; }
 
-/* Sheet show/hide toggle: sits left of the FAB, on the same bottom arc,
-   vertically centered against it (7px = half the 14px size difference).
-   Replaces the old drag grabber -- see the sheet's own rule block above. */
+/* Sheet show/hide toggle: centered ON the sheet's top border, half above
+   (over the map) and half below (over the collapsed strip) -- a small tab
+   poking out of it. Independent position:fixed, not nested with #sidebar --
+   see that rule block's own comment for why -- so it tracks the sheet via
+   `bottom` instead of sharing one transform. 1.4rem / 37.44vh (= 78vh *
+   (1 - 52%)) / 78vh below MUST stay numerically in sync with #sidebar's own
+   --m-sheet-peek / 52% / 0 transform targets just above; 23px throughout is
+   half this button's own 46px, centering it on the line rather than sitting
+   above it. */
 body.mobile .m-sheet-toggle {
-  right: calc(env(safe-area-inset-right, 0px) + .85rem + 66px + .6rem);
-  bottom: calc(var(--m-fab-bottom, 5.6rem) + env(safe-area-inset-bottom, 0px) + 7px);
-  width: 52px;
-  height: 52px;
+  position: fixed;
+  left: 50%;
+  bottom: calc(1.4rem + env(safe-area-inset-bottom, 0px) - 23px);
+  transform: translateX(-50%);
+  z-index: 45;
+  width: 46px;
+  height: 46px;
   border-radius: 50%;
   display: grid;
   place-items: center;
-  font-size: 1.3rem;
+  font-size: 1.15rem;
   line-height: 1;
   padding: 0;
-  transition: transform .18s ease;
+  font: inherit;
+  color: var(--text, #e8e4da);
+  border: 1px solid rgba(255, 255, 255, .16);
+  background: rgba(18, 20, 26, .82);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  box-shadow: 0 2px 12px rgba(0, 0, 0, .38);
+  transition: bottom .28s cubic-bezier(.32, .72, 0, 1), transform .18s ease;
 }
-body.mobile .m-sheet-toggle:active { transform: scale(.93); }
+body.mobile .m-sheet-toggle[data-detent="half"] { bottom: calc(37.44vh - 23px); }
+body.mobile .m-sheet-toggle[data-detent="full"] { bottom: calc(78vh - 23px); }
+body.mobile .m-sheet-toggle:active { transform: translateX(-50%) scale(.93); }
 
 /* Desktop keeps none of this. */
 .m-menu-btn, .m-status, .m-fab, .m-sheet-toggle, .m-scrim { display: none; }

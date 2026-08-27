@@ -350,6 +350,24 @@
         <div id="map-context-menu-root"></div>
       </div>
       <div id="sidebar" class="sidebar"></div>
+      <!-- Shows/hides the sheet, centered on its top border (2026-08-26,
+           user-directed) -- replaces an earlier drag-to-resize gesture that
+           kept losing touches to the tab strip's own tap targets (see
+           css/mobile.css and main.js's setupSheetToggle). A plain sibling of
+           #sidebar, not a child of it or of a shared wrapper: an earlier cut
+           of this wrapped both in one translateY-driven box so the button
+           would ride along "for free," but position:fixed descendants of a
+           display:contents ancestor turned out not to reliably repaint on
+           attribute changes in testing -- a real, documented class of
+           browser bug, not worth the risk on real phones. Tracks the sheet
+           instead via its own `bottom` (not transform) driven by the SAME
+           data-detent value, duplicated onto this element too in
+           setSheetDetent -- see css/mobile.css's `.m-sheet-toggle` rule
+           block for the three bottom values, which must stay numerically in
+           sync with #sidebar's own transform values just above them.
+           Icon/aria-expanded are placeholders until setSheetDetent's first
+           call at startup. -->
+      <button id="m-sheet-toggle-btn" class="m-sheet-toggle" aria-label="Show panel" aria-expanded="false">&#8593;</button>
 
       <!-- MOBILE CHROME (2026-08-25, mobile phase 1) -- display:none on
            desktop, shown only under body.mobile (see css/mobile.css).
@@ -373,11 +391,6 @@
         <span class="m-fab-label">End<br>Turn</span>
         <span class="m-fab-badge" id="m-fab-badge" hidden></span>
       </button>
-      <!-- Shows/hides the sheet -- replaces an earlier drag-to-resize gesture
-           that kept losing touches to the tab strip's own tap targets (see
-           css/mobile.css and main.js's setupSheetToggle). Icon/aria-expanded
-           are placeholders until setSheetDetent's first call at startup. -->
-      <button id="m-sheet-toggle-btn" class="m-sheet-toggle" aria-label="Show panel" aria-expanded="false">&#8963;</button>
       <div id="m-scrim" class="m-scrim" hidden></div>
 
       <!-- Landscape nudge (mobile phase 4). manifest.json's
