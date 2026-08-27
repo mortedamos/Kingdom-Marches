@@ -86,7 +86,27 @@ window.UI = window.UI || {};
     let dragStartX = 0, dragStartY = 0;
     let longPressTimer = null;
     let longPressFired = false;
-    let pinchDist = 0;
+    // Snapshotted ONCE when the second finger lands, never updated frame to
+    // frame (2026-08-26, user-reported: pinch zoom was "very jittery").
+    // Computing each frame's zoom as a multiple of the PREVIOUS frame's
+    // distance -- the old approach -- chains every sample's sensor noise
+    // into the next: a touchscreen's reported finger position jitters by a
+    // px or two even when the finger is dead still, and each of those tiny
+    // deltas got multiplied into the zoom permanently, so the noise never
+    // canceled out, it accumulated. Anchoring every frame to the gesture's
+    // OWN start instead makes the target zoom a pure function of (current
+    // distance / start distance) -- noise still perturbs it a little, but
+    // by a bounded amount, not a compounding one. See zoomAbout's own doc
+    // comment for the other half of this (an absolute target, not a
+    // multiplier).
+    let pinchStartDist = 0;
+    let pinchStartZoom = 1;
+    // Below this many px of change since the START distance, don't touch
+    // the zoom at all -- sensor noise alone can wobble a "held" pinch by a
+    // couple px, and PINCH_DEADZONE_PX eats that before it ever reaches
+    // zoomAbout, rather than relying on the anchoring above to merely bound
+    // it.
+    const PINCH_DEADZONE_PX = 4;
 
     // RING-DRAG (2026-08-26, mobile phase 3): once a long-press opens the
     // ring, the SAME finger stays down and can slide across the pills to
@@ -119,13 +139,17 @@ window.UI = window.UI || {};
       if (longPressTimer !== null) { clearTimeout(longPressTimer); longPressTimer = null; }
     }
 
-    /** Zoom by `factor` about a point in canvas-local px, holding the world
-     *  position under that point fixed. Shared by wheel and pinch so the two
-     *  can't develop different anchoring behavior. */
-    function zoomAbout(localX, localY, factor) {
+    /** Zooms TO `targetZoom` (clamped, an absolute level -- not a multiplier
+     *  on the current one) about a point in canvas-local px, holding the
+     *  world position under that point fixed. Used by pinch, which always
+     *  has a well-defined absolute target (pinchStartZoom * distance ratio);
+     *  an absolute target rather than a relative factor is what lets pinch
+     *  anchor every frame to the gesture's own start instead of chaining off
+     *  the previous frame -- see pinchStartDist's own comment. */
+    function zoomAbout(localX, localY, targetZoom) {
       const { MIN_ZOOM, MAX_ZOOM } = window.UI.render;
       const oldZoom = viewState.zoomLevel || 1;
-      const newZoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, oldZoom * factor));
+      const newZoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, targetZoom));
       if (newZoom === oldZoom) return;
       const scrollX = viewState.scrollX || 0;
       const scrollY = viewState.scrollY || 0;
@@ -154,7 +178,8 @@ window.UI = window.UI || {};
         cancelLongPress();
         dragging = false;
         dragMoved = true;
-        pinchDist = pinchGeometry().dist;
+        pinchStartDist = pinchGeometry().dist;
+        pinchStartZoom = viewState.zoomLevel || 1;
         // A second finger landing mid ring-drag is not a gesture this
         // supports -- abandon the arm-preview rather than let two unrelated
         // gestures fight over the same pointer bookkeeping. The ring itself
@@ -226,8 +251,9 @@ window.UI = window.UI || {};
 
       if (pointers.size === 2) {
         const { dist, cx, cy } = pinchGeometry();
-        if (pinchDist > 0 && dist > 0) zoomAbout(cx, cy, dist / pinchDist);
-        pinchDist = dist;
+        if (pinchStartDist > 0 && dist > 0 && Math.abs(dist - pinchStartDist) >= PINCH_DEADZONE_PX) {
+          zoomAbout(cx, cy, pinchStartZoom * (dist / pinchStartDist));
+        }
         onChange();
         return;
       }
@@ -313,14 +339,14 @@ window.UI = window.UI || {};
         dragStartX = rest.x; dragStartY = rest.y;
         dragging = true;
         dragMoved = true;  // still not a tap
-        pinchDist = 0;
+        pinchStartDist = 0;
         return;
       }
       if (pointers.size > 0) return;
 
       const wasDragging = dragging;
       dragging = false;
-      pinchDist = 0;
+      pinchStartDist = 0;
       canvas.style.cursor = "grab";
 
       // A tap is a press that neither travelled nor became a hold. Resolved
