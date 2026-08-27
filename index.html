@@ -365,9 +365,16 @@
            setSheetDetent -- see css/mobile.css's `.m-sheet-toggle` rule
            block for the three bottom values, which must stay numerically in
            sync with #sidebar's own transform values just above them.
-           Icon/aria-expanded are placeholders until setSheetDetent's first
-           call at startup. -->
-      <button id="m-sheet-toggle-btn" class="m-sheet-toggle" aria-label="Show panel" aria-expanded="false">&#8593;</button>
+           The chevron is a CSS-drawn border corner (see mobile.css's
+           .m-sheet-toggle-arrow), not a Unicode arrow character (2026-08-26,
+           user-reported: too faint to see) -- a font glyph's stroke weight
+           isn't reliably controllable via font-weight, where a border's
+           width is exact and guaranteed. Its direction flips off the
+           .m-sheet-toggle-open modifier setSheetDetent toggles on the
+           button; aria-expanded is the only placeholder needed here, since
+           the CSS default (button without that class) already matches
+           "collapsed." -->
+      <button id="m-sheet-toggle-btn" class="m-sheet-toggle" aria-label="Show panel" aria-expanded="false"><span class="m-sheet-toggle-arrow" aria-hidden="true"></span></button>
 
       <!-- MOBILE CHROME (2026-08-25, mobile phase 1) -- display:none on
            desktop, shown only under body.mobile (see css/mobile.css).

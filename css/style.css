@@ -696,6 +696,14 @@ html, body {
   font-family: inherit;
 }
 .end-turn-btn:hover { background: var(--accent-hover); }
+/* Nothing left to order this turn (2026-08-26, user-directed): the button
+   itself says so with color, same "Colour, not motion" no-flashing rule
+   the mobile FAB's own .m-ready follows -- see css/mobile.css. Same green
+   as that FAB's ready state (rgba(58,122,74)) for the two to read as one
+   idea in two places, solid rather than translucent since this button
+   never sits over game art the way the floating FAB does. */
+.end-turn-btn-ready { background: #3a7a4a; color: #fff; }
+.end-turn-btn-ready:hover { background: #468f59; }
 
 /* --- Tabbed tile inspector ---
    One tab per thing on the selected tile (city / each unit / building /

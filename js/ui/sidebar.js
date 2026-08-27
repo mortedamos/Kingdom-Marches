@@ -160,13 +160,36 @@ window.UI = window.UI || {};
       }
     }
 
+    // End Turn button (2026-08-26, user-directed): reads "Next" while the
+    // player still owes the turn something -- an idle city, a unit needing
+    // orders, or affordable research left unpicked, the same three checks
+    // main.js's collectUnresolvedTurnWork uses for its confirm-on-force-end
+    // dialog, kept in sync by eye (this predicate set already lives in
+    // three other places per the idle-city comment above, a fourth here).
+    // Only once none of them are true does it turn green and read "End
+    // Turn". A plain click either way goes through
+    // main.js's handleEndTurnButtonClick (wired via wireLongPress, not a
+    // plain .onclick, so a long-press can force-end the turn regardless of
+    // which state this is in -- see that function's own doc comment).
+    let hasUnresolvedWork = false;
+    if (viewState.humanCivId) {
+      const civ = civs[viewState.humanCivId];
+      hasUnresolvedWork = !!civ && (
+        civ.cities.some((c) => window.GameEngine.cities.isCityIdle(civ, c, gameState)) ||
+        window.GameEngine.orders.unitsNeedingOrders(gameState, viewState.humanCivId).length > 0 ||
+        (!civ.currentResearch && window.GameEngine.tech.hasAffordableResearch(civ))
+      );
+    }
+    const endTurnClass = hasUnresolvedWork ? "end-turn-btn" : "end-turn-btn end-turn-btn-ready";
+    const endTurnLabel = hasUnresolvedWork ? "Next" : "End Turn";
+
     // Turn counter moved below End Turn.
     html += `<div class="sidebar-footer">
       ${researchHtml}
       ${idleCityHtml}
       ${cyclerHtml}
       ${territoryHtml}
-      <button id="end-turn-btn" class="end-turn-btn">End Turn</button>
+      <button id="end-turn-btn" class="${endTurnClass}">${endTurnLabel}</button>
       <div class="turn-counter">Turn ${turnNumber}</div>
     </div>`;
 

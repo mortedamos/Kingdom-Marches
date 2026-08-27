@@ -371,10 +371,15 @@ body.mobile .m-scrim {
    shortcut (see setupMobileShell's `m-status` click listener) and for
    forward compatibility.
 
-   --m-sheet-peek is how much stays on screen at rest -- just the gilded top
-   border plus a sliver of background, not a partial panel (2026-08-26,
-   user-directed: collapsed should read as "tucked away"). #m-sheet-toggle-btn
-   is a plain, independent position:fixed sibling, NOT nested in a shared
+   --m-sheet-peek is how much stays on screen at rest -- exactly half of
+   #m-sheet-toggle-btn's own 46px (2026-08-26, user-directed), so that
+   button's bottom edge lands flush on the viewport's own bottom edge, with
+   only the gilded top border and a sliver of background showing above it.
+   Deliberately ignores env(safe-area-inset-bottom) at this one detent (the
+   half/full transforms below never used it either) -- the user's own call,
+   trading the home-indicator clearance the peek strip used to keep for a
+   button that's flush with the true screen edge. #m-sheet-toggle-btn is a
+   plain, independent position:fixed sibling, NOT nested in a shared
    wrapper -- an earlier cut tried sharing one transform via a
    display:contents wrapper so the button would ride along "for free," but
    position:fixed descendants of a display:contents ancestor didn't reliably
@@ -384,7 +389,7 @@ body.mobile .m-scrim {
    setSheetDetent) -- see its rule block further down, whose three bottom
    values must stay numerically in sync with the three transforms here. */
 body.mobile #sidebar {
-  --m-sheet-peek: 1.4rem;
+  --m-sheet-peek: 23px;
   position: fixed;
   left: 0;
   right: 0;
@@ -401,7 +406,7 @@ body.mobile #sidebar {
   border-width: 12px 0 0 0;
   overflow: hidden;
   box-shadow: 0 -6px 28px rgba(0, 0, 0, .45);
-  transform: translateY(calc(100% - var(--m-sheet-peek) - env(safe-area-inset-bottom, 0px)));
+  transform: translateY(calc(100% - var(--m-sheet-peek)));
   transition: transform .28s cubic-bezier(.32, .72, 0, 1);
 }
 body.mobile #sidebar[data-detent="half"] { transform: translateY(52%); }
@@ -553,15 +558,18 @@ body.mobile .m-fab-badge[hidden] { display: none; }
    (over the map) and half below (over the collapsed strip) -- a small tab
    poking out of it. Independent position:fixed, not nested with #sidebar --
    see that rule block's own comment for why -- so it tracks the sheet via
-   `bottom` instead of sharing one transform. 1.4rem / 37.44vh (= 78vh *
-   (1 - 52%)) / 78vh below MUST stay numerically in sync with #sidebar's own
-   --m-sheet-peek / 52% / 0 transform targets just above; 23px throughout is
-   half this button's own 46px, centering it on the line rather than sitting
+   `bottom` instead of sharing one transform. 0 / 37.44vh (= 78vh * (1 - 52%))
+   / 78vh below MUST stay numerically in sync with #sidebar's own
+   --m-sheet-peek / 52% / 0 transform targets just above -- at peek this
+   button's own 46px is exactly double --m-sheet-peek, so `bottom: 0` alone
+   already centers it on the border AND lands its bottom edge flush on the
+   screen (2026-08-26, user-directed); 23px in the other two states is half
+   this button's own 46px, centering it on the line rather than sitting
    above it. */
 body.mobile .m-sheet-toggle {
   position: fixed;
   left: 50%;
-  bottom: calc(1.4rem + env(safe-area-inset-bottom, 0px) - 23px);
+  bottom: 0;
   transform: translateX(-50%);
   z-index: 45;
   width: 46px;
@@ -569,8 +577,6 @@ body.mobile .m-sheet-toggle {
   border-radius: 50%;
   display: grid;
   place-items: center;
-  font-size: 1.15rem;
-  line-height: 1;
   padding: 0;
   font: inherit;
   color: var(--text, #e8e4da);
@@ -584,6 +590,27 @@ body.mobile .m-sheet-toggle {
 body.mobile .m-sheet-toggle[data-detent="half"] { bottom: calc(37.44vh - 23px); }
 body.mobile .m-sheet-toggle[data-detent="full"] { bottom: calc(78vh - 23px); }
 body.mobile .m-sheet-toggle:active { transform: translateX(-50%) scale(.93); }
+
+/* Chevron: a bordered corner, not a Unicode arrow character (2026-08-26,
+   user-reported: the old ↑/↓ glyphs were too faint to see) -- a font
+   glyph's stroke weight isn't reliably controllable via font-weight, where
+   a border's width is exact and as bold as this sets it. Points up
+   (collapsed, "tap to raise") by default; setSheetDetent toggles
+   .m-sheet-toggle-open on the BUTTON when the sheet is up, flipping it to
+   point down ("tap to lower") via the second rule below. currentColor picks
+   up the button's own --text color, so this needs no color of its own. */
+body.mobile .m-sheet-toggle-arrow {
+  width: 10px;
+  height: 10px;
+  border-style: solid;
+  border-color: currentColor;
+  border-width: 0 3px 3px 0;
+  transform: rotate(-135deg);
+  transition: transform .18s ease;
+}
+body.mobile .m-sheet-toggle.m-sheet-toggle-open .m-sheet-toggle-arrow {
+  transform: rotate(45deg);
+}
 
 /* Desktop keeps none of this. */
 .m-menu-btn, .m-status, .m-fab, .m-sheet-toggle, .m-scrim { display: none; }

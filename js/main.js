@@ -524,7 +524,12 @@
       const open = name !== "peek";
       toggle.setAttribute("aria-expanded", open ? "true" : "false");
       toggle.setAttribute("aria-label", open ? "Collapse panel" : "Show panel");
-      toggle.innerHTML = open ? "&#8595;" : "&#8593;"; // down arrow / up arrow
+      // Flips the CSS-drawn chevron (mobile.css's .m-sheet-toggle-arrow)
+      // between pointing up (collapsed, "tap to raise") and down (open,
+      // "tap to lower") -- a class toggle, not an innerHTML swap, since the
+      // arrow is a bordered span now, not a text glyph (2026-08-26,
+      // user-reported: the old Unicode arrow was too faint to see).
+      toggle.classList.toggle("m-sheet-toggle-open", open);
     }
   }
 
@@ -553,13 +558,22 @@
     }
 
     if (!fab || !badge) return;
-    const waiting = civ
-      ? window.GameEngine.orders.unitsNeedingOrders(gameState, humanCivId).length
-      : 0;
-    badge.hidden = waiting === 0;
-    badge.textContent = waiting > 99 ? "99+" : String(waiting);
+    // Same three "still owes this turn" categories sidebar.js's own End
+    // Turn button label uses, and collectUnresolvedTurnWork checks for the
+    // confirm-on-force-end dialog -- kept in sync by eye, matching this
+    // codebase's existing convention for this exact predicate set (see
+    // sidebar.js's own comment on it appearing in three places already).
+    const idleCities = civ
+      ? civ.cities.filter((c) => window.GameEngine.cities.isCityIdle(civ, c, gameState)).length : 0;
+    const waitingUnits = civ ? window.GameEngine.orders.unitsNeedingOrders(gameState, humanCivId).length : 0;
+    const researchOwed = civ && !civ.currentResearch && window.GameEngine.tech.hasAffordableResearch(civ) ? 1 : 0;
+    const owed = idleCities + waitingUnits + researchOwed;
+    badge.hidden = owed === 0;
+    badge.textContent = owed > 99 ? "99+" : String(owed);
+    const label = fab.querySelector(".m-fab-label");
+    if (label) label.innerHTML = owed === 0 ? "End<br>Turn" : "Next";
     // Colour, not motion -- see css/mobile.css's note on the no-flashing rule.
-    fab.classList.toggle("m-ready", !!civ && waiting === 0);
+    fab.classList.toggle("m-ready", !!civ && owed === 0);
   }
 
   // Re-armed on returning to portrait, not stored across sessions -- see
@@ -654,11 +668,15 @@
     if ($("sidebar")) setSheetDetent("peek");
     setupSheetToggle();
 
-    // Forwards to the sidebar's own End Turn, which is re-rendered constantly
-    // -- so it's looked up at tap time, never cached.
-    $("m-endturn-fab")?.addEventListener("click", () => {
-      $("end-turn-btn")?.click();
-    });
+    // Forwards a plain tap to the sidebar's own End Turn (re-rendered
+    // constantly, so looked up at tap time, never cached) -- which now goes
+    // through handleEndTurnButtonClick same as a real click there would,
+    // since that's wired via addEventListener, not .onclick, and .click()
+    // synthesizes a real event either way. A long-press, unlike a plain
+    // forwarded tap, skips the sidebar button entirely and force-ends the
+    // turn directly -- wired once here rather than per-redraw since,
+    // unlike #end-turn-btn, this FAB is never rebuilt.
+    wireLongPress($("m-endturn-fab"), () => $("end-turn-btn")?.click(), handleEndTurnClick);
 
     $("m-menu-btn")?.addEventListener("click", () => {
       setMobileMenuOpen(!document.body.classList.contains("m-menu-open"));
@@ -2664,6 +2682,12 @@
     if (!spectatorPaused) startAutoplay();
   }
 
+  /** Force-ends the turn regardless of what's still unresolved -- the
+   *  confirm-dialog safety net for doing that on purpose. Called directly by
+   *  a long-press on the End Turn button/FAB (2026-08-26, user-directed:
+   *  long-pressing always reaches this, even while the button reads "Next"
+   *  -- see wireLongPress below), and by handleEndTurnButtonClick's own
+   *  plain click once nothing is left to jump to. */
   function handleEndTurnClick() {
     if (spectatorMode) return; // spectator turns advance automatically
     // Turn-end guard: surface anything the player
@@ -2684,6 +2708,74 @@
       return;
     }
     advanceTurn();
+  }
+
+  /** Jumps to the next thing the player still owes this turn -- idle
+   *  cities, then units needing orders (both via the existing cyclers just
+   *  below, previously wired together for this same purpose after a city
+   *  order), then finally the tech tree if research is unassigned and
+   *  something's affordable. Returns whether it actually navigated, same
+   *  convention goToNextIdleCityOrNextUnit already uses, so
+   *  handleEndTurnButtonClick knows whether to fall through to actually
+   *  ending the turn. */
+  function handleNextAttentionItem() {
+    if (goToNextIdleCityOrNextUnit()) return true;
+    if (!humanCivId) return false;
+    const civ = gameState.civs[humanCivId];
+    if (civ && !civ.currentResearch && window.GameEngine.tech.hasAffordableResearch(civ)) {
+      viewState.techTreeCivId = humanCivId;
+      lastRenderedTechTreeKey = null;
+      redraw();
+      return true;
+    }
+    return false;
+  }
+
+  /** The End Turn button's normal click (2026-08-26, user-directed): while
+   *  there's still unresolved work -- sidebar.js's button reads "Next" and
+   *  turns green only once this is false, same three checks
+   *  collectUnresolvedTurnWork uses, kept in sync by eye across the two
+   *  files -- a plain click jumps to the next thing needing attention
+   *  instead of trying to end the turn. Only once nothing is left does it
+   *  fall through to actually ending it. */
+  function handleEndTurnButtonClick() {
+    if (spectatorMode) return;
+    if (handleNextAttentionItem()) return;
+    handleEndTurnClick();
+  }
+
+  /** Wires `btn` so a normal click/tap fires `onClick` but holding it past
+   *  END_TURN_LONG_PRESS_MS fires `onLongPress` instead -- used by the End
+   *  Turn button/FAB so a long-press always ends the turn even while
+   *  unresolved work has a plain click jumping around the map instead
+   *  (2026-08-26, user-directed). Suppresses the click a touch/mouse always
+   *  synthesizes after release, long press or not, so onClick never fires
+   *  as a follow-up to onLongPress. Not map-gesture machinery like
+   *  input.js's own long-press -- this is one button, so no pointer capture
+   *  or move-triggered cancellation, just leave-cancels-the-hold. */
+  const END_TURN_LONG_PRESS_MS = 500;
+  function wireLongPress(btn, onClick, onLongPress) {
+    if (!btn) return;
+    let timer = null, fired = false;
+    const cancel = () => { if (timer !== null) { clearTimeout(timer); timer = null; } };
+    btn.addEventListener("pointerdown", (e) => {
+      if (e.pointerType === "mouse" && e.button !== 0) return; // right/middle click, not a press-and-hold
+      fired = false;
+      cancel();
+      timer = window.setTimeout(() => {
+        timer = null;
+        fired = true;
+        navigator.vibrate?.(10);
+        onLongPress();
+      }, END_TURN_LONG_PRESS_MS);
+    });
+    btn.addEventListener("pointerup", cancel);
+    btn.addEventListener("pointerleave", cancel);
+    btn.addEventListener("pointercancel", cancel);
+    btn.addEventListener("click", (e) => {
+      if (fired) { fired = false; e.preventDefault(); e.stopPropagation(); return; }
+      onClick();
+    });
   }
 
   /** Things the player very likely still wants to do this turn. Empty means
@@ -4110,8 +4202,12 @@
     // Unit verbs and city production live in the radial map menu
     // (renderRingMenu / handleContextMenuAction); the sidebar only owns
     // the footer buttons, since everything else here is just information.
-    const endTurnBtn = $("end-turn-btn");
-    if (endTurnBtn) endTurnBtn.onclick = handleEndTurnClick;
+    // wireLongPress, not a plain .onclick, since a long-press on this same
+    // button must always end the turn (see its own doc comment) -- re-wired
+    // every redraw same as .onclick always was, because sidebar.js rebuilds
+    // this element's innerHTML (a fresh node) each time, taking any
+    // previously-attached listeners with it.
+    wireLongPress($("end-turn-btn"), handleEndTurnButtonClick, handleEndTurnClick);
     const nextUnitBtn = $("next-unit-btn");
     if (nextUnitBtn) nextUnitBtn.onclick = handleNextUnit;
     const nextIdleCityBtn = $("next-idle-city-btn");
