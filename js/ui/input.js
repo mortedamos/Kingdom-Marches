@@ -391,6 +391,29 @@ window.UI = window.UI || {};
         return;
       }
       handleTileClick(tilePos, gameState, viewState);
+      // Mobile (2026-08-27, user-directed): a single tap on an actionable
+      // unit/city presents its menu immediately, no long/continuous press
+      // required -- user feedback was that long-press-for-actions felt
+      // wrong on a phone. Desktop is untouched (still click-to-select,
+      // right-click or long-press for the menu). Long-press itself still
+      // exists on mobile too, unchanged -- it's what the RING-DRAG
+      // slide-across-pills gesture above is built on, and this branch is
+      // simply never reached for a held press: `longPressFired` already
+      // returned early above the instant the timer opens its own ring, so
+      // there's no double-open. Re-derives options AFTER handleTileClick,
+      // not before, so a unit that just became newly selected (case 2 in
+      // orders.js's mapMenuOptions: a target tile for an already-selected
+      // unit) is judged against its now-current selection, not stale prior
+      // state. Silently does nothing extra on a tile with no options --
+      // same as tapping empty terrain or an enemy unit today.
+      if (document.body.classList.contains("mobile")) {
+        const res = window.GameEngine.orders.mapMenuOptions(
+          gameState, viewState, tilePos.x, tilePos.y, viewState.humanCivId);
+        if (res.options.length) {
+          viewState.ringMenu = { x: tilePos.x, y: tilePos.y, subject: res.subject, page: null };
+          viewState.hoverTile = null;
+        }
+      }
       onChange();
     }
 
