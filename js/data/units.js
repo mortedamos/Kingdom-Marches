@@ -251,12 +251,18 @@ window.GameData.UNITS = {
     id: "catapult", label: "Catapult", symbol: "⚙", category: "military", raceOnly: "human", range: 2,
     attack: 7, defense: 3, movement: 2, visionRadius: 2, siegePct: 1.75, siegeAtRange: true, attackChars: ["🪨", "☄"],
     coinCost: 28, biggerPct: .5,
+    // impactSmoke: a burst of dust/debris drawn on the TARGET's tile once
+    // the lobbed stone lands -- see overlays.js's activeImpactSmoke/
+    // drawImpactSmokeAt. Generic per-unit data flag (same convention as
+    // muzzleSmoke, attackChars) rather than a hardcoded typeId check.
+    impactSmoke: true,
     nameSpecial: true, // a machine, not a person -- see unit-names.js
   },
   trebuchet: {
     id: "trebuchet", label: "Trebuchet", symbol: "⚙", category: "military", raceOnly: "human", range: 3,
     attack: 8, defense: 4, movement: 2, visionRadius: 2, siegePct: 2.25, siegeAtRange: true, // replaces Catapult
     coinCost: 40, attackChars: ["🪨", "☄"], biggerPct: .6,
+    impactSmoke: true, // see catapult's own comment on this flag
     nameSpecial: true, // a machine, not a person -- see unit-names.js
   },
   wizard: {

@@ -1249,6 +1249,7 @@ window.UI = window.UI || {};
     overlays.drawAreaEffects(ctx, offsetX, offsetY, ts, now);
     overlays.drawCombatSlashes(ctx, offsetX, offsetY, ts, now);
     overlays.drawMuzzleSmoke(ctx, offsetX, offsetY, ts, now);
+    overlays.drawImpactSmoke(ctx, offsetX, offsetY, ts, now);
     overlays.drawDeathEffects(ctx, offsetX, offsetY, ts, now);
     for (const { unit, screenX, screenY } of quipBubbleQueue) {
       overlays.drawQuipBubble(ctx, unit, screenX, screenY, ts, now);

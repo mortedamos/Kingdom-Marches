@@ -34,6 +34,8 @@ window.UI = window.UI || {};
   const DEATH_SMOKE_COUNT = 6; // number of drifting smoke puffs per death
   const MUZZLE_SMOKE_ANIM_MS = 450; // gunpowder-weapon muzzle puff, total lifetime -- quick, punchy
   const MUZZLE_SMOKE_COUNT = 4; // number of drifting puffs per shot
+  const IMPACT_SMOKE_ANIM_MS = 600; // dust/debris kicked up where a lobbed stone lands, total lifetime
+  const IMPACT_SMOKE_COUNT = 5; // number of drifting puffs per impact
 
   // Condition badges: a small icon per active
   // entry in unit.conditions (see combat.js's setCondition/tickConditions),
@@ -84,6 +86,21 @@ window.UI = window.UI || {};
    *  needed at any of ai.js's several recordCombatEvent spots. */
   let activeMuzzleSmoke = [];
 
+  /** Dust/debris puffs where a lobbed stone lands (Catapult/Trebuchet --
+   *  see units.js's `impactSmoke` flag). Same "side effect of the same
+   *  drained recordCombatEvent stream" shape as activeMuzzleSmoke just
+   *  above, mirroring its exact puff math -- but anchored on the
+   *  DEFENDER's tile (dx,dy) rather than the attacker's, and scattered in a
+   *  full circle rather than a forward cone, since a stone smashing into
+   *  the ground/wall throws debris every direction, not just backward off
+   *  a muzzle. `start` is stamped into the FUTURE by the attack's own
+   *  travel time (SLASH_ANIM_MS for a ranged shot, a small fixed pop
+   *  otherwise) so the dust kicks up when the stone actually lands, not
+   *  the instant it's lobbed -- drawImpactSmokeAt's elapsed check below
+   *  treats a still-future start the same as "not yet expired," so this
+   *  needs no separate scheduler. */
+  let activeImpactSmoke = [];
+
   function updateCombatAnims(now) {
     const newEvents = window.GameEngine.combat.drainCombatEvents();
     for (const evt of newEvents) {
@@ -123,12 +140,28 @@ window.UI = window.UI || {};
         }
         activeMuzzleSmoke.push({ x: evt.ax, y: evt.ay, start: now, puffs });
       }
+      if (atkBase?.impactSmoke) {
+        const puffs = [];
+        for (let i = 0; i < IMPACT_SMOKE_COUNT; i++) {
+          puffs.push({
+            angle: Math.random() * Math.PI * 2, // full circle -- debris, not a directional cone
+            dist: 0.12 + Math.random() * 0.28,
+            size: 0.16 + Math.random() * 0.14,
+            delay: Math.random() * 0.15,
+          });
+        }
+        const impactDelay = isRanged ? SLASH_ANIM_MS : 80;
+        activeImpactSmoke.push({ x: evt.dx, y: evt.dy, start: now + impactDelay, puffs });
+      }
     }
     if (activeCombatAnims.length) {
       activeCombatAnims = activeCombatAnims.filter((a) => now - a.start < ATTACK_ANIM_MS);
     }
     if (activeMuzzleSmoke.length) {
       activeMuzzleSmoke = activeMuzzleSmoke.filter((m) => now - m.start < MUZZLE_SMOKE_ANIM_MS);
+    }
+    if (activeImpactSmoke.length) {
+      activeImpactSmoke = activeImpactSmoke.filter((m) => now - m.start < IMPACT_SMOKE_ANIM_MS);
     }
   }
 
@@ -364,6 +397,9 @@ window.UI = window.UI || {};
   }
   function getActiveMuzzleSmoke() {
     return activeMuzzleSmoke;
+  }
+  function getActiveImpactSmoke() {
+    return activeImpactSmoke;
   }
 
   /** Runs every per-frame queue drain in one call -- the single entry point
@@ -727,6 +763,49 @@ window.UI = window.UI || {};
     for (const e of activeMuzzleSmoke) {
       const px = e.x * ts + offsetX + ts / 2, py = e.y * ts + offsetY + ts / 2;
       drawMuzzleSmokeAt(ctx, e, px, py, ts, now);
+    }
+  }
+
+  /**
+   * Impact dust where a lobbed stone lands (Catapult/Trebuchet -- see
+   * units.js's `impactSmoke` flag). Same drifting-puff math as
+   * drawMuzzleSmokeAt just above, but a dustier tan-grey (kicked-up earth,
+   * not gunsmoke) and `elapsed < 0` also bails -- e.start is stamped into
+   * the future by the attack's travel time (see activeImpactSmoke's own
+   * doc comment), so this stays invisible until the stone actually lands.
+   */
+  function drawImpactSmokeAt(ctx, e, px, py, ts, now) {
+    const elapsed = now - e.start;
+    if (elapsed < 0 || elapsed > IMPACT_SMOKE_ANIM_MS) return;
+    const t = elapsed / IMPACT_SMOKE_ANIM_MS;
+
+    ctx.save();
+    for (const p of e.puffs) {
+      const pt = Math.min(1, Math.max(0, (t - p.delay) / (1 - p.delay)));
+      if (pt <= 0) continue;
+      const ease = 1 - (1 - pt) * (1 - pt);
+      const dist = p.dist * ts * ease * 2.4;
+      const size = p.size * ts * (0.5 + 0.6 * ease);
+      const alpha = (1 - pt) * 0.58;
+      const cx = px + Math.cos(p.angle) * dist;
+      // Puffs drift up as they expand, like real dust settling out of a
+      // rising cloud rather than sliding flat across the ground.
+      const cy = py + Math.sin(p.angle) * dist - ts * 0.12 * ease;
+      ctx.globalAlpha = Math.max(0, alpha);
+      ctx.fillStyle = "#b5ac96";
+      ctx.beginPath();
+      ctx.arc(cx, cy, Math.max(1, size), 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  /** 2D-only: projects every active impact-smoke puff via the affine
+   *  offsetX/offsetY/ts tile grid, then draws it with drawImpactSmokeAt. */
+  function drawImpactSmoke(ctx, offsetX, offsetY, ts, now) {
+    for (const e of activeImpactSmoke) {
+      const px = e.x * ts + offsetX + ts / 2, py = e.y * ts + offsetY + ts / 2;
+      drawImpactSmokeAt(ctx, e, px, py, ts, now);
     }
   }
 
@@ -1778,9 +1857,9 @@ window.UI = window.UI || {};
     updateCombatAnims, updateAreaEffects, updateQuipBubbles, updateFloatingTexts, updateDeathEffects,
     drawAreaEffects, drawAreaEffectBox, drawCombatSlashes, drawCombatSlashAt,
     drawQuipBubble, drawFloatingTexts, drawDeathEffects, drawDeathEffectAt,
-    drawMuzzleSmoke, drawMuzzleSmokeAt,
+    drawMuzzleSmoke, drawMuzzleSmokeAt, drawImpactSmoke, drawImpactSmokeAt,
     hasActiveQuip, hasActiveFloatingText, getActiveCombatAnims, getActiveAreaEffects, getActiveDeathEffects,
-    getActiveMuzzleSmoke,
+    getActiveMuzzleSmoke, getActiveImpactSmoke,
     getUnitShakeOffset, drawConditionVisualEffects, drawConditionBadges, drawChannelStashLabel, drawIdleCityBadge,
     drawLevelUpGlowBehind, drawLevelUpSparkles, drawFlameEffect, drawChestSparkle, drawResourceGlint,
     drawAmbientUnitEffects,
