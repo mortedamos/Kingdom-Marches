@@ -141,8 +141,14 @@ window.UI = window.UI || {};
     // [...unitOptions, ...cityOptions] to match, which is why the placement
     // order below differs between the two branches (auto mode reads
     // right-then-left off the front of the array; forced mode reads
-    // left-then-right).
-    const listFallback = () => ({ mode: "list", side: roomRight >= roomLeft ? "right" : "left", items: [] });
+    // left-then-right). Unaffected by the mobile always-left branch just
+    // below -- a merged ring already puts unit actions on the left, which is
+    // the side that branch exists to prefer.
+    const listFallback = () => ({
+      mode: "list",
+      side: mobile ? "left" : (roomRight >= roomLeft ? "right" : "left"),
+      items: [],
+    });
 
     let rightCount, leftCount;
     if (ctx.split) {
@@ -154,6 +160,19 @@ window.UI = window.UI || {};
       if ((leftCount && !fits(roomLeft, leftCount)) || (rightCount && !fits(roomRight, rightCount))) {
         return listFallback();
       }
+    } else if (mobile) {
+      // Always the subject's left, never split across both sides (2026-08-26,
+      // user-directed): the ring is opened and slid across with the SAME
+      // thumb that's holding/tapping the phone (see input.js's RING-DRAG), so
+      // a menu that lands to the right of -- or straddling -- the subject
+      // puts that thumb right over the pills it's trying to read and slide
+      // across. Left-of-subject keeps the pills clear of the hand. Still
+      // falls through to whichever side actually fits, then to the list,
+      // same guarantees as desktop below -- this only changes priority order
+      // and drops the two-column split, never lets a pill hang off-screen.
+      if (fits(roomLeft, n)) { rightCount = 0; leftCount = n; }
+      else if (fits(roomRight, n)) { rightCount = n; leftCount = 0; }
+      else return listFallback();
     } else {
       const half = Math.ceil(n / 2);
       if (n >= 4 && fits(roomRight, half) && fits(roomLeft, n - half)) {
