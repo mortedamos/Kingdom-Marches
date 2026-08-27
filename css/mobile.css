@@ -536,6 +536,17 @@ body.mobile .m-fab.m-ready {
   background: rgba(58, 122, 74, .9);
   border-color: rgba(140, 220, 150, .5);
 }
+/* Other kingdoms taking their turn (2026-08-27, user-directed): reads
+   "Wait" and goes visibly inert while viewState.turnBanner is up -- see
+   main.js's updateMobileStatus, which also sets the native `disabled`
+   attribute so it stops responding to taps and long-presses, not just
+   looks like it does. Grey, not the ready green or the default gold --
+   neither "go" color belongs on a control that currently does nothing. */
+body.mobile .m-fab:disabled {
+  background: rgba(60, 62, 68, .82);
+  border-color: rgba(255, 255, 255, .1);
+  color: rgba(232, 228, 218, .55);
+}
 body.mobile .m-fab-badge {
   position: absolute;
   top: -3px;

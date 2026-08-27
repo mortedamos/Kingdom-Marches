@@ -558,6 +558,25 @@
     }
 
     if (!fab || !badge) return;
+
+    // Other kingdoms taking their turn (2026-08-27, user-directed):
+    // advanceTurn sets viewState.turnBanner for exactly this window --
+    // "<Race> Kingdom Taking Its Turn..." -- clearing it the instant
+    // control returns to the player. Neither "Next" nor "End Turn" means
+    // anything while it's up (there's nothing of the player's own left to
+    // jump to or end), so the button says so instead and goes inert --
+    // `disabled` blocks both a tap and wireLongPress's pointerdown-driven
+    // long-press in one step, no separate guard needed in either handler.
+    if (viewState.turnBanner) {
+      fab.disabled = true;
+      fab.classList.remove("m-ready");
+      badge.hidden = true;
+      const waitLabel = fab.querySelector(".m-fab-label");
+      if (waitLabel) waitLabel.textContent = "Wait";
+      return;
+    }
+    fab.disabled = false;
+
     // Same three "still owes this turn" categories sidebar.js's own End
     // Turn button label uses, and collectUnresolvedTurnWork checks for the
     // confirm-on-force-end dialog -- kept in sync by eye, matching this
