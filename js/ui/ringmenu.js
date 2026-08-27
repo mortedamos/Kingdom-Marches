@@ -134,16 +134,16 @@ window.UI = window.UI || {};
     // whichever single side can take it, and if neither can, the whole ring
     // gives way to the scrollable list (see listFallback below).
     //
-    // ctx.split, when present, overrides all of that -- a merged unit+city
-    // ring (see orders.js's mergeUnitCityOptions) wants unit actions on the
-    // LEFT and city actions on the RIGHT unconditionally, not a suggestion
-    // the room-fit logic above is free to renegotiate. `options` is built as
-    // [...unitOptions, ...cityOptions] to match, which is why the placement
-    // order below differs between the two branches (auto mode reads
-    // right-then-left off the front of the array; forced mode reads
-    // left-then-right). Unaffected by the mobile always-left branch just
-    // below -- a merged ring already puts unit actions on the left, which is
-    // the side that branch exists to prefer.
+    // ctx.split, when present, overrides all of that on DESKTOP -- a merged
+    // unit+city ring (see orders.js's mergeUnitCityOptions) wants unit
+    // actions on the LEFT and city actions on the RIGHT unconditionally,
+    // not a suggestion the room-fit logic above is free to renegotiate.
+    // `options` is built as [...unitOptions, ...cityOptions] to match,
+    // which is why the placement order below differs between the two
+    // branches (auto mode reads right-then-left off the front of the
+    // array; forced mode reads left-then-right). On MOBILE this is
+    // overridden too -- see the always-left branch just below, which reads
+    // ctx.split as void and single-columns the same merged options list.
     const listFallback = () => ({
       mode: "list",
       side: mobile ? "left" : (roomRight >= roomLeft ? "right" : "left"),
@@ -151,7 +151,7 @@ window.UI = window.UI || {};
     });
 
     let rightCount, leftCount;
-    if (ctx.split) {
+    if (ctx.split && !mobile) {
       leftCount = ctx.split.leftCount;
       rightCount = ctx.split.rightCount;
       // A forced split still has to physically fit. It didn't have to before
@@ -161,6 +161,17 @@ window.UI = window.UI || {};
         return listFallback();
       }
     } else if (mobile) {
+      // Overrides ctx.split too (2026-08-26, user-reported: the ring still
+      // opened to the right for a unit standing on its own city, the one
+      // case the mobile branch below didn't originally cover) -- a merged
+      // unit+city ring's city pills landing on the right is exactly the
+      // "menu on the wrong side of my thumb" problem this branch exists to
+      // avoid, split or not. `options` is still [...unitOptions,
+      // ...cityOptions] (see mergeUnitCityOptions), and place() below reads
+      // the whole thing left-to-right starting at index 0 whenever
+      // rightCount is 0, so unit pills still come before city pills in the
+      // one column -- nothing else has to change for this to fall out
+      // correctly.
       // Always the subject's left, never split across both sides (2026-08-26,
       // user-directed): the ring is opened and slid across with the SAME
       // thumb that's holding/tapping the phone (see input.js's RING-DRAG), so
