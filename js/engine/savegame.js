@@ -179,11 +179,20 @@ window.GameEngine = window.GameEngine || {};
     return bytes;
   }
 
-  /** File save: a Blob ready to hand to a download link. */
+  /** File save: a Blob ready to hand to a download link.
+   *
+   * type is "application/octet-stream", not "application/json"/
+   * "application/gzip" (2026-08-27, user-reported: mobile saved the file as
+   * a bare ".gz" instead of the ".kmsg" main.js's <a download> suggests) --
+   * several mobile browsers rename a download to match the MIME type's OWN
+   * conventional extension, overriding the suggested filename entirely for
+   * a "known" type like application/gzip. Harmless either way for loading,
+   * which (per this file's own header comment) detects the format from the
+   * bytes themselves, never from the Blob's type or the file's extension. */
   async function serializeToBlob(payload) {
     const json = serialize(payload);
-    if (!CAN_COMPRESS) return new Blob([json], { type: "application/json" });
-    return new Blob([await gzipBytes(json)], { type: "application/gzip" });
+    if (!CAN_COMPRESS) return new Blob([json], { type: "application/octet-stream" });
+    return new Blob([await gzipBytes(json)], { type: "application/octet-stream" });
   }
 
   /** File load: `buffer` is the file's raw bytes (FileReader.readAsArrayBuffer),

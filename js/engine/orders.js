@@ -713,19 +713,28 @@ window.GameEngine = window.GameEngine || {};
    * All are pure/non-mutating and return plain arrays (empty, never null).
    */
 
-  /** Every enemy unit `unit` could legally attack right now, given its
-   *  current range/position and this turn's remaining action -- the
-   *  candidate list behind the "Attack..." ring pill (2026-08-27, user-
+  /** Every enemy unit or structure `unit` could legally attack right now,
+   *  given its current range/position and this turn's remaining action --
+   *  the candidate list behind the "Attack..." ring pill (2026-08-27, user-
    *  directed, mobile: same two-stage "pick the ability, then click the
    *  target" shape as Cast Fly/Carry above, so an in-range enemy doesn't
-   *  require right-clicking/long-pressing it directly). Cities and
-   *  structures are deliberately excluded -- the existing remote-tile
-   *  "Attack" pill (attackTargetAt, offered when a target tile is clicked
-   *  directly) still covers those exactly as before; this only adds a
-   *  second ENTRY POINT for enemy UNITS, not a new target type. Reuses
-   *  canAttackUnitNow, the same range/visibility/line-of-sight check
-   *  attack() itself is judged against, so this can never offer a target
-   *  the engine would then refuse. noOrdinaryAttack (Dwarf Bombard) is
+   *  require right-clicking/long-pressing it directly). Cities are still
+   *  excluded, same as before -- only UNITS and STRUCTURES are offered
+   *  through this second entry point; the existing remote-tile "Attack"
+   *  pill (attackTargetAt, offered when a target tile is clicked directly)
+   *  is unchanged and still covers cities exactly as it always has.
+   *
+   *  Units and structures use two different validity checks because
+   *  that's what the engine itself already uses for each: canAttackUnitNow
+   *  for units (same range/visibility/line-of-sight gate attack() is
+   *  judged against), a plain effectiveRange bounding box + findStructureAt
+   *  for structures (same shape unlockTheGateTargets above uses for its own
+   *  fixed 1-tile-adjacency ability, just sized to this unit's real attack
+   *  range instead, and with no building-type filter -- attackTargetAt
+   *  offers ANY enemy structure, not just walls, so this matches). Neither
+   *  half pre-checks line-of-sight for a structure target, mirroring
+   *  previewOrder's own structure/city branch: the engine has the final
+   *  say at commit time either way. noOrdinaryAttack (Dwarf Bombard) is
    *  excluded, same gate the remote-tile branch below applies -- its only
    *  offense is the standalone Bombardment pill, not this one. */
   function attackTargets(unit, gameState, humanCivId) {
@@ -740,6 +749,19 @@ window.GameEngine = window.GameEngine || {};
         if (window.GameEngine.ai.canAttackUnitNow(civ, unit, enemyUnit, gameState)) {
           out.push(enemyUnit);
         }
+      }
+    }
+    const range = Math.ceil(window.GameEngine.combat.effectiveRange(unit, civ));
+    const { map } = gameState;
+    for (let dy = -range; dy <= range; dy++) {
+      for (let dx = -range; dx <= range; dx++) {
+        if (dx === 0 && dy === 0) continue;
+        const x = unit.x + dx, y = unit.y + dy;
+        if (x < 0 || x >= map.width || y < 0 || y >= map.height) continue;
+        if (window.GameEngine.influence.chebyshev(unit.x, unit.y, x, y) > range) continue;
+        const found = window.GameEngine.cities.findStructureAt(gameState, x, y);
+        if (!found || found.civ.id === civ.id) continue;
+        out.push({ x, y, structure: found });
       }
     }
     return out;
