@@ -327,22 +327,32 @@ window.UI = window.UI || {};
    *  boolean/numeric flags in units.js -- not a hand-maintained per-unit
    *  description. Flying is deliberately excluded here -- it's covered
    *  (with a cross-link) in the unified Conditions block instead, see
-   *  unitConditionLinksHtml, so it isn't listed twice on the same page. */
+   *  unitConditionLinksHtml, so it isn't listed twice on the same page.
+   *
+   *  `actionKey` (2026-08-28, user-directed): when this capability has a
+   *  matching entry on the Actions page, its key -- renderUnitProfileHtml
+   *  turns that into a clickable cross-link, same jumpToAction pattern
+   *  unitConditionLinksHtml's data-condition-link already uses. Left
+   *  undefined for a capability with no real menu action behind it today
+   *  (canImprove/canExplore aren't wired to any ring option anywhere in the
+   *  engine -- see orders.js's contextMenuOptions -- and Naval Movement is a
+   *  movement modifier, not a distinct action), which just renders as a
+   *  plain, unlinked chip. */
   function availableActionsFor(unit) {
     const actions = [];
     // Dwarf "Bombardment": Bombard has no ordinary attack at all (see
     // units.js's noOrdinaryAttack/ai.js's considerAttackOrGarrison guard)
     // -- its only offense is the standalone Bombardment blast.
-    if (unit.noOrdinaryAttack) actions.push("Bombardment");
-    else if (unit.attack > 0) actions.push("Attack");
-    if (unit.movement > 0) actions.push("Move");
-    if (unit.canFoundCity) actions.push("Found a City");
-    if (unit.canBuildRoad) actions.push("Build Roads");
-    if (unit.canImprove) actions.push("Improve Terrain");
-    if (unit.canProspect) actions.push("Gather Resources (Mine, Hunt, Farm, or Fish)");
-    if (unit.canExplore) actions.push("Auto-Explore");
-    if (unit.canCarryUnit) actions.push("Carry Another Unit");
-    if (unit.isNaval) actions.push("Naval Movement");
+    if (unit.noOrdinaryAttack) actions.push({ label: "Bombardment", actionKey: "bombardment" });
+    else if (unit.attack > 0) actions.push({ label: "Attack", actionKey: "attack" });
+    if (unit.movement > 0) actions.push({ label: "Move", actionKey: "moveTo" });
+    if (unit.canFoundCity) actions.push({ label: "Found a City", actionKey: "foundCity" });
+    if (unit.canBuildRoad) actions.push({ label: "Build Roads", actionKey: "buildRoad" });
+    if (unit.canImprove) actions.push({ label: "Improve Terrain" });
+    if (unit.canProspect) actions.push({ label: "Gather Resources (Mine, Hunt, Farm, or Fish)", actionKey: "gatherResources" });
+    if (unit.canExplore) actions.push({ label: "Auto-Explore" });
+    if (unit.canCarryUnit) actions.push({ label: "Carry Another Unit", actionKey: "carryUnit" });
+    if (unit.isNaval) actions.push({ label: "Naval Movement" });
     return actions;
   }
 
@@ -475,9 +485,17 @@ window.UI = window.UI || {};
 
     const conditionLinksHtml = unitConditionLinksHtml(unit);
 
+    // Actions page cross-links (2026-08-28, user-directed): a capability
+    // with a real matching entry on the Actions page (see
+    // availableActionsFor's own actionKey doc comment) renders as a
+    // clickable chip -- data-action-link, wired in main.js's
+    // renderKnowledgeOverlay same as data-condition-link/data-stat-link
+    // just above.
     const actions = availableActionsFor(unit);
     const actionsHtml = actions.length
-      ? `<h3>Available Actions</h3><div class="kb-chip-row">${actions.map((a) => `<span class="kb-chip kb-chip-action">${escapeHtml(a)}</span>`).join("")}</div>`
+      ? `<h3>Available Actions</h3><div class="kb-chip-row">${actions.map((a) => a.actionKey
+          ? `<button class="kb-chip kb-chip-action kb-chip-link" data-action-link="${escapeHtml(a.actionKey)}">${escapeHtml(a.label)}</button>`
+          : `<span class="kb-chip kb-chip-action">${escapeHtml(a.label)}</span>`).join("")}</div>`
       : "";
 
     const rel = techRelationsForUnit(unitId);
@@ -757,6 +775,285 @@ window.UI = window.UI || {};
       </div>`;
   }
 
+  /**
+   * ACTIONS PAGE
+   * ------------
+   * Every real ring-menu action in the game -- audited directly against
+   * orders.js's contextMenuOptions (unit ring) and cityRingOptions (city
+   * ring), the two functions that build what a player actually sees, as of
+   * 2026-08-28. Hand-written, same "can't be derived from data alone"
+   * reasoning as CONDITION_DESCRIPTIONS/STAT_DESCRIPTIONS above -- most of
+   * these are bespoke engine logic (ai.js's perform* functions), not a
+   * structured data field this file could read and format generically the
+   * way STRUCTURE_EFFECTS does for a building.
+   *
+   * Deliberately NOT one entry per ring pill: a standing order's Cancel
+   * variant (Cancel Sentry, Cancel Follow, Cancel Rest and Defend, ...) is
+   * folded into its own entry's description rather than getting a second
+   * profile, and the two-stage placement pills (Move To.../Attack.../Build
+   * Road To...) share their target-tile sibling's single entry (moveTo/
+   * attack/buildRoad) -- both pairs are the exact same action, just two
+   * different entry points into choosing where it applies.
+   *
+   * `restriction` (optional): which kingdom/unit this is gated to, shown as
+   * a chip on the profile -- omitted entirely for a universal action any
+   * unit (subject to its own capability flags) or any city can take.
+   */
+  const CITY_ACTIONS = [
+    {
+      key: "buildUnit", label: "Build Unit", icon: "⚔️",
+      description: "Opens this city's build list and queues a unit. The unit's full stockpile cost (Harvest/Coin/Lore, scaled by rarity and by how many of that unit this civ already fields) is paid immediately; the city then spends every turn afterward on a fixed countdown until it's ready, during which it can't be given a different order. Offered whenever the city isn't already mid-build or spending this turn on Gather Resources, and at least one unit is actually available to build.",
+    },
+    {
+      key: "buildStructure", label: "Build Structure", icon: "🏛️",
+      description: "Same build-list mechanism as Build Unit, but for a Wall, Bridge, or Building instead. The pill itself shows how many distinct structures are currently available (Walls/Bridges aren't counted individually there, since a city can build any number of those -- one per open adjacent tile).",
+    },
+    {
+      key: "resourceProduction", label: "Gather More Resources", icon: "💰",
+      description: "Devotes this city's production for the turn straight into the stockpile instead of a unit or building: an extra 100% of whatever Harvest/Coin/Lore the city would normally yield this turn, banked immediately on top of its ordinary income. Only offered once the city actually has something to double.",
+    },
+    {
+      key: "research", label: "Research Tech", icon: "🔬",
+      description: "Spends this city's production turn, PLUS a stockpile cost that scales with population, to cut turns off whatever tech the kingdom is currently researching -- the city's own population sets how many turns it can shave off in one go. Only offered while a tech is actually in progress and the civ can afford the stockpile price.",
+    },
+    {
+      key: "expediteBuild", label: "Expedite Unit Build", icon: "⏩", restriction: "Requires a Bazaar (Human)",
+      description: "Pays a stockpile premium -- roughly one turn's own share of the unit's cost, at a 3x markup -- to shave exactly one turn off a unit currently under construction. Only offered once at least 2 turns remain on the build, and only in a city that has a Bazaar.",
+    },
+    {
+      key: "cancelBuild", label: "Cancel Build", icon: "🚫",
+      description: "Abandons whatever this city is currently building, freeing it to be given a different order next turn. The stockpile already spent when the build was queued is NOT refunded.",
+    },
+    {
+      key: "spreadCulture", label: "Spread Culture", icon: "🎭",
+      description: "A paid, one-turn boost to this city's influence-tile spread rate (+50%), funded entirely from the civ's stockpile rather than the city's own production -- so it stacks freely with a queued build, Gather Resources, or Research Tech the very same turn. Cost scales with the city's population.",
+    },
+    {
+      key: "toggleAutomate", label: "Automate City", icon: "🤖",
+      description: "Hands this city's turn-by-turn decisions -- culture, resource gathering, or boosting research, whichever the engine judges most useful that turn -- to the AI, indefinitely, until switched back off. Never queues a unit or building on its own; a manually queued build still takes priority over the automation.",
+    },
+  ];
+
+  const UNIT_ACTIONS = [
+    // -- Universal (every unit, subject to its own capability flags) --
+    {
+      key: "moveTo", label: "Move", icon: "👣",
+      description: "Walks the unit toward a chosen tile, spending movement points along the way -- terrain, roads, and rivers all change the cost per tile. Picking a tile beyond this turn's reach queues the rest as a standing order that continues automatically on future turns until it arrives, is cancelled (Stop Order), or is interrupted.",
+    },
+    {
+      key: "attack", label: "Attack", icon: "⚔️",
+      description: "Strikes an enemy unit, structure, or city within this unit's range. See the Attack and Defense stat pages for the exact damage formula -- melee (range 1) draws a counterattack back unless First Strike denies it, while a Ranged attack (range greater than 1) never does.",
+    },
+    {
+      key: "buildRoad", label: "Build Roads", icon: "🛤️", restriction: "Pioneer only",
+      description: "Lays one road tile, either on the Pioneer's own tile immediately (Build Road Here) or, via Build Road To..., one new segment per turn along the path toward a chosen destination -- a road under construction is never left half-finished with a gap partway through. Speeds movement, and boosts a nearby city's yield for certain kingdoms' techs.",
+    },
+    {
+      key: "foundCity", label: "Found City", icon: "🏳️", restriction: "Pioneer only",
+      description: "Consumes the Pioneer to found a new city on its current tile (Found City), or, from a remote tile's own ring, walks it there first (Found City Here). Only legal on suitable land, far enough from any existing city. The very first city a kingdom founds grants one free Tier 1 tech of the player's choice.",
+    },
+    {
+      key: "buildBridge", label: "Build Bridge", icon: "🌉", restriction: "Pioneer only",
+      description: "Offered while standing at the water's edge. Pays a flat Coin cost to lay one bridge segment on a chosen adjacent water tile -- a bridge counts as a road for movement/yield purposes, and lets land units cross the water it spans.",
+    },
+    {
+      key: "helpBuild", label: "Help Build", icon: "🔨", restriction: "Pioneer only",
+      description: "Offered to a Pioneer standing in a city of its own kingdom that's currently building a unit. Spends the Pioneer's turn to cut one extra turn off that build, on top of the automatic per-turn countdown.",
+    },
+    {
+      key: "gatherResources", label: "Gather Resources", icon: "⛏️",
+      description: "Channels a unit into a standing resource-collection order on the tile it's standing on -- Mine a gold/iron vein, Hunt Game, Farm fertile ground, Fish (Galley only), or Delve a Ruin, depending on the tile, the unit's own capabilities, and the kingdom's unlocked mechanics. Accumulates a stash turn after turn until Claim Gathered Resources banks it to the stockpile, or Cancel abandons it.",
+    },
+    {
+      key: "openChest", label: "Open Chest", icon: "🎁",
+      description: "Spends the unit's turn opening a chest resource tile. An 80% chance it pays out -- Coin, Lore, XP, a temporary map reveal, or a research-turn discount, one picked at random -- and a 20% chance it's trapped instead, dealing flat damage plus a status effect and no reward.",
+    },
+    {
+      key: "restAndDefend", label: "Rest and Defend", icon: "🏕️",
+      description: "A standing order, available to any unit that hasn't yet acted this turn: the unit holds position, healing and gaining doubled Defense against any attack, persisting automatically every turn until cancelled (Cancel Rest and Defend) or superseded by a new order.\n\nWhile standing in one of this kingdom's own cities, it additionally grants that city a defensive bonus package for as long as it stays there:\n- Heals every structure in the city -- every Wall and every ordinary Building alike -- by 1 HP per turn.\n- Raises the city's Wall potshot fire chance from 50% to 75%, and its Wall potshot attack by +2, on top of whatever its tier already grants.\n- The same +25 percentage point / +2 attack boost applies to a Human city's Mage College potshot too (75% to 100% fire chance).\n- Elf's Warden of the Trees, if unlocked: when the resting unit is itself a Scout, Ranger, Blade Dancer, or Druid, the city's Wall potshots use THAT unit's own attack power and on-hit properties (Poison/Frozen chance, Double Strike) instead of the flat tier value.\n- When the resting unit is specifically a military-category unit, the city's influence tiles also fill in faster: this kingdom's own Industriousness trait scaled by 50%, plus a flat +25% on top -- compounding multiplicatively with any tech that already speeds up fill-in.",
+    },
+    {
+      key: "automate", label: "Automate Actions", icon: "🎛️",
+      description: "Hands this one unit's turn-by-turn decisions to the same AI logic that runs every computer-controlled kingdom, indefinitely, until switched back off or given a manual order (which ends automation automatically). A Dire Wolf reads as \"Hunt for Prey\" instead, since its automated behavior is almost entirely about running down game.",
+    },
+    {
+      key: "sentry", label: "Sentry", icon: "👁️",
+      description: "A standing order for a unit with an attack stat: holds position doing nothing until an enemy comes within range, then attacks it on its own, without waiting for a fresh order. Persists turn after turn until cancelled (Cancel Sentry) or the unit is given something else to do.",
+    },
+    {
+      key: "follow", label: "Follow…", icon: "🚶",
+      description: "A standing order to move toward, and stay adjacent to, a chosen allied unit every turn -- the target can be any of this kingdom's other units, anywhere on the map. Persists until cancelled (Cancel Follow) or superseded.",
+    },
+    {
+      key: "disband", label: "Disband Unit", icon: "💀",
+      description: "Permanently removes the unit from the kingdom. No refund of whatever it cost to build.",
+    },
+    {
+      key: "levelUp", label: "Level Up!", icon: "⭐",
+      description: "Only appears once the unit has banked enough combat XP for a new veteran level. Opens a choice of permanent stat bonuses -- Attack, Defense, Siege, First Strike, or Double Strike, depending on what's on offer -- see those stats' own pages for what each one actually does in a fight.",
+    },
+    {
+      key: "goHidden", label: "Go Hidden", icon: "🌙",
+      description: "Offered to any unit whose kingdom has unlocked stealth, once eligible. Conceals the unit from enemy vision -- see the Hidden condition's own page for the full mechanical effect, including the extra movement cost and the +50% Defense if it's attacked anyway.",
+    },
+    {
+      key: "stopOrder", label: "Stop Order", icon: "🛑",
+      description: "Cancels a unit's standing multi-turn Move/Build Road order, leaving it exactly where it currently stands, free for a fresh order.",
+    },
+    {
+      key: "carryUnit", label: "Carry / Board / Drop Off", icon: "🫴",
+      description: "A carrier unit (Galley, Dragon, ...) can Carry an adjacent eligible passenger aboard, or a passenger can Board an adjacent carrier -- either way, both units spend their turn. Once aboard, Drop Off disembarks the passenger onto any open adjacent tile, without spending the carrier's own turn.",
+    },
+    {
+      key: "enterCave", label: "Enter Cave", icon: "🕳️",
+      description: "Any unit standing on a cave entrance can spend its turn to emerge instantly at that cave's one linked exit elsewhere on the map -- a universal terrain shortcut, available to every kingdom, no tech required.",
+    },
+    // -- Race-specific special abilities --
+    {
+      key: "actAsEnvoy", label: "Act as Envoy", icon: "📜", restriction: "Halfellow — Pioneer or Wanderer",
+      description: "Standing on an already-in-radius but still-unclaimed tile of one of this kingdom's own cities, claims that tile outright on the spot -- instead of waiting for the city's normal gradual fill-in rate to reach it.",
+    },
+    {
+      key: "castFlight", label: "Cast Fly", icon: "🪽", restriction: "Human — Wizard",
+      description: "Grants an adjacent allied military unit the Flying property plus +3 Movement and +3 Vision for 5 turns -- it moves over any terrain, ignoring movement penalties, for the duration. Costs the Wizard's turn; does not spend the recipient's.",
+    },
+    {
+      key: "activateAura", label: "Activate Aura", icon: "🎸", restriction: "Human — Troubadour",
+      description: "Switches the Troubadour's performance on, buffing every ally within 1 tile (2 with Epic Metal) every turn it stays active -- see the Heavy Metal Aura/Power Metal Aura condition pages for exactly what each performance grants. An AI-controlled Troubadour's aura is always on; this toggle only matters for a human player's own.",
+    },
+    {
+      key: "rootsOfTheWorld", label: "Roots of the World", icon: "🌳", restriction: "Elf — Druid",
+      description: "Instantly moves the Druid itself, or a currently-adjacent ally, to any unoccupied, already-explored Forest tile -- no travel time, but Forest-only (compare Human's Teleportation, which can land anywhere). Costs the Druid's whole turn; the target's turn is also spent if it isn't the Druid itself.",
+    },
+    {
+      key: "teleportation", label: "Teleportation", icon: "✨", restriction: "Human — Wizard",
+      description: "Instantly moves the Wizard itself, or a currently-adjacent ally, to any unoccupied, already-explored tile of any terrain. The teleported unit has a 50% chance to land Befuddled for 1 turn from the disorientation. Costs the Wizard's whole turn; the target's turn is also spent if it isn't the Wizard itself.",
+    },
+    {
+      key: "naturesGrace", label: "Nature's Grace", icon: "💚", restriction: "Elf — Druid",
+      description: "Heals a chosen ally within the Druid's own attack range for a random 30%-60% of that ally's max HP (minimum 1). Costs the Druid's whole turn, no exhaustion afterward.",
+    },
+    {
+      key: "fireball", label: "Fireball!", icon: "🔥", restriction: "Human — Wizard",
+      description: "Blasts a 3x3 area anywhere within 3 tiles -- no target required inside it, the whole block is hit -- dealing damage to every unit and structure caught there, each independently rolling a 50% chance to also catch fire. Costs the Wizard's whole turn.",
+    },
+    {
+      key: "bombardment", label: "Bombardment", icon: "💣", restriction: "Dwarf — Bombard",
+      description: "Bombard's ONLY offensive action -- it has no ordinary melee/ranged attack at all. Blasts a 2x2 block anywhere within 3 tiles, dealing damage to every unit, structure, or city caught there, each independently rolling the Bombard's own burn chance to also catch fire.",
+    },
+    {
+      key: "riddle", label: "Riddle", icon: "❓", restriction: "Halfellow — Trouble Maker or Wanderer",
+      description: "A ranged debuff (reaches as far as the caster's own attack range) -- poses a riddle to the nearest enemy in range, which resists (nothing happens) with a chance equal to its race's own Curiosity trait × 0.75, or otherwise becomes Befuddled for 2 turns. Using it reveals the caster if it was Hidden. A 3-round cooldown applies per caster afterward, win or lose.",
+    },
+    {
+      key: "resourceHeist", label: "Resource Heist", icon: "🥷", restriction: "Halfellow — Trouble Maker",
+      description: "Steals an adjacent enemy unit's entire accumulated Gather Resources stash outright -- banking it for the thief's own kingdom instead -- and Befuddles the victim for 2 turns. If the Trouble Maker was Hidden, there's a chance (scaled by the victim's own race's Curiosity trait) it gets spotted in the act.",
+    },
+    {
+      key: "unlockTheGate", label: "Unlock the Gate", icon: "🔓", restriction: "Halfellow — Trouble Maker",
+      description: "Targets one enemy Wall segment: suppresses that city's ENTIRE wall-derived Defense score by 75% for 3 turns (every alive wall's contribution, not just the targeted one), AND separately makes that one specific wall passable to enemy movement for the same window -- every other wall the city has keeps blocking movement as normal.",
+    },
+    {
+      key: "summonRaptor", label: "Summon Raptor", icon: "🦖", restriction: "Elf — Druid",
+      description: "Instantly summons a Raptor on an open tile adjacent to the Druid -- one live Raptor per Druid at a time; once it dies (or hasn't been summoned yet), summoning again is free to do.",
+    },
+    {
+      key: "summonShadowsteed", label: "Summon Shadowsteed", icon: "🐴", restriction: "Elf — Druid",
+      description: "Instantly summons a Shadowsteed on an open tile adjacent to the Druid -- one live Shadowsteed per Druid at a time, same cap shape as Summon Raptor.",
+    },
+    {
+      key: "direBearForm", label: "Become Dire Bear / Revert to Druid", icon: "🐻", restriction: "Elf — Druid or Dire Bear",
+      description: "A Druid can transform into a Dire Bear (a heavier melee combat form) on the spot, and a Dire Bear can revert back to Druid form the same way -- current HP carries over proportionally to the new form's max HP either direction. A transformed Dire Bear has no access to any other Druid action (Nature's Grace, the summons, Roots of the World) until it reverts.",
+    },
+    {
+      key: "summonWisp", label: "Summon Wisp", icon: "👻", restriction: "Orc — Bog Witch",
+      description: "Instantly summons a Wisp at a chosen already-explored swamp tile. Capped civ-wide at one live Wisp per Bog Witch this kingdom currently fields, shared across the whole roster rather than one per caster.",
+    },
+    {
+      key: "setTrap", label: "Set a Trap", icon: "🪤", restriction: "Halfellow — Trouble Maker",
+      description: "Plants a Frost or Fire trap, hidden, on an unoccupied tile within 2 of the caster. The first enemy unit to end movement within 1 tile of it springs it: 4 flat damage plus Frozen (frost) or Burning (fire), then the trap is consumed. Capped civ-wide at one live trap per Trouble Maker, both flavors sharing the same pool.",
+    },
+    {
+      key: "createGreatBonfire", label: "Create The Great Bonfire", icon: "🔥", restriction: "Halfellow — Wanderer",
+      description: "Summons The Great Bonfire on an open adjacent tile, replacing this kingdom's existing one if it already has one. For 5 turns, every allied unit within 4 tiles gets a strong per-turn buff -- see the Bonfire's Blessing condition page for the full effect -- refreshed as long as it stays in range.",
+    },
+    {
+      key: "whirlwindStrike", label: "Whirlwind Strike", icon: "🌪️", restriction: "Elf — Blade Dancer",
+      description: "Attacks every visible enemy within 1 tile simultaneously, at 75% of this unit's normal attack power against each, while itself taking only 37.5% of the normal counter-damage back from each of them.",
+    },
+    {
+      key: "bladeStorm", label: "Blade Storm", icon: "🗡️", restriction: "Elf — Blade Dancer",
+      description: "Same simultaneous area-attack shape as Whirlwind Strike, but reaching 2 tiles at a reduced 50% attack power per target, and taking only 25% counter-damage back from each.",
+    },
+  ];
+
+  const ACTIONS_BY_KEY = Object.fromEntries(
+    [...CITY_ACTIONS, ...UNIT_ACTIONS].map((a) => [a.key, a])
+  );
+
+  /** Full HTML for the left-hand action list -- two groups, City Actions and
+   *  Unit Actions, each in the hand-curated order declared above (universal
+   *  unit actions first, then race-specific special abilities) rather than
+   *  alphabetical -- a player scanning for "what can my Wizard do" reads
+   *  better grouped by how central the action is than sorted by name. */
+  function renderActionListHtml(selectedKey) {
+    const groups = [
+      { label: "City Actions", actions: CITY_ACTIONS },
+      { label: "Unit Actions", actions: UNIT_ACTIONS },
+    ];
+    return groups.map((g) => `
+      <div class="kb-list-group">
+        <div class="kb-list-group-label">${escapeHtml(g.label)}</div>
+        ${g.actions.map((a) => {
+          const selected = a.key === selectedKey ? " kb-list-btn-selected" : "";
+          return `<button class="kb-list-btn${selected}" data-action-id="${escapeHtml(a.key)}">
+            <span class="kb-list-btn-symbol">${a.icon}</span>
+            <span>${escapeHtml(a.label)}</span>
+          </button>`;
+        }).join("")}
+      </div>
+    `).join("");
+  }
+
+  /** Full HTML for the right-hand action profile pane. Null/unknown key
+   *  renders the "pick an action" empty state, same convention as
+   *  renderConditionProfileHtml. `backLabel` -- see that function's own doc
+   *  comment, identical convention (a unit's "Available Actions" cross-link
+   *  sets this so the Back button returns to the unit it came from). */
+  function renderActionProfileHtml(actionKey, backLabel) {
+    const backHtml = backLabel
+      ? `<button class="kb-back-btn" id="kb-back-btn">← Back to ${escapeHtml(backLabel)}</button>` : "";
+    const a = ACTIONS_BY_KEY[actionKey];
+    if (!a) {
+      return `${backHtml}<div class="kb-profile-empty">Select an action on the left to view its description.</div>`;
+    }
+    const restrictionHtml = a.restriction
+      ? `<div class="kb-chip-row"><span class="kb-chip">${escapeHtml(a.restriction)}</span></div>` : "";
+    return `
+      ${backHtml}
+      <div class="kb-profile-header">
+        <div class="kb-condition-profile-icon">${a.icon}</div>
+        <div>
+          <h2>${escapeHtml(a.label)}</h2>
+        </div>
+      </div>
+      ${restrictionHtml}
+      <div class="kb-condition-profile-desc">${escapeHtml(a.description)}</div>
+    `;
+  }
+
+  /** Full HTML for the Actions page -- same list+profile layout as Units/
+   *  Structures/Conditions. `backLabel` threads through to
+   *  renderActionProfileHtml. */
+  function renderActions(selectedKey, backLabel) {
+    return `
+      <div class="kb-header"><h2>Actions</h2></div>
+      <div class="kb-body">
+        <div class="kb-list-pane">${renderActionListHtml(selectedKey)}</div>
+        <div class="kb-profile-pane">${renderActionProfileHtml(selectedKey, backLabel)}</div>
+      </div>`;
+  }
+
   /** Full HTML for the left-hand condition list -- every icon overlays.js
    *  actually knows how to draw (read live from CONDITION_ICONS, not a
    *  second copy of that list), one flat list (conditions don't have a
@@ -872,7 +1169,7 @@ window.UI = window.UI || {};
   // this page's own list does, rather than a second hand-copied version
   // that could drift.
   window.UI.knowledgebase = {
-    renderUnits, renderConditions, renderStats, renderStructures,
+    renderUnits, renderConditions, renderStats, renderStructures, renderActions,
     drawUnitPortrait, drawStructurePortrait, wireCombatSimulator, conditionDisplayName,
   };
 })();

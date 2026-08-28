@@ -1653,6 +1653,16 @@ html, body {
   background: var(--bg-panel-raised);
 }
 .kb-chip-action { color: var(--accent); border-color: var(--accent); }
+/* A unit profile's "Available Actions" chip that cross-links to the Actions
+   page (2026-08-28, user-directed) -- rendered as a <button> rather than a
+   <span> like a plain, unlinked chip, so this resets the button chrome back
+   to matching .kb-chip's own pill look, then adds just a pointer cursor and
+   a hover highlight on top. */
+.kb-chip-link {
+  font: inherit;
+  cursor: pointer;
+}
+.kb-chip-link:hover { background: var(--accent); color: var(--bg-panel); }
 .kb-tech-rel {
   font-size: 12px;
   color: var(--text-main);

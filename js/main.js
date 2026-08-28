@@ -22,6 +22,7 @@
   let knowledgeSelectedStructureId = null;
   let knowledgeSelectedConditionKey = null;
   let knowledgeSelectedStatKey = null;
+  let knowledgeSelectedActionKey = null;
   // Tech Trees page (2026-08-26, user-directed): which race's tree is
   // showing. Reference-only, gameplay-free -- see buildReferenceCiv --
   // unlike the sidebar's "View Tech Tree" (a specific LIVE civ's actual
@@ -1210,10 +1211,11 @@
     // structure.
     const prevListPane = content.querySelector(".kb-list-pane");
     const prevListScrollTop = prevListPane ? prevListPane.scrollTop : 0;
-    if (knowledgeView === "conditions" || knowledgeView === "stats") {
+    if (knowledgeView === "conditions" || knowledgeView === "stats" || knowledgeView === "actions") {
       // "Units" is the only page a cross-link can currently arrive from,
       // so the back label is hardcoded here rather than threaded through
-      // knowledgeBackTarget -- see jumpToCondition/jumpToStat/goBackToUnits.
+      // knowledgeBackTarget -- see jumpToCondition/jumpToStat/jumpToAction/
+      // goBackToUnits.
       const backLabel = knowledgeBackTarget ? "Units" : null;
       if (knowledgeView === "conditions") {
         content.innerHTML = window.UI.knowledgebase.renderConditions(knowledgeSelectedConditionKey, backLabel);
@@ -1223,12 +1225,20 @@
             renderKnowledgeOverlay();
           };
         }
-      } else {
+      } else if (knowledgeView === "stats") {
         content.innerHTML = window.UI.knowledgebase.renderStats(knowledgeSelectedStatKey, backLabel);
         window.UI.knowledgebase.wireCombatSimulator(content);
         for (const btn of content.querySelectorAll(".kb-list-btn[data-stat-id]")) {
           btn.onclick = () => {
             knowledgeSelectedStatKey = btn.dataset.statId;
+            renderKnowledgeOverlay();
+          };
+        }
+      } else {
+        content.innerHTML = window.UI.knowledgebase.renderActions(knowledgeSelectedActionKey, backLabel);
+        for (const btn of content.querySelectorAll(".kb-list-btn[data-action-id]")) {
+          btn.onclick = () => {
+            knowledgeSelectedActionKey = btn.dataset.actionId;
             renderKnowledgeOverlay();
           };
         }
@@ -1305,6 +1315,9 @@
       for (const link of content.querySelectorAll(".kb-stat-link[data-stat-link]")) {
         link.onclick = () => jumpToStat(link.dataset.statLink);
       }
+      for (const link of content.querySelectorAll(".kb-chip-link[data-action-link]")) {
+        link.onclick = () => jumpToAction(link.dataset.actionLink);
+      }
     }
     const newListPane = content.querySelector(".kb-list-pane");
     if (newListPane) newListPane.scrollTop = prevListScrollTop;
@@ -1317,6 +1330,7 @@
     knowledgeSelectedStructureId = null;
     knowledgeSelectedConditionKey = null;
     knowledgeSelectedStatKey = null;
+    knowledgeSelectedActionKey = null;
     knowledgeSelectedRaceId = null;
     knowledgeBackTarget = null;
     renderKnowledgeOverlay();
@@ -1369,6 +1383,16 @@
     knowledgeBackTarget = { unitId: knowledgeSelectedUnitId };
     knowledgeView = "stats";
     knowledgeSelectedStatKey = statKey;
+    renderKnowledgeOverlay();
+  }
+  /** A unit profile's "Available Actions" cross-link (2026-08-28, user-
+   *  directed) -- jumps to that action's own entry on the Actions page,
+   *  remembering the unit so "Back" can return to it, same shape as
+   *  jumpToCondition/jumpToStat above. */
+  function jumpToAction(actionKey) {
+    knowledgeBackTarget = { unitId: knowledgeSelectedUnitId };
+    knowledgeView = "actions";
+    knowledgeSelectedActionKey = actionKey;
     renderKnowledgeOverlay();
   }
   function goBackToUnits() {
@@ -1454,6 +1478,8 @@
     if (unitsBtn) unitsBtn.addEventListener("click", () => openKnowledge("units"));
     const structuresBtn = $("kb-structures-btn");
     if (structuresBtn) structuresBtn.addEventListener("click", () => openKnowledge("structures"));
+    const actionsBtn = $("kb-actions-btn");
+    if (actionsBtn) actionsBtn.addEventListener("click", () => openKnowledge("actions"));
     const conditionsBtn = $("kb-conditions-btn");
     if (conditionsBtn) conditionsBtn.addEventListener("click", () => openKnowledge("conditions"));
     const statsBtn = $("kb-stats-btn");
@@ -1464,6 +1490,8 @@
     if (titleUnitsBtn) titleUnitsBtn.addEventListener("click", () => openKnowledge("units"));
     const titleStructuresBtn = $("title-kb-structures-btn");
     if (titleStructuresBtn) titleStructuresBtn.addEventListener("click", () => openKnowledge("structures"));
+    const titleActionsBtn = $("title-kb-actions-btn");
+    if (titleActionsBtn) titleActionsBtn.addEventListener("click", () => openKnowledge("actions"));
     const titleConditionsBtn = $("title-kb-conditions-btn");
     if (titleConditionsBtn) titleConditionsBtn.addEventListener("click", () => openKnowledge("conditions"));
     const titleStatsBtn = $("title-kb-stats-btn");
