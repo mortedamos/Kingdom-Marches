@@ -377,6 +377,14 @@ window.UI = window.UI || {};
       // path -- see this module's header.
       if (!wasDragging || dragMoved || longPressFired) return;
       if (e.pointerType === "mouse" && e.button === 2) return;
+      // Units/cities aren't clickable while other kingdoms are taking their
+      // turn (2026-08-27, user-directed) -- gameState is being actively
+      // mutated by the AI turn-processing loop for that whole window
+      // (main.js's advanceTurn), so a tap here would select or open a ring
+      // on state that's already stale or still changing. Panning/pinch-zoom
+      // happen earlier in the gesture (the pointermove handler above) and
+      // are unaffected -- this only swallows the TAP's resolution.
+      if (viewState.turnBanner) return;
       const tilePos = eventTile(e, canvas, viewState, gameState);
       if (!tilePos) return;
 
@@ -534,6 +542,12 @@ window.UI = window.UI || {};
    *  reuse this untouched: a finger has no cursor to anchor to. */
   function openRingMenu(tilePos, gameState, viewState, onChange) {
     const orders = window.GameEngine.orders;
+
+    // Units/cities aren't clickable while other kingdoms are taking their
+    // turn -- see endPointer's own identical gate for why. Covers this
+    // function's other two entry points (long-press, desktop right-click),
+    // which never go through endPointer's tap branch at all.
+    if (viewState.turnBanner) return;
 
     // Structure placement is a modal cursor that swallows taps (see the tap
     // branch in endPointer), so the ring gesture is the conventional escape

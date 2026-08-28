@@ -449,11 +449,26 @@ body.mobile #sidebar .tile-tab {
 
 /* --- floating chrome ---------------------------------------------------- */
 
-body.mobile .m-menu-btn,
-body.mobile .m-status,
-body.mobile .m-fab {
+/* Top row: menu button, research progress, status pill, all inside ONE
+   fixed flex row (2026-08-27) rather than three independently
+   position:fixed elements -- see index.html's own comment on #m-topbar
+   for why (the middle slot needs to flex-fill whatever room the other
+   two's own natural widths leave, not a guessed fixed width). */
+body.mobile .m-topbar {
   position: fixed;
   z-index: 45;
+  top: calc(env(safe-area-inset-top, 0px) + .6rem);
+  left: calc(env(safe-area-inset-left, 0px) + .6rem);
+  right: calc(env(safe-area-inset-right, 0px) + .6rem);
+  display: flex;
+  align-items: flex-start;
+  gap: .5rem;
+}
+
+body.mobile .m-menu-btn,
+body.mobile .m-status,
+body.mobile .m-research,
+body.mobile .m-fab {
   font: inherit;
   color: var(--text, #e8e4da);
   border: 1px solid rgba(255, 255, 255, .16);
@@ -462,16 +477,16 @@ body.mobile .m-fab {
   -webkit-backdrop-filter: blur(10px);
   box-shadow: 0 2px 12px rgba(0, 0, 0, .38);
 }
+body.mobile .m-fab { position: fixed; z-index: 45; }
 
 body.mobile .m-menu-btn {
-  top: calc(env(safe-area-inset-top, 0px) + .6rem);
-  left: calc(env(safe-area-inset-left, 0px) + .6rem);
   width: 44px;
   height: 44px;
   border-radius: 12px;
   display: grid;
   place-items: center;
   padding: 0;
+  flex: 0 0 auto;
 }
 /* Three bars from one element: the box is the middle bar, the two
    pseudo-elements are the outer pair. */
@@ -489,9 +504,48 @@ body.mobile .m-menu-bars::after {
 body.mobile .m-menu-bars::before { position: absolute; top: -6px; }
 body.mobile .m-menu-bars::after  { position: absolute; top: 6px; }
 
+/* Research progress (2026-08-27, user-directed) -- hidden via the
+   [hidden] attribute (main.js's updateMobileStatus toggles it against
+   civ.currentResearch) rather than always showing an empty bar.
+   flex:1 fills exactly whatever's left between the menu button and the
+   status pill's own natural widths -- see #m-topbar's own comment. */
+body.mobile .m-research {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 44px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 4px;
+  padding: 0 .8rem;
+  border-radius: 12px;
+}
+body.mobile .m-research[hidden] { display: none; }
+body.mobile .m-research-label {
+  font-size: .72rem;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+body.mobile .m-research-track {
+  height: 5px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, .16);
+  overflow: hidden;
+}
+/* Width transitions once per turn at most (research only ever
+   progresses), so this is a gentle one-directional fill, not the
+   flashing/strobing the project's own no-flashing rule is about. */
+body.mobile .m-research-fill {
+  height: 100%;
+  width: 0%;
+  background: var(--accent, #c9a857);
+  border-radius: 3px;
+  transition: width .3s ease;
+}
+
 body.mobile .m-status {
-  top: calc(env(safe-area-inset-top, 0px) + .6rem);
-  right: calc(env(safe-area-inset-right, 0px) + .6rem);
   height: 44px;
   display: flex;
   flex-direction: column;
@@ -501,6 +555,11 @@ body.mobile .m-status {
   border-radius: 12px;
   line-height: 1.15;
   font-variant-numeric: tabular-nums;
+  flex: 0 0 auto;
+  /* Pinned to the row's right edge even when .m-research is [hidden] and
+     removed from flow entirely (flex:1 on .m-research alone only pushes
+     this over WHILE that sibling is actually present). */
+  margin-left: auto;
 }
 body.mobile .m-status-turn { font-size: .76rem; opacity: .72; }
 body.mobile .m-status-res  { font-size: .82rem; font-weight: 600; white-space: nowrap; }
@@ -623,13 +682,14 @@ body.mobile .m-sheet-toggle.m-sheet-toggle-open .m-sheet-toggle-arrow {
   transform: rotate(45deg);
 }
 
-/* Desktop keeps none of this. */
-.m-menu-btn, .m-status, .m-fab, .m-sheet-toggle, .m-scrim { display: none; }
-body.mobile .m-menu-btn,
-body.mobile .m-status,
+/* Desktop keeps none of this. .m-menu-btn/.m-status/.m-research no longer
+   need their own entries here -- they're always-rendered children of
+   .m-topbar now, and that parent's display governs their visibility same
+   as any display:none subtree. */
+.m-topbar, .m-fab, .m-sheet-toggle, .m-scrim { display: none; }
+body.mobile .m-topbar { display: flex; }
 body.mobile .m-fab,
 body.mobile .m-sheet-toggle { display: grid; }
-body.mobile .m-status { display: flex; }
 body.mobile .m-scrim { display: block; }
 body.mobile .m-scrim[hidden] { display: none; }
 

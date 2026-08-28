@@ -387,12 +387,27 @@
            real #end-turn-btn the sidebar renders, and the hamburger toggles
            the existing .menu-bar rather than reimplementing it -- so every
            handler main.js already binds by id keeps working untouched. -->
-      <button id="m-menu-btn" class="m-menu-btn" aria-label="Menu" aria-expanded="false">
-        <span class="m-menu-bars" aria-hidden="true"></span>
-      </button>
-      <div id="m-status" class="m-status" role="status">
-        <span class="m-status-turn" id="m-status-turn">—</span>
-        <span class="m-status-res" id="m-status-res"></span>
+      <!-- Top row: menu button, research progress (hidden while nothing is
+           being researched -- see main.js's updateMobileStatus), status
+           pill. A shared flex row rather than three independently
+           position:fixed elements (2026-08-27) specifically so the middle
+           slot can flex to fill whatever's left between the other two's
+           own natural widths, instead of guessing a fixed width that would
+           either crowd a long tech name or leave the status pill's own
+           (variable, grows with turn number/resource digits) width at risk
+           of overlap. -->
+      <div id="m-topbar" class="m-topbar">
+        <button id="m-menu-btn" class="m-menu-btn" aria-label="Menu" aria-expanded="false">
+          <span class="m-menu-bars" aria-hidden="true"></span>
+        </button>
+        <div id="m-research" class="m-research" role="status" hidden>
+          <span class="m-research-label" id="m-research-label"></span>
+          <div class="m-research-track"><div class="m-research-fill" id="m-research-fill"></div></div>
+        </div>
+        <div id="m-status" class="m-status" role="status">
+          <span class="m-status-turn" id="m-status-turn">—</span>
+          <span class="m-status-res" id="m-status-res"></span>
+        </div>
       </div>
       <button id="m-endturn-fab" class="m-fab" aria-label="End turn">
         <span class="m-fab-label">End<br>Turn</span>

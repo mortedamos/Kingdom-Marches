@@ -557,6 +557,30 @@
       resEl.textContent = "";
     }
 
+    // Research progress pill (2026-08-27, user-directed): hidden entirely
+    // whenever nothing is being researched, rather than showing an empty
+    // bar -- same "civ.currentResearch truthy" gate the sidebar's own
+    // RESEARCH section and techtree.js's "researching" tag use. Percent
+    // math mirrors techtree.js's renderNode exactly (same
+    // researchTotalTurns/researchTurnsRemaining pair), so the two can
+    // never silently disagree.
+    const researchEl = $("m-research");
+    if (researchEl) {
+      if (civ && civ.currentResearch) {
+        const tech = window.GameData.getTech(civ.currentResearch);
+        const pct = civ.researchTotalTurns
+          ? Math.min(100, Math.floor(100 * (civ.researchTotalTurns - civ.researchTurnsRemaining) / civ.researchTotalTurns))
+          : 0;
+        researchEl.hidden = false;
+        const labelEl = $("m-research-label");
+        if (labelEl) labelEl.textContent = `${tech.label} · ${pct}%`;
+        const fillEl = $("m-research-fill");
+        if (fillEl) fillEl.style.width = `${pct}%`;
+      } else {
+        researchEl.hidden = true;
+      }
+    }
+
     if (!fab || !badge) return;
 
     // Other kingdoms taking their turn (2026-08-27, user-directed):
@@ -711,6 +735,15 @@
     // The status pill expands the Kingdom view -- the pill is a summary, and
     // tapping a summary should open the thing it summarises.
     $("m-status")?.addEventListener("click", () => setSheetDetent("full"));
+    // The research pill opens the Tech Tree directly -- same "tapping a
+    // summary opens the thing it summarises" reasoning as the status pill
+    // above, and matches the in-game "Choose Research"/"View Tech Tree"
+    // buttons' own viewState.techTreeCivId = humanCivId convention.
+    $("m-research")?.addEventListener("click", () => {
+      if (!humanCivId) return;
+      viewState.techTreeCivId = humanCivId;
+      redraw();
+    });
 
     // Destinations: swipe down to leave. #game-dialog-modal is deliberately
     // absent -- see setupSwipeToDismiss.
