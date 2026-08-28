@@ -341,6 +341,21 @@
           <button id="spectator-pause-btn" class="menu-dropdown-btn">Pause</button>
         </div>
       </div>
+      <!-- Turn/resource and research-progress status (2026-08-27, user-
+           directed: desktop equivalents of the mobile status/research
+           pills -- see index.html's #m-status/#m-research and this file's
+           own #d-status/#d-research). Same content, same update function
+           (main.js's updateStatusDisplays, generalized from the old mobile-
+           only updateMobileStatus), just styled to sit in the menu bar's
+           own row instead of floating over the map. -->
+      <div id="d-status" class="d-status" role="status">
+        <span id="d-status-turn"></span>
+        <span id="d-status-res"></span>
+      </div>
+      <div id="d-research" class="d-research" role="status" hidden>
+        <span id="d-research-label"></span>
+        <div class="d-research-track"><div class="d-research-fill" id="d-research-fill"></div></div>
+      </div>
       <div class="zoom-control">
         <button class="zoom-btn" id="zoom-out-btn" title="Zoom out">−</button>
         <span class="zoom-level-label" id="zoom-level-label">100%</span>

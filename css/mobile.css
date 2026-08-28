@@ -706,6 +706,12 @@ body.mobile .m-scrim[hidden] { display: none; }
 /* The zoom buttons are redundant once pinch works, and they sit exactly where
    the status pill goes. */
 body.mobile .zoom-controls { display: none; }
+/* The desktop status/research pills (2026-08-27) live inside .menu-bar,
+   which already becomes the mobile drawer wholesale -- without this they'd
+   show up a second time in there, redundant with the always-visible
+   #m-status/#m-research pills this same content already gets via
+   #m-topbar. */
+body.mobile .d-status, body.mobile .d-research { display: none; }
 
 /* --------------------------------------------------------------------------
    PHASE 2 — DESTINATIONS

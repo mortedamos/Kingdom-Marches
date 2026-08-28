@@ -180,8 +180,15 @@ window.UI = window.UI || {};
         (!civ.currentResearch && window.GameEngine.tech.hasAffordableResearch(civ))
       );
     }
-    const endTurnClass = hasUnresolvedWork ? "end-turn-btn" : "end-turn-btn end-turn-btn-ready";
-    const endTurnLabel = hasUnresolvedWork ? "Next" : "End Turn";
+    // Other kingdoms taking their turn (2026-08-27, user-directed: bring
+    // this desktop button in line with the mobile FAB's own "Wait" state,
+    // main.js's updateMobileStatus) -- neither "Next" nor "End Turn" means
+    // anything while advanceTurn has viewState.turnBanner up, so this reads
+    // "Wait" and goes inert instead, same disabled-blocks-both-a-click-and-
+    // wireLongPress's-long-press reasoning the FAB's own comment documents.
+    const waiting = !!viewState.turnBanner;
+    const endTurnClass = waiting || hasUnresolvedWork ? "end-turn-btn" : "end-turn-btn end-turn-btn-ready";
+    const endTurnLabel = waiting ? "Wait" : hasUnresolvedWork ? "Next" : "End Turn";
 
     // Turn counter moved below End Turn.
     html += `<div class="sidebar-footer">
@@ -189,7 +196,7 @@ window.UI = window.UI || {};
       ${idleCityHtml}
       ${cyclerHtml}
       ${territoryHtml}
-      <button id="end-turn-btn" class="${endTurnClass}">${endTurnLabel}</button>
+      <button id="end-turn-btn" class="${endTurnClass}"${waiting ? " disabled" : ""}>${endTurnLabel}</button>
       <div class="turn-counter">Turn ${turnNumber}</div>
     </div>`;
 

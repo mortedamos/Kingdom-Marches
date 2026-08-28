@@ -533,12 +533,20 @@
     }
   }
 
-  /** Turn number, stockpile, and the awaiting-orders badge. Cheap enough to
-   *  run on every redraw; reads the same sources the sidebar does. */
-  function updateMobileStatus() {
-    if (!document.body.classList.contains("mobile")) return;
-    const turnEl = $("m-status-turn"), resEl = $("m-status-res");
-    const fab = $("m-endturn-fab"), badge = $("m-fab-badge");
+  /** Turn number, stockpile, research progress, and (mobile only) the FAB's
+   *  awaiting-orders badge. Cheap enough to run on every redraw; reads the
+   *  same sources the sidebar does. Drives TWO parallel element sets now
+   *  (2026-08-27, user-directed: desktop gets its own always-visible
+   *  turn/resource and research pills, #d-status/#d-research in the menu
+   *  bar, matching the mobile #m-status/#m-research pills' content exactly)
+   *  -- updateStatusPair below is the shared logic, called once per id
+   *  prefix. Only one prefix's elements exist as anything but CSS-hidden
+   *  markup on a given platform (see css/mobile.css's `body.mobile
+   *  .d-status, .d-research { display: none; }` and the unscoped "desktop
+   *  keeps none of #m-topbar" rule), so updating the invisible set is
+   *  harmless, not just tolerated. */
+  function updateStatusPair(turnId, resId, researchId, researchLabelId, researchFillId) {
+    const turnEl = $(turnId), resEl = $(resId);
     if (!turnEl || !gameState) return;
 
     turnEl.textContent = `Turn ${gameState.turnNumber || 0}`;
@@ -564,7 +572,7 @@
     // math mirrors techtree.js's renderNode exactly (same
     // researchTotalTurns/researchTurnsRemaining pair), so the two can
     // never silently disagree.
-    const researchEl = $("m-research");
+    const researchEl = $(researchId);
     if (researchEl) {
       if (civ && civ.currentResearch) {
         const tech = window.GameData.getTech(civ.currentResearch);
@@ -572,16 +580,24 @@
           ? Math.min(100, Math.floor(100 * (civ.researchTotalTurns - civ.researchTurnsRemaining) / civ.researchTotalTurns))
           : 0;
         researchEl.hidden = false;
-        const labelEl = $("m-research-label");
+        const labelEl = $(researchLabelId);
         if (labelEl) labelEl.textContent = `${tech.label} · ${pct}%`;
-        const fillEl = $("m-research-fill");
+        const fillEl = $(researchFillId);
         if (fillEl) fillEl.style.width = `${pct}%`;
       } else {
         researchEl.hidden = true;
       }
     }
+  }
 
+  function updateMobileStatus() {
+    updateStatusPair("m-status-turn", "m-status-res", "m-research", "m-research-label", "m-research-fill");
+    updateStatusPair("d-status-turn", "d-status-res", "d-research", "d-research-label", "d-research-fill");
+    if (!gameState) return; // updateStatusPair already no-ops per-pair; the FAB logic below still needs its own guard.
+
+    const fab = $("m-endturn-fab"), badge = $("m-fab-badge");
     if (!fab || !badge) return;
+    const civ = humanCivId ? gameState.civs[humanCivId] : null;
 
     // Other kingdoms taking their turn (2026-08-27, user-directed):
     // advanceTurn sets viewState.turnBanner for exactly this window --
@@ -4316,8 +4332,10 @@
       window.UI.render.render($("map-canvas"), gameState, viewState);
     }
     window.UI.sidebar.render($("sidebar"), gameState, viewState);
-    // Mirrors turn/stockpile/awaiting-orders into the mobile status pill and
-    // FAB badge. No-ops entirely on desktop.
+    // Mirrors turn/stockpile/research progress into BOTH the mobile status/
+    // research pills and their desktop menu-bar equivalents (2026-08-27),
+    // plus the mobile FAB's awaiting-orders badge (that part alone stays a
+    // true no-op on desktop -- the FAB itself is mobile-only markup).
     updateMobileStatus();
     const zoomLabel = $("zoom-level-label");
     if (zoomLabel) zoomLabel.textContent = `${Math.round((viewState.zoomLevel || 1) * 100)}%`;

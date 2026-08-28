@@ -398,29 +398,51 @@ window.UI = window.UI || {};
         onChange();
         return;
       }
-      handleTileClick(tilePos, gameState, viewState);
-      // Mobile (2026-08-27, user-directed): a single tap on an actionable
-      // unit/city presents its menu immediately, no long/continuous press
-      // required -- user feedback was that long-press-for-actions felt
-      // wrong on a phone. Desktop is untouched (still click-to-select,
-      // right-click or long-press for the menu). Long-press itself still
-      // exists on mobile too, unchanged -- it's what the RING-DRAG
-      // slide-across-pills gesture above is built on, and this branch is
-      // simply never reached for a held press: `longPressFired` already
-      // returned early above the instant the timer opens its own ring, so
-      // there's no double-open. Re-derives options AFTER handleTileClick,
-      // not before, so a unit that just became newly selected (case 2 in
-      // orders.js's mapMenuOptions: a target tile for an already-selected
-      // unit) is judged against its now-current selection, not stale prior
-      // state. Silently does nothing extra on a tile with no options --
-      // same as tapping empty terrain or an enemy unit today.
-      if (document.body.classList.contains("mobile")) {
-        const res = window.GameEngine.orders.mapMenuOptions(
-          gameState, viewState, tilePos.x, tilePos.y, viewState.humanCivId);
-        if (res.options.length) {
-          viewState.ringMenu = { x: tilePos.x, y: tilePos.y, subject: res.subject, page: null };
-          viewState.hoverTile = null;
+      // A single tap/click on an actionable unit/city presents its menu
+      // immediately, no long-press or right-click required (2026-08-27,
+      // user-directed: mobile got this first on 2026-08-27, now desktop
+      // matches it too) -- long-press and right-click still work exactly as
+      // before (openRingMenu below), this is just a THIRD entry point to
+      // the same ring. Long-press's own slide-into-RING-DRAG gesture is
+      // unaffected -- this branch is simply never reached for a held press,
+      // since `longPressFired` already returned early above the instant the
+      // timer opens its own ring.
+      //
+      // Same retarget-then-recompute shape as openRingMenu (2026-08-27
+      // bugfix, folded in here rather than kept as this branch's own
+      // simpler-but-wrong version): compute options against whatever's
+      // CURRENTLY selected first, and only call handleTileClick (which
+      // reselects based on the CLICKED tile) when mapMenuOptions actually
+      // says to retarget. Calling handleTileClick unconditionally BEFORE
+      // computing options -- this branch's original shape -- silently broke
+      // "a commandable unit is selected, tap a remote empty tile to move it
+      // there": handleTileClick would reselect onto that empty tile first,
+      // clearing viewState.selectedUnit, so mapMenuOptions then found
+      // nothing selected to move at all.
+      //
+      // The one thing openRingMenu itself doesn't need but this tap path
+      // still does: when NEITHER retargeting NOR any option exists (empty
+      // ground, nothing selected -- the ring has nothing to show either
+      // way), still call handleTileClick so a plain click can keep doing
+      // what it's always done on desktop -- browse/inspect whatever tile
+      // you click, terrain included, even with nothing to command there.
+      const orders = window.GameEngine.orders;
+      let res = orders.mapMenuOptions(gameState, viewState, tilePos.x, tilePos.y, viewState.humanCivId);
+      if (res.retarget) {
+        handleTileClick(tilePos, gameState, viewState);
+        const sel = viewState.selection;
+        if (sel) {
+          const wanted = res.subject === "city" ? "city" : "unit";
+          const idx = sel.tabs.findIndex((t) => t.kind === wanted);
+          if (idx >= 0) setActiveTab(gameState, viewState, idx);
         }
+        res = orders.mapMenuOptions(gameState, viewState, tilePos.x, tilePos.y, viewState.humanCivId);
+      } else if (!res.options.length) {
+        handleTileClick(tilePos, gameState, viewState);
+      }
+      if (res.options.length) {
+        viewState.ringMenu = { x: tilePos.x, y: tilePos.y, subject: res.subject, page: null };
+        viewState.hoverTile = null;
       }
       onChange();
     }
