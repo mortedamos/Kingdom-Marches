@@ -987,6 +987,19 @@ window.GameEngine = window.GameEngine || {};
         options.push({ kind: "attackPlacement", label: "Attack..." });
       }
 
+      // Build Road To...: same two-stage entry point as Move To/Attack
+      // above (2026-08-27, user-directed) -- pick a destination by tapping
+      // it afterward, rather than needing to right-click/long-press the
+      // destination tile directly (the existing remote-tile "Build Road to
+      // This Tile" pill below is unchanged and still works the same). Any
+      // tile is a legal destination, same permissiveness as Move To --
+      // startGotoOrder's buildRoad branch already tolerates a destination
+      // that turns out to need no new road (every tile along the way
+      // already has one), same as it always has for the remote-tile pill.
+      if (baseUnit.canBuildRoad) {
+        options.push({ kind: "buildRoadToPlacement", label: "Build Road To..." });
+      }
+
       // Found City / Build Road -- sidebar.js's pioneerActions.
       if ((baseUnit.canFoundCity || baseUnit.canBuildRoad) && !unit.usedThisTurn) {
         if (baseUnit.canFoundCity

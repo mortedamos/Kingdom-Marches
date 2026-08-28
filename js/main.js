@@ -5119,6 +5119,47 @@
     });
   }
 
+  /** Build Road To...: identical shape to startMoveToPlacement just above
+   *  (same full-map slot list, same oneTurn tagging so the overlay
+   *  differentiates one-turn from multi-turn destinations the same way),
+   *  the only difference being the `true` (buildRoad) flag passed to
+   *  startGotoOrder instead of `false` -- matching the remote-tile "Build
+   *  Road to This Tile" pill's own order exactly, just reached via the
+   *  unit's own ring instead of right-clicking/long-pressing the
+   *  destination directly (2026-08-27, user-directed). */
+  function startBuildRoadToPlacement(unit) {
+    if (!humanCivId) return;
+    const civ = gameState.civs[humanCivId];
+    if (!civ) return;
+    const { map } = gameState;
+    const reach = window.GameEngine.orders.reachableTiles(unit, gameState);
+    const slots = [];
+    for (let y = 0; y < map.height; y++) {
+      for (let x = 0; x < map.width; x++) {
+        if (x === unit.x && y === unit.y) continue;
+        slots.push({ x, y, oneTurn: reach.has(`${x},${y}`) });
+      }
+    }
+    viewState.placement = {
+      slots,
+      label: "Build Road To...",
+      previewUnitId: unit.typeId, previewRaceId: civ.raceId,
+      onPick: (slot) => {
+        viewState.placement = null;
+        if (slot) {
+          endAutomationAndGoto(unit);
+          window.GameEngine.orders.startGotoOrder(unit, gameState, slot.x, slot.y, true);
+          if (viewState.selection) {
+            viewState.selection.x = unit.x;
+            viewState.selection.y = unit.y;
+          }
+        }
+        redraw();
+      },
+    };
+    redraw();
+  }
+
   /** Follow: opens tile-placement mode (same
    *  mechanism startTeleportPlacement/startWispSummonPlacement use), but
    *  the highlighted "slots" are wherever this civ's OTHER units currently
@@ -5501,6 +5542,9 @@
         break;
       case "attackPlacement":
         startAttackPlacement(unit);
+        break;
+      case "buildRoadToPlacement":
+        startBuildRoadToPlacement(unit);
         break;
       case "follow":
         startFollowPlacement(unit);
