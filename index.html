@@ -55,6 +55,23 @@
        button. -->
   <div id="title-screen" class="title-screen">
 
+    <!-- Mobile-only hamburger into the menu bar below (2026-08-27, user-
+         directed): body.mobile already turns .menu-bar into an off-screen
+         drawer (css/mobile.css) exactly like #game-screen's own copy does,
+         it just had nothing to summon it with here. Own ids (not the
+         in-game m-menu-btn/m-scrim, which live inside #game-screen and so
+         stay display:none the whole time the title screen is showing) but
+         the same classes for identical styling, and the same
+         setMobileMenuOpen(main.js) toggling body.m-menu-open either one
+         responds to -- see setupTitleMobileMenu. Its own menu-bar already
+         has no Save Game/Quick Save entries (see the comment just below),
+         so nothing extra was needed to keep save options off the title
+         screen. -->
+    <button id="title-m-menu-btn" class="m-menu-btn" aria-label="Menu" aria-expanded="false">
+      <span class="m-menu-bars" aria-hidden="true"></span>
+    </button>
+    <div id="title-m-scrim" class="m-scrim" hidden></div>
+
     <!-- Top menu bar (2026-08-12, user-directed): the same strip shown
          in-game (index.html's #game-screen .menu-bar), trimmed to what
          actually applies before a game exists -- no Map Seed (none picked

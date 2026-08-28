@@ -635,11 +635,23 @@
     document.body.classList.toggle("m-landscape", isLandscape && !rotateNoticeDismissed);
   }
 
+  /** Drives body.m-menu-open, the single class css/mobile.css keys the
+   *  drawer transform off of -- shared by BOTH the in-game hamburger
+   *  (#m-menu-btn/#m-scrim, inside #game-screen) and the title screen's own
+   *  (#title-m-menu-btn/#title-m-scrim, 2026-08-27) rather than one
+   *  function per screen, since the two never need to coexist visibly (only
+   *  one screen is ever display:flex at a time) -- whichever pair actually
+   *  exists in the DOM right now is the one this updates; the other simply
+   *  has nothing to find. */
   function setMobileMenuOpen(open) {
     document.body.classList.toggle("m-menu-open", open);
-    const btn = $("m-menu-btn"), scrim = $("m-scrim");
-    if (btn) btn.setAttribute("aria-expanded", open ? "true" : "false");
-    if (scrim) scrim.hidden = !open;
+    for (const id of ["m-menu-btn", "title-m-menu-btn"]) {
+      $(id)?.setAttribute("aria-expanded", open ? "true" : "false");
+    }
+    for (const id of ["m-scrim", "title-m-scrim"]) {
+      const scrim = $(id);
+      if (scrim) scrim.hidden = !open;
+    }
   }
 
   /** Shows/hides the sheet via #m-sheet-toggle-btn (2026-08-26,
@@ -841,6 +853,7 @@
     setupKeyboardShortcutsOverlay();
     setupKnowledgeBase();
     setupTitleMenuBar();
+    setupTitleMobileMenu();
     setupTitleAudioControls();
     setupFocusMuting();
     setupTitleLoadGameControl();
@@ -1054,6 +1067,22 @@
     }
     menus[0].btn.closest(".menu-bar").addEventListener("click", (e) => e.stopPropagation());
     document.addEventListener("click", closeAll);
+  }
+
+  /** Hamburger/scrim wiring for the title screen's own mobile drawer
+   *  (2026-08-27, user-directed) -- same click-to-toggle/tap-scrim-to-close
+   *  shape as #game-screen's own #m-menu-btn/#m-scrim wiring in
+   *  setupMobileShell, just against the title screen's own ids and called
+   *  from showSetupScreen (title screen setup) instead of finishStartGame
+   *  (in-game setup) since it has to work before "Begin" is ever clicked.
+   *  Both pairs drive the SAME body.m-menu-open class (see
+   *  setMobileMenuOpen's own doc comment) -- no separate open/close STATE
+   *  here, only the click targets differ. */
+  function setupTitleMobileMenu() {
+    $("title-m-menu-btn")?.addEventListener("click", () => {
+      setMobileMenuOpen(!document.body.classList.contains("m-menu-open"));
+    });
+    $("title-m-scrim")?.addEventListener("click", () => setMobileMenuOpen(false));
   }
 
   /** Open/close wiring for the launch options modal. Closing is deliberately

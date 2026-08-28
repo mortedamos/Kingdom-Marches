@@ -488,6 +488,16 @@ body.mobile .m-menu-btn {
   padding: 0;
   flex: 0 0 auto;
 }
+/* The in-game hamburger (#m-menu-btn) gets its position from being a flex
+   item of #m-topbar; the title screen's own copy (#title-m-menu-btn,
+   2026-08-27) has no such row to sit in, so it's independently fixed in
+   the same spot #m-topbar itself is anchored to. */
+body.mobile #title-m-menu-btn {
+  position: fixed;
+  z-index: 45;
+  top: calc(env(safe-area-inset-top, 0px) + .6rem);
+  left: calc(env(safe-area-inset-left, 0px) + .6rem);
+}
 /* Three bars from one element: the box is the middle bar, the two
    pseudo-elements are the outer pair. */
 body.mobile .m-menu-bars,
