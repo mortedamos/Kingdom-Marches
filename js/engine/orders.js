@@ -727,14 +727,22 @@ window.GameEngine = window.GameEngine || {};
    *  Units and structures use two different validity checks because
    *  that's what the engine itself already uses for each: canAttackUnitNow
    *  for units (same range/visibility/line-of-sight gate attack() is
-   *  judged against), a plain effectiveRange bounding box + findStructureAt
-   *  for structures (same shape unlockTheGateTargets above uses for its own
-   *  fixed 1-tile-adjacency ability, just sized to this unit's real attack
-   *  range instead, and with no building-type filter -- attackTargetAt
-   *  offers ANY enemy structure, not just walls, so this matches). Neither
-   *  half pre-checks line-of-sight for a structure target, mirroring
-   *  previewOrder's own structure/city branch: the engine has the final
-   *  say at commit time either way. noOrdinaryAttack (Dwarf Bombard) is
+   *  judged against), and for structures, the SAME visibility/line-of-
+   *  sight/garrison checks ai.js's considerAttackOrGarrison applies to its
+   *  own opts.forcedStructure candidate scan (2026-08-27 bugfix -- this
+   *  used to skip all three, which mostly meant "the offered structure
+   *  silently does nothing when tapped" for a fogged or garrisoned one, but
+   *  actively broke the garrisoned case: a defending unit sitting ON the
+   *  structure's own tile got pushed as a SEPARATE candidate at the exact
+   *  same (x,y) as that unit, and input.js's placement-tap-resolution
+   *  matches a tile by taking the FIRST slot at that (x,y) -- the unit
+   *  entry, always pushed first below -- so the structure was never
+   *  reachable by tapping it at all, not even in principle; the unit
+   *  intercepting is correct (matches attackTargetAt's own unit-before-
+   *  structure precedence at a shared tile), but the structure shouldn't
+   *  have been listed as if it were independently reachable there). No
+   *  building-type filter -- attackTargetAt offers ANY enemy structure, not
+   *  just walls, so this matches. noOrdinaryAttack (Dwarf Bombard) is
    *  excluded, same gate the remote-tile branch below applies -- its only
    *  offense is the standalone Bombardment pill, not this one. */
   function attackTargets(unit, gameState, humanCivId) {
@@ -751,16 +759,24 @@ window.GameEngine = window.GameEngine || {};
         }
       }
     }
-    const range = Math.ceil(window.GameEngine.combat.effectiveRange(unit, civ));
-    const { map } = gameState;
-    for (let dy = -range; dy <= range; dy++) {
-      for (let dx = -range; dx <= range; dx++) {
+    const { map, civs } = gameState;
+    const visible = gameState.visibility[civ.id] || new Set();
+    const range = window.GameEngine.combat.effectiveRange(unit, civ);
+    const radius = Math.ceil(range);
+    for (let dy = -radius; dy <= radius; dy++) {
+      for (let dx = -radius; dx <= radius; dx++) {
         if (dx === 0 && dy === 0) continue;
         const x = unit.x + dx, y = unit.y + dy;
         if (x < 0 || x >= map.width || y < 0 || y >= map.height) continue;
-        if (window.GameEngine.influence.chebyshev(unit.x, unit.y, x, y) > range) continue;
+        const dist = window.GameEngine.influence.chebyshev(unit.x, unit.y, x, y);
+        if (dist > range) continue;
+        if (!visible.has(y * map.width + x)) continue;
+        if (dist > 1 && !window.GameEngine.ai.hasRangedLineOfSight(map, unit.x, unit.y, x, y)) continue;
         const found = window.GameEngine.cities.findStructureAt(gameState, x, y);
         if (!found || found.civ.id === civ.id) continue;
+        const garrisonPresent = Object.values(civs).some((oc) =>
+          oc.id === found.civ.id && oc.units.some((u) => u.x === x && u.y === y && !u.conditions?.hidden));
+        if (garrisonPresent) continue; // defender intercepts -- attack the garrison instead
         out.push({ x, y, structure: found });
       }
     }
