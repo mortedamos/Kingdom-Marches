@@ -1433,7 +1433,16 @@
    *  closes it without acting -- picking an option is the only thing that
    *  DOES act (see handleContextMenuAction). */
   function setupContextMenuDismissal() {
-    document.addEventListener("mousedown", (e) => {
+    // Pointer, not mouse: a real touch tap's pointerup (which opens the ring
+    // -- see input.js's endPointer) is followed by a browser-synthesized
+    // compatibility mousedown/click for legacy web compat. That ghost
+    // mousedown targets whatever was physically touched (the canvas), never
+    // the ring itself, so a mousedown listener here would see it as an
+    // outside click and slam the ring shut milliseconds after opening it.
+    // Pointer Events don't have that ghost-duplication problem -- one real
+    // gesture is exactly one pointerdown (2026-08-27, mobile single-tap ring
+    // menu closing itself instantly on real touchscreens).
+    document.addEventListener("pointerdown", (e) => {
       if (!viewState || !viewState.ringMenu) return;
       const root = $("map-context-menu-root");
       if (root && root.contains(e.target)) return; // let the menu's own click-through happen
