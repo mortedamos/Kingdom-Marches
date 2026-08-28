@@ -197,10 +197,8 @@ window.GameData.BUILDINGS = {
   // ---------- HALFELLOW — hearth and home as a war footing: well-fed units,
   // tales that make veterans, antiquarian map-lore, and the Armory ----------
   // No yieldPct: "Well Fed" -- units built in this city are created with
-  // +25% max HP (minimum +1), permanently. A percentage rather than a flat
-  // bonus because unitMaxHP runs small (6-16 across this roster), so a flat
-  // one would be worth far more to a Wanderer than a Militia. See ai.js's
-  // applyBuildingUnitStamps.
+  // +2 max HP, permanently (2026-08-28, user-directed -- was +25%,
+  // min +1). See ai.js's applyBuildingUnitStamps.
   farmers_market: {
     id: "farmers_market", label: "Farmers Market", symbol: "$", raceOnly: "halfellow",
     coinCost: 20, maxHp: 22,

@@ -4672,17 +4672,16 @@ window.GameEngine = window.GameEngine || {};
     { buildingId: "war_camp", stat: "movement", amount: 1 },        // Orc War Camp
   ];
 
-  /** Halfellow Farmers Market ("Well Fed"): a PERCENTAGE of max HP rather
-   *  than a flat bonus, because unitMaxHP is attack+defense+techLayer and so
-   *  runs small (6-16 across the Halfellow roster) -- a flat bonus would be
-   *  worth wildly more to a Wanderer than to a Militia. At 25% (min +1) the
-   *  roster gains +2/+2/+3/+4, scaling with tier as intended. */
-  const FARMERS_MARKET_HP_PCT = 0.25;
+  /** Halfellow Farmers Market ("Well Fed"): flat +2 max HP, permanently, for
+   *  a unit built in a city that has one (2026-08-28, user-directed -- was a
+   *  25%-of-maxHp percentage; still per-city/per-unit-at-creation, only the
+   *  amount and its shape changed, not its scope). */
+  const FARMERS_MARKET_HP_BONUS = 2;
 
-  /** Applies every BUILDING_UNIT_STAMPS row (plus Farmers Market's
-   *  percentage HP bonus) that `city` currently qualifies for onto a
-   *  freshly-spawned unit. Must run AFTER combat.initUnitHP, since the HP
-   *  bonus is computed off the base maxHp that call establishes. */
+  /** Applies every BUILDING_UNIT_STAMPS row (plus Farmers Market's flat HP
+   *  bonus) that `city` currently qualifies for onto a freshly-spawned unit.
+   *  Must run AFTER combat.initUnitHP, since the HP bonus stacks on top of
+   *  the base maxHp that call establishes. */
   function applyBuildingUnitStamps(newUnit, city) {
     const cities = window.GameEngine.cities;
     for (const stamp of BUILDING_UNIT_STAMPS) {
@@ -4691,12 +4690,11 @@ window.GameEngine = window.GameEngine || {};
       newUnit.buildingBonuses[stamp.stat] = (newUnit.buildingBonuses[stamp.stat] || 0) + stamp.amount;
     }
     if (cities.cityHasStructure(city, "farmers_market")) {
-      const bonus = Math.max(1, Math.round(newUnit.maxHp * FARMERS_MARKET_HP_PCT));
       newUnit.buildingBonuses = newUnit.buildingBonuses || {};
       // Recorded as well as applied so a later defensive initUnitHP re-init
       // re-adds it instead of silently reverting the unit to base HP.
-      newUnit.buildingBonuses.maxHp = (newUnit.buildingBonuses.maxHp || 0) + bonus;
-      newUnit.maxHp += bonus;
+      newUnit.buildingBonuses.maxHp = (newUnit.buildingBonuses.maxHp || 0) + FARMERS_MARKET_HP_BONUS;
+      newUnit.maxHp += FARMERS_MARKET_HP_BONUS;
       newUnit.hp = newUnit.maxHp;
     }
   }
@@ -8871,7 +8869,7 @@ window.GameEngine = window.GameEngine || {};
   // =========================================================================
   const MONSTER_CIV_ID = window.GameConfig.worldEncounters.monsters.civId;
   const WEB_DURATION = 1; // short, deliberately much shorter than Frozen's 3 -- a snare, not a lockdown
-  const POISON_DURATION = 3; // same duration as Burning -- see applyPoisoned
+  const POISON_DURATION = 2; // 2026-08-28, user-directed (was 3, matching Burning's own duration -- see applyPoisoned)
 
   /** Lazily creates the Monsters pseudo-civ the first time it's needed --
    *  works identically for a brand-new game and a save from before this

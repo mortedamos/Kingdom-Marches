@@ -575,7 +575,7 @@ window.UI = window.UI || {};
     dragon_den: ["required to build Dragons in this city"],
     ancestral_dolmen: ["a unit built here falling rouses allies within 3: +25% attack for 3 turns"],
     // Halfellow
-    farmers_market: ["+25% max HP for units built here"],
+    farmers_market: ["+2 max HP for units built here"],
     neighborhood_pub: ["+25% XP for all your units (kingdom-wide)"],
     historical_society: ["reveals every Ruin on the map (kingdom-wide)"],
     armory: ["+50% attack and defense for units built here"],

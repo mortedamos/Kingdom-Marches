@@ -530,6 +530,27 @@ window.GameEngine = window.GameEngine || {};
     if (!unit.sentry || unit.usedThisTurn) return;
     const civ = gameState.civs[unit.civId];
     if (!civ) return;
+    // Halfellow "Keep an Eye Out" (2026-08-28, reworked): any Halfellow unit
+    // on Sentry is ALSO Hidden with +3 Vision for as long as it stays on
+    // Sentry -- re-stamped fresh every turn this runs, same "renewed while
+    // the source persists" shape Rest and Defend's own "defending" condition
+    // uses just below in turns.js, rather than a fixed-duration grant that
+    // could lapse mid-watch. Bypasses canGoHidden's usual adjacency/
+    // forcedVisible gates entirely -- those exist to stop an exposed unit
+    // from cheesing repeated short Hidden windows, which doesn't apply here:
+    // this is a continuous, race/tech-gated side effect of standing Sentry,
+    // not a player-initiated re-entry. An attack fired by the scan below
+    // still reveals it through considerAttackOrGarrison's own generic
+    // reveal-on-attack handling, same as any other Hidden unit that attacks
+    // -- this doesn't grant any special immunity from that. See
+    // maybeKeepAnEyeOutPlay for this tech's separate, still-unchanged AI
+    // strategic play (a unit voluntarily settling into lookout duty when
+    // idle), which this doesn't touch or replace.
+    if (civ.raceId === "halfellow" && civ.unlockedMechanics?.has("keep_an_eye_out")) {
+      const expiresAtTurn = (gameState.turnNumber || 0) + 1;
+      window.GameEngine.combat.setCondition(unit, "hidden", { expiresAtTurn });
+      window.GameEngine.combat.setCondition(unit, "keepingWatch", { expiresAtTurn, visionBonus: 3 });
+    }
     const range = window.GameEngine.combat.effectiveRange(unit, civ);
     let best = null, bestDist = Infinity;
     for (const otherCiv of Object.values(gameState.civs)) {

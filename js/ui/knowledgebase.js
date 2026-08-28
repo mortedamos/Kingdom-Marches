@@ -89,7 +89,7 @@ window.UI = window.UI || {};
     befuddled: "Confused by a Halfellow Trouble Maker's Riddle -- Attack, Movement, and Defense all cut by 75% for a few turns.",
     resting: "Standing down this turn to recover HP.",
     webbed: "Snared in webbing -- movement locked to zero for 1 turn, but it can still fight back at full strength if something is already adjacent.",
-    poisoned: "Venom in its veins -- 1 damage at the start of every turn for 3 turns. Mechanically identical to Burning, just from a venomous source (e.g. the Marsh Adder) instead of fire.",
+    poisoned: "Venom in its veins -- 1 damage at the start of every turn for 2 turns. Otherwise mechanically identical to Burning (which lasts 3 turns), just from a venomous source (e.g. the Marsh Adder) instead of fire.",
     keepingWatch: "Posted as a lookout (Halfellow's Keep an Eye Out) -- holds position with +3 Vision.",
     greatBonfireAura: "Within The Great Bonfire's warmth (Halfellow's Banish the Darkness): heals 10% of max HP per turn (minimum 1) regardless of resting, +2 Defense, +2 Vision, +1 Movement, +5% First Strike, and +10% Double Strike -- also cures, and grants immunity to, Burning, Poisoned, Frozen, Curse, Befuddled, and Webbed. Refreshed every turn the aura still reaches it.",
   };

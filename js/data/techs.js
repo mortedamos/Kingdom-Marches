@@ -1720,10 +1720,14 @@ window.GameData.TECHS = {
   // combat/economy tool. Full turn action: go Hidden and hold position (see ai.js's
   // maybeHalfellowKeepAnEyeOut) with a flat +3 vision radius for the
   // duration -- see combat.js/sidebar.js wherever visionRadius is read.
+  // 2026-08-28, user-directed: also ties the same Hidden+vision grant to the
+  // ordinary Sentry order now -- see orders.js's advanceSentryOrder, which
+  // re-stamps both every turn a Halfellow unit stays on Sentry, no separate
+  // full-turn commitment needed the way the manual version above still is.
   halfellow_keep_an_eye_out: {
     id: "halfellow_keep_an_eye_out", label: "Keep an Eye Out", category: "military", layer: 1, cost: 22,
     prereqs: [], raceOnly: "halfellow",
-    description: "Any Halfellow unit may spend its whole turn to go Hidden and hold position, gaining +3 vision radius for as long as it stays there. Ends the same way Hidden normally ends (moving, an enemy walking onto its tile, attacking, ...).",
+    description: "Any Halfellow unit may spend its whole turn to go Hidden and hold position, gaining +3 vision radius for as long as it stays there. Also applies automatically to a Halfellow unit standing on Sentry: it stays Hidden with +3 vision for as long as Sentry holds, reverting to plain visibility the instant Sentry ends or it fires on something. Ends the same way Hidden normally ends otherwise (moving, an enemy walking onto its tile, attacking, ...).",
     costBreakdown: { harvest: 12, lore: 10 },
     effects: [{ type: "unlock_mechanic", mechanic: "keep_an_eye_out", value: 3 }],
   },
@@ -1746,7 +1750,7 @@ window.GameData.TECHS = {
   halfellow_farmers_market: {
     id: "halfellow_farmers_market", label: "Farmers Market", category: "building", layer: 1, cost: 20,
     prereqs: [], raceOnly: "halfellow",
-    description: "Unlocks the Farmers Market. Units built in this city are well fed: +25% maximum health, permanently.",
+    description: "Unlocks the Farmers Market. Units built in this city are well fed: +2 maximum health, permanently.",
     costBreakdown: { coin: 12, harvest: 8 },
     effects: [{ type: "unlock_building", building: "farmers_market" }],
   },
