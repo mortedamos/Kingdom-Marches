@@ -1566,7 +1566,7 @@ window.GameEngine = window.GameEngine || {};
           // findNearestDisconnectedCity.
           const disconnectedCity = findNearestDisconnectedCity(civ, gameState, pioneer.x, pioneer.y);
           if (disconnectedCity) {
-            pioneerRoadStep(pioneer, disconnectedCity.x, disconnectedCity.y, gameState.map, log, gameState.civs);
+            pioneerRoadStep(pioneer, disconnectedCity.x, disconnectedCity.y, gameState.map, log, gameState.civs, gameState.turnNumber || 0);
             pioneer.currentMission = `Building a connecting road toward ${disconnectedCity.name}`;
             log.push(`Pioneer at (${pioneer.x},${pioneer.y}) — no settle site found, building a road to connect ${disconnectedCity.name}`);
           } else {
@@ -1642,7 +1642,7 @@ window.GameEngine = window.GameEngine || {};
             return (!best || d < best.d) ? { c, d } : best;
           }, null);
           if (nearestCity) {
-            pioneerRoadStep(pioneer, nearestCity.c.x, nearestCity.c.y, gameState.map, log, gameState.civs);
+            pioneerRoadStep(pioneer, nearestCity.c.x, nearestCity.c.y, gameState.map, log, gameState.civs, gameState.turnNumber || 0);
           }
           pioneer.usedThisTurn = true;
           pioneer.currentMission = `Filling a road gap toward ${nearestCity?.c.name || 'city'}`;
@@ -1662,7 +1662,7 @@ window.GameEngine = window.GameEngine || {};
           // Road-building mode: step exactly ONE tile toward destination and
           // stamp a road on the arrival tile. One tile per turn guarantees
           // a gapless road chain with no alternating-turn gaps.
-          pioneerRoadStep(pioneer, candidate.x, candidate.y, gameState.map, log, gameState.civs);
+          pioneerRoadStep(pioneer, candidate.x, candidate.y, gameState.map, log, gameState.civs, gameState.turnNumber || 0);
           pioneer.usedThisTurn = true;
           pioneer.currentMission = `Building a road toward a new city site at (${candidate.x},${candidate.y})`;
         } else {
@@ -1679,12 +1679,12 @@ window.GameEngine = window.GameEngine || {};
    *  arrival tile as a road. Keeps movement to 1 tile so roads are gapless.
    *  Uses pathfinding to pick the step rather than a raw straight-line
    *  direction, so a mountain or lake directly on the line doesn't stall it. */
-  function pioneerRoadStep(pioneer, targetX, targetY, map, log, civs) {
+  function pioneerRoadStep(pioneer, targetX, targetY, map, log, civs, turnNumber) {
     const baseUnit = window.GameData.getUnit(pioneer.typeId);
     const occupied = buildOccupancySet(civs, pioneer);
     const costFn = (nx, ny, tile, fromIdx) => {
       if (occupied.has(`${nx},${ny}`)) return window.GameData.IMPASSABLE;
-      if (isEnemyStructureBlockingTile(tile, pioneer)) return window.GameData.IMPASSABLE;
+      if (isEnemyStructureBlockingTile(tile, pioneer, turnNumber)) return window.GameData.IMPASSABLE;
       if (isEnemyCityBlockingTile(civs, nx, ny, pioneer)) return window.GameData.IMPASSABLE;
       const destTerrain = window.GameData.TERRAIN[tile.terrain];
       // A Pioneer laying road can still cross an existing bridge to reach
@@ -2039,9 +2039,21 @@ window.GameEngine = window.GameEngine || {};
    *  a temporary grant, e.g. Human's Flight -- see combat.js's isFlying) --
    *  same "moves over all terrain" treatment they already get everywhere
    *  else; see moveUnitToward's landing-safety check for why a flying unit
-   *  still never actually stops on one. */
-  function isEnemyStructureBlockingTile(tile, unit) {
+   *  still never actually stops on one.
+   *
+   *  Halfellow "Unlock the Gate" (2026-08-27) also grants a movement
+   *  exemption, but ONLY for the specific wall segment it targeted -- unlike
+   *  the ability's separate, city-wide Defense-score suppression (see
+   *  combat.js's isCityWallDefenseSuppressed/cityDefenseValue), this does
+   *  NOT extend to every wall the suppressed city owns. performUnlockTheGate
+   *  stamps wallCrossableUntilTurn directly onto the targeted tile's
+   *  structure pointer; `turnNumber` (optional) checks it here -- omitting
+   *  it treats the wall as still fully blocking, the same safe default
+   *  every other optional turnNumber param in this file uses. */
+  function isEnemyStructureBlockingTile(tile, unit, turnNumber) {
     if (!hasEnemyStructure(tile, unit.civId)) return false;
+    const s = tile.structure;
+    if (s && s.wallCrossableUntilTurn != null && (turnNumber || 0) < s.wallCrossableUntilTurn) return false;
     return !window.GameEngine.combat.isFlying(unit);
   }
 
@@ -2592,7 +2604,7 @@ window.GameEngine = window.GameEngine || {};
    * ENEMY unit still fully blocks passage, same as always -- this is about
    * marching past your own army, not walking through the enemy's.
    */
-  function buildMoveRules(unit, civs, map) {
+  function buildMoveRules(unit, civs, map, turnNumber) {
     const baseUnit = window.GameData.getUnit(unit.typeId);
     const flying = window.GameEngine.combat.isFlying(unit);
     const occupied = flying ? buildFlyingBlockSet(civs, unit) : buildEnemyOccupancySet(civs, unit);
@@ -2609,7 +2621,7 @@ window.GameEngine = window.GameEngine || {};
     // exists purely so that dead branch still resolves to something sane.
     const costFn = (nx, ny, tile, fromIdx) => {
       if (occupied.has(`${nx},${ny}`)) return window.GameData.IMPASSABLE;
-      if (isEnemyStructureBlockingTile(tile, unit)) return window.GameData.IMPASSABLE;
+      if (isEnemyStructureBlockingTile(tile, unit, turnNumber)) return window.GameData.IMPASSABLE;
       if (isEnemyCityBlockingTile(civs, nx, ny, unit)) return window.GameData.IMPASSABLE;
       // restrictedToTerrain (e.g. the Wisp) is absolute -- checked BEFORE the
       // allied-structure freebie just below, so a friendly city/wall built on
@@ -2667,7 +2679,7 @@ window.GameEngine = window.GameEngine || {};
     // legitimately end on the same tile a previous one did.
     unit._walkPath = null;
     if (unit.movesRemaining == null) unit.movesRemaining = computeMovementBudget(unit, map, civs);
-    const rules = buildMoveRules(unit, civs, map);
+    const rules = buildMoveRules(unit, civs, map, currentTurnNumber);
     const { flying, costFn } = rules;
 
     // Full route via A*, not a per-step greedy hill-climb -- this is what lets a unit
@@ -2763,7 +2775,7 @@ window.GameEngine = window.GameEngine || {};
     const reachable = new Map();
     if (!(budget > 0)) return reachable;
 
-    const rules = buildMoveRules(unit, civs, map);
+    const rules = buildMoveRules(unit, civs, map, gameState.turnNumber || 0);
     const bestCost = new Map([[`${unit.x},${unit.y}`, 0]]);
     // Small frontier (bounded by the movement budget, not the map), so a
     // linear extract-min is cheaper here than a heap's bookkeeping.
@@ -6824,8 +6836,13 @@ window.GameEngine = window.GameEngine || {};
     return ok;
   }
 
-  /** Nearest visible enemy wall not already suppressed -- Unlock the Gate's
-   *  target pool. Within `radius` tiles. */
+  /** Nearest visible enemy wall belonging to a city whose wall defense isn't
+   *  already suppressed (2026-08-27: suppression is now CITY-wide, not
+   *  per-wall -- see combat.js's isCityWallDefenseSuppressed) -- Unlock the
+   *  Gate's target pool. Within `radius` tiles. Still returns a specific
+   *  wall, not just the city: that's the concrete tile the unit actually
+   *  has to be adjacent to, and what the ring/AI targeting UX key off, even
+   *  though the effect itself lands on the whole city. */
   function findUnlockTheGateTarget(civ, unit, gameState, radius = 8) {
     const { map, civs } = gameState;
     const visible = gameState.visibility[civ.id] || new Set();
@@ -6833,9 +6850,9 @@ window.GameEngine = window.GameEngine || {};
     for (const otherCiv of Object.values(civs)) {
       if (otherCiv.id === civ.id || otherCiv.eliminated) continue;
       for (const city of otherCiv.cities) {
+        if (window.GameEngine.combat.isCityWallDefenseSuppressed(city, currentTurnNumber)) continue;
         for (const s of city.structures) {
           if (!window.GameData.getBuilding(s.id).isWall) continue;
-          if (window.GameEngine.combat.isWallDefenseSuppressed(s, currentTurnNumber)) continue;
           if (!visible.has(s.y * map.width + s.x)) continue;
           const dist = window.GameEngine.influence.chebyshev(unit.x, unit.y, s.x, s.y);
           if (dist > radius) continue;
@@ -6847,38 +6864,46 @@ window.GameEngine = window.GameEngine || {};
   }
 
   /**
-   * Halfellow "Unlock the Gate": built into
-   * Trouble Maker, no separate tech. Adjacent to a targeted enemy wall,
-   * disables it AND every wall adjacent to it (chebyshev <= 1 from the
-   * target, same city) for 3 rounds -- see combat.js's
-   * isWallDefenseSuppressed, checked at every wall-defense call site.
-   * Returns true if it consumed the turn (executing, or closing distance).
+   * Halfellow "Unlock the Gate": built into Trouble Maker, no separate
+   * tech. Adjacent to a targeted enemy wall, suppresses that WHOLE CITY's
+   * wall-derived Defense contribution (2026-08-27, reworked -- previously a
+   * per-wall effect that bypassed each affected wall's own combat stat; see
+   * combat.js's isCityWallDefenseSuppressed for the new city-wide shape and
+   * cityDefenseValue for exactly what it now cuts) for 3 rounds. Separately
+   * (and more narrowly), the ONE targeted wall segment -- not every wall the
+   * city owns -- also stops blocking enemy movement for that same window;
+   * see isEnemyStructureBlockingTile's wallCrossableUntilTurn check below
+   * and performUnlockTheGate's own doc comment. Returns true if it consumed
+   * the turn (executing, or closing distance).
    */
   const UNLOCK_THE_GATE_ROUNDS = 3;
 
-  /** Unlock the Gate commit: disables `target.structure` and its neighbors
-   *  right now, already confirmed adjacent by the caller. Split out so
-   *  both maybeUnlockTheGatePlay's
-   *  chase-then-disable and the "Unlock the Gate: [wall]" ring option share
-   *  the exact same suppression logic. `target` is the
+  /** Unlock the Gate commit: suppresses target.city's wall defense (all
+   *  walls, city-wide) AND marks target.structure -- the one wall segment
+   *  actually targeted, already confirmed adjacent by the caller -- as
+   *  crossable by enemy movement, both for 3 rounds. The crossable flag is
+   *  intentionally scoped to just this wall (2026-08-28, user-directed): it
+   *  lives on the structure record itself (checked wherever something reads
+   *  city.structures, e.g. a future render.js badge) and is mirrored onto
+   *  the map tile's lightweight structure pointer, since that's the cheap
+   *  handle isEnemyStructureBlockingTile's movement-cost check actually has
+   *  -- the two are different objects (see cities.js's placeStructure/
+   *  findStructureAt) so both need the write. Split out so both
+   *  maybeUnlockTheGatePlay's chase-then-trigger and the "Unlock the Gate:
+   *  [wall]" ring option share the exact same logic. `target` is the
    *  `{ structure, city, civId }` shape findUnlockTheGateTarget returns. */
   function performUnlockTheGate(civ, unit, target, gameState, log) {
     const { structure, city } = target;
-    const expiresAtTurn = currentTurnNumber + UNLOCK_THE_GATE_ROUNDS;
-    let affected = 0;
-    for (const s of city.structures) {
-      if (!window.GameData.getBuilding(s.id).isWall) continue;
-      if (window.GameEngine.influence.chebyshev(structure.x, structure.y, s.x, s.y) > 1) continue;
-      s.gateUnlockedUntilTurn = expiresAtTurn;
-      affected++;
-      // A separate burst PER SEGMENT actually disabled, same "every square
-      // resolved gets its own" convention as performWizardFireball.
-      window.GameEngine.combat.spawnAreaEffect(s.x, s.y, 0, "unlock_the_gate");
-    }
+    const untilTurn = currentTurnNumber + UNLOCK_THE_GATE_ROUNDS;
+    city.wallDefenseSuppressedUntilTurn = untilTurn;
+    structure.wallCrossableUntilTurn = untilTurn;
+    const tile = gameState.map.tiles[structure.y * gameState.map.width + structure.x];
+    if (tile.structure) tile.structure.wallCrossableUntilTurn = untilTurn;
+    window.GameEngine.combat.spawnAreaEffect(structure.x, structure.y, 0, "unlock_the_gate");
     window.SfxSystem.playAction(civ.raceId, "trouble_maker", "unlock_the_gate", structure.x, structure.y);
     unit.usedThisTurn = true;
     unit.currentMission = `Unlocked the gate at (${structure.x},${structure.y})`;
-    log.push(`Unlock the Gate: ${civ.id}'s ${describeUnit(unit)} disables ${target.civId}'s wall at (${structure.x},${structure.y}) and ${affected - 1} adjacent segment(s) for ${UNLOCK_THE_GATE_ROUNDS} rounds`);
+    log.push(`Unlock the Gate: ${civ.id}'s ${describeUnit(unit)} suppresses ${target.civId}'s ${city.name}'s wall defense by 75% for ${UNLOCK_THE_GATE_ROUNDS} rounds`);
     return true;
   }
 
@@ -13454,9 +13479,9 @@ window.GameEngine = window.GameEngine || {};
           // wait for the siege train) instead. Deliberately a hard skip rather
           // than a score penalty: at 1 damage per hit the attack is not a
           // marginal call, it's wasted.
-          const expectedDmg = window.GameEngine.combat.expectedCityDamage(unit, targetCity, civ);
+          const expectedDmg = window.GameEngine.combat.expectedCityDamage(unit, targetCity, civ, currentTurnNumber);
           if (expectedDmg <= 1) continue;
-          const winProb = window.GameEngine.combat.cityAttackWinProbability(unit, targetCity, civ);
+          const winProb = window.GameEngine.combat.cityAttackWinProbability(unit, targetCity, civ, otherCiv.id, currentTurnNumber);
           const level = Math.floor(targetCity.population);
           let score = winProb * 50 * (weights.attack || 1.0) + level * 5;
           if (winProb < minAcceptableWinProbability(civ)) score *= 0.1; // heavily suppressed, not zeroed
@@ -13993,9 +14018,10 @@ window.GameEngine = window.GameEngine || {};
         && restingUnit && WARDEN_UNIT_TYPES.has(restingUnit.typeId)) ? restingUnit : null;
       for (const s of city.structures) {
         if (!window.GameData.getBuilding(s.id).isWall) continue;
-        // Halfellow "Unlock the Gate": suppressed the same as every other
-        // special wall defense while active.
-        if (window.GameEngine.combat.isWallDefenseSuppressed(s, gameState.turnNumber)) continue;
+        // Halfellow "Unlock the Gate" (2026-08-27, reworked): no longer
+        // suppresses a wall's own potshot -- see combat.js's
+        // isCityWallDefenseSuppressed, now a city-wide Defense-score
+        // effect only, unrelated to this per-wall mechanic.
         if (Math.random() >= fireChance) continue;
         let target = null, targetCiv = null, bestDist = Infinity;
         for (const otherCiv of Object.values(civs)) {

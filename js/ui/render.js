@@ -928,6 +928,14 @@ window.UI = window.UI || {};
           // no such container of their own, see ai.js's applyBurning).
           if (s.burning) overlays.drawFlameEffect(ctx, s, screenX, screenY, ts, now);
 
+          // Halfellow "Unlock the Gate" (2026-08-28): this specific wall
+          // segment is currently crossable by enemy movement -- see ai.js's
+          // performUnlockTheGate. Lazy expiry, same shape as
+          // isCityWallDefenseSuppressed/isEnemyStructureBlockingTile use.
+          if (building.isWall && s.wallCrossableUntilTurn != null && (gameState.turnNumber || 0) < s.wallCrossableUntilTurn) {
+            overlays.drawWallCrossableBadge(ctx, screenX, screenY, ts);
+          }
+
           // HP bar (only when damaged) -- always tile-relative, independent
           // of whether a sprite or the placeholder was drawn above.
           if (s.hp < s.maxHp) {

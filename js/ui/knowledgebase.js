@@ -706,7 +706,19 @@ window.UI = window.UI || {};
       .filter(([key]) => b[key] != null)
       .map(([key, fmt]) => `<div class="kb-tech-rel">${fmt(b[key])}</div>`)
       .join("");
-    const effectsHtml = effectLines ? `<h3>Effects</h3>${effectLines}` : "";
+    // A Wall's contribution to its CITY's own Defense score (2026-08-27,
+    // user-directed) -- a SEPARATE number from the Defense stat above,
+    // which only mitigates damage to the wall itself when IT'S the one
+    // being attacked. Reads window.GameConfig.combat.cityDefensePerWall
+    // directly rather than a building-data field, since that's genuinely
+    // where the number lives (combat.js's cityDefenseValue) -- the same
+    // engine constant sidebar.js's own city-panel Defense row already
+    // reads for its "(+N from M walls)" tag, so this can never silently
+    // drift from what an actual attack is resolved against.
+    const wallCityDefenseHtml = b.isWall
+      ? `<div class="kb-tech-rel">+${window.GameConfig.combat.cityDefensePerWall} to this city's own Defense score — stacks with every other alive Wall the city has, separate from this Wall's own Defense stat above</div>`
+      : "";
+    const effectsHtml = (effectLines || wallCityDefenseHtml) ? `<h3>Effects</h3>${wallCityDefenseHtml}${effectLines}` : "";
 
     // Single tech, not a multi-relation scan like techRelationsForUnit --
     // every building (walls/bridges included) resolves to exactly one

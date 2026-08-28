@@ -1384,6 +1384,36 @@ window.UI = window.UI || {};
   }
 
   /**
+   * Halfellow "Unlock the Gate" (2026-08-28): a small corner marker on a
+   * wall segment currently flagged crossable (s.wallCrossableUntilTurn --
+   * see ai.js's performUnlockTheGate/isEnemyStructureBlockingTile), same
+   * dark-backdrop-circle-plus-icon convention and top-right corner
+   * placement as drawIdleCityBadge just above -- a wall sprite fills its
+   * whole tile the same way a city does, so there's no "above the sprite"
+   * space the way drawConditionBadges gets for a unit. Caller (render.js's
+   * Structures loop) is responsible for checking the expiry against the
+   * current turn number before calling this -- purely a draw, no game-state
+   * read of its own. */
+  function drawWallCrossableBadge(ctx, x, y, size) {
+    const r = size * 0.16;
+    const cx = x + size - r * 1.3, cy = y + r * 1.3;
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, 0, Math.PI * 2);
+    ctx.fillStyle = "rgba(0,0,0,0.45)";
+    ctx.fill();
+    ctx.font = `${Math.max(8, r * 1.3)}px sans-serif`;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.strokeStyle = "rgba(0,0,0,0.7)";
+    ctx.lineWidth = Math.max(1, size * 0.02);
+    ctx.strokeText("\u{1F513}", cx, cy);
+    ctx.fillStyle = "#f2efe6";
+    ctx.fillText("\u{1F513}", cx, cy);
+    ctx.restore();
+  }
+
+  /**
    * Persistent (non-fading) label showing a channeling unit's currently
    * accumulated prospecting/delving/fishing stash -- reads LIVE state
    * directly off the unit every frame rather than draining a one-shot
@@ -1860,7 +1890,7 @@ window.UI = window.UI || {};
     drawMuzzleSmoke, drawMuzzleSmokeAt, drawImpactSmoke, drawImpactSmokeAt,
     hasActiveQuip, hasActiveFloatingText, getActiveCombatAnims, getActiveAreaEffects, getActiveDeathEffects,
     getActiveMuzzleSmoke, getActiveImpactSmoke,
-    getUnitShakeOffset, drawConditionVisualEffects, drawConditionBadges, drawChannelStashLabel, drawIdleCityBadge,
+    getUnitShakeOffset, drawConditionVisualEffects, drawConditionBadges, drawChannelStashLabel, drawIdleCityBadge, drawWallCrossableBadge,
     drawLevelUpGlowBehind, drawLevelUpSparkles, drawFlameEffect, drawChestSparkle, drawResourceGlint,
     drawAmbientUnitEffects,
     drawGrassClutter, drawWindWisp, drawSwampSnake, drawForestBird,

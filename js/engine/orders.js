@@ -172,7 +172,7 @@ window.GameEngine = window.GameEngine || {};
       const range = window.GameEngine.combat.effectiveRange(unit, civ);
       if (dist > range) return { kind: "blocked", reason: "Out of range" };
       const odds = target.kind === "city"
-        ? window.GameEngine.combat.cityAttackWinProbability(unit, target.city, civ)
+        ? window.GameEngine.combat.cityAttackWinProbability(unit, target.city, civ, target.civ.id, gameState.turnNumber || 0)
         : null;
       return { kind: "attack", target, odds };
     }
@@ -399,7 +399,7 @@ window.GameEngine = window.GameEngine || {};
         if (unit.movesRemaining == null) {
           unit.movesRemaining = window.GameEngine.ai.computeMovementBudget(unit, map, civs);
         }
-        const rules = window.GameEngine.ai.buildMoveRules(unit, civs, map);
+        const rules = window.GameEngine.ai.buildMoveRules(unit, civs, map, gameState.turnNumber || 0);
         const path = window.GameEngine.pathfinding.findPath(unit.x, unit.y, target.x, target.y, map, rules.costFn);
         if (path) {
           for (const step of path) {
@@ -625,7 +625,7 @@ window.GameEngine = window.GameEngine || {};
     const cached = plannedPathCache.get(unit);
     if (cached && cached.key === key) return cached.value;
 
-    const rules = window.GameEngine.ai.buildMoveRules(unit, gameState.civs, gameState.map);
+    const rules = window.GameEngine.ai.buildMoveRules(unit, gameState.civs, gameState.map, gameState.turnNumber || 0);
     const path = window.GameEngine.pathfinding.findPath(
       unit.x, unit.y, dest.x, dest.y, gameState.map, rules.costFn);
     // findPath falls back to the closest reachable tile when the target
@@ -908,11 +908,13 @@ window.GameEngine = window.GameEngine || {};
     return out;
   }
 
-  /** Halfellow "Unlock the Gate": ADJACENT enemy wall segments not already
-   *  suppressed. Returns cities.js findStructureAt records ({civ, city,
-   *  record, building}) rather than units -- the only candidate list here
-   *  that targets a structure, so its entries carry x/y explicitly for the
-   *  picker to key off. */
+  /** Halfellow "Unlock the Gate": ADJACENT enemy wall segments belonging to
+   *  a city whose wall defense isn't already suppressed (2026-08-27:
+   *  suppression is city-wide now, not per-wall -- see combat.js's
+   *  isCityWallDefenseSuppressed). Returns cities.js findStructureAt
+   *  records ({civ, city, record, building}) rather than units -- the only
+   *  candidate list here that targets a structure, so its entries carry
+   *  x/y explicitly for the picker to key off. */
   function unlockTheGateTargets(unit, gameState, humanCivId) {
     const civ = gameState.civs[unit.civId];
     if (!civ || unit.usedThisTurn) return [];
@@ -924,7 +926,7 @@ window.GameEngine = window.GameEngine || {};
         const ax = unit.x + dx, ay = unit.y + dy;
         const found = window.GameEngine.cities.findStructureAt(gameState, ax, ay);
         if (!found || found.civ.id === civ.id || !found.building.isWall) continue;
-        if (window.GameEngine.combat.isWallDefenseSuppressed(found.record, gameState.turnNumber || 0)) continue;
+        if (window.GameEngine.combat.isCityWallDefenseSuppressed(found.city, gameState.turnNumber || 0)) continue;
         out.push({ x: ax, y: ay, structure: found });
       }
     }

@@ -4705,8 +4705,17 @@
           options = cityOptions.concat([{ kind: "category:back", label: "Back" }]);
         } else {
           const unitLabel = window.GameData.getUnit(unit.typeId).label;
+          // Rest and Defend is a standing, channeled order (see orders.js's
+          // own doc comment on it) -- worth flagging right on this pill so
+          // the player doesn't have to drill in to notice the unit is
+          // parked defending rather than idle. A one-off Defend (AI-only,
+          // ai.js's performDefend) sets the same conditions.defending but
+          // isn't this channel, so it deliberately doesn't qualify.
+          const unitActionsLabel = unit.channeling === "restAndDefend"
+            ? `${unitLabel} Actions (defending)`
+            : `${unitLabel} Actions`;
           options = [
-            { kind: "category:unit", label: `${unitLabel} Actions` },
+            { kind: "category:unit", label: unitActionsLabel },
             { kind: "category:city", label: "City Actions" },
           ];
         }

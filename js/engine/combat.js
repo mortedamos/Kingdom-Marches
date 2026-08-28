@@ -1389,16 +1389,21 @@ window.GameEngine = window.GameEngine || {};
     return replacement;
   }
 
-  /** Halfellow "Unlock the Gate": a Trouble
-   *  Maker can disable a targeted wall (and every wall adjacent to it) for
-   *  3 rounds -- zeroes its defense stat AND suppresses every special wall
-   *  defense (Rouse the People, Ramparts, Spikes/Bigger Spikes, Treetop
-   *  Snipers), regardless of which the defender has unlocked. A single flag
-   *  on the structure record, checked at every one of those four call
-   *  sites (attackStructure below, and ai.js's tickWallDefense) instead
-   *  of each mechanic needing its own awareness of it. */
-  function isWallDefenseSuppressed(structureRecord, turnNumber) {
-    return structureRecord.gateUnlockedUntilTurn != null && (turnNumber || 0) < structureRecord.gateUnlockedUntilTurn;
+  /** Halfellow "Unlock the Gate" (2026-08-27, reworked -- was a per-wall
+   *  effect, see git history for the old shape): a Trouble Maker targets
+   *  one of a city's walls to identify WHICH city, but the effect itself
+   *  is city-wide -- cuts that city's total wall-derived Defense
+   *  contribution (cityDefenseValue's own wallCount * CITY_DEFENSE_PER_WALL
+   *  term, i.e. what ALL its walls collectively grant it against an attack
+   *  on the CITY itself) to UNLOCK_THE_GATE_WALL_DEFENSE_MULT of normal,
+   *  for 3 turns. A single expiresAtTurn field on the CITY record (not the
+   *  targeted wall, and not per-wall) -- see performUnlockTheGate
+   *  (ai.js) for where it's set. Deliberately does NOT touch an individual
+   *  wall's own `defense` stat (attackStructure below) or the wall-potshot
+   *  mechanic (ai.js's tickWallDefense) -- those are unrelated to the city-
+   *  wide score this now suppresses. */
+  function isCityWallDefenseSuppressed(city, turnNumber) {
+    return city.wallDefenseSuppressedUntilTurn != null && (turnNumber || 0) < city.wallDefenseSuppressedUntilTurn;
   }
 
   /**
@@ -1415,7 +1420,6 @@ window.GameEngine = window.GameEngine || {};
    */
   function attackStructure(unit, structureRecord, attackerCiv, defenderCiv, gameState) {
     const building = window.GameData.getBuilding(structureRecord.id);
-    const gateUnlocked = isWallDefenseSuppressed(structureRecord, gameState && gameState.turnNumber);
     // Siege property only applies when the attacker is actually adjacent --
     // a Ranged attack from further away (see effectiveRange) never benefits
     // from it, EXCEPT a unit with the base-data `siegeAtRange` property
@@ -1426,8 +1430,11 @@ window.GameEngine = window.GameEngine || {};
     // Siege bypasses part of a wall/bridge's defense the same way it does a
     // city's (2026-08-25) -- see siegeAdjustedDefense. Only meaningful for
     // structures that HAVE a defense value (walls and bridges); a defenceless
-    // building already takes the raw roll.
-    const rollHit = () => building.defense && !gateUnlocked
+    // building already takes the raw roll. No more gateUnlocked bypass here
+    // (2026-08-27) -- Unlock the Gate no longer touches an individual
+    // structure's own defense stat, see isCityWallDefenseSuppressed's own
+    // doc comment for where its effect actually lands now.
+    const rollHit = () => building.defense
       ? mitigatedDamage(atk, siegeAdjustedDefense(building.defense, unit, attackerCiv))
       : Math.round(damageRoll(atk));
     const dmg = rollHit();
@@ -1446,10 +1453,7 @@ window.GameEngine = window.GameEngine || {};
       }
     }
     let counterDamage = 0, militiaSpawned = null;
-    if (gateUnlocked) {
-      // Every special wall defense suppressed -- fall straight through with
-      // no counterattack of any kind, regardless of what's unlocked.
-    } else if (defenderCiv && defenderCiv.unlockedMechanics && defenderCiv.unlockedMechanics.has("rouse_the_people")) {
+    if (defenderCiv && defenderCiv.unlockedMechanics && defenderCiv.unlockedMechanics.has("rouse_the_people")) {
       counterDamage = structureCounterattack(structureRecord, defenderCiv, unit, attackerCiv);
       if (gameState) militiaSpawned = maybeSpawnMilitia(defenderCiv, structureRecord.x, structureRecord.y, gameState.map, gameState.civs);
     // (2026-08-24: a Human "Ramparts" branch used to sit here, letting walls
@@ -1496,12 +1500,14 @@ window.GameEngine = window.GameEngine || {};
    *  average damage roll instead of a random one (2026-08-25). Pure -- the AI
    *  calls this to decide whether an attack is worth making at all (see
    *  ai.js's futility gate), so it must not mutate or consume randomness.
-   *  Returns 1 for a unit that can only chip the minimum. */
-  function expectedCityDamage(unit, city, attackerCiv) {
+   *  Returns 1 for a unit that can only chip the minimum. `turnNumber`
+   *  (2026-08-27) -- see cityDefenseValue's own doc comment; optional, and
+   *  simply reads the city at full (unsuppressed) defense if omitted. */
+  function expectedCityDamage(unit, city, attackerCiv, turnNumber) {
     const isAdjacent = Math.max(Math.abs(unit.x - city.x), Math.abs(unit.y - city.y)) <= 1;
     const isSiege = isAdjacent || !!window.GameData.getUnit(unit.typeId).siegeAtRange;
     const atk = effectiveAttack(unit, attackerCiv, { isSiege });
-    const def = siegeAdjustedDefense(cityDefenseValue(city), unit, attackerCiv);
+    const def = siegeAdjustedDefense(cityDefenseValue(city, turnNumber), unit, attackerCiv);
     // damageRoll averages to the attack stat itself (its +/- 3d6% swing is
     // symmetric), so the expected value is atk * atk/(atk+def).
     return Math.max(1, Math.round(atk * (atk / (atk + def || 1))));
@@ -1520,6 +1526,13 @@ window.GameEngine = window.GameEngine || {};
     return defStat * (1 - bypass);
   }
 
+  // Halfellow "Unlock the Gate" (2026-08-27) -- see
+  // isCityWallDefenseSuppressed's own doc comment. -75%, i.e. the wall term
+  // below is multiplied by this, not subtracted from it -- a city with a
+  // huge wall count still gets SOME benefit from them rather than the
+  // suppression being a flat, count-independent penalty.
+  const UNLOCK_THE_GATE_WALL_DEFENSE_MULT = 0.25;
+
   /** Higher for a bigger, more built-up city -- deliberately has no defender
    *  garrison bonus of its own (that's the job of an actual defending unit;
    *  this value only matters once the city has none).
@@ -1531,13 +1544,23 @@ window.GameEngine = window.GameEngine || {};
    *  (s.hp > 0): a wall battered down to 0 hp is removed from
    *  city.structures entirely elsewhere (destroyStructure), so this filter
    *  is mostly belt-and-suspenders, but it's the correct rule regardless of
-   *  how that removal is implemented. */
-  function cityDefenseValue(city) {
+   *  how that removal is implemented.
+   *
+   *  `turnNumber` (2026-08-27, optional -- every caller that has one should
+   *  pass it) -- when isCityWallDefenseSuppressed(city, turnNumber) is true
+   *  (Halfellow "Unlock the Gate" was used on one of this city's walls
+   *  within the last 3 turns), the wall-specific term (wallCount *
+   *  CITY_DEFENSE_PER_WALL) is cut to UNLOCK_THE_GATE_WALL_DEFENSE_MULT of
+   *  itself -- the generic per-structure and base/level terms are
+   *  untouched, only the premium walls specifically grant. */
+  function cityDefenseValue(city, turnNumber) {
     const level = Math.max(1, Math.floor(city.population));
     const wallCount = city.structures.filter((s) => s.hp > 0 && window.GameData.getBuilding(s.id).isWall).length;
+    let wallTerm = wallCount * CITY_DEFENSE_PER_WALL;
+    if (isCityWallDefenseSuppressed(city, turnNumber)) wallTerm *= UNLOCK_THE_GATE_WALL_DEFENSE_MULT;
     return CITY_BASE_DEFENSE + level * CITY_DEFENSE_PER_LEVEL
       + city.structures.length * CITY_DEFENSE_PER_STRUCTURE
-      + wallCount * CITY_DEFENSE_PER_WALL;
+      + wallTerm;
   }
 
   /** A city's max HP: purely population-based (CITY_HP_PER_LEVEL per level),
@@ -1560,11 +1583,11 @@ window.GameEngine = window.GameEngine || {};
    *  effectiveAttack -- but only when the attacker is actually adjacent to
    *  the city (see attackStructure's matching comment and its
    *  `siegeAtRange` exception). */
-  function cityAttackWinProbability(unit, city, attackerCiv, defenderCivId) {
+  function cityAttackWinProbability(unit, city, attackerCiv, defenderCivId, turnNumber) {
     const isAdjacent = Math.max(Math.abs(unit.x - city.x), Math.abs(unit.y - city.y)) <= 1;
     const isSiege = isAdjacent || !!window.GameData.getUnit(unit.typeId).siegeAtRange;
     const atk = effectiveAttack(unit, attackerCiv, { isSiege, opposingCivId: defenderCivId });
-    const def = cityDefenseValue(city);
+    const def = cityDefenseValue(city, turnNumber);
     return atk / (atk + def);
   }
 
@@ -1583,7 +1606,7 @@ window.GameEngine = window.GameEngine || {};
     const isAdjacent = Math.max(Math.abs(unit.x - city.x), Math.abs(unit.y - city.y)) <= 1;
     const isSiege = isAdjacent || !!window.GameData.getUnit(unit.typeId).siegeAtRange;
     const atk = effectiveAttack(unit, attackerCiv, { isSiege, opposingCivId: defenderCiv && defenderCiv.id });
-    const def = cityDefenseValue(city);
+    const def = cityDefenseValue(city, gameState && gameState.turnNumber);
     const dmg = mitigatedDamage(atk, siegeAdjustedDefense(def, unit, attackerCiv));
     if (city.hp == null) city.hp = cityMaxHp(city); // defensive -- a city from an older save may predate this field
     city.hp -= dmg;
@@ -1819,7 +1842,7 @@ window.GameEngine = window.GameEngine || {};
     enterHidden,
     revealHidden,
     applyBefuddled,
-    isWallDefenseSuppressed,
+    isCityWallDefenseSuppressed,
     resolveRound,
     resolveToTheDeath,
     initUnitHP,
