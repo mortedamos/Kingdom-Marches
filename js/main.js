@@ -1246,7 +1246,13 @@
       // just flip which page it's showing.
       wireTechTreeKbLinks(content);
     } else {
-      content.innerHTML = window.UI.knowledgebase.renderUnits(knowledgeSelectedUnitId);
+      // Player's own kingdom first (2026-08-27, user-directed): only in a
+      // running single-player game (not spectating, not the title screen,
+      // where there's no "your kingdom" to prioritize) -- see
+      // knowledgebase.js's groupedUnits for how this reorders the list.
+      const playerRaceId = (humanCivId && !spectatorMode && gameState?.civs[humanCivId])
+        ? gameState.civs[humanCivId].raceId : null;
+      content.innerHTML = window.UI.knowledgebase.renderUnits(knowledgeSelectedUnitId, playerRaceId);
       const canvas = content.querySelector(".kb-unit-portrait");
       if (canvas) {
         window.UI.knowledgebase.drawUnitPortrait(canvas, canvas.dataset.portraitUnitId, canvas.dataset.portraitRaceId);

@@ -235,18 +235,30 @@ window.UI = window.UI || {};
   }
 
   /** Every unit id, grouped for the list pane: Universal (no raceOnly, not a
-   *  monster) first, then one group per real race in RACE_LIST order, then
-   *  Wandering Monsters last. Pure derivation from units.js/races.js --
-   *  add a unit anywhere in units.js and it appears in the right group
-   *  automatically, no registration step. */
-  function groupedUnits() {
+   *  monster) first, then one group per real race, then Wandering Monsters
+   *  last. Pure derivation from units.js/races.js -- add a unit anywhere in
+   *  units.js and it appears in the right group automatically, no
+   *  registration step.
+   *
+   *  `playerRaceId` (2026-08-27, user-directed): in a running single-player
+   *  game, that race's own group is moved to right after Universal instead
+   *  of sitting wherever RACE_LIST happens to put it -- the kingdom you're
+   *  actually playing is what you look up units for most, so it shouldn't
+   *  take extra scrolling to reach. Every other race keeps RACE_LIST's
+   *  normal order behind it. Passing null/undefined (title screen, no game
+   *  running, or spectating) leaves plain RACE_LIST order untouched -- see
+   *  main.js's renderKnowledgeOverlay for how that's decided. */
+  function groupedUnits(playerRaceId) {
     const groups = [];
     const universal = window.GameData.UNIT_LIST.filter((id) => {
       const u = window.GameData.getUnit(id);
       return !u.raceOnly && !window.GameData.MONSTER_UNIT_IDS.has(id);
     });
     if (universal.length) groups.push({ key: "universal", label: "Universal — Any Kingdom", units: universal });
-    for (const raceId of window.GameData.RACE_LIST) {
+    const orderedRaceIds = playerRaceId && window.GameData.RACE_LIST.includes(playerRaceId)
+      ? [playerRaceId, ...window.GameData.RACE_LIST.filter((r) => r !== playerRaceId)]
+      : window.GameData.RACE_LIST;
+    for (const raceId of orderedRaceIds) {
       const units = window.GameData.UNIT_LIST.filter((id) => window.GameData.getUnit(id).raceOnly === raceId);
       if (units.length) groups.push({ key: raceId, label: window.GameData.getRace(raceId).label, units });
     }
@@ -404,9 +416,10 @@ window.UI = window.UI || {};
   }
 
   /** Full HTML for the left-hand unit list, grouped by kingdom. `selectedUnitId`
-   *  (may be null) just controls which button gets the "selected" style. */
-  function renderUnitListHtml(selectedUnitId) {
-    return groupedUnits().map((g) => `
+   *  (may be null) just controls which button gets the "selected" style.
+   *  `playerRaceId` -- see groupedUnits' own doc comment. */
+  function renderUnitListHtml(selectedUnitId, playerRaceId) {
+    return groupedUnits(playerRaceId).map((g) => `
       <div class="kb-list-group">
         <div class="kb-list-group-label">${escapeHtml(g.label)}</div>
         ${g.units.map((id) => {
@@ -509,12 +522,14 @@ window.UI = window.UI || {};
     `;
   }
 
-  /** Full HTML for the Units page: list pane + profile pane side by side. */
-  function renderUnits(selectedUnitId) {
+  /** Full HTML for the Units page: list pane + profile pane side by side.
+   *  `playerRaceId` -- see groupedUnits' own doc comment (threaded through
+   *  renderUnitListHtml, unused by the profile pane). */
+  function renderUnits(selectedUnitId, playerRaceId) {
     return `
       <div class="kb-header"><h2>Units</h2></div>
       <div class="kb-body">
-        <div class="kb-list-pane">${renderUnitListHtml(selectedUnitId)}</div>
+        <div class="kb-list-pane">${renderUnitListHtml(selectedUnitId, playerRaceId)}</div>
         <div class="kb-profile-pane">${renderUnitProfileHtml(selectedUnitId)}</div>
       </div>`;
   }
