@@ -705,6 +705,59 @@ body.mobile .techtree-close-btn {
   z-index: 4;
 }
 
+/* Knowledge base (Units/Conditions/Stats) list+profile layout (2026-08-27,
+   user-reported: unreadable on a phone) -- .kb-list-pane's desktop-fixed
+   240px column left almost nothing for .kb-profile-pane once the modal
+   itself has shrunk to fit a ~350px-wide screen. Stacked instead: the list
+   on top, height-capped and independently scrollable, profile pane below
+   it at full width. */
+body.mobile .kb-body {
+  flex-direction: column;
+  gap: 10px;
+}
+body.mobile .kb-list-pane {
+  flex: 0 0 auto;
+  width: 100%;
+  max-height: 34vh;
+  border-right: none;
+  border-bottom: 1px solid var(--border);
+  padding-right: 0;
+  padding-bottom: 10px;
+}
+body.mobile .kb-profile-pane { padding-right: 0; }
+
+/* Tech tree's 4-column civic/building/military/mystic grid (2026-08-27,
+   user-reported: same unreadable problem, worse -- this grid's own comment
+   already admits it "crams badly" at 800px, let alone a phone). Collapsed
+   to one column per layer. The shared header row (.techtree-header) only
+   had room to print each category's name ONCE, at the very top, which is
+   useless once a single-column layout has you scrolled a screen past it --
+   so each .techtree-column instead grows its own inline label from the
+   data-column-label techtree.js now stamps on it, matching the header's
+   text exactly without a second hand-copied list to keep in sync. */
+body.mobile .techtree-layer {
+  grid-template-columns: 1fr;
+  gap: 4px;
+}
+body.mobile .techtree-header { display: none; }
+body.mobile .techtree-layer-label {
+  padding-top: 10px;
+  font-size: 13px;
+  min-height: 44px;
+  width: 100%;
+}
+body.mobile .techtree-column:empty { display: none; }
+body.mobile .techtree-column:not(:empty)::before {
+  content: attr(data-column-label);
+  display: block;
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: bold;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-top: 4px;
+}
+
 /* --------------------------------------------------------------------------
    PHASE 4 — FEELS-INSTALLED
 
@@ -840,6 +893,10 @@ body.mobile .map-ring-item-shortcut { display: none; }
 /* Same reasoning for the hamburger menu's "Enter Full Screen -- F11" row:
    a keyboard shortcut hint is noise on a device with no keyboard. */
 body.mobile .menu-shortcut { display: none; }
+/* The Interface menu's "Keyboard Shortcuts" entry itself, not just its
+   hints (2026-08-27, user-directed): a phone has no keyboard, so the whole
+   reference window it opens is dead weight, not just the badges above. */
+body.mobile #keyboard-shortcuts-btn { display: none; }
 /* The listed fallback gets the same treatment, and drops the desktop
    min-width -- on a phone the list is sized by applyList's own maxWidth
    against the map area, and a 170px floor could push it past that. */

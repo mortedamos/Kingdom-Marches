@@ -30,6 +30,15 @@ window.UI = window.UI || {};
     }[c]));
   }
 
+  // The same crafted glyph sidebar.js's economy table uses (index.html's
+  // #icon-harvest/#icon-coin/#icon-lore <symbol> defs), swapped in for the
+  // old bare "H"/"C"/"L" letter suffix (2026-08-27, user-directed) --
+  // resource key doubles as the symbol id since they're already named
+  // "icon-harvest" etc.
+  function resourceIconHtml(key) {
+    return `<svg class="resource-icon"><use href="#icon-${key}"></use></svg>`;
+  }
+
   /**
    * `filterKind` is "unit", "building", or null for everything.
    *
@@ -54,10 +63,13 @@ window.UI = window.UI || {};
       const have = stock[key] || 0;
       const color = have >= amount ? "#6fbf6f" : "#d9695f";
       const short = have >= amount ? "" : ` title="Short ${(amount - have).toFixed(0)} ${RESOURCE_LABEL[key]} (have ${have.toFixed(0)})"`;
-      return `<span style="color:${color}"${short}>${amount}${key[0].toUpperCase()}</span>`;
+      // currentColor picks up the inline color, so the icon tints green/red
+      // right along with its number.
+      return `<span style="color:${color}"${short}>${resourceIconHtml(key)}${amount}</span>`;
     };
-    const stockpileHtml = `<div class="stat-row"><span>Stockpile (H / C / L)</span>`
-      + `<span>${stock.harvest.toFixed(0)} / ${stock.coin.toFixed(0)} / ${stock.lore.toFixed(0)}</span></div>`;
+    const stockpileHtml = `<div class="stat-row"><span>Stockpile</span><span>`
+      + ["harvest", "coin", "lore"].map((k) => `${resourceIconHtml(k)}${stock[k].toFixed(0)}`).join(" ")
+      + `</span></div>`;
 
     const row = (o, i) => {
       const priceHtml = o.cost

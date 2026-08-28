@@ -1397,9 +1397,22 @@ window.UI = window.UI || {};
         drawTargetReticle(ctx, screenX, screenY, ts, isHovered, pulse);
         continue;
       }
-      ctx.fillStyle = isHovered ? "rgba(255, 215, 90, 0.35)" : `rgba(255, 215, 90, ${0.22 * pulse + 0.12})`;
+      // Multi-turn destinations (2026-08-27, user-directed: differentiate
+      // one-turn-reachable tiles from ones that will take longer -- see
+      // main.js's startMoveToPlacement) get a dimmer, cooler wash instead
+      // of the usual gold. Only when a slot actually carries oneTurn info:
+      // every OTHER placement flow (Follow, Teleport, Set Trap, ...) never
+      // sets it, so slot.oneTurn stays undefined there and this always
+      // falls through to the original gold treatment, unchanged.
+      const multiTurn = slot.oneTurn === false;
+      if (multiTurn) {
+        ctx.fillStyle = isHovered ? "rgba(150, 165, 190, 0.30)" : `rgba(150, 165, 190, ${0.14 * pulse + 0.07})`;
+        ctx.strokeStyle = isHovered ? "#96a5be" : "rgba(150, 165, 190, 0.55)";
+      } else {
+        ctx.fillStyle = isHovered ? "rgba(255, 215, 90, 0.35)" : `rgba(255, 215, 90, ${0.22 * pulse + 0.12})`;
+        ctx.strokeStyle = isHovered ? "#ffd75a" : "rgba(255, 215, 90, 0.8)";
+      }
       ctx.fillRect(screenX, screenY, ts, ts);
-      ctx.strokeStyle = isHovered ? "#ffd75a" : "rgba(255, 215, 90, 0.8)";
       ctx.lineWidth = isHovered ? 3 : 1.5;
       ctx.strokeRect(screenX + 1, screenY + 1, ts - 2, ts - 2);
       if (isHovered && placement.previewUnitId) {

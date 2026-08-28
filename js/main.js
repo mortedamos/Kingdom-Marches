@@ -1233,6 +1233,10 @@
   function closeTechTreeOverlay() {
     viewState.techTreeCivId = null;
     viewState.techTreeHoverId = null;
+    // Reset, not just left stale: the render block below lazy-inits this
+    // back to its Level-0-collapsed default the next time the tree opens,
+    // rather than reopening wherever the player last left it expanded.
+    viewState.techTreeCollapsedLayers = null;
     // Fires the deferred unit-built-notice/pendingIntent chain -- see
     // openTechResearchedDialog's onChooseResearch, which stashes it here
     // instead of firing it the instant the tech tree opens, specifically so
@@ -2153,8 +2157,15 @@
       const unit = civ && civ.units[0];
       if (unit) { focusX = unit.x; focusY = unit.y; }
     }
-    viewState.scrollX = Math.max(0, (focusX + 0.5) * ts - canvas.width  / 2);
-    viewState.scrollY = Math.max(0, (focusY + 0.5) * ts - canvas.height / 2);
+    // CSS-pixel size, not the DPR-scaled buffer size -- see resizeMapCanvas
+    // and centerViewOn's identical fallback. Using the raw backing-store
+    // canvas.width/height here (pre-2026-08-27) silently over-scrolled on
+    // any HiDPI screen, leaving the starting Pioneer stranded off toward a
+    // corner instead of centered.
+    const cssW = canvas.__cssW || canvas.width;
+    const cssH = canvas.__cssH || canvas.height;
+    viewState.scrollX = Math.max(0, (focusX + 0.5) * ts - cssW / 2);
+    viewState.scrollY = Math.max(0, (focusY + 0.5) * ts - cssH / 2);
   }
 
   /** Menu-bar zoom in/out buttons -- same clamp and cursor/anchor-relative
@@ -3019,6 +3030,21 @@
       // fire through a dialog, unlike the movement/action shortcuts below.
       if (e.key === "m" || e.key === "M") {
         setGlobalMuted(!window.MusicSystem.isMuted());
+        return;
+      }
+
+      // Escape cancels an open tile-placement (Move To, Follow, Teleport,
+      // Fireball, ...): every one of those flows already cancels on a tap
+      // OUTSIDE its highlighted slots (input.js's endPointer), which was
+      // plenty of an escape hatch while every placement's candidate set was
+      // some small subset of the map -- Move To's (2026-08-27) is nearly
+      // the WHOLE map, leaving almost nowhere to tap that isn't itself a
+      // valid destination. General fix, not Move-To-specific: every
+      // placement flow gets a keyboard cancel now, matching the Escape
+      // convention already used for ring menus/overlays.
+      if (e.key === "Escape" && viewState && viewState.placement) {
+        viewState.placement = null;
+        redraw();
         return;
       }
 
@@ -4298,10 +4324,26 @@
       // focusTechId link is also driving its own scroll target this render
       // -- that one wins).
       const justOpened = overlay.style.display !== "flex";
+      // Level 0 collapsed by default (2026-08-27, user-directed) -- it's
+      // auto-granted for free at civ creation (createNewGame) and never has
+      // anything to research, so it's pure clutter every tree opens under.
+      // Lazy-inited here rather than at every viewState.techTreeCivId
+      // assignment (there are several call sites) -- closeTechTreeOverlay
+      // resets it to null so this always re-defaults on the NEXT open,
+      // while still surviving re-renders (research picks, hovers) within
+      // one open session.
+      if (!viewState.techTreeCollapsedLayers) viewState.techTreeCollapsedLayers = new Set([0]);
       const key = `${viewState.techTreeCivId}:${gameState.turnNumber}:${civ.currentResearch || ""}`;
       if (key !== lastRenderedTechTreeKey) {
         const focusTechId = viewState.techTreeFocusTechId || null;
-        $("techtree-content").innerHTML = window.UI.techtree.render(civ, isPlayerCiv, focusTechId, viewState.techTreeHoverId || null);
+        // A cross-link's target has to actually be visible to scroll/pulse
+        // onto -- force its own layer open even if it's Level 0.
+        if (focusTechId) {
+          const focusTech = window.GameData.getTech(focusTechId);
+          if (focusTech) viewState.techTreeCollapsedLayers.delete(focusTech.layer ?? 1);
+        }
+        $("techtree-content").innerHTML = window.UI.techtree.render(
+          civ, isPlayerCiv, focusTechId, viewState.techTreeHoverId || null, false, viewState.techTreeCollapsedLayers);
         lastRenderedTechTreeKey = key;
         if (focusTechId) {
           viewState.techTreeFocusTechId = null; // one-shot: scroll/pulse once, not on every future open
@@ -4334,6 +4376,19 @@
       for (const node of document.querySelectorAll(".techtree-node-selectable")) {
         node.onclick = () => {
           window.GameEngine.tech.chooseResearch(civ, node.dataset.techId);
+          redraw();
+        };
+      }
+      // Layer collapse/expand toggles (techtree.js's per-layer
+      // .techtree-layer-label button). Forces a rebuild the same way the
+      // hover handlers below do, since collapse state isn't part of the
+      // identity key either.
+      for (const btn of document.querySelectorAll("[data-layer-toggle]")) {
+        btn.onclick = () => {
+          const layer = Number(btn.dataset.layerToggle);
+          if (viewState.techTreeCollapsedLayers.has(layer)) viewState.techTreeCollapsedLayers.delete(layer);
+          else viewState.techTreeCollapsedLayers.add(layer);
+          lastRenderedTechTreeKey = null;
           redraw();
         };
       }
@@ -4515,17 +4570,35 @@
     } else {
       if (!orders.canCommand(unit, gameState, humanCivId)) return close();
       const unitOptions = orders.contextMenuOptions(unit, gameState, menu.x, menu.y, humanCivId);
-      // MERGED RING: only when the ring's own
-      // tile IS the unit's own tile -- a unit ring aimed at a REMOTE tile
-      // (moveTo/attack against something elsewhere) still gets the single
-      // city:open cross-link a few lines down, not a merge, since there's no
-      // single shared tile to anchor a two-column ring to. See orders.js's
-      // mapMenuOptions doc comment for the same distinction made there.
+      // CATEGORY RING: only when the ring's own tile IS the unit's own tile
+      // -- a unit ring aimed at a REMOTE tile (moveTo/attack against
+      // something elsewhere) still gets the single city:open cross-link a
+      // few lines down, not a category split, since there's no single
+      // shared tile to anchor it to. See orders.js's mapMenuOptions doc
+      // comment for the same distinction made there.
+      //
+      // Two-step rather than one merged two-column ring (2026-08-27,
+      // user-directed): the ring opens with just "<Unit> Actions"/"City
+      // Actions", and picking one swaps in that side's own options via
+      // menu.page -- same page mechanic buildRingPage's popovers use, just
+      // rendered as a normal ring instead of a rich popover, and with its
+      // own synthetic "Back" pill (category:back) since there's no
+      // buildRingPage entry backing it.
       if (city && unit.x === menu.x && unit.y === menu.y) {
         const cityOptions = orders.cityRingOptions(city, gameState, humanCivId);
-        const merged = orders.mergeUnitCityOptions(unitOptions, cityOptions);
-        options = merged.options;
-        split = merged.split;
+        if (!cityOptions.length) {
+          options = unitOptions;
+        } else if (menu.page === "unitActions") {
+          options = unitOptions.concat([{ kind: "category:back", label: "Back" }]);
+        } else if (menu.page === "cityActions") {
+          options = cityOptions.concat([{ kind: "category:back", label: "Back" }]);
+        } else {
+          const unitLabel = window.GameData.getUnit(unit.typeId).label;
+          options = [
+            { kind: "category:unit", label: `${unitLabel} Actions` },
+            { kind: "category:city", label: "City Actions" },
+          ];
+        }
       } else {
         options = unitOptions;
         if (city) options.push({ kind: "city:open", label: "City Actions" });
@@ -4913,6 +4986,56 @@
     redraw();
   }
 
+  /** Move To...: opens tile-placement mode over the ENTIRE map (minus the
+   *  unit's own tile, tapping which is this flow's only cancel besides
+   *  Escape -- see handleGlobalKeydown) -- an explicit ring entry point
+   *  into the exact same order the existing "Move to This Tile" pill on a
+   *  remote tile's own ring already issues (2026-08-27, user-directed).
+   *  Deliberately no reachability/terrain filtering on WHICH tiles are legal
+   *  slots, same permissiveness as that existing pill: startGotoOrder
+   *  resolves whatever path (or lack of one) the destination actually has.
+   *  Every slot is still tagged with oneTurn (2026-08-27, user-directed:
+   *  differentiate one-turn from multi-turn destinations) so
+   *  drawPlacementOverlay can render them differently -- reusing
+   *  orders.reachableTiles verbatim (the same memoized Dijkstra flood fill
+   *  that already paints the plain blue "movement range" tint under a
+   *  selected unit, see render.js's drawReachableOverlay) rather than a
+   *  second, potentially-drifting notion of "reachable". */
+  function startMoveToPlacement(unit) {
+    if (!humanCivId) return;
+    const civ = gameState.civs[humanCivId];
+    if (!civ) return;
+    const { map } = gameState;
+    const reach = window.GameEngine.orders.reachableTiles(unit, gameState);
+    const slots = [];
+    for (let y = 0; y < map.height; y++) {
+      for (let x = 0; x < map.width; x++) {
+        if (x === unit.x && y === unit.y) continue;
+        slots.push({ x, y, oneTurn: reach.has(`${x},${y}`) });
+      }
+    }
+    viewState.placement = {
+      slots,
+      label: "Move To...",
+      previewUnitId: unit.typeId, previewRaceId: civ.raceId,
+      onPick: (slot) => {
+        viewState.placement = null;
+        if (slot) {
+          endAutomationAndGoto(unit); // supersede before staging the NEW goto order
+          window.GameEngine.orders.startGotoOrder(unit, gameState, slot.x, slot.y, false);
+          // Same "follow the unit onto wherever it actually ended up this
+          // turn" fixup as the remote-tile moveTo/buildRoadTo handler.
+          if (viewState.selection) {
+            viewState.selection.x = unit.x;
+            viewState.selection.y = unit.y;
+          }
+        }
+        redraw();
+      },
+    };
+    redraw();
+  }
+
   /** Follow: opens tile-placement mode (same
    *  mechanism startTeleportPlacement/startWispSummonPlacement use), but
    *  the highlighted "slots" are wherever this civ's OTHER units currently
@@ -5265,6 +5388,19 @@
         // and swap it for the picker (see renderRingMenu's buildRingPage).
         viewState.ringMenu = { x: menu.x, y: menu.y, subject: "unit", page: "levelUp" };
         break;
+      // Category-ring navigation (see renderRingMenu's CATEGORY RING note) --
+      // pure page swaps, never an order, so each just re-anchors the ring on
+      // the same tile with a new page and lets the trailing redraw() below
+      // repaint it.
+      case "category:unit":
+        viewState.ringMenu = { x: menu.x, y: menu.y, subject: "unit", page: "unitActions" };
+        break;
+      case "category:city":
+        viewState.ringMenu = { x: menu.x, y: menu.y, subject: "unit", page: "cityActions" };
+        break;
+      case "category:back":
+        viewState.ringMenu = { x: menu.x, y: menu.y, subject: "unit", page: null };
+        break;
       case "disband":
         handleDisbandUnit();
         break;
@@ -5276,6 +5412,9 @@
         break;
       case "cancelSentry":
         handleCancelSentry();
+        break;
+      case "moveToPlacement":
+        startMoveToPlacement(unit);
         break;
       case "follow":
         startFollowPlacement(unit);

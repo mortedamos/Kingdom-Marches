@@ -892,6 +892,22 @@ window.GameEngine = window.GameEngine || {};
     const onOwnTile = unit.x === x && unit.y === y;
 
     if (onOwnTile) {
+      // Move To...: an explicit entry point into main.js's tile-placement
+      // mode (startMoveToPlacement) -- pick a destination by tapping it
+      // afterward, rather than needing to right-click/long-press the
+      // destination tile directly (2026-08-27, user-directed; that existing
+      // flow -- see "Move to This Tile" below in the remote-tile branch --
+      // is unchanged and still works the same). Any tile is a legal
+      // destination, same permissiveness as that remote-tile pill:
+      // reachability is resolved when the order actually runs
+      // (startGotoOrder), not here. Movement's own unit.movement > 0 gate
+      // is intentionally skipped -- the remote-tile "moveTo" pill has none
+      // either, since a goto order can be queued now and simply resume once
+      // the unit has movement again next turn.
+      if (baseUnit.movement > 0) {
+        options.push({ kind: "moveToPlacement", label: "Move To..." });
+      }
+
       // Found City / Build Road -- sidebar.js's pioneerActions.
       if ((baseUnit.canFoundCity || baseUnit.canBuildRoad) && !unit.usedThisTurn) {
         if (baseUnit.canFoundCity

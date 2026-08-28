@@ -197,7 +197,7 @@ window.UI = window.UI || {};
    *  stamps a class the live game's own tree never gets, so style.css can
    *  neutralize .locked's ordinary dimming there too without touching what
    *  "locked" looks like in an actual game. */
-  function render(civ, isPlayerCiv, focusTechId, hoverTechId, isReference) {
+  function render(civ, isPlayerCiv, focusTechId, hoverTechId, isReference, collapsedLayers) {
     const race = window.GameData.getRace(civ.raceId);
     // The AI's "intends to research next" hint is meaningless for the human's
     // own tree -- nothing is going to pick for them, that's the whole point.
@@ -224,10 +224,20 @@ window.UI = window.UI || {};
       const cols = byLayer[layer];
       if (!cols) continue;
       const avail = layerHasAvailable(civ, cols);
+      // Collapsed layers (2026-08-27, user-directed): Level 0 starts
+      // collapsed -- see main.js's lazy default -- since it's auto-granted
+      // for free at civ creation (createNewGame) and never has anything to
+      // research, so it's pure clutter at the top of every tree. Toggled by
+      // clicking the label; only the 4 columns hide, the label itself
+      // (and its data-avail) stays in the DOM so the "scroll to highest
+      // available layer" logic below still finds it.
+      const collapsed = collapsedLayers instanceof Set && collapsedLayers.has(layer);
 
-      rows += `<div class="techtree-layer" data-layer="${layer}" data-avail="${avail}">
-        <div class="techtree-layer-label">Level ${layer}</div>
-        ${COLUMNS.map((col) => `<div class="techtree-column">${
+      rows += `<div class="techtree-layer${collapsed ? " techtree-layer-collapsed" : ""}" data-layer="${layer}" data-avail="${avail}">
+        <button class="techtree-layer-label" data-layer-toggle="${layer}" aria-expanded="${collapsed ? "false" : "true"}">
+          <span class="techtree-layer-caret" aria-hidden="true">${collapsed ? "▸" : "▾"}</span>Level ${layer}
+        </button>
+        ${COLUMNS.map((col) => `<div class="techtree-column" data-column-label="${escapeHtml(COLUMN_LABEL[col])}">${
           cols[col].map((tech) => renderNode(
             civ, tech, nextPick, isPlayerCiv, tech.id === focusTechId,
             tech.id === hoverTechId ? "self" : relationKindFor(relations, tech.id),
@@ -250,10 +260,12 @@ window.UI = window.UI || {};
           // Multi-resource stockpile readout:
           // tech cost used to be pure Lore, so this was a single number --
           // now every tech's cost draws on harvest/coin/lore (see
-          // GameData.effectiveTechCostBreakdown), same H/C/L convention
-          // sidebar.js's build picker already uses.
+          // GameData.effectiveTechCostBreakdown), same icon convention
+          // sidebar.js's economy table already uses.
           const s = civ.stockpile || { harvest: 0, coin: 0, lore: 0 };
-          return `<div class="stat-row"><span>Stockpile (H / C / L)</span><span>${s.harvest.toFixed(0)} / ${s.coin.toFixed(0)} / ${s.lore.toFixed(0)}</span></div>`;
+          const stockHtml = ["harvest", "coin", "lore"]
+            .map((k) => `${resourceIconHtml(k)}${s[k].toFixed(0)}`).join(" ");
+          return `<div class="stat-row"><span>Stockpile</span><span>${stockHtml}</span></div>`;
         })() : ''}
         ${isPlayerCiv && !civ.currentResearch
           ? '<div class="techtree-prompt">Nothing is being researched. Click any available tech to start.</div>'
@@ -380,16 +392,17 @@ window.UI = window.UI || {};
     const selectable = isPlayerCiv && !completed && !researching && !locked && affordable;
     if (selectable) tag = "Click to research";
 
-    // Per-resource cost tokens, same "10H 15C"
-    // convention and green/red-vs-stockpile coloring as sidebar.js's build
-    // picker -- zero-cost components are omitted rather than shown as a
-    // bare "0X".
+    // Per-resource cost tokens, same icon-per-resource convention and
+    // green/red-vs-stockpile coloring as sidebar.js's build picker --
+    // zero-cost components are omitted rather than shown as a bare "0X".
+    // currentColor picks up the inline color below, so the icon itself
+    // tints green/red right along with its number.
     const costHtml = Object.entries(cost)
       .filter(([, v]) => v > 0)
       .map(([k, v]) => {
         const have = stock[k] || 0;
         const color = have >= v ? "#6fbf6f" : "#d9695f";
-        return `<span style="color:${color}">${v}${k[0].toUpperCase()}</span>`;
+        return `<span style="color:${color}">${resourceIconHtml(k)}${v}</span>`;
       }).join(" ");
 
     // Turns-to-complete (2026-08-04): no longer an income-derived estimate --
@@ -464,6 +477,15 @@ window.UI = window.UI || {};
 
   function escapeHtml(s) {
     return String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  }
+
+  // The same crafted glyph sidebar.js's economy table uses (index.html's
+  // #icon-harvest/#icon-coin/#icon-lore <symbol> defs), swapped in for the
+  // old bare "H"/"C"/"L" letter suffix (2026-08-27, user-directed) --
+  // resource key doubles as the symbol id since they're already named
+  // "icon-harvest" etc.
+  function resourceIconHtml(key) {
+    return `<svg class="resource-icon"><use href="#icon-${key}"></use></svg>`;
   }
 
   window.UI.techtree = { render, unitStatParts };

@@ -586,6 +586,19 @@ html, body {
   flex: none;
   color: var(--accent);
 }
+/* Base sizing for every #icon-harvest/#icon-coin/#icon-lore glyph used
+   inline next to a number outside the economy table itself -- cost tokens
+   (buildlist.js/techtree.js) and stockpile readouts (2026-08-27, swapped in
+   for the old bare "H"/"C"/"L" letter suffix). A more specific selector
+   (like .economy-res above, or .m-status-res in mobile.css) still wins where
+   one already exists; this only fills in the default everywhere else so
+   nothing renders at the SVG's unstyled native size. */
+.resource-icon {
+  width: 12px;
+  height: 12px;
+  vertical-align: -2px;
+  flex: none;
+}
 .economy-val {
   text-align: right;
   font-weight: bold;
@@ -1105,13 +1118,36 @@ html, body {
   padding: 8px 0;
   border-top: 1px solid var(--border);
 }
+/* A <button> for every per-layer row (the header row's own label stays a
+   plain empty div -- see techtree.js's render), so this doubles as a
+   button reset. */
 .techtree-layer-label {
   color: var(--text-dim);
   font-size: 12px;
   font-weight: bold;
   align-self: start;
-  padding-top: 6px;
+  padding: 6px 4px 6px 0;
+  background: none;
+  border: none;
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 4px;
 }
+.techtree-header .techtree-layer-label { cursor: default; }
+.techtree-layer-caret {
+  display: inline-block;
+  width: 0.8em;
+  color: var(--text-dim);
+}
+/* Collapsed layer (2026-08-27, user-directed: Level 0 defaults to this --
+   see main.js's lazy default): only the 4 columns hide. The label (and its
+   data-avail, still on the parent .techtree-layer) stays put so it's both
+   still clickable to re-expand and still found by main.js's "scroll to
+   highest available layer" query. */
+.techtree-layer-collapsed .techtree-column { display: none; }
 .techtree-header { border-top: none; padding-bottom: 4px; }
 
 /* "Right-click for actions" (2026-08-06, user-directed). Once every verb
