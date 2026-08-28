@@ -534,6 +534,217 @@ window.UI = window.UI || {};
       </div>`;
   }
 
+  // The same crafted glyph sidebar.js's economy table uses (index.html's
+  // #icon-harvest/#icon-coin/#icon-lore <symbol> defs) -- resource key
+  // doubles as the symbol id since they're already named "icon-harvest"
+  // etc. Same small helper buildlist.js/techtree.js each keep their own
+  // copy of.
+  function resourceIconHtml(key) {
+    return `<svg class="resource-icon"><use href="#icon-${key}"></use></svg>`;
+  }
+
+  /** Every building id, grouped for the list pane: Universal (walls and
+   *  bridges -- the only two building ids without a raceOnly) first, then
+   *  one group per real race. No "monsters" group -- monsters don't build
+   *  structures. Pure derivation from buildings.js/races.js, same "add one
+   *  anywhere, it shows up automatically" shape as groupedUnits above --
+   *  including that same RACE_LIST scope, which quietly excludes Undead
+   *  (not a playable race) the identical way groupedUnits already does for
+   *  Undead units.
+   *
+   *  `playerRaceId` -- identical convention to groupedUnits' own: in a
+   *  running single-player game, that race's own group moves to right
+   *  after Universal instead of sitting wherever RACE_LIST order puts it.
+   *  See main.js's renderKnowledgeOverlay for how that's decided. */
+  function groupedStructures(playerRaceId) {
+    const groups = [];
+    const universal = window.GameData.BUILDING_LIST.filter((id) => !window.GameData.getBuilding(id).raceOnly);
+    if (universal.length) groups.push({ key: "universal", label: "Universal — Any Kingdom", ids: universal });
+    const orderedRaceIds = playerRaceId && window.GameData.RACE_LIST.includes(playerRaceId)
+      ? [playerRaceId, ...window.GameData.RACE_LIST.filter((r) => r !== playerRaceId)]
+      : window.GameData.RACE_LIST;
+    for (const raceId of orderedRaceIds) {
+      const ids = window.GameData.BUILDING_LIST.filter((id) => window.GameData.getBuilding(id).raceOnly === raceId);
+      if (ids.length) groups.push({ key: raceId, label: window.GameData.getRace(raceId).label, ids });
+    }
+    return groups;
+  }
+
+  /** Which race's art to preview a universal structure (wall/bridge) with --
+   *  same "human is as good a default as any" fallback portraitRaceFor uses
+   *  for a raceOnly-less unit. */
+  function structurePortraitRaceFor(building) {
+    return building.raceOnly || "human";
+  }
+
+  /** Draws a static preview of `buildingId` (as `raceId` would render it)
+   *  onto `canvas`. Buildings are single static images, not multi-frame
+   *  idle animations like units -- see render.js's own building/wall draw
+   *  passes, which read img.naturalWidth/Height directly with no
+   *  manifest/currentFrame involved, mirrored here. No lazy ensure-load
+   *  either, unlike drawUnitPortrait: sprites.js has no building equivalent
+   *  of ensureUnitLoaded, so a race whose art isn't already preloaded for
+   *  THIS session (any race not actually in the current game) just falls
+   *  back to the symbol glyph below, same as a totally missing sprite
+   *  would. Wall segments need an orientation -- "node" previews the plain,
+   *  unconnected look a lone isolated wall tile actually has in a real
+   *  game. Bottom-anchored, aspect-ratio preserved, same as how the map's
+   *  own isometric tile draw sits a building/wall on its tile rather than
+   *  stretching it to fill a square. */
+  function drawStructurePortrait(canvas, buildingId, raceId) {
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    const building = window.GameData.getBuilding(buildingId);
+    const sprite = building.isWall
+      ? window.UI.sprites.pickWallSegment(buildingId, raceId, "node", null)
+      : window.UI.sprites.pickBuilding(buildingId, raceId, null);
+    if (sprite) {
+      const img = sprite.image;
+      const scale = Math.min(canvas.width / img.naturalWidth, canvas.height / img.naturalHeight);
+      const dw = img.naturalWidth * scale, dh = img.naturalHeight * scale;
+      ctx.drawImage(img, 0, 0, img.naturalWidth, img.naturalHeight, (canvas.width - dw) / 2, canvas.height - dh, dw, dh);
+      return;
+    }
+    ctx.fillStyle = "rgba(255,255,255,0.06)";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.font = `${Math.round(canvas.width * 0.55)}px sans-serif`;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillStyle = "#c9a857";
+    ctx.fillText(building.symbol || "?", canvas.width / 2, canvas.height / 2 + canvas.width * 0.04);
+  }
+
+  /** Full HTML for the left-hand structure list, grouped by kingdom (plus
+   *  Universal for walls/bridges) -- same shape as renderUnitListHtml.
+   *  `playerRaceId` -- see groupedStructures' own doc comment. */
+  function renderStructureListHtml(selectedBuildingId, playerRaceId) {
+    return groupedStructures(playerRaceId).map((g) => `
+      <div class="kb-list-group">
+        <div class="kb-list-group-label">${escapeHtml(g.label)}</div>
+        ${g.ids.map((id) => {
+          const b = window.GameData.getBuilding(id);
+          const selected = id === selectedBuildingId ? " kb-list-btn-selected" : "";
+          return `<button class="kb-list-btn${selected}" data-structure-id="${escapeHtml(id)}">
+            <span class="kb-list-btn-symbol">${escapeHtml(b.symbol || "")}</span>
+            <span>${escapeHtml(b.label)}</span>
+          </button>`;
+        }).join("")}
+      </div>
+    `).join("");
+  }
+
+  /** Every structured effect field a building can carry, in display order,
+   *  each formatted into one player-facing line -- deliberately data-driven
+   *  only, same discipline availableActionsFor uses for units: a building
+   *  whose whole effect lives in hardcoded engine logic (see buildings.js's
+   *  own header comment on why most of them do) simply shows no Effects
+   *  section at all, rather than this file trying to hand-transcribe every
+   *  building's own code comment into prose that could drift out of sync
+   *  with it. `defense` is deliberately NOT here -- it reads as a base
+   *  combat stat (same page as Max HP), not a passive effect, so it's
+   *  folded into the stats block below instead. */
+  const STRUCTURE_EFFECTS = [
+    ["yield", (v) => ["harvest", "coin", "lore"].filter((k) => v[k])
+      .map((k) => `${resourceIconHtml(k)}+${v[k]} ${titleCase(k)}`).join(", ")],
+    ["yieldPct", (v) => ["harvest", "coin", "lore"].filter((k) => v[k])
+      .map((k) => `+${Math.round(v[k] * 100)}% ${titleCase(k)} (this city)`).join(", ")],
+    ["influenceMult", (v) => `+${Math.round((v - 1) * 100)}% Influence (this city)`],
+    ["radiusBonus", (v) => `+${v} Influence Radius`],
+    ["visionRadiusBonus", (v) => `+${v} Vision Radius`],
+    ["unitCostMult", (v) => `${Math.round((1 - v) * 100)}% cheaper and faster unit production here, plus a civ-wide upkeep discount`],
+    ["coinPerAdjacentRoad", (v) => `+${v} Coin per adjacent Road tile`],
+    ["lorePerAdjacentForest", (v) => `+${v} Lore per adjacent Forest tile`],
+    ["contestedYieldPenaltyOverride", (v) => `Contested tiles here yield at ${Math.round(v * 100)}% instead of the usual penalty`],
+    ["raiseDeadPowerBonus", (v) => `+${Math.round(v * 100)}% Raise Dead unit power`],
+  ];
+
+  /** Full HTML for the right-hand structure profile pane -- everything BUT
+   *  the portrait canvas's actual pixels (drawStructurePortrait fills that
+   *  in after this HTML is in the DOM, same split drawUnitPortrait uses).
+   *  Null/unknown buildingId renders the "pick a structure" empty state. */
+  function renderStructureProfileHtml(buildingId) {
+    if (!buildingId || !window.GameData.BUILDINGS[buildingId]) {
+      return `<div class="kb-profile-empty">Select a structure on the left to view its profile.</div>`;
+    }
+    const b = window.GameData.getBuilding(buildingId);
+    const raceLabel = b.raceOnly ? window.GameData.getRace(b.raceOnly).label : "Universal — any kingdom can build this";
+    const category = b.isWall ? "Wall" : b.isBridge ? "Bridge" : "Building";
+    const portraitRaceId = structurePortraitRaceFor(b);
+
+    // Full harvest/coin/lore breakdown when the unlocking tech's own
+    // costBreakdown is available (see buildings.js's buildingBuildCost),
+    // else the legacy flat-Coin fallback that function itself falls back
+    // to -- same two-tier convention buildlist.js's own cost rendering
+    // already follows for a build queue row.
+    const cost = window.GameData.buildingBuildCost(buildingId);
+    const costHtml = cost
+      ? ["harvest", "coin", "lore"].filter((k) => cost[k]).map((k) => `${resourceIconHtml(k)}${cost[k]}`).join(" ")
+      : `${resourceIconHtml("coin")}${b.coinCost || 0}`;
+
+    const statsHtml = `
+      <div class="stat-row"><span>Cost</span><span>${costHtml}</span></div>
+      <div class="stat-row"><span>Max HP</span><span>${b.maxHp}</span></div>
+      ${b.defense != null ? `<div class="stat-row"><span>Defense</span><span>${b.defense}</span></div>` : ""}
+    `;
+
+    // Placement chip: walls/bridges stack (one per open adjacent tile, see
+    // buildings.js's own header comment on the exception), the 4 unique
+    // race buildings don't (exactly one of each, ever, per kingdom).
+    const placementNote = (b.isWall || b.isBridge)
+      ? "Multiple per city — one per open adjacent tile"
+      : "One of exactly 4 per kingdom — each race's own unique roster";
+    const reqs = [];
+    if (b.requiresHillsAdjacent) reqs.push("Requires adjacent Hills");
+    if (b.requiresForestAdjacent) reqs.push("Requires adjacent Forest");
+    const placementHtml = `<div class="kb-chip-row">
+      <span class="kb-chip">${escapeHtml(placementNote)}</span>
+      ${reqs.map((r) => `<span class="kb-chip">${escapeHtml(r)}</span>`).join("")}
+    </div>`;
+
+    const effectLines = STRUCTURE_EFFECTS
+      .filter(([key]) => b[key] != null)
+      .map(([key, fmt]) => `<div class="kb-tech-rel">${fmt(b[key])}</div>`)
+      .join("");
+    const effectsHtml = effectLines ? `<h3>Effects</h3>${effectLines}` : "";
+
+    // Single tech, not a multi-relation scan like techRelationsForUnit --
+    // every building (walls/bridges included) resolves to exactly one
+    // unlocking tech, see buildings.js's own techForBuilding.
+    const techId = window.GameData.techForBuilding(buildingId);
+    const unlockHtml = techId
+      ? `<h3>Unlocked By</h3><div class="kb-tech-rel">${techBadge(window.GameData.getTech(techId))}</div>`
+      : "";
+
+    return `
+      <div class="kb-profile-header">
+        <canvas class="kb-unit-portrait" width="128" height="128" data-portrait-structure-id="${escapeHtml(buildingId)}" data-portrait-race-id="${escapeHtml(portraitRaceId)}"></canvas>
+        <div>
+          <h2>${escapeHtml(b.label)}</h2>
+          <div class="kb-profile-subline">${escapeHtml(raceLabel)} · ${escapeHtml(category)}</div>
+        </div>
+      </div>
+      <h3>Base Stats</h3>
+      ${statsHtml}
+      ${placementHtml}
+      ${effectsHtml}
+      ${unlockHtml}
+    `;
+  }
+
+  /** Full HTML for the Structures page: list pane + profile pane side by
+   *  side -- same layout as Units. `playerRaceId` -- see groupedStructures'
+   *  own doc comment (threaded through renderStructureListHtml, unused by
+   *  the profile pane). */
+  function renderStructures(selectedBuildingId, playerRaceId) {
+    return `
+      <div class="kb-header"><h2>Structures</h2></div>
+      <div class="kb-body">
+        <div class="kb-list-pane">${renderStructureListHtml(selectedBuildingId, playerRaceId)}</div>
+        <div class="kb-profile-pane">${renderStructureProfileHtml(selectedBuildingId)}</div>
+      </div>`;
+  }
+
   /** Full HTML for the left-hand condition list -- every icon overlays.js
    *  actually knows how to draw (read live from CONDITION_ICONS, not a
    *  second copy of that list), one flat list (conditions don't have a
@@ -648,5 +859,8 @@ window.UI = window.UI || {};
   // condition cross-links (conditionLinksHtml) render the exact same label
   // this page's own list does, rather than a second hand-copied version
   // that could drift.
-  window.UI.knowledgebase = { renderUnits, renderConditions, renderStats, drawUnitPortrait, wireCombatSimulator, conditionDisplayName };
+  window.UI.knowledgebase = {
+    renderUnits, renderConditions, renderStats, renderStructures,
+    drawUnitPortrait, drawStructurePortrait, wireCombatSimulator, conditionDisplayName,
+  };
 })();

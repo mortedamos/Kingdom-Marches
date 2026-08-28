@@ -12,12 +12,14 @@
   let viewState = null;
   // Knowledge Base state is module-level rather than part of viewState --
   // the Knowledge menu has to work from the title screen too, before
-  // viewState (or gameState) exists. "units" | "conditions" | "stats" |
-  // "techtrees" | null; knowledgeSelectedUnitId/knowledgeSelectedConditionKey/
+  // viewState (or gameState) exists. "units" | "structures" | "conditions" |
+  // "stats" | "techtrees" | null; knowledgeSelectedUnitId/
+  // knowledgeSelectedStructureId/knowledgeSelectedConditionKey/
   // knowledgeSelectedStatKey/knowledgeSelectedRaceId each only matter for
   // their own page. See setupKnowledgeBase/renderKnowledgeOverlay.
   let knowledgeView = null;
   let knowledgeSelectedUnitId = null;
+  let knowledgeSelectedStructureId = null;
   let knowledgeSelectedConditionKey = null;
   let knowledgeSelectedStatKey = null;
   // Tech Trees page (2026-08-26, user-directed): which race's tree is
@@ -1261,6 +1263,24 @@
       // inside the Knowledge Base overlay, so no overlay-switching needed,
       // just flip which page it's showing.
       wireTechTreeKbLinks(content);
+    } else if (knowledgeView === "structures") {
+      // Structures page (2026-08-27, user-directed): same list+profile
+      // layout and same "player's kingdom first" reordering as Units --
+      // see knowledgebase.js's groupedStructures for how that reorder is
+      // decided, identical convention to groupedUnits just above.
+      const playerRaceId = (humanCivId && !spectatorMode && gameState?.civs[humanCivId])
+        ? gameState.civs[humanCivId].raceId : null;
+      content.innerHTML = window.UI.knowledgebase.renderStructures(knowledgeSelectedStructureId, playerRaceId);
+      const canvas = content.querySelector(".kb-unit-portrait");
+      if (canvas) {
+        window.UI.knowledgebase.drawStructurePortrait(canvas, canvas.dataset.portraitStructureId, canvas.dataset.portraitRaceId);
+      }
+      for (const btn of content.querySelectorAll(".kb-list-btn[data-structure-id]")) {
+        btn.onclick = () => {
+          knowledgeSelectedStructureId = btn.dataset.structureId;
+          renderKnowledgeOverlay();
+        };
+      }
     } else {
       // Player's own kingdom first (2026-08-27, user-directed): only in a
       // running single-player game (not spectating, not the title screen,
@@ -1294,6 +1314,7 @@
   function openKnowledge(view) {
     knowledgeView = view;
     knowledgeSelectedUnitId = null;
+    knowledgeSelectedStructureId = null;
     knowledgeSelectedConditionKey = null;
     knowledgeSelectedStatKey = null;
     knowledgeSelectedRaceId = null;
@@ -1431,6 +1452,8 @@
     if (!overlay) return;
     const unitsBtn = $("kb-units-btn");
     if (unitsBtn) unitsBtn.addEventListener("click", () => openKnowledge("units"));
+    const structuresBtn = $("kb-structures-btn");
+    if (structuresBtn) structuresBtn.addEventListener("click", () => openKnowledge("structures"));
     const conditionsBtn = $("kb-conditions-btn");
     if (conditionsBtn) conditionsBtn.addEventListener("click", () => openKnowledge("conditions"));
     const statsBtn = $("kb-stats-btn");
@@ -1439,6 +1462,8 @@
     if (techTreesBtn) techTreesBtn.addEventListener("click", () => openKnowledge("techtrees"));
     const titleUnitsBtn = $("title-kb-units-btn");
     if (titleUnitsBtn) titleUnitsBtn.addEventListener("click", () => openKnowledge("units"));
+    const titleStructuresBtn = $("title-kb-structures-btn");
+    if (titleStructuresBtn) titleStructuresBtn.addEventListener("click", () => openKnowledge("structures"));
     const titleConditionsBtn = $("title-kb-conditions-btn");
     if (titleConditionsBtn) titleConditionsBtn.addEventListener("click", () => openKnowledge("conditions"));
     const titleStatsBtn = $("title-kb-stats-btn");
