@@ -5036,6 +5036,27 @@
     redraw();
   }
 
+  /** Attack...: same two-stage shape as Move To just above, but reuses
+   *  startTargetSelection (see its own doc comment) rather than a bespoke
+   *  placement block -- attackTargets' candidates are live enemy unit
+   *  objects, not tiles, which is exactly what that shared "pick the
+   *  ability, then click the target" flow already exists for (Cast Fly,
+   *  Carry, Board all go through it the same way). Re-resolves the actual
+   *  target via attackTargetAt at commit time rather than trusting the
+   *  picked object is still legal, same "don't trust a menu that might be
+   *  stale" reasoning the remote-tile "attack" ring case already follows. */
+  function startAttackPlacement(unit) {
+    const targets = window.GameEngine.orders.attackTargets(unit, gameState, humanCivId);
+    startTargetSelection("Attack...", targets, (picked) => {
+      endAutomationAndGoto(unit);
+      const target = window.GameEngine.orders.attackTargetAt(unit, gameState, picked.x, picked.y, humanCivId);
+      if (target) {
+        window.GameEngine.orders.attack(unit, gameState, target, humanCivId);
+        maybeOfferCityCaptureDecisions();
+      }
+    });
+  }
+
   /** Follow: opens tile-placement mode (same
    *  mechanism startTeleportPlacement/startWispSummonPlacement use), but
    *  the highlighted "slots" are wherever this civ's OTHER units currently
@@ -5415,6 +5436,9 @@
         break;
       case "moveToPlacement":
         startMoveToPlacement(unit);
+        break;
+      case "attackPlacement":
+        startAttackPlacement(unit);
         break;
       case "follow":
         startFollowPlacement(unit);

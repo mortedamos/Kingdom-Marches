@@ -713,6 +713,38 @@ window.GameEngine = window.GameEngine || {};
    * All are pure/non-mutating and return plain arrays (empty, never null).
    */
 
+  /** Every enemy unit `unit` could legally attack right now, given its
+   *  current range/position and this turn's remaining action -- the
+   *  candidate list behind the "Attack..." ring pill (2026-08-27, user-
+   *  directed, mobile: same two-stage "pick the ability, then click the
+   *  target" shape as Cast Fly/Carry above, so an in-range enemy doesn't
+   *  require right-clicking/long-pressing it directly). Cities and
+   *  structures are deliberately excluded -- the existing remote-tile
+   *  "Attack" pill (attackTargetAt, offered when a target tile is clicked
+   *  directly) still covers those exactly as before; this only adds a
+   *  second ENTRY POINT for enemy UNITS, not a new target type. Reuses
+   *  canAttackUnitNow, the same range/visibility/line-of-sight check
+   *  attack() itself is judged against, so this can never offer a target
+   *  the engine would then refuse. noOrdinaryAttack (Dwarf Bombard) is
+   *  excluded, same gate the remote-tile branch below applies -- its only
+   *  offense is the standalone Bombardment pill, not this one. */
+  function attackTargets(unit, gameState, humanCivId) {
+    const civ = gameState.civs[unit.civId];
+    if (!civ || unit.usedThisTurn) return [];
+    if (window.GameData.getUnit(unit.typeId).noOrdinaryAttack) return [];
+    const out = [];
+    for (const enemyCiv of Object.values(gameState.civs)) {
+      if (enemyCiv.id === humanCivId || enemyCiv.eliminated) continue;
+      for (const enemyUnit of enemyCiv.units) {
+        if (enemyUnit.carriedBy) continue;
+        if (window.GameEngine.ai.canAttackUnitNow(civ, unit, enemyUnit, gameState)) {
+          out.push(enemyUnit);
+        }
+      }
+    }
+    return out;
+  }
+
   /** Human "Flight": self (unless already flying) plus every allied military
    *  unit within the Wizard's REACH -- adjacency plus however far it can
    *  still walk this turn, since castFlightOnAlly walks into range itself. */
@@ -906,6 +938,15 @@ window.GameEngine = window.GameEngine || {};
       // the unit has movement again next turn.
       if (baseUnit.movement > 0) {
         options.push({ kind: "moveToPlacement", label: "Move To..." });
+      }
+
+      // Attack...: same two-stage entry point as Move To just above, over
+      // attackTargets' candidate list (2026-08-27, user-directed) -- an
+      // in-range enemy no longer requires right-clicking/long-pressing it
+      // directly (the existing "Attack" pill on a remote tile's own ring,
+      // driven by attackTargetAt, is unchanged and still works the same).
+      if (attackTargets(unit, gameState, humanCivId).length) {
+        options.push({ kind: "attackPlacement", label: "Attack..." });
       }
 
       // Found City / Build Road -- sidebar.js's pioneerActions.
@@ -1639,6 +1680,7 @@ window.GameEngine = window.GameEngine || {};
     canCarryPassenger,
     performCarry,
     // Targeted-action candidate lists -- see their own section comment.
+    attackTargets,
     flightTargets,
     teleportTargets,
     naturesGraceTargets,
