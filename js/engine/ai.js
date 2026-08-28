@@ -13476,9 +13476,17 @@ window.GameEngine = window.GameEngine || {};
           // dent the target should go do something useful (raid tiles, screen,
           // wait for the siege train) instead. Deliberately a hard skip rather
           // than a score penalty: at 1 damage per hit the attack is not a
-          // marginal call, it's wasted.
+          // marginal call, it's wasted -- for the AI's OWN discretionary
+          // choice of target. Bypassed when opts.forcedCity is this exact
+          // city (2026-08-28 bugfix, reported live: a player who explicitly
+          // picked this city via the ring got silently no-op'd here even
+          // though the preview showed real odds) -- same "the player's own
+          // explicit order always executes, the AI's futility heuristics
+          // don't get a veto" contract opts.forcedCity already carries
+          // everywhere else in this function (see the Automate Actions gate
+          // and the forced-target suppression just below).
           const expectedDmg = window.GameEngine.combat.expectedCityDamage(unit, targetCity, civ, currentTurnNumber);
-          if (expectedDmg <= 1) continue;
+          if (expectedDmg <= 1 && !opts.forcedCity) continue;
           const winProb = window.GameEngine.combat.cityAttackWinProbability(unit, targetCity, civ, otherCiv.id, currentTurnNumber);
           const level = Math.floor(targetCity.population);
           let score = winProb * 50 * (weights.attack || 1.0) + level * 5;

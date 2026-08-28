@@ -734,16 +734,22 @@ window.GameEngine = window.GameEngine || {};
    * All are pure/non-mutating and return plain arrays (empty, never null).
    */
 
-  /** Every enemy unit or structure `unit` could legally attack right now,
-   *  given its current range/position and this turn's remaining action --
-   *  the candidate list behind the "Attack..." ring pill (2026-08-27, user-
-   *  directed, mobile: same two-stage "pick the ability, then click the
+  /** Every enemy unit, structure, or city `unit` could legally attack right
+   *  now, given its current range/position and this turn's remaining action
+   *  -- the candidate list behind the "Attack..." ring pill (2026-08-27,
+   *  user-directed, mobile: same two-stage "pick the ability, then click the
    *  target" shape as Cast Fly/Carry above, so an in-range enemy doesn't
-   *  require right-clicking/long-pressing it directly). Cities are still
-   *  excluded, same as before -- only UNITS and STRUCTURES are offered
-   *  through this second entry point; the existing remote-tile "Attack"
-   *  pill (attackTargetAt, offered when a target tile is clicked directly)
-   *  is unchanged and still covers cities exactly as it always has.
+   *  require right-clicking/long-pressing it directly). Cities were
+   *  originally excluded here on purpose (only units and structures were
+   *  offered), leaving the remote-tile "Attack" pill (attackTargetAt,
+   *  offered when a target tile is clicked directly) as the only way to
+   *  attack an adjacent city -- but that's exactly the entry point this
+   *  whole two-stage flow exists to make optional, so an ungarrisoned
+   *  enemy city right next to a unit silently had no "Attack..." option at
+   *  all (2026-08-28 bugfix, reported live: a unit adjacent to an enemy
+   *  city couldn't attack it from its own ring). Cities are included now,
+   *  same "don't require the direct-tile click" treatment as units and
+   *  structures already got.
    *
    *  Units and structures use two different validity checks because
    *  that's what the engine itself already uses for each: canAttackUnitNow
@@ -799,6 +805,28 @@ window.GameEngine = window.GameEngine || {};
           oc.id === found.civ.id && oc.units.some((u) => u.x === x && u.y === y && !u.conditions?.hidden));
         if (garrisonPresent) continue; // defender intercepts -- attack the garrison instead
         out.push({ x, y, structure: found });
+      }
+    }
+    // Cities: same shape as the structure loop just above, but scanning
+    // civ.cities directly rather than every tile in radius (a civ has few
+    // cities, so this is cheaper than re-deriving "is this tile a city"
+    // from scratch per tile). Garrison check mirrors attackTargetAt's own
+    // city branch: an enemy unit standing on the city's own tile already
+    // appears via the unit loop above and intercepts before the city
+    // itself is reachable, so a garrisoned city is skipped here the same
+    // way -- attack the garrison instead, same as attackTargetAt would
+    // resolve if that tile were clicked directly.
+    for (const enemyCiv of Object.values(civs)) {
+      if (enemyCiv.id === civ.id || enemyCiv.eliminated) continue;
+      for (const city of enemyCiv.cities) {
+        const dist = window.GameEngine.influence.chebyshev(unit.x, unit.y, city.x, city.y);
+        if (dist > range) continue;
+        if (!visible.has(city.y * map.width + city.x)) continue;
+        if (dist > 1 && !window.GameEngine.ai.hasRangedLineOfSight(map, unit.x, unit.y, city.x, city.y)) continue;
+        const garrisonPresent = Object.values(civs).some((oc) =>
+          oc.units.some((u) => u.x === city.x && u.y === city.y && !u.conditions?.hidden));
+        if (garrisonPresent) continue; // defender intercepts -- attack the garrison instead
+        out.push({ x: city.x, y: city.y, city, civId: enemyCiv.id });
       }
     }
     return out;
