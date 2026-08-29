@@ -5439,6 +5439,13 @@ window.GameEngine = window.GameEngine || {};
       const gatheringVeto = threatBlocksGathering(civ, unit, gameState);
       if (gatheringVeto && maybeBreakOffGathering(civ, unit, gameState, log)) continue;
 
+      // Human "Battlefield Promotion": same priority tier as the economic
+      // side-missions just below -- an otherwise-idle obsoleted unit
+      // (Archer, Cavalry, Knight, Catapult) upgrades itself the moment the
+      // civ can afford it. See maybeBattlefieldPromotionPlay's doc comment.
+      if (!gatheringVeto && civ.raceId === "human"
+          && maybeBattlefieldPromotionPlay(civ, unit, gameState, log)) continue;
+
       // Dwarf Mining: an otherwise-idle Dwarf unit (nothing better to fight
       // or defend) pursues/protects a Gold or Iron Vein instead of falling
       // through to generic explore/patrol. Dwarf-only proactive AI play --
@@ -12723,15 +12730,37 @@ window.GameEngine = window.GameEngine || {};
     return true;
   }
 
-  /** Nearest currently-unclaimed (not yet in city.filledOffsets), in-radius
-   *  tile across all of `civ`'s own cities -- the pool Envoy (and organic
-   *  growth/Cultural Influence) draws from. Returns { x, y, city, key } or
-   *  null if every city's radius is already fully filled. */
+  /** The farthest offset Envoy may ever claim for `city`: population-driven
+   *  radius growth caps out at MAX_CITY_POPULATION (see cities.js's
+   *  tickCity), but tech/building radius bonuses (extraRadiusBonus/
+   *  structureRadiusBonus) stack uncapped on top of that -- so this is the
+   *  city's own eventual ceiling, not the game-wide theoretical max. Always
+   *  >= the city's current influenceRadius. Claiming out to this line (2026-
+   *  08-29, user-directed) lets Envoy reserve tiles AHEAD of natural growth
+   *  instead of only mopping up leftovers behind an already-filled radius --
+   *  a claimed-but-not-yet-in-radius offset sits completely inert (every
+   *  consumer of filledOffsets -- computeWorkedTileYield, the influence
+   *  projection loop, advanceCityFill's own candidate search -- still bounds
+   *  itself by the CURRENT influenceRadius, not raw filledOffsets
+   *  membership) until the city's radius naturally grows to reach it, at
+   *  which point it's already filled and starts contributing immediately,
+   *  with no separate fill-in roll needed. */
+  function envoyMaxRadius(city) {
+    return Math.floor(window.GameConfig.city.maxPopulation)
+      + (city.extraRadiusBonus || 0) + (city.structureRadiusBonus || 0);
+  }
+
+  /** Nearest currently-unclaimed (not yet in city.filledOffsets), within-
+   *  envoyMaxRadius tile across all of `civ`'s own cities -- the pool Envoy
+   *  draws from (organic growth/Cultural Influence still only draw from the
+   *  narrower currently-in-radius pool -- see advanceCityFill). Returns
+   *  { x, y, city, key } or null if every city's eventual radius is already
+   *  fully claimed. */
   function findEnvoyTarget(civ, unit, gameState) {
     const { map } = gameState;
     let best = null, bestDist = Infinity;
     for (const city of civ.cities) {
-      const radius = city.influenceRadius;
+      const radius = envoyMaxRadius(city);
       for (let dy = -radius; dy <= radius; dy++) {
         for (let dx = -radius; dx <= radius; dx++) {
           const key = `${dx},${dy}`;
@@ -12748,23 +12777,24 @@ window.GameEngine = window.GameEngine || {};
   }
 
   /** Whether (x,y) is a legal Envoy claim target for `civ` RIGHT NOW: inside
-   *  some city's influence radius, land (not water), and not already filled
-   *  in. Returns { x, y, city, key } (same shape findEnvoyTarget returns) or
-   *  null. Unlike findEnvoyTarget's civ-wide nearest-tile search (AI-only,
-   *  used to pick where to head), this checks one specific tile -- it's the
-   *  ring-menu gate (orders.js's contextMenuOptions) for the player's own
-   *  "Act as Envoy" pill, same manual-trigger convention the mining/farming/
-   *  fishing channels use: the player moves the unit onto the tile
-   *  themselves, and the pill appears once they're standing somewhere
-   *  eligible, same as Mine Vein appearing once a Prospector stands on a
-   *  vein. */
+   *  some city's eventual radius (envoyMaxRadius, not just its CURRENT
+   *  influence radius -- see that function's doc comment), land (not
+   *  water), and not already filled in. Returns { x, y, city, key } (same
+   *  shape findEnvoyTarget returns) or null. Unlike findEnvoyTarget's civ-
+   *  wide nearest-tile search (AI-only, used to pick where to head), this
+   *  checks one specific tile -- it's the ring-menu gate (orders.js's
+   *  contextMenuOptions) for the player's own "Act as Envoy" pill, same
+   *  manual-trigger convention the mining/farming/fishing channels use: the
+   *  player moves the unit onto the tile themselves, and the pill appears
+   *  once they're standing somewhere eligible, same as Mine Vein appearing
+   *  once a Prospector stands on a vein. */
   function envoyTargetAt(civ, gameState, x, y) {
     const { map } = gameState;
     const tile = map.tiles[y * map.width + x];
     if (!tile || window.GameData.TERRAIN[tile.terrain].isWater) return null;
     for (const city of civ.cities) {
       const dx = x - city.x, dy = y - city.y;
-      if (Math.max(Math.abs(dx), Math.abs(dy)) > city.influenceRadius) continue;
+      if (Math.max(Math.abs(dx), Math.abs(dy)) > envoyMaxRadius(city)) continue;
       const key = `${dx},${dy}`;
       if (city.filledOffsets.has(key)) continue;
       return { x, y, city, key };
@@ -12829,6 +12859,89 @@ window.GameEngine = window.GameEngine || {};
     const result = resolveEnvoyClaim(civ, unit, gameState);
     if (!result) return false; // stale target (claimed by something else this same civ-turn) -- fall through
     log.push(`Envoy: ${civ.id}'s ${describeUnit(unit)} claims (${result.x},${result.y}) for ${result.city.name}`);
+    return true;
+  }
+
+  /** The resource cost of Human "Battlefield Promotion": the DIFFERENCE
+   *  between the two units' own build costs (window.GameData.unitBuildCost),
+   *  per resource, floored at 0 -- a promotion, not a fresh purchase.
+   *  Shared by the ring-menu gate (orders.js's contextMenuOptions, so the
+   *  pill shows the exact price up front) and resolveBattlefieldPromotion
+   *  below, so the two can never drift apart. */
+  function battlefieldPromotionCost(fromId, toId) {
+    const fromCost = window.GameData.unitBuildCost(fromId) || {};
+    const toCost = window.GameData.unitBuildCost(toId) || {};
+    const diff = {};
+    for (const k of new Set([...Object.keys(fromCost), ...Object.keys(toCost)])) {
+      diff[k] = Math.max(0, (toCost[k] || 0) - (fromCost[k] || 0));
+    }
+    return diff;
+  }
+
+  /**
+   * Human "Battlefield Promotion": converts `unit` in place into its
+   * replace_unit upgrade target (window.GameData.unitUpgradeTarget), paying
+   * battlefieldPromotionCost from the civ's stockpile. A full-turn action,
+   * same one-shot "resolves the instant it's clicked" shape as
+   * resolveEnvoyClaim above, not a channel -- shared as-is by both the
+   * player's own "battlefieldPromotion" ring handler (main.js) and the AI's
+   * maybeBattlefieldPromotionPlay just below.
+   *
+   * Re-derives eligibility (upgrade path still exists, target still
+   * unlocked, still affordable) rather than trusting a stale ring click --
+   * the civ's stockpile could have been spent on something else between
+   * when the ring was drawn and when this resolves, same "don't trust a
+   * stale lookup" reasoning resolveEnvoyClaim/castFlight use.
+   *
+   * Only unit.typeId, .maxHp, and .hp (clamped to the new, higher max --
+   * never healed, never reduced) change. Name, gender, level, xp,
+   * levelBonuses, and every condition/order carry over untouched -- this is
+   * the same unit, just reclassified. Returns true on success, false if
+   * `unit` no longer qualifies (upgrade path gone, or can't afford it).
+   */
+  function resolveBattlefieldPromotion(civ, unit, gameState) {
+    const toId = window.GameData.unitUpgradeTarget(unit.typeId);
+    if (!toId || !civ.unlockedUnits.has(toId)) return false;
+    const cost = battlefieldPromotionCost(unit.typeId, toId);
+    civ.stockpile = civ.stockpile || { harvest: 0, coin: 0, lore: 0 };
+    for (const [k, v] of Object.entries(cost)) {
+      if ((civ.stockpile[k] || 0) < v) return false;
+    }
+    for (const [k, v] of Object.entries(cost)) civ.stockpile[k] -= v;
+
+    const toUnit = window.GameData.getUnit(toId);
+    unit.typeId = toId;
+    unit.maxHp = window.GameData.unitMaxHP(toUnit.attack || 0, toUnit.defense || 0, toId)
+      + (unit.buildingBonuses?.maxHp || 0);
+    unit.hp = Math.min(unit.hp, unit.maxHp);
+    unit.usedThisTurn = true;
+    unit.currentMission = `Promoted to ${toUnit.label}`;
+    window.GameEngine.floatingText.spawnFloatingText(unit, `Promoted to ${toUnit.label}!`, "levelup");
+    return true;
+  }
+
+  /** Human "Battlefield Promotion": an otherwise-idle unit of an obsoleted
+   *  type (Archer, Cavalry, Knight, Catapult) promotes itself into its
+   *  replacement the moment the civ can actually afford it -- a strict
+   *  upgrade with no real downside beyond the resource cost, so the AI
+   *  takes it eagerly rather than weighing it against alternatives. Still
+   *  only checked once combat/reinforcement priorities elsewhere in
+   *  runUnitTurn's cascade have already passed on this unit for the turn
+   *  (it's gated behind the attack-first check and the !gatheringVeto
+   *  economic-side-mission tier, same as Prospector's Claim/Dungeon
+   *  Delve/Treasure Chest) -- an enemy in sight means this unit might be
+   *  needed to fight or retreat, not spend its whole turn promoting.
+   *  Returns true if it consumed the turn. */
+  function maybeBattlefieldPromotionPlay(civ, unit, gameState, log) {
+    if (civ.raceId !== "human" || !civ.unlockedMechanics || !civ.unlockedMechanics.has("battlefield_promotion")) return false;
+    const toId = window.GameData.unitUpgradeTarget(unit.typeId);
+    if (!toId || !civ.unlockedUnits.has(toId)) return false;
+    const cost = battlefieldPromotionCost(unit.typeId, toId);
+    const stock = civ.stockpile || { harvest: 0, coin: 0, lore: 0 };
+    if (!Object.entries(cost).every(([k, v]) => (stock[k] || 0) >= v)) return false;
+    const before = describeUnit(unit);
+    if (!resolveBattlefieldPromotion(civ, unit, gameState)) return false;
+    log.push(`Battlefield Promotion: ${civ.id}'s ${before} becomes a ${window.GameData.getUnit(unit.typeId).label}`);
     return true;
   }
 
@@ -14646,6 +14759,9 @@ window.GameEngine = window.GameEngine || {};
     envoyTargetAt,
     resolveEnvoyClaim,
     maybeEnvoyPlay,
+    battlefieldPromotionCost,
+    resolveBattlefieldPromotion,
+    maybeBattlefieldPromotionPlay,
     ensureMonsterCiv,
     maybeSpawnMonster,
     seedInitialMonsters,

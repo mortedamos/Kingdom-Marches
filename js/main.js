@@ -5750,6 +5750,18 @@
         redraw();
         break;
       }
+      case "battlefieldPromotion": {
+        // Human "Battlefield Promotion" -- same shape as Act as Envoy just
+        // above: ai.js's resolveBattlefieldPromotion re-validates eligibility
+        // (upgrade path still unlocked, still affordable) and does its own
+        // floating-text confirmation, since the stockpile could have been
+        // spent on something else between when the ring was drawn and when
+        // this click resolves -- no dialog needed, just redraw.
+        const civ = gameState.civs[humanCivId];
+        if (civ) window.GameEngine.ai.resolveBattlefieldPromotion(civ, unit, gameState);
+        redraw();
+        break;
+      }
       default:
         // "startChannel:<kind>" -- one case per channel type would just
         // repeat this same call five times, so the channel kind is parsed

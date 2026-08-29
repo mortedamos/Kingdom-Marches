@@ -1041,13 +1041,8 @@ window.GameEngine = window.GameEngine || {};
         delete unit._channelStash;
         continue;
       }
-      // Halfellow "Agriculture Culture": a flat resource-yield multiplier on
-      // ordinary farming, same additive-fraction shape as Mine Vein's
-      // prospectors_claim_yield/deep_mines_yield just below (1 + the tech's
-      // own mechanicValues entry).
-      const farmYieldMult = 1 + (civ.mechanicValues?.agriculture_culture || 0);
       // 3x payout plus the withProspectingLore kicker (2026-08-17, user-directed).
-      accumulateChannelStash(unit, withProspectingLore({ harvest: 9 * farmYieldMult * marketcraftMult }));
+      accumulateChannelStash(unit, withProspectingLore({ harvest: 9 * marketcraftMult }));
       if (Math.random() < resourceExhaustionChanceFor(civ)) {
         scheduleResourceRespawn(gameState, tile.resource);
         tile.resource = null;
@@ -1592,6 +1587,23 @@ window.GameEngine = window.GameEngine || {};
         const inOwnCity = civ.cities.some((c) => c.x === unit.x && c.y === unit.y);
         const tile = map.tiles[unit.y * map.width + unit.x];
         window.GameEngine.combat.healUnit(unit, civ, inOwnCity, tile, 1.50);
+      }
+    }
+
+    // Tech: Halfellow "Forrager" -- gathering channels (Farm Soil/Hunt Game/
+    // Fishing) double as foraging: the unit lives off the land while it
+    // works, healing a flat 2 HP per turn (not a % of maxHp, unlike Rest
+    // and Defend's heal above). Fishing is Galley-only but universal-race,
+    // so this gates on the CIV's race (any Halfellow-owned unit), not the
+    // unit's typeId.
+    if (civ.raceId === "halfellow" && civ.unlockedMechanics && civ.unlockedMechanics.has("forrager")) {
+      const race = window.GameData.getRace(civ.raceId);
+      for (const unit of civ.units) {
+        if (unit.channeling !== "farming" && unit.channeling !== "hunting" && unit.channeling !== "fishing") continue;
+        if (race.noHealing || unit.hp >= unit.maxHp) continue;
+        const before = unit.hp;
+        unit.hp = Math.min(unit.maxHp, unit.hp + 2);
+        window.GameEngine.floatingText.spawnHealGain(unit, unit.hp - before);
       }
     }
 

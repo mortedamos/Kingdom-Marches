@@ -319,11 +319,51 @@ window.GameEngine = window.GameEngine || {};
         case "unit_stat_upgrade": {
           const ov = civ.unitOverrides[effect.unit] || {};
           for (const [k, v] of Object.entries(effect.changes)) {
-            // attack/defense/movement/visionRadius/range are additive deltas;
-            // firstStrikePct/doubleStrikePct/siegePct are overrides (not
-            // additive) -- note combat.js still adds the override on top of
-            // the unit's own BASE value, so a tech setting 0.05 here means
-            // "+5 percentage points", not "5% flat".
+            // Two different things are going on here, and the SECOND one is
+            // decided in combat.js, not in this file:
+            //
+            // 1. How MULTIPLE TECHS touching the same stat combine (below).
+            //    attack/defense/movement/visionRadius/range accumulate --
+            //    two techs each granting +1 attack leave ov.attack === 2.
+            //    Everything else last-write-wins, so two techs setting the
+            //    same *Pct on the same unit means the later-researched one
+            //    silently wins outright. No tech pair does that today.
+            //
+            // 2. How the stored override then combines with the unit's OWN
+            //    BASE value at read time -- which splits by WHICH READER
+            //    combat.js uses for that stat, not by anything visible here:
+            //
+            //      ADDED to base:  attack, defense, movement, visionRadius,
+            //        range (effectiveAttack/effectiveDefense/...), plus
+            //        firstStrikePct and doubleStrikePct -- effectiveFirst-
+            //        StrikePct/effectiveDoubleStrikePct read ov DIRECTLY and
+            //        do `base + ov` precisely so a "+5% Double Strike" tech
+            //        stacks; see their own doc comments.
+            //
+            //      REPLACES base:  everything else, because it is read via
+            //        combat.js's getUnitProperty, which returns ov[key]
+            //        outright when set and never looks at base. That is
+            //        siegePct (effectiveSiegePct calls getUnitProperty) and
+            //        the whole *ChancePct family -- burnChancePct,
+            //        frozenChancePct, poisonChancePct, webChancePct --
+            //        which ai.js reads through getUnitProperty at each
+            //        on-hit roll.
+            //
+            // The REPLACES half is easy to author against by mistake, since
+            // these techs' description text tends to read additively. Live
+            // example: freezing_touch sets the Wizard's frozenChancePct to
+            // 0.5 and its description says "+50% chance", but the Wizard's
+            // own units.js base of 0.1 is discarded, so the real result is
+            // 50%, not 60%. Intentional as balanced, but if a future tech
+            // wants genuine stacking on one of these, the fix is a matching
+            // effective*() accessor in combat.js (as First/Double Strike
+            // have) -- NOT a change here, which would break every tech that
+            // currently relies on replacement.
+            //
+            // (2026-08-26: this comment previously grouped siegePct with
+            // First/Double Strike as additive and did not mention the
+            // *ChancePct family at all -- 27 of the 49 unit_stat_upgrade
+            // uses in techs.js are on the replacing path it omitted.)
             if (k === "attack" || k === "defense" || k === "movement" || k === "visionRadius" || k === "range") ov[k] = (ov[k] || 0) + v;
             else ov[k] = v;
           }

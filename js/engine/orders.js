@@ -1165,6 +1165,34 @@ window.GameEngine = window.GameEngine || {};
         options.push({ kind: "actAsEnvoy", label: "Act as Envoy" });
       }
 
+      // Human "Battlefield Promotion": an existing unit of an obsoleted
+      // type (Archer, Cavalry, Knight, Catapult -- any `replace_unit`
+      // `from`) can spend the turn converting itself into its own
+      // replacement outright. Same one-shot, resolves-instantly shape as
+      // Act as Envoy just above, not a channel. Gated on the target still
+      // being unlocked (civ.unlockedUnits -- always true once its own
+      // replace_unit tech is researched, since that's the only way a `to`
+      // unit gets added) so the pill only shows an upgrade this civ can
+      // actually build today. Cost is the DIFFERENCE between the two
+      // units' build costs (ai.js's battlefieldPromotionCost), shown right
+      // on the pill, same red/green-against-stockpile cost-span convention
+      // Build Bridge uses above.
+      if (!unit.usedThisTurn && !unit.channeling
+          && civ.raceId === "human" && civ.unlockedMechanics && civ.unlockedMechanics.has("battlefield_promotion")) {
+        const promoteToId = window.GameData.unitUpgradeTarget(unit.typeId);
+        if (promoteToId && civ.unlockedUnits.has(promoteToId)) {
+          const cost = window.GameEngine.ai.battlefieldPromotionCost(unit.typeId, promoteToId);
+          const civStock = civ.stockpile || { harvest: 0, coin: 0, lore: 0 };
+          const affordable = Object.entries(cost).every(([k, v]) => (civStock[k] || 0) >= v);
+          const costStr = Object.entries(cost).filter(([, v]) => v > 0)
+            .map(([k, v]) => `${v}${k[0].toUpperCase()}`).join(" ") || "Free";
+          options.push({
+            kind: "battlefieldPromotion", label: `Promote to ${window.GameData.getUnit(promoteToId).label}`,
+            cost: costStr, affordable,
+          });
+        }
+      }
+
       // Human "Flight": ONE pill, offered from the WIZARD'S OWN tile rather
       // than by right-clicking the ally directly, since right-clicking an
       // ally who is also a commandable unit of yours always retargets the

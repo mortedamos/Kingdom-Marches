@@ -506,6 +506,23 @@ window.GameData.TECHS = {
     costBreakdown: { harvest: 22, lore: 20, coin: 13 },
     effects: [{ type: "replace_unit", from: "knight", to: "paladin" }],
   },
+  // New (2026-08-29, user-directed): lets an EXISTING unit of an obsoleted
+  // type (Archer, Cavalry, Knight, Catapult -- any `replace_unit` `from`)
+  // convert itself into its own replacement outright, instead of a
+  // replace_unit tech only gating what's buildable going forward (see
+  // ai.js's battlefieldPromotionCost/resolveBattlefieldPromotion and its
+  // ring-menu pill in orders.js's contextMenuOptions). Costs the DIFFERENCE
+  // between the two units' build costs, not the replacement's full price --
+  // this is a promotion, not a fresh purchase. No fixed prereq: applies to
+  // whichever replace_unit tech(s) the civ has already researched, same
+  // context-dependent shape Envoy's mechanic-gate has.
+  battlefield_promotion: {
+    id: "battlefield_promotion", label: "Battlefield Promotion", category: "military", layer: 4, cost: 55,
+    prereqs: [], raceOnly: "human",
+    description: "As a full turn action, a unit whose type has since been superseded (Archer, Cavalry, Knight, or Catapult) may promote itself into its replacement outright, paying only the cost difference between the two units. The unit's name and veteran level are retained.",
+    costBreakdown: { harvest: 20, coin: 20, lore: 15 },
+    effects: [{ type: "unlock_mechanic", mechanic: "battlefield_promotion" }],
+  },
 
   // --- Layer 5 ---
   sovereign_power: {
@@ -1747,6 +1764,19 @@ window.GameData.TECHS = {
     costBreakdown: { lore: 14, harvest: 8 },
     effects: [{ type: "unlock_feature_bonus", feature: "road", bonus: { lore: 0.5 } }],
   },
+  // New (2026-08-29, user-directed): a foraging tech -- gathering channels
+  // (Farm Soil/Hunt Game/Fishing) heal the unit while it works, a flat 2 HP
+  // per turn (see turns.js's finishCivTurn), just triggered by gathering
+  // instead of resting. Applies to any Halfellow civ's unit on one of those
+  // three channels -- Fishing is Galley-only and universal-race, so this
+  // checks the CIV's race, not the unit's type.
+  halfellow_forrager: {
+    id: "halfellow_forrager", label: "Forrager", category: "civic", layer: 2, cost: 24,
+    prereqs: [], raceOnly: "halfellow",
+    description: "Units gathering resources (Farm Soil, Hunt Game, or Fishing) live off the land: heal 2 HP per turn.",
+    costBreakdown: { harvest: 14, coin: 10 },
+    effects: [{ type: "unlock_mechanic", mechanic: "forrager" }],
+  },
   halfellow_farmers_market: {
     id: "halfellow_farmers_market", label: "Farmers Market", category: "building", layer: 1, cost: 20,
     prereqs: [], raceOnly: "halfellow",
@@ -1837,22 +1867,6 @@ window.GameData.TECHS = {
     costBreakdown: { lore: 16, coin: 12, harvest: 12 },
     effects: [{ type: "unlock_tile_bonus", terrain: "tundra", bonus: { harvest: 1 } }],
   },
-  // New (2026-08-17, user-directed): a Halfellow-only upgrade to the
-  // universal "Farm Soil" channel (see turns.js's farming-channel block,
-  // "hunt_game/farm_soil" -- both Level 0, shared by every race). Gated
-  // behind that shared tech, same "race-specific upgrade to a universal
-  // base mechanic" shape Dwarf's Prospector's Claim/The Deep Mines use for
-  // Mine Vein (see mechanicValues.prospectors_claim_yield/deep_mines_yield,
-  // summed the same additive-fraction way this reads its own
-  // agriculture_culture value). value: 2.0 -- a 200% INCREASE, i.e. the
-  // farming payout becomes 1 + 2.0 = 3x, not 2x.
-  halfellow_agriculture_culture: {
-    id: "halfellow_agriculture_culture", label: "Agriculture Culture", category: "civic", layer: 3, cost: 38,
-    prereqs: ["farm_soil"], raceOnly: "halfellow",
-    description: "Increases resources earned from Farming Fertile Soil by 200%.",
-    costBreakdown: { harvest: 20, coin: 18 },
-    effects: [{ type: "unlock_mechanic", mechanic: "agriculture_culture", value: 2.0 }],
-  },
   halfellow_neighborhood_pub: {
     id: "halfellow_neighborhood_pub", label: "Neighborhood Pub", category: "building", layer: 2, cost: 35,
     prereqs: [], raceOnly: "halfellow",
@@ -1932,18 +1946,23 @@ window.GameData.TECHS = {
     effects: [{ type: "fill_rate_mult", value: 2.00 }],
   },
   // A one-shot action for Pioneer/Wanderer (2026-08-17: changed from a
-  // 2-turn channel to a single full-turn action, user-directed; see ai.js's
-  // resolveEnvoyClaim/envoyTargetAt and its own ring-menu pill in
-  // orders.js's contextMenuOptions) -- stand on an already-in-radius,
-  // not-yet-owned tile and spend the turn to claim it outright, independent
-  // of the normal fill-rate math -- guaranteed speed and, critically, lets
-  // the player/AI CHOOSE which tile gets priority instead of waiting on the
-  // passive fill order. Small cost so it isn't spammed for free;
-  // deliberately not a big enough cost to matter early.
+  // 2-turn channel to a single full-turn action, user-directed; 2026-08-29:
+  // widened from the city's CURRENT radius to its eventual max radius,
+  // user-directed -- see ai.js's envoyMaxRadius/resolveEnvoyClaim/
+  // envoyTargetAt and its own ring-menu pill in orders.js's
+  // contextMenuOptions) -- stand on any not-yet-owned tile within the
+  // city's eventual full radius and spend the turn to claim it outright,
+  // independent of the normal fill-rate math -- guaranteed speed and,
+  // critically, lets the player/AI CHOOSE which tile gets priority instead
+  // of waiting on the passive fill order, including reserving land the
+  // radius hasn't grown out to yet (that claim sits inert until the radius
+  // catches up, then counts immediately with no fill-in roll needed). Small
+  // cost so it isn't spammed for free; deliberately not a big enough cost
+  // to matter early.
   halfellow_envoy: {
     id: "halfellow_envoy", label: "Envoy", category: "civic", layer: 4, cost: 30,
     prereqs: [], raceOnly: "halfellow",
-    description: "Pioneer and Wanderer may spend a full turn on an already-in-radius, unclaimed tile to claim it outright, independent of the normal gradual fill-in rate.",
+    description: "Pioneer and Wanderer may spend a full turn on any unclaimed tile within the city's eventual full radius (not just its current one) to claim it outright, independent of the normal gradual fill-in rate. A claim beyond the current radius sits reserved until growth reaches it, then counts immediately.",
     costBreakdown: { coin: 10, harvest: 8, lore: 6 },
     effects: [{ type: "unlock_mechanic", mechanic: "envoy" }],
   },
@@ -2223,6 +2242,27 @@ window.GameData._TECH_FOR_UNIT = (() => {
 })();
 window.GameData.techForUnit = function (unitId) {
   return window.GameData._TECH_FOR_UNIT[unitId] || null;
+};
+
+/** The flip side of _TECH_FOR_UNIT's `to`-keyed map: which unit id a given
+ *  unit id upgrades INTO via a `replace_unit` tech (e.g. "archer" ->
+ *  "longbowman"). Powers Human's "Battlefield Promotion" (ai.js's
+ *  battlefieldPromotionCost/resolveBattlefieldPromotion, orders.js's
+ *  contextMenuOptions ring pill): an existing FROM-typed unit can convert
+ *  itself into the TO type outright, rather than replace_unit only gating
+ *  what's buildable going forward. null if this unit id has no upgrade
+ *  path (including if it's already the `to` side of one). */
+window.GameData._UNIT_UPGRADE_TARGET = (() => {
+  const map = {};
+  for (const tech of Object.values(window.GameData.TECHS)) {
+    for (const effect of tech.effects || []) {
+      if (effect.type === "replace_unit") map[effect.from] = effect.to;
+    }
+  }
+  return map;
+})();
+window.GameData.unitUpgradeTarget = function (unitId) {
+  return window.GameData._UNIT_UPGRADE_TARGET[unitId] || null;
 };
 
 /** Tech-tree depth the unit was FIRST unlocked at (the unlocking tech's own
