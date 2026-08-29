@@ -131,14 +131,14 @@ window.GameData.RESOURCES = {
   // spawnRejectChance (default 0 for every other resource, see worldgen.js's
   // placeResources): once a tile's resource-type lottery already landed on
   // "chest" (same uniform pick as every other resource -- unaffected), an
-  // independent 20% chance discards it and leaves the tile resource-less
-  // instead. This cuts Treasure Chest's own placement rate by exactly 20%
-  // (2026-08-20, user-directed: "reduce number of treasure chests by 20%")
+  // independent 10% chance discards it and leaves the tile resource-less
+  // instead. This cuts Treasure Chest's own placement rate by exactly 10%
+  // (2026-08-20, user-directed: "reduce number of treasure chests by 10%")
   // WITHOUT shifting any other resource's rate upward to compensate --
   // unlike a competitive weight, which would only approximate 20% (and
   // unevenly per terrain, since it depends how many other resources
   // happen to be valid on that same tile).
-  chest:   { id: "chest",   label: "Treasure Chest", validTerrain: ["plains", "forest", "hills", "desert", "swamp", "tundra"], bonus: {}, iconScale: 0.55, spawnRejectChance: 0.2 },
+  chest:   { id: "chest",   label: "Treasure Chest", validTerrain: ["plains", "forest", "hills", "desert", "swamp", "tundra"], bonus: {}, iconScale: 0.55, spawnRejectChance: 0.1 },
 };
 window.GameData.RESOURCE_LIST = Object.keys(window.GameData.RESOURCES);
 

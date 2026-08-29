@@ -65,9 +65,9 @@ window.GameConfig = {
     /** Local date this build was cut, YYYY-MM-DD. */
     date: "2026-08-29",
     /** Local time this build was cut, 24-hour HH:MM. */
-    time: "14:22",
+    time: "14:31",
     /** Monotonic build counter -- increment it, don't recompute it. */
-    number: 214,
+    number: 215,
   },
 
   // =========================================================================
@@ -942,7 +942,7 @@ window.GameConfig = {
       /** Flat damage a sprung trap deals, on top of its Frozen/Burning
        *  status -- same shape as Halfellow's Set the Trap (see
        *  checkTrapSpring in ai.js). */
-      trapDamage: 4,
+      trapDamage: 2,
       /** A non-trapped chest pays out one reward, picked with equal weight
        *  from this list. "mapFragment" ignores `rewardAmount` entirely --
        *  see turns.js's revealMapFragment -- everything else banks
