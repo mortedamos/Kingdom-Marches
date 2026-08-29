@@ -1162,6 +1162,42 @@ html, body {
   margin: -10px -14px -6px 0;
   z-index: 5;
 }
+/* Tech tree overlay's header row (2026-08-28, user-directed): Skip sits
+   directly left of the X, both pinned to the modal's top-right corner as
+   one row. Only the tech tree overlay wraps its close button this way --
+   .techtree-close-btn's own corner-hugging margin above only fires when
+   it's a DIRECT child of .techtree-modal/.knowledge-modal, so nesting it
+   one level deeper here (this wrapper) opts it out of that rule on
+   purpose; this rule carries the identical corner position instead, just
+   on the wrapper. */
+.techtree-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  align-self: flex-end;
+  flex: 0 0 auto;
+  margin: -10px -14px -6px 0;
+  z-index: 5;
+}
+.techtree-header-actions .techtree-close-btn { margin: 0; }
+/* Icon-only, same circular treatment as .techtree-close-btn (the red X)
+   right next to it, just yellow instead of red -- no label text. */
+.techtree-skip-btn {
+  background: transparent;
+  border: none;
+  color: #e0b13d;
+  font-size: 20px;
+  line-height: 1;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+}
+.techtree-skip-btn:hover { background: rgba(224, 177, 61, 0.18); color: #f5cc5c; }
 #techtree-content h2 {
   position: sticky;
   top: 0;

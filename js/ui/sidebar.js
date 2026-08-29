@@ -177,7 +177,8 @@ window.UI = window.UI || {};
       hasUnresolvedWork = !!civ && (
         civ.cities.some((c) => window.GameEngine.cities.isCityIdle(civ, c, gameState)) ||
         window.GameEngine.orders.unitsNeedingOrders(gameState, viewState.humanCivId).length > 0 ||
-        (!civ.currentResearch && window.GameEngine.tech.hasAffordableResearch(civ))
+        (!civ.currentResearch && window.GameEngine.tech.hasAffordableResearch(civ)
+          && (civ.researchSkipUntilTurn || 0) <= (gameState.turnNumber || 0))
       );
     }
     // Other kingdoms taking their turn (2026-08-27, user-directed: bring

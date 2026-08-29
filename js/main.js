@@ -628,7 +628,8 @@
     const idleCities = civ
       ? civ.cities.filter((c) => window.GameEngine.cities.isCityIdle(civ, c, gameState)).length : 0;
     const waitingUnits = civ ? window.GameEngine.orders.unitsNeedingOrders(gameState, humanCivId).length : 0;
-    const researchOwed = civ && !civ.currentResearch && window.GameEngine.tech.hasAffordableResearch(civ) ? 1 : 0;
+    const researchOwed = civ && !civ.currentResearch && window.GameEngine.tech.hasAffordableResearch(civ)
+      && (civ.researchSkipUntilTurn || 0) <= (gameState.turnNumber || 0) ? 1 : 0;
     const owed = idleCities + waitingUnits + researchOwed;
     badge.hidden = owed === 0;
     badge.textContent = owed > 99 ? "99+" : String(owed);
@@ -2898,7 +2899,8 @@
     if (goToNextIdleCityOrNextUnit()) return true;
     if (!humanCivId) return false;
     const civ = gameState.civs[humanCivId];
-    if (civ && !civ.currentResearch && window.GameEngine.tech.hasAffordableResearch(civ)) {
+    if (civ && !civ.currentResearch && window.GameEngine.tech.hasAffordableResearch(civ)
+        && (civ.researchSkipUntilTurn || 0) <= (gameState.turnNumber || 0)) {
       viewState.techTreeCivId = humanCivId;
       lastRenderedTechTreeKey = null;
       redraw();
@@ -2986,7 +2988,13 @@
     // nagging about it every turn would just be noise until income catches
     // up. window.GameEngine.ai.availableBuilds already tags every option
     // with `affordable` (see its own doc comment).
-    if (!civ.currentResearch && window.GameEngine.tech.hasAffordableResearch(civ)) {
+    // researchSkipUntilTurn (2026-08-28, user-directed): the tech tree
+    // overlay's "Skip" button snoozes this specific nag for the rest of
+    // this turn and all of next -- see main.js's techtree-skip-btn wiring.
+    // A manual "Choose Research" click still works fine regardless; this
+    // only silences the automatic reminder.
+    if (!civ.currentResearch && window.GameEngine.tech.hasAffordableResearch(civ)
+        && (civ.researchSkipUntilTurn || 0) <= (gameState.turnNumber || 0)) {
       // chooseResearch: renders a "Choose
       // Research" button instead of a tile "Go to" link -- see dialog.js's
       // confirmEndTurn branch and wireDialogButtons below.
@@ -4510,6 +4518,27 @@
         closeTechTreeOverlay();
         redraw();
       };
+      // "Skip" (2026-08-28, user-directed): only meaningful while this IS
+      // the "you need to pick research" screen -- the player's own tree,
+      // with nothing currently selected. Browsing an ally/AI civ's tree
+      // (isPlayerCiv false) or your own tree just to plan ahead while
+      // something's already researching gets no Skip button, same scoping
+      // collectUnresolvedTurnWork's own nag uses.
+      const skipBtn = $("techtree-skip-btn");
+      if (skipBtn) {
+        skipBtn.style.display = (isPlayerCiv && !civ.currentResearch) ? "flex" : "none";
+        skipBtn.onclick = () => {
+          // +2, not +1: suppresses the nag for the REST of this turn AND
+          // all of next turn, only resuming once next turn actually ends --
+          // see collectUnresolvedTurnWork/handleNextAttentionItem's matching
+          // researchSkipUntilTurn check. A plain "Choose Research" from the
+          // sidebar still works at any time; this only snoozes the
+          // automatic nag/jump, it doesn't block a manual pick.
+          civ.researchSkipUntilTurn = (gameState.turnNumber || 0) + 2;
+          closeTechTreeOverlay();
+          redraw();
+        };
+      }
       // Research selection (player's own tree only -- renderNode only emits
       // these buttons when isPlayerCiv).
       for (const node of document.querySelectorAll(".techtree-node-selectable")) {

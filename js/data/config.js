@@ -65,9 +65,9 @@ window.GameConfig = {
     /** Local date this build was cut, YYYY-MM-DD. */
     date: "2026-08-28",
     /** Local time this build was cut, 24-hour HH:MM. */
-    time: "20:24",
+    time: "20:45",
     /** Monotonic build counter -- increment it, don't recompute it. */
-    number: 206,
+    number: 207,
   },
 
   // =========================================================================
@@ -540,14 +540,28 @@ window.GameConfig = {
     magicalUnitIds: ["wizard", "bog_witch", "dragon", "paladin"],
 
     /** Harvest/coin/lore every civ starts the game with (main.js's
-     *  civ-creation loop) -- user-directed flat 30 across all three
-     *  resources (2026-08-19). Covers every race's own starting-tech unit
-     *  (Spearguard, Ranger, FoeHammer, Raider, Wanderer, Skeleton all
-     *  coinCost: 15) with room to spare, so a kingdom can build its first
-     *  defender turn 1 instead of waiting on a few turns of production first. */
-    startingHarvest: 30,
-    startingCoin: 30,
-    startingLore: 30,
+     *  civ-creation loop) -- user-directed (2026-08-28): raised from a flat
+     *  30/30/30 so EVERY kingdom can afford, turn 1, any ONE of: a Wall
+     *  (GameData.buildingBuildCost("wall_section"), ~4H/7C), any of its own
+     *  Layer 1 units (GameData.unitBuildCost -- the priciest across every
+     *  race's L1 roster is Halfellow's Wanderer at 38H or Elf's Blade Dancer
+     *  at 38L/13C), or START researching any of its own Layer 1 techs
+     *  (GameData.effectiveTechCostBreakdown, paid up front by chooseResearch
+     *  -- see tech.js -- the priciest single component across every L1
+     *  category is Building's 106 Coin and Mystic's 106 Lore, Civic's 88
+     *  Harvest). These are independent "could afford ANY ONE of" floors, not
+     *  summed -- a kingdom picks one turn-1 splurge, same as the old flat
+     *  30 was only ever sized for one (its own starting-tech unit). Set a
+     *  little above each measured floor (88/106/106) for headroom against
+     *  rounding. Re-measure via this exact query if research/unit cost
+     *  formulas ever change:
+     *    GameData.RACE_LIST.flatMap(r => GameData.techsForRace(r)
+     *      .filter(id => GameData.getTech(id).layer === 1)
+     *      .map(id => GameData.effectiveTechCostBreakdown(GameData.getTech(id))))
+     */
+    startingHarvest: 90,
+    startingCoin: 110,
+    startingLore: 110,
 
     /** Compounding premium per tech-tree layer -- exponent is the raw
      *  layer, so Level 0 (layer: 0, techs.js's pioneer_infrastructure/
