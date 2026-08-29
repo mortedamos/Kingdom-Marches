@@ -5577,6 +5577,13 @@
         const idx = sel.tabs.findIndex((t) => t.kind === "terrain");
         if (idx >= 0) window.UI.input.setActiveTab(gameState, viewState, idx);
       }
+      // Mobile (2026-08-28, user-directed): the sidebar is a collapsible
+      // bottom sheet there (see setSheetDetent's own doc comment), so
+      // selecting the tile alone doesn't actually show its info unless the
+      // sheet happens to already be raised -- "About This Space" means to
+      // SEE that info, so this raises it the same way tapping #m-status
+      // already does (line ~769).
+      if (document.body.classList.contains("mobile")) setSheetDetent("full");
       redraw();
       return;
     }
