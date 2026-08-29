@@ -271,9 +271,9 @@ window.GameData.TECHS = {
   homestead: {
     id: "homestead", label: "Homestead", category: "civic", layer: 1, cost: 20,
     prereqs: [], raceOnly: "human",
-    description: "+0.25 harvest from Plains.",
+    description: "+0.25 harvest and +0.1 lore from Plains.",
     costBreakdown: { lore: 14, coin: 6 },
-    effects: [{ type: "unlock_tile_bonus", terrain: "plains", bonus: { harvest: 0.25 } }],
+    effects: [{ type: "unlock_tile_bonus", terrain: "plains", bonus: { harvest: 0.25, lore: 0.1 } }],
   },
   // --- Layer 2 ---
   marketcraft: {
