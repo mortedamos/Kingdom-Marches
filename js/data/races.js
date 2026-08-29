@@ -56,6 +56,14 @@
  *   - startingTech: the one tech id every civ of this race starts the
  *     game with already completed (see main.js's civ-init, which both
  *     adds it to completedTechs and runs applyTechEffects on it).
+ *   - avoidsCultureSpread (optional, default false): this race's AI never
+ *     spends a city's turn on the Spread Culture action (cities.js's
+ *     applyCultureSpread -- the paid, one-turn influence boost). Identity,
+ *     not a difficulty knob: a race flagged here takes ground by force
+ *     rather than by growing borders into it, so an idle city of theirs
+ *     would rather do nothing than buy influence. Affects the AI ONLY --
+ *     a human player of that race keeps the action in their own ring menu,
+ *     and nothing removes it from the game. See ai.js's city build loop.
  *   - uniqueUnits / uniqueBuildings: NOT read by any engine or data code
  *     anywhere -- purely a human-readable roster list for this file's own
  *     documentation/cross-checking. Safe to edit freely; nothing breaks
@@ -185,6 +193,11 @@ window.GameData.RACES = {
     industriousness: 0.3, // low city investment; war camps over workshops
 
     startingTech: "orc_raiders",
+
+    // Orcs take ground by holding it with blades, not by growing culture
+    // into it (2026-08-27, user-directed) -- see races.js's own header note
+    // on this field, and ai.js's city build loop for the gate it drives.
+    avoidsCultureSpread: true,
 
     uniqueUnits: ["raider", "impaler", "wolf_rider", "bog_witch", "battering_ram", "ogre", "dragon", "dire_wolf"],
     uniqueBuildings: ["war_camp", "butchery", "dragon_den", "ancestral_dolmen"],

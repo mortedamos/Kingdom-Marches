@@ -65,9 +65,9 @@ window.GameConfig = {
     /** Local date this build was cut, YYYY-MM-DD. */
     date: "2026-08-29",
     /** Local time this build was cut, 24-hour HH:MM. */
-    time: "12:44",
+    time: "12:51",
     /** Monotonic build counter -- increment it, don't recompute it. */
-    number: 211,
+    number: 212,
   },
 
   // =========================================================================
@@ -211,10 +211,27 @@ window.GameConfig = {
      *  army size, tech-layer progress, and win-condition mix same as any
      *  other pacing change (see this file's own top-of-file CHANGING
      *  VALUES note). */
+    /** bonusStartingScouts (2026-08-27, user-directed): extra free starting
+     *  Scouts handed to EVERY kingdom, the human player included, on top of
+     *  the usual 2 (or 1 + a Galley on a small island -- see main.js's
+     *  createNewGame). Deliberately symmetric: this is a "the whole world is
+     *  more aggressive" dial, not an AI handicap, and a one-sided scout
+     *  advantage would read as cheating rather than as difficulty.
+     *
+     *  Unlike combatWeightMult/winProbFloorShift, which only ever change
+     *  decision WEIGHTS, this one changes starting material -- so it's read
+     *  exactly once, at game creation, and a mid-game aggression change
+     *  (not currently possible via the UI) would have no retroactive effect.
+     *
+     *  Why scouts specifically: earlier contact. The aggression multipliers
+     *  can only make a civ commit to fights it can already SEE, so on a
+     *  foggy early map they have nothing to act on -- more scouts means
+     *  enemies get found sooner, which is upstream of every other
+     *  aggression knob doing anything at all. */
     levels: [
-      { label: "Low", combatWeightMult: 1.0, winProbFloorShift: 0 },
-      { label: "Normal", combatWeightMult: 1.35, winProbFloorShift: 0.10 },
-      { label: "High", combatWeightMult: 1.7, winProbFloorShift: 0.20 },
+      { label: "Low", combatWeightMult: 1.0, winProbFloorShift: 0, bonusStartingScouts: 0 },
+      { label: "Normal", combatWeightMult: 1.35, winProbFloorShift: 0.10, bonusStartingScouts: 0 },
+      { label: "High", combatWeightMult: 1.7, winProbFloorShift: 0.20, bonusStartingScouts: 1 },
     ],
   },
 

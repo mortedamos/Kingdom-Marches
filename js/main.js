@@ -2002,7 +2002,16 @@
       // all -- so its SECOND starting unit is a free Galley instead, not a
       // second Scout. The first Scout is unconditional for every civ
       // (fog-clearing still matters even on a small island).
-      const startingScoutCount = spot.landmassSize < SMALL_LANDMASS_GALLEY_THRESHOLD ? 1 : 2;
+      // AI Aggression's bonusStartingScouts rides on top of both branches
+      // (2026-08-27, user-directed) -- see config.js's own doc comment for
+      // why this is symmetric across every kingdom including the human's,
+      // and why scouts are the lever. A small-island civ still trades its
+      // second scout for a Galley below; the bonus is added after that
+      // trade, so it ends up with 1 + bonus scouts AND the Galley.
+      const aggLevels = window.GameConfig.aiAggression.levels;
+      const aggLevel = aggLevels[window.GameConfig.aiAggression.levelIndex] ?? aggLevels[1];
+      const bonusScouts = aggLevel.bonusStartingScouts || 0;
+      const startingScoutCount = (spot.landmassSize < SMALL_LANDMASS_GALLEY_THRESHOLD ? 1 : 2) + bonusScouts;
       for (let i = 0; i < startingScoutCount; i++) {
         // These free starting units cost no upkeep, ever -- a one-time perk
         // on these specific instances, not a blanket Scout/Galley-type

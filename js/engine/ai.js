@@ -3020,6 +3020,14 @@ window.GameEngine = window.GameEngine || {};
   }
 
   function trySpreadCulture(civ, city, gameState, log) {
+    // Races that take ground by force never buy influence with a city's
+    // turn (races.js's avoidsCultureSpread -- Orc today, 2026-08-27
+    // user-directed). Gated HERE rather than at the call site so every
+    // future caller inherits it automatically, and so an Orc city falls
+    // through to the same "nothing worth doing" branch any other city
+    // would -- including the Research boost below it, which is a better
+    // use of a spare Orc turn than growing borders it doesn't want.
+    if (window.GameData.getRace(civ.raceId).avoidsCultureSpread) return false;
     if (!window.GameEngine.cities.applyCultureSpread(
           city, civ, gameState, (gameState.turnNumber || 0) + 1)) return false;
     log.push(`Build: ${city.name} spread culture (last resort)`);
