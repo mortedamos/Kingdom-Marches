@@ -1023,10 +1023,70 @@ window.GameEngine = window.GameEngine || {};
    * maybeChooseResearch (which commits the pick) and previewNextResearch
    * (used by the spectator tech-tree UI to show "AI intends to research X").
    */
+  /** Mechanics that let a civ beat walls WITHOUT a siege unit -- the same
+   *  job by another route, so the research bias has to treat them the same
+   *  way or it would quietly favour some races over others.
+   *
+   *  Halfellow is deliberately siege-unit-less by design (user-directed):
+   *  its answer to a walled city is the Trouble Maker's "Unlock the Gate",
+   *  which cuts the city's whole wall term to 25% (see combat.js's
+   *  isCityWallDefenseSuppressed / UNLOCK_THE_GATE_WALL_DEFENSE_MULT). A
+   *  bias that only looked for siegePct would leave that race with no
+   *  anti-wall path at all, which is exactly the failure this feature
+   *  exists to fix. */
+  const ANTI_WALL_MECHANICS = new Set(["unlock_the_gate"]);
+
+  /** Does this tech give a civ a way through a city wall -- either a
+   *  siege-capable unit or an anti-wall mechanic?
+   *
+   *  Covers replace_unit as well as unlock_unit: an upgrade that swaps in a
+   *  siege unit is just as much a siege unlock as a fresh one.
+   *
+   *  Threshold 0.5, not "> 0": several ordinary units carry a token siegePct
+   *  without being able to crack a wall. Measured against a real mid-game
+   *  city (defense 9, HP 12): siegePct 0.5 lands 9 damage and 1.0+ lands
+   *  15-17, versus exactly 1 for a non-siege unit. 0.5 is where a unit stops
+   *  poking and starts taking population levels. */
+  const SIEGE_UNLOCK_MIN_PCT = 0.5;
+  function techBeatsWalls(tech) {
+    return (tech.effects || []).some((e) => {
+      if (e.type === "unlock_mechanic") return ANTI_WALL_MECHANICS.has(e.mechanic);
+      if (e.type !== "unlock_unit" && e.type !== "replace_unit") return false;
+      const unit = window.GameData.getUnit(e.unit || e.to);
+      return unit && (unit.siegePct || 0) >= SIEGE_UNLOCK_MIN_PCT;
+    });
+  }
+
+  /** Every tech for this race that either grants a way through walls or lies
+   *  on the prereq path to one -- i.e. the whole road, not just the
+   *  destination.
+   *
+   *  Cached per race on first use: it derives only from static tech/unit
+   *  data, never from civ state, so it can't go stale within a session and
+   *  the walk (isAncestorOf is recursive over the whole race pool) is worth
+   *  doing exactly once rather than every research decision. */
+  const _siegePathCache = {};
+  function siegeResearchPath(raceId) {
+    if (_siegePathCache[raceId]) return _siegePathCache[raceId];
+    const pool = window.GameData.techsForRace(raceId);
+    const targets = pool.filter((id) => techBeatsWalls(window.GameData.getTech(id)));
+    const path = new Set(targets);
+    for (const id of pool) {
+      if (path.has(id)) continue;
+      if (targets.some((t) => window.GameEngine.strategy.isAncestorOf(id, t))) path.add(id);
+    }
+    _siegePathCache[raceId] = path;
+    return path;
+  }
+
   function scoreNextResearch(civ, weights) {
     const candidates = window.GameEngine.tech.availableTechs(civ);
     if (candidates.length === 0) return null;
     const doctrine = window.GameEngine.strategy.getDoctrine(civ);
+    // AI Aggression siege bias (config.js's siegeResearchBias): 1.0 at
+    // Low/Normal, which makes this whole block a no-op there.
+    const siegeBias = aiAggressionLevel().siegeResearchBias || 1;
+    const siegePath = siegeBias !== 1 ? siegeResearchPath(civ.raceId) : null;
     let best = null, bestScore = -Infinity;
     for (const techId of candidates) {
       const tech = window.GameData.getTech(techId);
@@ -1051,6 +1111,12 @@ window.GameEngine = window.GameEngine || {};
         score *= tech.category === doctrine.techSpine ? 1.6 : 0.85;
         if (window.GameEngine.strategy.isAncestorOf(techId, doctrine.techTarget)) score *= 1.3;
       }
+      // Siege line: the unlock itself and every step on the way to it. Applied
+      // AFTER the doctrine bias so it can pull a civ off its preferred spine
+      // -- which is the whole point, since the siege units sit in the military
+      // column and a civ on a civic/building spine would otherwise never walk
+      // toward them. See config.js's siegeResearchBias.
+      if (siegePath && siegePath.has(techId)) score *= siegeBias;
       if (score > bestScore) { bestScore = score; best = techId; }
     }
     return best;
@@ -3207,7 +3273,23 @@ window.GameEngine = window.GameEngine || {};
     const pop = totalPopulation(civ);
     const rate    = race.noUpkeep ? (0.9 + militarism * 0.8) : (0.7 + militarism * 0.6);
     const ceiling = race.noUpkeep ? (25 + militarism * 10)   : (18 + militarism * 10);
-    return Math.max(1, Math.min(ceiling, Math.round(pop * rate)));
+    // AI Aggression militaryCapMult (2026-08-27, user-directed) scales BOTH
+    // the per-population rate and the hard ceiling -- scaling only the rate
+    // would leave a mature civ pinned at exactly the same wall, which is
+    // where the cap actually binds late-game.
+    //
+    // This is the dial behind "a city should build a soldier rather than
+    // spread culture": Spread Culture is a last resort that only runs when
+    // chooseBuildAction found nothing worth building (see ai.js's city
+    // loop), and a hit military cap is the most common reason the military
+    // options went away. Raising the cap keeps a unit on the menu, so the
+    // city takes it instead of falling through.
+    //
+    // Deliberately its own knob rather than folded into combatWeightMult --
+    // see config.js on why aggression is otherwise kept away from anything
+    // that competes with tech and city growth for the same stockpile.
+    const capMult = aiAggressionLevel().militaryCapMult || 1;
+    return Math.max(1, Math.min(ceiling * capMult, Math.round(pop * rate * capMult)));
   }
 
   // Tune via headless sim: aiming for a militarism=0.5 civ that has just
@@ -4049,13 +4131,33 @@ window.GameEngine = window.GameEngine || {};
       // which guarantees it gets built at its target share directly --
       // no raw-stat credit needed since a ratio-governed slot with a single
       // candidate id never has anything to compete against in the first place.
+      // AI Aggression movement bias (2026-08-27, user-directed): credit per
+      // point of movement above MOVEMENT_VALUE_BASELINE, the median across
+      // units.js's military roster (movement 2 -- 26 of 48 units sit exactly
+      // there, with 3-6 the genuinely fast tail). Zero at Low/Normal, so
+      // this is inert unless the player asked for it.
+      //
+      // OFFENSE ONLY, deliberately: movement is what gets an army to a
+      // target while the target still matters. A garrison never moves, so
+      // crediting speed on the defense pick would just quietly swap in a
+      // worse defender for no benefit.
+      //
+      // A nudge, not a filter -- see config.js's movementValueCredit. At
+      // 2.5/point a movement-4 Cavalry gains +5, roughly one attack point's
+      // worth against units whose attack spans ~3-10; it wins ties and close
+      // calls against equally-good slower units and loses outright to
+      // genuinely stronger ones.
+      const MOVEMENT_VALUE_BASELINE = 2;
+      const movementCredit = aiAggressionLevel().movementValueCredit || 0;
       const militaryValue = (id, forDefense) => {
         const ud = window.GameData.getUnit(id);
         const firstStrike = ud.firstStrikePct || 0;
         const rangeCredit = ownedRangedUnits < RANGED_UNIT_SATURATION && isRangedSkirmisher(id) ? RANGED_VALUE_CREDIT : 0;
         if (forDefense) return ud.defense + firstStrike * 60 + rangeCredit;
         const siegeCredit = ownedSiegeUnits < SIEGE_UNIT_SATURATION ? (ud.siegePct || 0) * 6 : 0;
-        return ud.attack + firstStrike * 60 + siegeCredit + rangeCredit;
+        const speedCredit = movementCredit
+          * Math.max(0, (ud.movement || 0) - MOVEMENT_VALUE_BASELINE);
+        return ud.attack + firstStrike * 60 + siegeCredit + rangeCredit + speedCredit;
       };
       // Civ-wide unit-composition ratio: raw-stat
       // scoring (militaryValue above) always converges on a single "best"
@@ -10776,11 +10878,25 @@ window.GameEngine = window.GameEngine || {};
    *  discounted for a city that's contesting this civ's influence, so
    *  "nearest" in the two hunt functions below quietly becomes "nearest one
    *  worth hitting". A city with no pressure score is unaffected, which
-   *  leaves every no-contest situation ranking exactly as it always did. */
+   *  leaves every no-contest situation ranking exactly as it always did.
+   *
+   *  Also discounted for a target owned by the HUMAN player at higher AI
+   *  Aggression (2026-08-27, user-directed -- config.js's
+   *  humanTargetPriority). Stacks multiplicatively with the contest discount
+   *  above rather than replacing it, so a human city that is ALSO pressing
+   *  on this civ's border ranks best of all, which is the right ordering.
+   *
+   *  Deliberately a discount and not an override: AI civs keep fighting each
+   *  other, and a much closer AI city still outranks a distant human one.
+   *  The player becomes the preferred target, never the only one. Inert in
+   *  spectator mode (no civ has isHuman set) and inert at Low/Normal. */
   function targetRankDistance(civ, ownerCivId, x, y, dist) {
-    return contestPressureFor(civ, ownerCivId, x, y) > 0
+    let rank = contestPressureFor(civ, ownerCivId, x, y) > 0
       ? dist / CONTEST_PRESSURE_DETOUR_FACTOR
       : dist;
+    const owner = currentGameStateRef && currentGameStateRef.civs[ownerCivId];
+    if (owner && owner.isHuman) rank *= (aiAggressionLevel().humanTargetPriority ?? 1);
+    return rank;
   }
 
   /**

@@ -65,9 +65,9 @@ window.GameConfig = {
     /** Local date this build was cut, YYYY-MM-DD. */
     date: "2026-08-29",
     /** Local time this build was cut, 24-hour HH:MM. */
-    time: "12:51",
+    time: "13:38",
     /** Monotonic build counter -- increment it, don't recompute it. */
-    number: 212,
+    number: 213,
   },
 
   // =========================================================================
@@ -228,10 +228,79 @@ window.GameConfig = {
      *  foggy early map they have nothing to act on -- more scouts means
      *  enemies get found sooner, which is upstream of every other
      *  aggression knob doing anything at all. */
+    /** The four dials below were added 2026-08-27 (user-directed) after
+     *  headless measurement showed why High still didn't FEEL aggressive:
+     *  the multipliers above only ever decide whether to commit units that
+     *  already exist, so they can't touch what a civ builds, what it can
+     *  see, or who it goes after. Measured at High before these: a city
+     *  faced any adjacent enemy on 1.1% of city-turns and a 3+ stack on
+     *  0.32%, across 3,781 city-turns.
+     *
+     *  movementValueCredit: added to a military unit's build score per point
+     *  of movement above 2 (the median across units.js). A NUDGE, never a
+     *  filter -- attack/defense/first-strike/siege/ranged credits all still
+     *  compete, so a slow powerhouse still wins its slot when it's simply
+     *  better; a Cavalry just stops losing to a Spearguard by a hair. Fast
+     *  armies arrive while a threat still matters, which is most of what
+     *  "aggressive" means from the receiving end. See ai.js's militaryValue.
+     *
+     *  militaryCapMult: scales computeMilitaryCap, the ceiling on how big an
+     *  army the AI WANTS. Deliberately excluded from combatWeightMult back
+     *  in 2026-08-21 (user-directed: don't let aggression starve tech or
+     *  cities) -- this is a separate dial precisely so that constraint still
+     *  holds at Low/Normal, and only High trades some economy for troops. It
+     *  is also what makes a city choose a unit over Spread Culture: culture
+     *  is a LAST RESORT that only fires when chooseBuildAction found nothing
+     *  worth building, and a hit military cap is the usual reason nothing
+     *  was on offer.
+     *
+     *  humanTargetPriority: multiplies the distance-rank of a target owned by
+     *  the HUMAN player (see ai.js's targetRankDistance), so below 1.0 makes
+     *  the AI willing to march past a nearer AI-owned target to reach the
+     *  player's. Same "worth a detour" idiom as the existing contest-pressure
+     *  factor, and bounded the same way -- at 0.6 a human city is worth
+     *  walking ~40% further for, NOT an override that makes AI civs ignore
+     *  each other (they still fight, and a much closer AI target still wins).
+     *  Inert in spectator mode, where there is no human civ.
+     *
+     *  omniscient: AI civs see the whole map for DECISION-MAKING (ai.js reads
+     *  gameState.visibility in ~15 places). Applied after each civ's explored/
+     *  tileMemory snapshot is written from its REAL sight, so this changes
+     *  what the AI acts on without rewriting per-tile memory for the whole
+     *  map every turn for every civ -- which would be a real cost in time,
+     *  save size, and (for spectator fog-of-war display) truthfulness.
+     *  Never applied to a human civ: the player's own fog is the game.
+     *
+     *  siegeResearchBias (2026-08-27, user-directed): research-score
+     *  multiplier for a tech that unlocks a siege-capable unit, AND for every
+     *  tech on the prereq path to one. The path half is the entire point --
+     *  siege units sit at tech layer 3-5, so boosting only the unlock itself
+     *  does nothing until it is already reachable, which is exactly the
+     *  problem.
+     *
+     *  This is the measured root cause of "High still doesn't threaten my
+     *  cities". At turn 120 an AI fields ~60-80 military units with 0.3
+     *  siege among them, because the tech tree needs ~390-470 research-turns
+     *  and a game runs 120-155. Against a walled city every non-siege unit
+     *  in the game is floored at 1 damage (12 hits to remove one population
+     *  point); a Battering Ram does 17 and takes a level per swing. So the
+     *  gap between "annoying raids" and "a real siege" is entirely whether
+     *  the AI ever unlocks these units.
+     *
+     *  A multiplier on existing scoring, never a forced pick: an aggressive
+     *  civ leans hard toward the siege line but still takes an urgently
+     *  needed unlock or a cheap civic on the way. Left at 1.0 for
+     *  Low/Normal, which keeps their research behavior untouched. */
     levels: [
-      { label: "Low", combatWeightMult: 1.0, winProbFloorShift: 0, bonusStartingScouts: 0 },
-      { label: "Normal", combatWeightMult: 1.35, winProbFloorShift: 0.10, bonusStartingScouts: 0 },
-      { label: "High", combatWeightMult: 1.7, winProbFloorShift: 0.20, bonusStartingScouts: 1 },
+      { label: "Low", combatWeightMult: 1.0, winProbFloorShift: 0, bonusStartingScouts: 0,
+        movementValueCredit: 0, militaryCapMult: 1.0, humanTargetPriority: 1.0, omniscient: false,
+        siegeResearchBias: 1.0 },
+      { label: "Normal", combatWeightMult: 1.35, winProbFloorShift: 0.10, bonusStartingScouts: 0,
+        movementValueCredit: 0, militaryCapMult: 1.0, humanTargetPriority: 1.0, omniscient: false,
+        siegeResearchBias: 1.0 },
+      { label: "High", combatWeightMult: 1.7, winProbFloorShift: 0.20, bonusStartingScouts: 1,
+        movementValueCredit: 2.5, militaryCapMult: 1.35, humanTargetPriority: 0.6, omniscient: true,
+        siegeResearchBias: 3.0 },
     ],
   },
 

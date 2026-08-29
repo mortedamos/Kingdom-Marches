@@ -249,7 +249,53 @@ window.GameEngine = window.GameEngine || {};
       }
       gameState.explored[civ.id] = explored;
       gameState.tileMemory[civ.id] = memory;
+
+      // AI omniscience (2026-08-27, user-directed -- config.js's
+      // aiAggression omniscient flag). Deliberately applied HERE, after this
+      // civ's explored/tileMemory snapshot has been written from its REAL
+      // sight, so the flag changes what the AI ACTS on without also
+      // rewriting per-tile memory for the entire map, for every AI civ,
+      // every single turn -- which would cost real time, bloat every save
+      // file, and make spectator fog-of-view display a lie.
+      //
+      // ai.js reads gameState.visibility[civ.id] in ~15 places (target
+      // scans, threat checks, settle-site search); replacing the set once
+      // here reaches all of them without touching any of them.
+      //
+      // Never for a human civ -- the player's own fog IS the game -- and
+      // never for the Monsters pseudo-civ, whose limited sight is shared
+      // into Elf Beast Sight above and would otherwise hand that tech
+      // whole-map vision as a side effect.
+      if (!civ.isHuman && civ.id !== monsterCivId && aiIsOmniscient()) {
+        gameState.visibility[civ.id] = allTileIndices(map);
+      }
     }
+  }
+
+  /** Whether the active AI Aggression level grants AI civs whole-map vision.
+   *  Read live off GameConfig (not snapshotted) for the same reason ai.js's
+   *  own aiAggressionLevel is -- main.js's applyAiAggression can change it
+   *  at Start Game or on load. */
+  function aiIsOmniscient() {
+    const A = window.GameConfig.aiAggression;
+    const level = A.levels[A.levelIndex] ?? A.levels[1];
+    return !!level.omniscient;
+  }
+
+  /** Every tile index on the map, as one shared frozen-by-convention Set.
+   *  Cached per map object (not per civ, and not rebuilt per turn): the set
+   *  is identical for every omniscient civ and never mutated by any reader
+   *  -- refreshVisibility REPLACES visibility sets rather than adding to
+   *  them, and the one place that does add (revealMapFragment's live peek)
+   *  is a human-player reward path, which omniscience never touches.
+   *  Rebuilt automatically if the map's tile count ever changes. */
+  let _allTilesCache = null, _allTilesFor = null, _allTilesCount = 0;
+  function allTileIndices(map) {
+    if (_allTilesFor === map && _allTilesCount === map.tiles.length) return _allTilesCache;
+    const s = new Set();
+    for (let i = 0; i < map.tiles.length; i++) s.add(i);
+    _allTilesCache = s; _allTilesFor = map; _allTilesCount = map.tiles.length;
+    return s;
   }
 
   /** Treasure Chest "Map Fragment" reward (see doc/world_encounters_design.md):
