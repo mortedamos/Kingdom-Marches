@@ -1002,42 +1002,74 @@ window.UI = window.UI || {};
     ctx.restore();
   }
 
-  const CHEST_SPARKLE_CYCLE_MS = 4200; // how often the glint catches the eye
-  const CHEST_SPARKLE_BURST_MS = 550; // how long each catch lasts
+  // 2026-08-29, user-requested "more sparkle": cycle shortened (was 4200)
+  // and burst lengthened (was 550) so the glint catches the eye more often
+  // and lingers a touch longer -- still a single smooth fade every couple
+  // seconds, nowhere near flash/strobe territory (see the no-flashing-
+  // effects rule this project follows for photosensitivity safety).
+  const CHEST_SPARKLE_CYCLE_MS = 2600; // how often the glint catches the eye
+  const CHEST_SPARKLE_BURST_MS = 700; // how long each catch lasts
+
+  /** Shared envelope for a sparkle burst: ramps 0->1 over the first 30% of
+   *  the burst, then eases back down over the remaining 70% -- one smooth
+   *  fade in/out, not a hard blink. `burstT` is progress through the burst,
+   *  0 at the start, 1 at the end. */
+  function sparkleEnvelope(burstT) {
+    return burstT < 0.3 ? burstT / 0.3 : Math.max(0, 1 - (burstT - 0.3) / 0.7);
+  }
+
+  /** Two-point sparkle burst -- a primary glint plus a smaller, dimmer
+   *  companion catching the light a beat later, so a chest/deposit reads
+   *  as an actual cluster of sparkle rather than one lonely point of light
+   *  (2026-08-29, user-requested "more sparkle"). Same cycle/phase timing
+   *  as before (tileEffectPhase, so a screen full of chests/deposits
+   *  doesn't glint in unison), full brightness at each peak (no more 0.8
+   *  alpha cap) for a punchier catch of light. Shared by drawChestSparkle/
+   *  drawResourceGlint below -- `color` optional, defaults to
+   *  drawSparkleMark's own warm gold. */
+  function drawSparkleBurstPair(ctx, tile, boxX, boxY, sz, now, cycleMs, burstMs, color) {
+    const phase = tileEffectPhase(tile);
+    const t = (now + phase * 1000) % cycleMs;
+    if (t > burstMs) return;
+    const burstT = t / burstMs;
+    const alpha = sparkleEnvelope(burstT);
+    drawSparkleMark(ctx, boxX + sz * 0.78, boxY + sz * 0.22, sz * 0.26 * alpha, alpha, color);
+    // Companion: smaller, dimmer, peaks a beat after the primary -- same
+    // envelope shape, delayed (not shifted earlier) within the burst
+    // window, at a distinct spot on the icon so the two never overlap
+    // into one blob.
+    const alpha2 = sparkleEnvelope(Math.max(0, burstT - 0.22)) * 0.6;
+    drawSparkleMark(ctx, boxX + sz * 0.32, boxY + sz * 0.58, sz * 0.15 * alpha2, alpha2, color);
+  }
 
   /** Treasure Chest: an occasional, subtle glint rather than a constant
    *  glow -- most of the cycle draws nothing at all, unlike Level Up's
    *  continuously-orbiting sparkles above, so it reads as "something
    *  catching the light now and then" without competing for attention.
-   *  One point of light per burst, phase-shifted per tile (tileEffectPhase)
-   *  so a screen full of chests doesn't glint in unison. `boxX/boxY/sz` are
-   *  the exact box the chest icon itself was already drawn into (see
-   *  render.js's tileIconBox call) so the glint always lands on the icon
-   *  regardless of which of its 3 horizontal slots it's in, positioned
-   *  toward its upper-right corner the way a glint catches one edge of an
-   *  object rather than its center. */
+   *  A small pair of points of light per burst (see drawSparkleBurstPair),
+   *  phase-shifted per tile (tileEffectPhase) so a screen full of chests
+   *  doesn't glint in unison. `boxX/boxY/sz` are the exact box the chest
+   *  icon itself was already drawn into (see render.js's tileIconBox call)
+   *  so the glint always lands on the icon regardless of which of its 3
+   *  horizontal slots it's in. */
   function drawChestSparkle(ctx, tile, boxX, boxY, sz, now) {
-    // Reduced motion: a constant low-key glint instead of the catch-your-
-    // eye burst cycle -- still marks the chest as glinting, just not by
-    // flashing on and off.
+    // Reduced motion: a constant low-key glint pair instead of the catch-
+    // your-eye burst cycle -- still marks the chest as glinting, just not
+    // by flashing on and off.
     if (window.UI.motion && window.UI.motion.isReduced()) {
-      drawSparkleMark(ctx, boxX + sz * 0.78, boxY + sz * 0.22, sz * 0.22 * 0.5, 0.5);
+      drawSparkleMark(ctx, boxX + sz * 0.78, boxY + sz * 0.22, sz * 0.24 * 0.5, 0.5);
+      drawSparkleMark(ctx, boxX + sz * 0.32, boxY + sz * 0.58, sz * 0.14 * 0.4, 0.4);
       return;
     }
-    const phase = tileEffectPhase(tile);
-    const t = (now + phase * 1000) % CHEST_SPARKLE_CYCLE_MS;
-    if (t > CHEST_SPARKLE_BURST_MS) return;
-    const burstT = t / CHEST_SPARKLE_BURST_MS;
-    const alpha = (burstT < 0.3 ? burstT / 0.3 : Math.max(0, 1 - (burstT - 0.3) / 0.7)) * 0.8;
-    drawSparkleMark(ctx, boxX + sz * 0.78, boxY + sz * 0.22, sz * 0.22 * alpha, alpha);
+    drawSparkleBurstPair(ctx, tile, boxX, boxY, sz, now, CHEST_SPARKLE_CYCLE_MS, CHEST_SPARKLE_BURST_MS);
   }
 
   // Same burst cadence as the chest's glint (see CHEST_SPARKLE_CYCLE_MS/
   // CHEST_SPARKLE_BURST_MS above) -- reused as its own constants rather
   // than sharing those names so either can be retuned independently later
   // without renaming across two unrelated resource types.
-  const RESOURCE_GLINT_CYCLE_MS = 4200;
-  const RESOURCE_GLINT_BURST_MS = 550;
+  const RESOURCE_GLINT_CYCLE_MS = 2600;
+  const RESOURCE_GLINT_BURST_MS = 700;
   // Metallic glint colors per resource (2026-08-18, user-requested,
   // "just as we added a sparkle effect to treasure chests"): iron gets a
   // cool silver-white catch of light, gold a warmer yellow-gold one --
@@ -1046,7 +1078,7 @@ window.UI = window.UI || {};
   const RESOURCE_GLINT_COLORS = { iron: "#e4ecf2", gold: "#ffe38a" };
 
   /** Iron/Gold deposits: the same occasional-glint treatment as
-   *  drawChestSparkle above (same cycle/burst timing, same upper-right
+   *  drawChestSparkle above (same cycle/burst timing, same sparkle-pair
    *  placement on the icon box), just recolored per resource -- a metallic
    *  deposit catching the light makes as much sense here as a treasure
    *  chest's varnish/gem does. No-ops for any resource id not in
@@ -1056,15 +1088,11 @@ window.UI = window.UI || {};
     const color = RESOURCE_GLINT_COLORS[resourceId];
     if (!color) return;
     if (window.UI.motion && window.UI.motion.isReduced()) {
-      drawSparkleMark(ctx, boxX + sz * 0.78, boxY + sz * 0.22, sz * 0.22 * 0.5, 0.5, color);
+      drawSparkleMark(ctx, boxX + sz * 0.78, boxY + sz * 0.22, sz * 0.24 * 0.5, 0.5, color);
+      drawSparkleMark(ctx, boxX + sz * 0.32, boxY + sz * 0.58, sz * 0.14 * 0.4, 0.4, color);
       return;
     }
-    const phase = tileEffectPhase(tile);
-    const t = (now + phase * 1000) % RESOURCE_GLINT_CYCLE_MS;
-    if (t > RESOURCE_GLINT_BURST_MS) return;
-    const burstT = t / RESOURCE_GLINT_BURST_MS;
-    const alpha = (burstT < 0.3 ? burstT / 0.3 : Math.max(0, 1 - (burstT - 0.3) / 0.7)) * 0.8;
-    drawSparkleMark(ctx, boxX + sz * 0.78, boxY + sz * 0.22, sz * 0.22 * alpha, alpha, color);
+    drawSparkleBurstPair(ctx, tile, boxX, boxY, sz, now, RESOURCE_GLINT_CYCLE_MS, RESOURCE_GLINT_BURST_MS, color);
   }
 
   /** A handful of small gold sparkles orbiting the unit's box, each
