@@ -1959,7 +1959,7 @@ window.GameData.TECHS = {
   halfellow_historical_society: {
     id: "halfellow_historical_society", label: "Historical Society", category: "building", layer: 3, cost: 52,
     prereqs: ["halfellow_road_goes_ever_on"], raceOnly: "halfellow",
-    description: "Unlocks the Historical Society. Its antiquarians map every Ruin on the world, revealing each one and the land immediately around it.",
+    description: "Unlocks the Historical Society. Its antiquarians map every Ruin on the world, revealing each one and the land around it -- the visible radius grows by 1 for every Historical Society this kingdom has built.",
     costBreakdown: { lore: 32, coin: 20 },
     effects: [{ type: "unlock_building", building: "historical_society" }],
   },

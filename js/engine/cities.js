@@ -231,6 +231,17 @@ window.GameEngine = window.GameEngine || {};
     return civ.cities.some((c) => cityHasStructure(c, buildingId));
   }
 
+  /** How many of this civ's cities currently have an (alive) structure of
+   *  the given id -- for a bonus that STACKS per copy built (e.g. Halfellow's
+   *  Historical Society, one radius point per Society across the kingdom),
+   *  as opposed to civHasBuiltBuilding's plain "at least one" check just
+   *  above. A race's 4 unique buildings are each capped at one per CITY
+   *  (see ai.js's availableBuilds, cityHasStructure-gated), not one per
+   *  kingdom, so a civ can genuinely field more than one. */
+  function civBuiltBuildingCount(civ, buildingId) {
+    return civ.cities.filter((c) => cityHasStructure(c, buildingId)).length;
+  }
+
   function anyTerrainAdjacent(map, x, y, terrainIds) {
     for (let dy = -1; dy <= 1; dy++) {
       for (let dx = -1; dx <= 1; dx++) {
@@ -1709,6 +1720,7 @@ window.GameEngine = window.GameEngine || {};
     captureCity,
     cityHasStructure,
     civHasBuiltBuilding,
+    civBuiltBuildingCount,
     findStructureSlot,
     validStructureSlots,
     placeStructure,

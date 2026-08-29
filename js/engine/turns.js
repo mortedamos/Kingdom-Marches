@@ -150,18 +150,23 @@ window.GameEngine = window.GameEngine || {};
         }
       }
       // Halfellow Historical Society ("Antiquarians"): every Ruin tile on
-      // the map, plus a 1-tile ring around each -- same shape as Passages in
-      // Stone just above, keyed to tile.isRuin with a radius of 1. The ring
-      // is deliberate: a bare ruin tile floating in fog says a site exists
-      // but not whether it's guarded or reachable, which is what makes the
-      // knowledge actionable. Building-gated, not tech-gated, so razing the
-      // Society takes the map knowledge with it.
-      if (window.GameEngine.cities.civHasBuiltBuilding(civ, "historical_society")) {
+      // the map, plus a ring around each -- same shape as Passages in Stone
+      // just above, keyed to tile.isRuin. The ring is deliberate: a bare
+      // ruin tile floating in fog says a site exists but not whether it's
+      // guarded or reachable, which is what makes the knowledge actionable.
+      // Building-gated, not tech-gated, so razing every copy takes the map
+      // knowledge with it. Radius STACKS with each Society built (2026-08-28,
+      // user-directed) -- one per city, same as the race's other 3 unique
+      // buildings (see cities.js's civBuiltBuildingCount/ai.js's
+      // availableBuilds, cityHasStructure-gated per city, not civ-wide) --
+      // rather than a flat radius of 1 regardless of count.
+      const historicalSocietyCount = window.GameEngine.cities.civBuiltBuildingCount(civ, "historical_society");
+      if (historicalSocietyCount > 0) {
         for (let i = 0; i < map.tiles.length; i++) {
           if (!map.tiles[i].isRuin) continue;
           const rx = i % map.width, ry = Math.floor(i / map.width);
-          for (let dy = -1; dy <= 1; dy++) {
-            for (let dx = -1; dx <= 1; dx++) {
+          for (let dy = -historicalSocietyCount; dy <= historicalSocietyCount; dy++) {
+            for (let dx = -historicalSocietyCount; dx <= historicalSocietyCount; dx++) {
               const nx = rx + dx, ny = ry + dy;
               if (nx < 0 || nx >= map.width || ny < 0 || ny >= map.height) continue;
               visible.add(ny * map.width + nx);

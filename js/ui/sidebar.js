@@ -578,7 +578,7 @@ window.UI = window.UI || {};
     // Halfellow
     farmers_market: ["+2 max HP for units built here"],
     neighborhood_pub: ["+25% XP for all your units (kingdom-wide)"],
-    historical_society: ["reveals every Ruin on the map (kingdom-wide)"],
+    historical_society: ["reveals every Ruin on the map, +1 visible radius per copy built (kingdom-wide)"],
     armory: ["+50% attack and defense for units built here"],
   };
 
