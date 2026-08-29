@@ -4705,10 +4705,17 @@
     let options, split = null;
     if (menu.subject === "city") {
       if (!city) return close();
-      options = orders.cityRingOptions(city, gameState, humanCivId);
+      options = orders.cityRingOptions(city, gameState, humanCivId).concat(orders.ABOUT_THIS_SPACE_OPTION);
+    } else if (menu.subject === "tile") {
+      // Nothing of the player's own on this tile at all -- see orders.js's
+      // mapMenuOptions doc comment on ABOUT_THIS_SPACE_OPTION. The only
+      // subject with no unit/city requirement at all, so it's checked before
+      // the canCommand guard just below rather than falling through it.
+      options = [orders.ABOUT_THIS_SPACE_OPTION];
     } else {
       if (!orders.canCommand(unit, gameState, humanCivId)) return close();
-      const unitOptions = orders.contextMenuOptions(unit, gameState, menu.x, menu.y, humanCivId);
+      const unitOptions = orders.contextMenuOptions(unit, gameState, menu.x, menu.y, humanCivId)
+        .concat(orders.ABOUT_THIS_SPACE_OPTION);
       // CATEGORY RING: only when the ring's own tile IS the unit's own tile
       // -- a unit ring aimed at a REMOTE tile (moveTo/attack against
       // something elsewhere) still gets the single city:open cross-link a
@@ -4730,7 +4737,7 @@
         } else if (menu.page === "unitActions") {
           options = unitOptions.concat([{ kind: "category:back", label: "Back" }]);
         } else if (menu.page === "cityActions") {
-          options = cityOptions.concat([{ kind: "category:back", label: "Back" }]);
+          options = cityOptions.concat([{ kind: "category:back", label: "Back" }, orders.ABOUT_THIS_SPACE_OPTION]);
         } else {
           const unitLabel = window.GameData.getUnit(unit.typeId).label;
           // Rest and Defend is a standing, channeled order (see orders.js's
@@ -4745,6 +4752,7 @@
           options = [
             { kind: "category:unit", label: unitActionsLabel },
             { kind: "category:city", label: "City Actions" },
+            orders.ABOUT_THIS_SPACE_OPTION,
           ];
         }
       } else {
@@ -5522,6 +5530,25 @@
     // on tiles where there may be no selected unit at all.
     if (kind && kind.startsWith("city:")) {
       handleCityRingAction(kind, menu);
+      return;
+    }
+
+    // "About This Space" (2026-08-28, user-directed): same "runs before the
+    // unit guard" reasoning as City Actions just above -- orders.js's
+    // mapMenuOptions offers this pill on EVERY ring, including a tile with
+    // no unit selected and nothing else on it at all, so this has to work
+    // without one too. Forces the Terrain tab specifically (not whichever
+    // tab handleTileClick would otherwise default to, e.g. a unit standing
+    // there) -- "About This Space" means the tile itself, same reasoning
+    // selectCityAt below forces the City tab on a garrisoned one.
+    if (kind === "aboutThisSpace") {
+      window.UI.input.handleTileClick({ x: menu.x, y: menu.y }, gameState, viewState);
+      const sel = viewState.selection;
+      if (sel) {
+        const idx = sel.tabs.findIndex((t) => t.kind === "terrain");
+        if (idx >= 0) window.UI.input.setActiveTab(gameState, viewState, idx);
+      }
+      redraw();
       return;
     }
 

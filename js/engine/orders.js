@@ -1662,8 +1662,19 @@ window.GameEngine = window.GameEngine || {};
    * without the full merge (there's no shared tile to anchor a two-column
    * ring to).
    */
+  // "About This Space" (2026-08-28, user-directed): a universal pill,
+  // appended to EVERY ring mapMenuOptions can build -- unit, city, merged,
+  // remote-tile, and even a tile with nothing else on it at all -- so the
+  // player always has a way to select the clicked tile and read its
+  // terrain info in the sidebar, without needing to hunt for an empty patch
+  // of ground the ring has nothing else to say about. See main.js's
+  // handleContextMenuAction (the top-level "aboutThisSpace" case, handled
+  // before the usual "no selected unit" guard, since this has to work with
+  // nothing selected at all) for what selecting it actually does.
+  const ABOUT_THIS_SPACE_OPTION = { kind: "aboutThisSpace", label: "About This Space" };
+
   function mapMenuOptions(gameState, viewState, x, y, humanCivId) {
-    const none = { subject: "none", retarget: false, options: [] };
+    const none = { subject: "tile", retarget: false, options: [ABOUT_THIS_SPACE_OPTION] };
     if (!humanCivId) return none;
     const civ = gameState.civs[humanCivId];
     if (!civ) return none;
@@ -1684,7 +1695,11 @@ window.GameEngine = window.GameEngine || {};
       const alreadyActive = selected && selected.x === x && selected.y === y
         && canCommand(selected, gameState, humanCivId);
       const subjectUnit = alreadyActive ? selected : unitHere;
-      const unitOptions = contextMenuOptions(subjectUnit, gameState, x, y, humanCivId);
+      // About This Space rides along with the unit's own options (not
+      // appended after the merge) so mergeUnitCityOptions' split counts --
+      // computed from these two arrays' lengths -- stay correct without any
+      // separate adjustment.
+      const unitOptions = contextMenuOptions(subjectUnit, gameState, x, y, humanCivId).concat(ABOUT_THIS_SPACE_OPTION);
       const cityOptions = cityHere ? cityRingOptions(cityHere, gameState, humanCivId) : [];
       const { options, split } = mergeUnitCityOptions(unitOptions, cityOptions);
       // No retarget when the selected unit is already on this tile -- right-
@@ -1697,13 +1712,18 @@ window.GameEngine = window.GameEngine || {};
     if (canCommand(selected, gameState, humanCivId)) {
       const options = contextMenuOptions(selected, gameState, x, y, humanCivId);
       if (cityHere) options.push({ kind: "city:open", label: "City Actions" });
+      options.push(ABOUT_THIS_SPACE_OPTION);
       return { subject: "unit", retarget: false, options };
     }
 
     // 3. Nothing selected, but one of our cities is here.
     if (cityHere) {
-      return { subject: "city", retarget: true, options: cityRingOptions(cityHere, gameState, humanCivId) };
+      const options = cityRingOptions(cityHere, gameState, humanCivId).concat(ABOUT_THIS_SPACE_OPTION);
+      return { subject: "city", retarget: true, options };
     }
+    // 4. Nothing of ours anywhere on this tile -- empty ground, an enemy
+    // unit/city/structure, or ally territory. The ring still opens, just
+    // with the one universal pill (see `none` above).
     return none;
   }
 
@@ -1796,5 +1816,11 @@ window.GameEngine = window.GameEngine || {};
     mapMenuOptions,
     queueBuild,
     cancelBuild,
+    // Exported so main.js's renderRingMenu -- which independently re-derives
+    // the ring's live option list every redraw rather than re-calling
+    // mapMenuOptions (see that function's own header comment on why) -- can
+    // append the exact same pill/label instead of a second hand-copied
+    // literal that could drift.
+    ABOUT_THIS_SPACE_OPTION,
   };
 })();
