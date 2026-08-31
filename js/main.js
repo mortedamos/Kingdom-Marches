@@ -312,6 +312,21 @@
 
   function $(id) { return document.getElementById(id); }
 
+  /** Forces the browser to synchronously flush any pending layout/paint
+   *  before continuing -- reading a layout property (offsetHeight) is the
+   *  standard, engine-agnostic trick for this. Needed by setupMenuBar/
+   *  setupTitleMenuBar (2026-08-31, user-reported): on the mobile drawer,
+   *  each menu section's own `.menu-bar` ancestor is a GPU-composited layer
+   *  (it slides via `transform: translateX(...)`, see css/mobile.css), and
+   *  on at least one real device a `display` toggle on a DESCENDANT of that
+   *  layer -- opening the Knowledge accordion, by far the tallest dropdown
+   *  at 7 rows -- never got repainted: the section visually vanished until
+   *  an unrelated later click forced some other repaint. Could not
+   *  reproduce in emulation (synthetic events skip the browser's own
+   *  input/compositing pipeline), so this is a defensive fix for the
+   *  documented failure mode, not a confirmed root cause. */
+  function forceReflow(el) { if (el) void el.offsetHeight; }
+
   /**
    * Opening the game with ?mute (or ?mute=1) starts it fully silent -- no
    * music, no sfx.
@@ -1093,6 +1108,7 @@
       { btn: $("title-menu-knowledge-btn"), dropdown: $("title-menu-knowledge-dropdown") },
     ];
     if (!menus[0].btn) return;
+    const bar = menus[0].btn.closest(".menu-bar");
     function closeAll() {
       for (const m of menus) { m.dropdown.style.display = "none"; m.btn.classList.remove("active"); }
     }
@@ -1102,9 +1118,10 @@
         const willOpen = m.dropdown.style.display === "none";
         closeAll();
         if (willOpen) { m.dropdown.style.display = "flex"; m.btn.classList.add("active"); }
+        forceReflow(bar);
       });
     }
-    menus[0].btn.closest(".menu-bar").addEventListener("click", (e) => e.stopPropagation());
+    bar.addEventListener("click", (e) => e.stopPropagation());
     document.addEventListener("click", closeAll);
   }
 
@@ -2470,6 +2487,7 @@
       { btn: $("menu-report-btn"), dropdown: $("menu-report-dropdown") },
       { btn: $("menu-speed-btn"), dropdown: $("menu-speed-dropdown") },
     ];
+    const bar = menus[0].btn.closest(".menu-bar");
     function closeAll() {
       for (const m of menus) { m.dropdown.style.display = "none"; m.btn.classList.remove("active"); }
     }
@@ -2479,6 +2497,7 @@
         const willOpen = m.dropdown.style.display === "none";
         closeAll();
         if (willOpen) { m.dropdown.style.display = "flex"; m.btn.classList.add("active"); }
+        forceReflow(bar);
       });
     }
     // Dropdown contents (speed buttons, audio slider, etc.) are wired by their
@@ -2490,7 +2509,7 @@
     // (see setupTitleMenuBar), and querySelector would only ever find
     // whichever one comes first in the DOM, silently breaking this one's
     // click-outside handling once the title screen's markup preceded it.
-    menus[0].btn.closest(".menu-bar").addEventListener("click", (e) => e.stopPropagation());
+    bar.addEventListener("click", (e) => e.stopPropagation());
     document.addEventListener("click", closeAll);
   }
 
