@@ -56,14 +56,22 @@
  *   - startingTech: the one tech id every civ of this race starts the
  *     game with already completed (see main.js's civ-init, which both
  *     adds it to completedTechs and runs applyTechEffects on it).
- *   - avoidsCultureSpread (optional, default false): this race's AI never
- *     spends a city's turn on the Spread Culture action (cities.js's
- *     applyCultureSpread -- the paid, one-turn influence boost). Identity,
- *     not a difficulty knob: a race flagged here takes ground by force
- *     rather than by growing borders into it, so an idle city of theirs
- *     would rather do nothing than buy influence. Affects the AI ONLY --
- *     a human player of that race keeps the action in their own ring menu,
- *     and nothing removes it from the game. See ai.js's city build loop.
+ *   - avoidsCultureSpread (optional, default false): this race's AI would
+ *     rather do nothing with a spare city-turn than spend it on Spread
+ *     Culture (cities.js's applyCultureSpread -- the paid, one-turn
+ *     influence boost), because it takes ground by force rather than by
+ *     growing borders into it.
+ *
+ *     DECLARATION, NOT A SWITCH (2026-08-31): the flag says a race HAS this
+ *     disposition; Game Difficulty decides whether it is actually honored
+ *     (config.js's difficulty.levels[].enforceRaceCultureAversion). At Easy
+ *     even a flagged race still spreads culture -- spending city-turns on
+ *     influence instead of anything more useful is part of what makes Easy
+ *     easy. Both conditions are required; see ai.js's trySpreadCulture.
+ *
+ *     Affects the AI ONLY -- a human player of that race keeps the action in
+ *     their own ring menu at every difficulty, and nothing removes it from
+ *     the game.
  *   - uniqueUnits / uniqueBuildings: NOT read by any engine or data code
  *     anywhere -- purely a human-readable roster list for this file's own
  *     documentation/cross-checking. Safe to edit freely; nothing breaks
@@ -195,8 +203,8 @@ window.GameData.RACES = {
     startingTech: "orc_raiders",
 
     // Orcs take ground by holding it with blades, not by growing culture
-    // into it (2026-08-27, user-directed) -- see races.js's own header note
-    // on this field, and ai.js's city build loop for the gate it drives.
+    // into it -- see this file's header note on this field. Honored only at
+    // Normal and above; at Easy an Orc AI still spreads culture.
     avoidsCultureSpread: true,
 
     uniqueUnits: ["raider", "impaler", "wolf_rider", "bog_witch", "battering_ram", "ogre", "dragon", "dire_wolf"],

@@ -42,10 +42,12 @@
   let spectatorSpeed = 1; // 1x/2x/4x/8x/16x -- see the speed-btn row in index.html
   let spectatorPaused = false;
   let autoplayTimer = null;
-  // The start screen has no control for AI difficulty (game-speed-slider
-  // replaced it), so this just stays at its default. Left in place since
-  // it's still a real, working lever (ai.js's applyDifficultyNoise), just
-  // not currently reachable from the UI.
+  // Game Difficulty (2026-08-31, user-directed -- replaces the old AI
+  // Aggression slider). THE session-level source of truth: the string form
+  // is what the save file carries and what the per-civ difficultyByCiv fan-out
+  // (advanceOneStep below) delivers to ai.js's applyDifficultyNoise, while
+  // config.js's difficulty.levelIndex carries the same choice for everything
+  // else. applyDifficulty keeps the two in lockstep -- never set either alone.
   let aiDifficulty = "normal";
   let loadingStatusTimer = null; // see showLoadingScreen/hideLoadingScreen
 
@@ -69,15 +71,28 @@
     window.GameConfig.pacing.speedLevelIndex = bestIndex;
   }
 
-  // AI Aggression slider (2026-08-21, user-directed): how readily a
-  // kingdom commits to fights -- see config.js's own aiAggression doc
-  // comment for the combatWeightMult/winProbFloorShift mechanism this level
-  // index drives. Universal -- applies in Spectator mode too, not just
-  // Single Player (2026-08-21, user-directed).
-  let aiAggressionLevelIndex = 1;
-  function applyAiAggression(levelIndex) {
-    aiAggressionLevelIndex = levelIndex;
-    window.GameConfig.aiAggression.levelIndex = levelIndex;
+  // Game Difficulty slider (2026-08-31, user-directed). Sets BOTH halves of
+  // the setting at once -- config.js's live level index (build/research
+  // speed, military cap, head start, culture gate) and the legacy
+  // `aiDifficulty` string (the save-file field, and what
+  // applyDifficultyNoise consumes). config.js's level ids are exactly the
+  // strings ai.js's DIFFICULTY_SPREAD is keyed by, so no mapping table
+  // exists to drift.
+  //
+  // Universal -- applies in Spectator mode too, where every civ is AI.
+  const DIFFICULTY_DEFAULT_INDEX = 1; // Normal
+  function applyDifficulty(levelIndex) {
+    const levels = window.GameConfig.difficulty.levels;
+    const level = levels[levelIndex] ?? levels[DIFFICULTY_DEFAULT_INDEX];
+    window.GameConfig.difficulty.levelIndex = levels.indexOf(level);
+    aiDifficulty = level.id;
+  }
+  /** Save files persist the difficulty STRING, not the index (the string
+   *  predates this slider -- see aiDifficulty above), so loading re-derives
+   *  the index from it. An unknown/missing id falls back to Normal. */
+  function difficultyIndexFromId(id) {
+    const i = window.GameConfig.difficulty.levels.findIndex((l) => l.id === id);
+    return i >= 0 ? i : DIFFICULTY_DEFAULT_INDEX;
   }
 
   // Identity of whatever's currently rendered into the tech tree/reports/
@@ -240,15 +255,13 @@
     { id: "fastest", label: "Fastest", percent: 150 },
   ];
   const GAME_SPEED_DEFAULT_INDEX = GAME_SPEED_LEVELS.findIndex((l) => l.id === "normal");
-  // Game Options "AI Aggression" slider (2026-08-21, user-directed): unlike
+  // Game Options "Difficulty" slider (2026-08-31, user-directed): unlike
   // World Type/Game Speed, the levels themselves (label + tuning values)
-  // live in config.js's aiAggression.levels, not duplicated here -- main.js
-  // only needs the index/label for the UI, and config.js is what ai.js
-  // actually reads live, so config.js is the single source of truth. "1"
-  // (Normal) is the default per user direction, NOT the middle-of-range
-  // convention World Type/Game Speed use for their own reasons -- Low
-  // (index 0) is deliberately what today's game already does.
-  const AI_AGGRESSION_DEFAULT_INDEX = 1;
+  // live in config.js's difficulty.levels, not duplicated here -- main.js
+  // only needs the index/label for the UI, and config.js is what the engine
+  // reads live, so config.js is the single source of truth. Its default
+  // index lives with applyDifficulty (DIFFICULTY_DEFAULT_INDEX) rather than
+  // here, since load has to reach it too.
   // Pacing experiment (2026-07-12): ~20% fewer tiles than the previous
   // 65x40 (2600) -- forces civs closer together for faster contact/
   // conflict. Same aspect ratio, scaled by sqrt(0.8). See
@@ -417,13 +430,13 @@
         </label>
         <p class="launch-hint">How long units, buildings, and research take to finish. Normal is the default pace.</p>
         <label class="launch-row">
-          <span>AI Aggression</span>
+          <span>Difficulty</span>
           <span class="launch-row-slider">
-            <input type="range" id="ai-aggression-slider" min="0" max="${window.GameConfig.aiAggression.levels.length - 1}" step="1" value="${AI_AGGRESSION_DEFAULT_INDEX}">
-            <span id="ai-aggression-label">${window.GameConfig.aiAggression.levels[AI_AGGRESSION_DEFAULT_INDEX].label}</span>
+            <input type="range" id="difficulty-slider" min="0" max="${window.GameConfig.difficulty.levels.length - 1}" step="1" value="${DIFFICULTY_DEFAULT_INDEX}">
+            <span id="difficulty-label">${window.GameConfig.difficulty.levels[DIFFICULTY_DEFAULT_INDEX].label}</span>
           </span>
         </label>
-        <p class="launch-hint">How often AI kingdoms pick fights, in Single Player and Spectator alike. Doesn't affect their economy or tech pace.</p>
+        <p class="launch-hint">How fast AI kingdoms develop, how big their armies grow, and how strong they start. Your own kingdom is never slowed down.</p>
         <label class="launch-row">
           <span>Max Monsters</span>
           <span class="launch-row-slider">
@@ -848,11 +861,11 @@
       $("game-speed-pct").textContent = GAME_SPEED_LEVELS[parseInt(e.target.value, 10)].label;
     });
 
-    // AI Aggression slider: same "label moves live, value only actually
-    // applies at Start Game" pattern as Game Speed just above -- see
-    // startGame's applyAiAggression call.
-    $("ai-aggression-slider").addEventListener("input", (e) => {
-      $("ai-aggression-label").textContent = window.GameConfig.aiAggression.levels[parseInt(e.target.value, 10)].label;
+    // Difficulty slider: same "label moves live, value only actually applies
+    // at Start Game" pattern as Game Speed just above -- see startGame's
+    // applyDifficulty call.
+    $("difficulty-slider").addEventListener("input", (e) => {
+      $("difficulty-label").textContent = window.GameConfig.difficulty.levels[parseInt(e.target.value, 10)].label;
     });
 
     // Max Monsters slider: same "label moves live, value only actually
@@ -1658,9 +1671,11 @@
     }
     const opponentCount = parseInt($("opponent-count").value, 10);
     applyGameSpeed(GAME_SPEED_LEVELS[parseInt($("game-speed-slider").value, 10)].percent);
-    // Universal (2026-08-21, user-directed) -- applies in Spectator mode
-    // too, not just Single Player, same as Game Speed/Max Monsters above.
-    applyAiAggression(parseInt($("ai-aggression-slider").value, 10));
+    // Universal -- applies in Spectator mode too, not just Single Player,
+    // same as Game Speed/Max Monsters above. MUST run before createNewGame
+    // below: the difficulty head start (free combat tech + bonus units) is
+    // read at world creation, not per-turn.
+    applyDifficulty(parseInt($("difficulty-slider").value, 10));
     const monsterCapPerKingdom = parseInt($("monster-cap-slider").value, 10);
     const worldType = WORLD_TYPE_SLIDER_VALUES[parseInt($("world-type-slider").value, 10)];
     const seedInput = $("seed-input").value.trim();
@@ -1765,12 +1780,21 @@
     gameState = payload.gameState;
     humanCivId = payload.humanCivId;
     spectatorMode = payload.spectatorMode;
-    aiDifficulty = payload.aiDifficulty;
     applyGameSpeed(payload.gameSpeedPercent || 100);
-    // Falls back to 1 (Normal, the current default) for a save made before
-    // the AI Aggression slider existed -- same "predates this field"
-    // convention as gameSpeedPercent's own fallback just above.
-    applyAiAggression(payload.aiAggressionLevelIndex ?? 1);
+    // `difficultyChosen` marks a save written AFTER the Difficulty slider
+    // shipped, and is the ONLY way to tell a real player choice from the
+    // frozen pre-slider default. Both look like aiDifficulty:"normal" on the
+    // wire, and "Normal" now means a HARDER game than the one an old save was
+    // actually played under (config.js: Easy is the level reproducing the old
+    // balance). So: no marker -> legacy save -> load as Easy, preserving the
+    // balance it was played at. Marker present -> honor the stored choice,
+    // including a genuine "normal".
+    //
+    // applyDifficulty re-derives the config index AND re-assigns
+    // aiDifficulty, so there is no separate assignment for it here.
+    applyDifficulty(payload.difficultyChosen
+      ? difficultyIndexFromId(payload.aiDifficulty)
+      : 0);
     for (const civ of Object.values(gameState.civs)) civ.isHuman = civ.id === humanCivId;
     updateMapSeedLabel();
     viewState = {
@@ -1973,6 +1997,28 @@
         civ.completedTechs.add(techId);
         window.GameEngine.tech.applyTechEffects(civ, window.GameData.getTech(techId));
       }
+
+      // Game Difficulty head start (2026-08-31, user-directed). AI civs only
+      // -- civ.isHuman is assigned just above, so the human always reads the
+      // identity level and starts with exactly the loadout described in the
+      // comment above this block.
+      //
+      // grantsStartingTech reverses precisely the decision that comment
+      // documents, and only for the AI: it hands over race.startingTech so an
+      // AI kingdom can build its signature fighter from turn 1 instead of
+      // spending its first several turns researching the ability to. That is
+      // also what makes bonusStartingUnits possible at all -- until this
+      // lands, a civ's only unlocked units are Pioneer/Scout/Galley, so there
+      // is no military unit for the unit grant below to pick.
+      const dLevels = window.GameConfig.difficulty.levels;
+      const dLevel = civ.isHuman
+        ? dLevels[0]
+        : (dLevels[window.GameConfig.difficulty.levelIndex] ?? dLevels[1]);
+      const startingTech = window.GameData.getRace(raceId).startingTech;
+      if (dLevel.grantsStartingTech && startingTech
+          && !civ.completedTechs.has(startingTech)) {
+        window.GameEngine.tech.grantFreeTech(civ, startingTech);
+      }
       // Registered in `civs` before the starting units below so
       // buildOccupancySet/findClosestOpenPlacementTile can see THIS civ's
       // own starting units as they're placed one at a time -- harmless for
@@ -2002,16 +2048,7 @@
       // all -- so its SECOND starting unit is a free Galley instead, not a
       // second Scout. The first Scout is unconditional for every civ
       // (fog-clearing still matters even on a small island).
-      // AI Aggression's bonusStartingScouts rides on top of both branches
-      // (2026-08-27, user-directed) -- see config.js's own doc comment for
-      // why this is symmetric across every kingdom including the human's,
-      // and why scouts are the lever. A small-island civ still trades its
-      // second scout for a Galley below; the bonus is added after that
-      // trade, so it ends up with 1 + bonus scouts AND the Galley.
-      const aggLevels = window.GameConfig.aiAggression.levels;
-      const aggLevel = aggLevels[window.GameConfig.aiAggression.levelIndex] ?? aggLevels[1];
-      const bonusScouts = aggLevel.bonusStartingScouts || 0;
-      const startingScoutCount = (spot.landmassSize < SMALL_LANDMASS_GALLEY_THRESHOLD ? 1 : 2) + bonusScouts;
+      const startingScoutCount = spot.landmassSize < SMALL_LANDMASS_GALLEY_THRESHOLD ? 1 : 2;
       for (let i = 0; i < startingScoutCount; i++) {
         // These free starting units cost no upkeep, ever -- a one-time perk
         // on these specific instances, not a blanket Scout/Galley-type
@@ -2041,6 +2078,36 @@
           const galley = { typeId: "galley", civId, x: waterSpot.x, y: waterSpot.y, isCivilian: false, startingUnit: true };
           window.GameEngine.combat.initUnitHP(galley, civ);
           civ.units.push(galley);
+        }
+      }
+
+      // Game Difficulty head start, second half: bonus military units for AI
+      // civs (dLevel resolved above -- the identity level for the human, so
+      // this is a no-op for the player).
+      //
+      // Depends on grantsStartingTech having run above: it is what puts a
+      // buildable land fighter in unlockedUnits at all. Guarded on `pick`
+      // anyway, so a level with bonusStartingUnits but no starting tech
+      // silently grants nothing instead of throwing.
+      //
+      // Placed last so the occupancy search sees the Pioneer, Scouts and
+      // Galley already down. startingUnit:true matches every other free
+      // starting unit -- upkeep-exempt, since a turn-0 civ has no income yet.
+      const bonusUnits = dLevel.bonusStartingUnits || 0;
+      if (bonusUnits > 0) {
+        const pick = [...civ.unlockedUnits].find((id) => {
+          const ud = window.GameData.getUnit(id);
+          return ud && ud.category === "military" && !ud.isNaval && ud.cityBuildable !== false;
+        });
+        if (pick) {
+          for (let i = 0; i < bonusUnits; i++) {
+            const occupied = window.GameEngine.ai.buildOccupancySet(civs, null);
+            const spawnSpot = window.GameEngine.ai.findClosestOpenPlacementTile(spot.x, spot.y, map, civs, occupied, civId)
+              || { x: spot.x, y: spot.y };
+            const unit = { typeId: pick, civId, x: spawnSpot.x, y: spawnSpot.y, isCivilian: false, startingUnit: true };
+            window.GameEngine.combat.initUnitHP(unit, civ);
+            civ.units.push(unit);
+          }
         }
       }
     }
@@ -2638,7 +2705,11 @@
     const payload = {
       version: 1,
       savedAt: new Date().toISOString(),
-      humanCivId, spectatorMode, aiDifficulty, gameSpeedPercent, aiAggressionLevelIndex,
+      humanCivId, spectatorMode, aiDifficulty, gameSpeedPercent,
+      // Marks this save as written after the Difficulty slider shipped -- see
+      // the load path, which needs it to tell a real "normal" choice from the
+      // frozen pre-slider default.
+      difficultyChosen: true,
       gameState,
     };
     // .kmsg extension regardless of whether this browser could gzip it
@@ -2712,7 +2783,11 @@
     if (!gameState) return;
     const payload = {
       version: 1, savedAt: new Date().toISOString(),
-      humanCivId, spectatorMode, aiDifficulty, gameSpeedPercent, aiAggressionLevelIndex,
+      humanCivId, spectatorMode, aiDifficulty, gameSpeedPercent,
+      // Marks this save as written after the Difficulty slider shipped -- see
+      // the load path, which needs it to tell a real "normal" choice from the
+      // frozen pre-slider default.
+      difficultyChosen: true,
       gameState,
     };
     try {
@@ -2798,15 +2873,17 @@
 
     humanCivId = payload.humanCivId;
     spectatorMode = payload.spectatorMode;
-    aiDifficulty = payload.aiDifficulty;
     // Falls back to 100% (the default pace) for a save made before the Game
     // Speed slider existed, same "predates this field" convention as
     // civ.isHuman's own recompute just below.
     applyGameSpeed(payload.gameSpeedPercent || 100);
-    // Falls back to 1 (Normal, the current default) for a save made before
-    // the AI Aggression slider existed -- same convention as gameSpeedPercent
-    // just above.
-    applyAiAggression(payload.aiAggressionLevelIndex ?? 1);
+    // Same difficultyChosen handling as startGameFromSave above -- a save
+    // with no marker predates the Difficulty slider and loads as Easy, which
+    // is the level that reproduces the balance it was played at.
+    // applyDifficulty re-assigns aiDifficulty itself.
+    applyDifficulty(payload.difficultyChosen
+      ? difficultyIndexFromId(payload.aiDifficulty)
+      : 0);
     // Recomputed rather than trusted from the save file itself (2026-08-04):
     // civ.isHuman didn't exist before this fix, so a save made prior to it
     // would otherwise load with the flag missing on every civ, silently

@@ -63,11 +63,11 @@ window.GameConfig = {
   // stamp, and the only cost of forgetting is being told the wrong thing.
   build: {
     /** Local date this build was cut, YYYY-MM-DD. */
-    date: "2026-08-29",
+    date: "2026-08-31",
     /** Local time this build was cut, 24-hour HH:MM. */
-    time: "14:31",
+    time: "12:34",
     /** Monotonic build counter -- increment it, don't recompute it. */
-    number: 215,
+    number: 216,
   },
 
   // =========================================================================
@@ -159,148 +159,101 @@ window.GameConfig = {
   },
 
   // =========================================================================
-  // AI AGGRESSION  (js/engine/ai.js)
-  // Universal launch option, Single Player and Spectator alike (2026-08-21,
-  // user-directed): how readily a kingdom commits its EXISTING military to
-  // fights. Deliberately narrow in scope -- see levels' own doc comment for
-  // the reasoning.
+  // GAME DIFFICULTY  (js/engine/ai.js, js/engine/tech.js, js/main.js)
+  // Universal launch option, Single Player and Spectator alike.
   // =========================================================================
-  aiAggression: {
-    /** Which of `levels` below (Low/Normal/High, indices 0-2) is active
-     *  right now. 1 (Normal) by default, matching the launch-screen
-     *  slider's own default. Mutated by main.js's applyAiAggression at
-     *  Start Game (and on save/multiplayer load) -- applies to every AI
-     *  civ, in both Single Player and Spectator mode. Read live (not
-     *  snapshotted) by ai.js's racialWeights/minAcceptableWinProbability. */
+  //
+  // 2026-08-31 (user-directed): replaces the old AI Aggression setting,
+  // which was removed wholesale. That setting only ever scaled DECISION
+  // WEIGHTS -- how readily an AI committed units it already had, and how
+  // favorable a fight had to look before it took one. Headless measurement
+  // (window.__sim) showed those were never the binding constraints:
+  //
+  //   - The AI banks ~66% of its lifetime income (78,684 unspent of
+  //     ~111,050 earned by turn 200), so it is NOT resource-limited --
+  //     which is also why none of the dials below hand out resources.
+  //   - It is THROUGHPUT-limited: one research at a time and one build per
+  //     city, both turn-gated. That is what buildSpeedMult/researchSpeedMult
+  //     attack directly.
+  //   - computeMilitaryCap scales with population, so a 2-city civ at turn
+  //     30 could field only ~5 units. The early game was structurally safe
+  //     for the player no matter how "aggressive" the AI was told to be.
+  //
+  // BASELINE SHIFT, DELIBERATE: "Easy" reproduces the game as it played
+  // before this block existed -- every multiplier 1.0, every bonus 0, every
+  // flag false, so it is the identity level and provably a no-op by
+  // inspection rather than by simulation. Normal and Hard are both genuinely
+  // harder than the old game was. This is a rebalance, not a rename.
+  //
+  // AI CIVS ONLY. Every consumer routes through ai.js's difficultyFor(civ),
+  // which returns the identity level for the human civ and for the Monsters
+  // pseudo-civ. The player is never slowed down, and their own build/research
+  // time displays are unaffected -- see difficultyFor's own doc comment for
+  // why that gate has to live inside each dialed function rather than at its
+  // call sites.
+  difficulty: {
+    /** Which of `levels` below is active. Mutated by main.js's
+     *  applyDifficulty at Start Game and on load. Read LIVE (never
+     *  snapshotted) by every consumer, so it always reflects the last
+     *  applyDifficulty call. */
     levelIndex: 1,
 
-    /** combatWeightMult scales FOUR things, all decision-time multipliers on
-     *  top of a civ's own race traits, never anything settle/build/research
-     *  reads directly: racialWeights' attack/raid outputs,
-     *  minAcceptableWinProbability's threshold (via winProbFloorShift
-     *  below), AND -- added 2026-08-21 after headless testing (see below)
-     *  showed the first two barely moved whole-game combat stats even
-     *  pushed well past High -- the offense-lean of militaryPostureFor and
-     *  explorePostureFor's militaryNeed term. Those last two turned out to
-     *  be the REAL bottleneck: a unit can only accept a fight it's already
-     *  in range of, and militaryPostureFor/explorePostureFor are what
-     *  decide whether an idle unit goes LOOKING for one (huntEnemyInfra-
-     *  structure) or defaults to reinforcing/exploring instead, upstream of
-     *  ever reaching the attack-scoring code the first two touch. Explicitly
-     *  NOT touched, still: settle/build/research/garrison weights,
-     *  rollsForSettleNeed's drag term, and computeMilitaryCap (2026-08-21,
-     *  user-directed: "I dont want a kingdom to avoid building tech or
-     *  cities... an [aggressive] kingdom [shouldn't] get stuck with basic,
-     *  weak units") -- a bigger standing army also means more upkeep
-     *  competing with the SAME stockpile that funds research/building, so
-     *  this only makes a civ commit the forces it already has, and seek out
-     *  more fights with them, more readily -- never trades its economy for
-     *  its army.
+    /** `id` matches the difficulty STRINGS that already flow through
+     *  main.js's aiDifficulty -> difficultyByCiv -> beginAITurn ->
+     *  applyDifficultyNoise (ai.js's DIFFICULTY_SPREAD, target-selection
+     *  jitter). Keeping them identical is what lets the two halves of the
+     *  setting coexist with no mapping table between them -- do not rename
+     *  one without the other.
      *
-     *  winProbFloorShift subtracts straight off minAcceptableWinProbability
-     *  (today: 0.9 - aggressiveness*0.4, i.e. a passive race holds out for
-     *  ~90% win odds) -- clamped in ai.js so it can never drop below a
-     *  reckless floor.
+     *  buildSpeedMult / researchSpeedMult multiply an AI's build and
+     *  research TURN COUNTS, so BELOW 1.0 means faster. Applied before
+     *  each function's existing minBuildTurns clamp, so hard floors
+     *  (Pioneer/Scout/Galley/walls) still hold. Research is dialed harder
+     *  than build on purpose: research is civ-wide serial (one at a time)
+     *  while building is per-city and already multiplies with city count.
      *
-     *  Low (index 0) = 1.0x / +0, reproducing the CURRENT game exactly --
-     *  today's AI is the "Low" baseline (2026-08-21, user-directed).
-     *  Normal/High's values below were re-validated via an 8-seed/4-race
-     *  headless batch (window.__sim) after the posture-function wiring
-     *  above was added -- see project memory for the actual before/after
-     *  numbers. Re-run that batch before changing these further; watch
-     *  army size, tech-layer progress, and win-condition mix same as any
-     *  other pacing change (see this file's own top-of-file CHANGING
-     *  VALUES note). */
-    /** bonusStartingScouts (2026-08-27, user-directed): extra free starting
-     *  Scouts handed to EVERY kingdom, the human player included, on top of
-     *  the usual 2 (or 1 + a Galley on a small island -- see main.js's
-     *  createNewGame). Deliberately symmetric: this is a "the whole world is
-     *  more aggressive" dial, not an AI handicap, and a one-sided scout
-     *  advantage would read as cheating rather than as difficulty.
+     *  militaryCapMult and militaryCapFloor are two halves of one idea and
+     *  both are needed. The mult scales the whole curve -- a militarism-0.9
+     *  Orc's ~27 ceiling becomes ~43 at Normal and ~59 at Hard. The FLOOR is
+     *  what fixes the early game: cap is population-derived, so a 2-city
+     *  turn-30 civ computes ~5 regardless of the mult, and only a flat
+     *  minimum decouples "can this AI field an army" from "has it grown
+     *  yet". The floor stops binding once population overtakes it.
      *
-     *  Unlike combatWeightMult/winProbFloorShift, which only ever change
-     *  decision WEIGHTS, this one changes starting material -- so it's read
-     *  exactly once, at game creation, and a mid-game aggression change
-     *  (not currently possible via the UI) would have no retroactive effect.
+     *  grantsStartingTech reverses one specific existing decision. See
+     *  main.js's createNewGame: every LAYER-0 tech is auto-completed for
+     *  free, but race.startingTech -- each race's signature layer-1 combat
+     *  unit (Raider, Spearguard, ...) -- is pointedly NOT, so "Scout is the
+     *  civ's only quasi-combat capability until that finishes". Granting it
+     *  to AI civs is the most direct possible answer to "the AI doesn't have
+     *  its military ready quickly enough", with no tech-picking heuristic to
+     *  invent.
      *
-     *  Why scouts specifically: earlier contact. The aggression multipliers
-     *  can only make a civ commit to fights it can already SEE, so on a
-     *  foggy early map they have nothing to act on -- more scouts means
-     *  enemies get found sooner, which is upstream of every other
-     *  aggression knob doing anything at all. */
-    /** The four dials below were added 2026-08-27 (user-directed) after
-     *  headless measurement showed why High still didn't FEEL aggressive:
-     *  the multipliers above only ever decide whether to commit units that
-     *  already exist, so they can't touch what a civ builds, what it can
-     *  see, or who it goes after. Measured at High before these: a city
-     *  faced any adjacent enemy on 1.1% of city-turns and a 3+ stack on
-     *  0.32%, across 3,781 city-turns.
+     *  bonusStartingUnits SHIPS WITH grantsStartingTech and is inert
+     *  without it: at turn 0 a civ has only Pioneer/Scout/Galley unlocked,
+     *  so there is no military unit to grant until the combat tech lands.
+     *  Read once, at world creation -- not retroactive to a loaded save.
      *
-     *  movementValueCredit: added to a military unit's build score per point
-     *  of movement above 2 (the median across units.js). A NUDGE, never a
-     *  filter -- attack/defense/first-strike/siege/ranged credits all still
-     *  compete, so a slow powerhouse still wins its slot when it's simply
-     *  better; a Cavalry just stops losing to a Spearguard by a hair. Fast
-     *  armies arrive while a threat still matters, which is most of what
-     *  "aggressive" means from the receiving end. See ai.js's militaryValue.
-     *
-     *  militaryCapMult: scales computeMilitaryCap, the ceiling on how big an
-     *  army the AI WANTS. Deliberately excluded from combatWeightMult back
-     *  in 2026-08-21 (user-directed: don't let aggression starve tech or
-     *  cities) -- this is a separate dial precisely so that constraint still
-     *  holds at Low/Normal, and only High trades some economy for troops. It
-     *  is also what makes a city choose a unit over Spread Culture: culture
-     *  is a LAST RESORT that only fires when chooseBuildAction found nothing
-     *  worth building, and a hit military cap is the usual reason nothing
-     *  was on offer.
-     *
-     *  humanTargetPriority: multiplies the distance-rank of a target owned by
-     *  the HUMAN player (see ai.js's targetRankDistance), so below 1.0 makes
-     *  the AI willing to march past a nearer AI-owned target to reach the
-     *  player's. Same "worth a detour" idiom as the existing contest-pressure
-     *  factor, and bounded the same way -- at 0.6 a human city is worth
-     *  walking ~40% further for, NOT an override that makes AI civs ignore
-     *  each other (they still fight, and a much closer AI target still wins).
-     *  Inert in spectator mode, where there is no human civ.
-     *
-     *  omniscient: AI civs see the whole map for DECISION-MAKING (ai.js reads
-     *  gameState.visibility in ~15 places). Applied after each civ's explored/
-     *  tileMemory snapshot is written from its REAL sight, so this changes
-     *  what the AI acts on without rewriting per-tile memory for the whole
-     *  map every turn for every civ -- which would be a real cost in time,
-     *  save size, and (for spectator fog-of-war display) truthfulness.
-     *  Never applied to a human civ: the player's own fog is the game.
-     *
-     *  siegeResearchBias (2026-08-27, user-directed): research-score
-     *  multiplier for a tech that unlocks a siege-capable unit, AND for every
-     *  tech on the prereq path to one. The path half is the entire point --
-     *  siege units sit at tech layer 3-5, so boosting only the unlock itself
-     *  does nothing until it is already reachable, which is exactly the
-     *  problem.
-     *
-     *  This is the measured root cause of "High still doesn't threaten my
-     *  cities". At turn 120 an AI fields ~60-80 military units with 0.3
-     *  siege among them, because the tech tree needs ~390-470 research-turns
-     *  and a game runs 120-155. Against a walled city every non-siege unit
-     *  in the game is floored at 1 damage (12 hits to remove one population
-     *  point); a Battering Ram does 17 and takes a level per swing. So the
-     *  gap between "annoying raids" and "a real siege" is entirely whether
-     *  the AI ever unlocks these units.
-     *
-     *  A multiplier on existing scoring, never a forced pick: an aggressive
-     *  civ leans hard toward the siege line but still takes an urgently
-     *  needed unlock or a cheap civic on the way. Left at 1.0 for
-     *  Low/Normal, which keeps their research behavior untouched. */
+     *  enforceRaceCultureAversion gates races.js's avoidsCultureSpread
+     *  (Orc). The race flag declares the disposition; this decides whether
+     *  it is honored, so at Easy an Orc AI still spends city-turns on
+     *  Spread Culture -- a genuine softening, not just flavour. */
     levels: [
-      { label: "Low", combatWeightMult: 1.0, winProbFloorShift: 0, bonusStartingScouts: 0,
-        movementValueCredit: 0, militaryCapMult: 1.0, humanTargetPriority: 1.0, omniscient: false,
-        siegeResearchBias: 1.0 },
-      { label: "Normal", combatWeightMult: 1.35, winProbFloorShift: 0.10, bonusStartingScouts: 0,
-        movementValueCredit: 0, militaryCapMult: 1.0, humanTargetPriority: 1.0, omniscient: false,
-        siegeResearchBias: 1.0 },
-      { label: "High", combatWeightMult: 1.7, winProbFloorShift: 0.20, bonusStartingScouts: 1,
-        movementValueCredit: 2.5, militaryCapMult: 1.35, humanTargetPriority: 0.6, omniscient: true,
-        siegeResearchBias: 3.0 },
+      { id: "easy", label: "Easy",
+        buildSpeedMult: 1.00, researchSpeedMult: 1.00,
+        militaryCapMult: 1.00, militaryCapFloor: 0,
+        bonusStartingUnits: 0, grantsStartingTech: false,
+        enforceRaceCultureAversion: false },
+      { id: "normal", label: "Normal",
+        buildSpeedMult: 0.80, researchSpeedMult: 0.75,
+        militaryCapMult: 1.60, militaryCapFloor: 6,
+        bonusStartingUnits: 1, grantsStartingTech: true,
+        enforceRaceCultureAversion: true },
+      { id: "hard", label: "Hard",
+        buildSpeedMult: 0.65, researchSpeedMult: 0.60,
+        militaryCapMult: 2.20, militaryCapFloor: 10,
+        bonusStartingUnits: 2, grantsStartingTech: true,
+        enforceRaceCultureAversion: true },
     ],
   },
 

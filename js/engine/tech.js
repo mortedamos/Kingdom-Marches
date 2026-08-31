@@ -86,6 +86,21 @@ window.GameEngine = window.GameEngine || {};
   // doesn't factor in the way it does for ai.js's raceUnitBuildRate). The
   // actual harvest/coin/lore price paid still comes from the unmodified,
   // linear effectiveTechCost -- only the TURN-COUNT curve is table-driven.
+  /** Game Difficulty's research multiplier for `civ`, or 1 for anyone opted
+   *  out of difficulty (the human player, the Monsters pseudo-civ).
+   *
+   *  A local copy rather than a call to ai.js's difficultyFor: this module
+   *  loads BEFORE ai.js (see index.html's script order), so reaching into
+   *  window.GameEngine.ai here would be a dependency in the wrong direction.
+   *  Reads config directly, exactly as turns.js does for its own needs. */
+  function difficultyResearchMult(civ) {
+    if (!civ || civ.isHuman) return 1;
+    if (civ.id === window.GameConfig.worldEncounters.monsters.civId) return 1;
+    const D = window.GameConfig.difficulty;
+    const level = D.levels[D.levelIndex] ?? D.levels[1];
+    return level.researchSpeedMult ?? 1;
+  }
+
   function researchTurns(civ, tech) {
     const race = window.GameData.getRace(civ.raceId);
     const industriousness = race.industriousness ?? 0.5;
@@ -97,7 +112,7 @@ window.GameEngine = window.GameEngine || {};
     // exponent on the ratio, not a flat multiplier, so it compresses the
     // whole curve smoothly rather than clamping the extremes.
     const ratio = Math.pow(P.baselineIndustriousness / industriousness, P.industriousnessDampExponent);
-    return Math.max(1, Math.round(baseTurns * ratio));
+    return Math.max(1, Math.round(baseTurns * ratio * difficultyResearchMult(civ)));
   }
 
   /** Counts down one turn on the civ's in-progress research. Research pays
