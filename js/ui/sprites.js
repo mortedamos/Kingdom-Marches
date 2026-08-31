@@ -683,8 +683,38 @@ window.UI = window.UI || {};
     }
   }
 
+  /** Loads exactly the tile-layer art the Knowledge Base's Terrain page
+   *  previews -- every terrain, every resource overlay, plus the ruin/cave
+   *  enhancements and the road/river stubs.
+   *
+   *  Mirrors ensureUnitLoaded's reason for existing: that page has to work
+   *  identically from the TITLE SCREEN, where preloadAll has never run (it
+   *  needs racesInPlay, which doesn't exist until a game starts), so
+   *  without this every preview there would sit on its flat color-swatch
+   *  fallback forever.
+   *
+   *  The key/path pairs are deliberately the same ones preloadAll builds
+   *  above rather than a second hand-copied list. loadVariants is
+   *  idempotent (an already-registered key resolves immediately), so
+   *  calling this again mid-game after preloadAll costs nothing. Always
+   *  resolves -- individual failures are swallowed, same as preloadAll. */
+  async function ensureTerrainArtLoaded() {
+    const jobs = [];
+    for (const id of Object.keys(window.GameData.TERRAIN)) {
+      jobs.push(loadVariants(`terrain/${id}`, `assets/terrain/${id}`));
+    }
+    for (const id of window.GameData.RESOURCE_LIST) {
+      jobs.push(loadVariants(`enhancement/resource_${id}`, `assets/enhancements/resource_${id}`));
+    }
+    jobs.push(loadVariants("enhancement/ruin", "assets/enhancements/ruin"));
+    jobs.push(loadVariants("enhancement/cave", "assets/enhancements/cave"));
+    jobs.push(loadVariants("road/hub", "assets/roads/road_hub"));
+    jobs.push(loadVariants("river/cardinal", "assets/rivers/river_cardinal"));
+    await Promise.allSettled(jobs);
+  }
+
   window.UI.sprites = {
     pick, pickDeterministic, pickUnit, pickBuilding, pickWallSegment, pickCityTier, currentFrame, preloadAll,
-    ensureUnitLoaded,
+    ensureUnitLoaded, ensureTerrainArtLoaded,
   };
 })();

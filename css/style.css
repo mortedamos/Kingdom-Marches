@@ -1659,6 +1659,29 @@ html, body {
 .kb-list-btn:hover { background: var(--bg-panel-raised); }
 .kb-list-btn-selected { background: var(--bg-panel-raised); border-color: var(--accent); }
 .kb-list-btn-symbol { width: 18px; text-align: center; color: var(--text-dim); }
+/* Terrain page's list marker: a color chip standing in for the glyph the
+   Units/Structures lists use in .kb-list-btn-symbol's slot -- terrain has
+   no symbol, but it does have a real color (terrain.js's own `color`, the
+   same value render.js paints the tile with). Same 18px column so both
+   list styles align identically. */
+.kb-list-btn-swatch {
+  width: 18px;
+  height: 14px;
+  flex: 0 0 auto;
+  border-radius: 2px;
+  border: 1px solid rgba(0, 0, 0, 0.45);
+}
+/* The Terrain profile's preview shares .kb-unit-portrait's box, but its
+   art is a TILE, not a figure on transparency -- so it gets a hard edge
+   and fills its frame rather than floating in it. */
+.kb-terrain-portrait {
+  width: 128px;
+  height: 128px;
+  flex: 0 0 auto;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  image-rendering: auto;
+}
 .kb-profile-pane { flex: 1; min-width: 0; overflow-y: auto; padding-right: 10px; }
 .kb-profile-empty {
   color: var(--text-dim);

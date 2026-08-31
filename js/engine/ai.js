@@ -14844,6 +14844,13 @@ window.GameEngine = window.GameEngine || {};
     performPlayerUnlockTheGate,
     hasOpenDisembarkTile,
     performPlayerDisembark,
+    // ROAD_MOVE_COST / getMoveCost (2026-08-31): exported so the Knowledge
+    // Base's Terrain page can show the REAL cost of leaving a road tile
+    // rather than a hand-copied 0.25 that would silently drift the moment
+    // this constant is retuned -- same "read the engine, never restate it"
+    // discipline that page uses for every terrain/resource number.
+    ROAD_MOVE_COST,
+    getMoveCost,
     computeMovementBudget,
     computeReachableTiles,
     buildMoveRules,

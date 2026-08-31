@@ -1169,12 +1169,327 @@ window.UI = window.UI || {};
       </div>`;
   }
 
+  /**
+   * TERRAIN PAGE
+   * ------------
+   * Every tile the map can be made of, plus every layer that can sit on top
+   * of one: the resource overlays, the Ruin/Cave features, and Rivers /
+   * Roads / Bridges.
+   *
+   * Same data-driven discipline as the Units page, and for the same reason:
+   * EVERY number shown here -- yields, movement costs, which terrain a
+   * resource can appear on -- is read live out of terrain.js (or, for the
+   * road, straight off ai.js's own ROAD_MOVE_COST), never restated. Retune
+   * Forest's move cost or Fish Shoal's harvest bonus and this page updates
+   * for free. The only hand-written half is each entry's `describe` prose,
+   * exactly like CONDITION_DESCRIPTIONS: there is no data field anywhere
+   * that says what Delving DOES, so that half can't be derived.
+   *
+   * The three FEATURE entries are the interesting case. Rivers and Ruins do
+   * have real data (RIVER_YIELD_BONUS / RUIN_YIELD_BONUS), so they read it.
+   * Roads deliberately reach into the ENGINE instead -- the flat cost to
+   * leave a road tile is a `const` in ai.js's getMoveCost, not tile data,
+   * so it's exported and read from there rather than copied here. The one
+   * genuinely un-sourceable number left is the road's +1 start-of-turn
+   * movement (a literal inside computeMovementBudget), which is prose.
+   */
+
+  // Yield/movement values that come straight from the data live in the
+  // entry-building code below; only what CAN'T be derived is written here.
+  // Same convention (and same "verified against the engine, not guessed"
+  // obligation) as CONDITION_DESCRIPTIONS at the top of this file. Numbers
+  // checked against turns.js's channel payout blocks, orders.js's
+  // contextMenuOptions gating, and config.js's worldEncounters as of
+  // 2026-08-31.
+  const TERRAIN_DESCRIPTIONS = {
+    ocean: "Deep water. Only naval units can cross it, and no land unit can ever set foot there -- not even a bridge helps, since bridges only span shallow water.",
+    coast: "Shallow water hugging the shoreline. Naval units cross it freely, land units can't -- unless a Pioneer bridges it, which makes the tile walkable and counts as a road. The only terrain a Fish Shoal appears on.",
+    plains: "Open, easily worked ground and the cheapest land to cross. The most common place to found a city.",
+    forest: "Dense woodland: slow to march through, but steady food and material. Elves treat it as home ground.",
+    hills: "Rolling high ground -- slow going, but rich in coin, and the terrain Iron and Gold veins are most often cut into.",
+    mountains: "Impassable to ordinary land units and to ships alike. Only flight, or a tech that tunnels through, gets a unit across one; a city can still work an adjacent mountain tile for its coin.",
+    desert: "Barren but flat -- as fast to cross as Plains, with almost nothing to harvest. Gold Veins do turn up here.",
+    swamp: "Waterlogged, slow, and poor. Orcs are at home here, and it's the one terrain a Marsh Adder or a summoned Wisp can occupy.",
+    tundra: "Frozen ground: slow to cross and yields nothing at all on its own. Only a resource sitting on top of it makes a tundra tile worth working.",
+
+    iron: "A worked vein of iron. A unit with prospecting (or any Dwarf, with Dwarven Mining) can channel Mine Vein here for a large one-off payout that banks when the channel ends -- and the vein can exhaust and reappear elsewhere on the map.",
+    game: "Herds worth hunting. A prospecting unit can channel Hunt Game here for a large one-off harvest payout on top of the passive tile bonus.",
+    gold: "A gold vein. Mined exactly like Iron, and the target of the Dwarf's Prospector's Claim.",
+    fertile: "Unusually rich soil. A prospecting unit can channel Farm Soil here for a large one-off harvest payout.",
+    fish: "A shoal in shallow water. Only a Galley can work it, and only with Fishing researched -- it channels in place, banking its catch when it stops.",
+    chest: "A one-shot find, not a worked tile -- it yields nothing at all while it just sits there. Any unit standing on it can Open Chest, which consumes it and rolls once: most of the time a payout of coin, lore, XP, a slice of the map revealed, or research time cut off the current tech -- but it can also be trapped.",
+
+    ruin: "The remains of something older. Any unit can channel Delving here (granted free to every kingdom at the start of the game), which pays out coin and lore when the channel ends. While delving, each turn also carries a small independent chance of waking a monster or turning up buried treasure -- each can happen only once per ruin, ever. An exhausted ruin reappears somewhere else after a few turns.",
+    cave: "Always found in linked pairs. A unit that spends a full turn to Enter Cave is moved to its partner cave wherever that is on the map -- a shortcut, not a yield. Caves produce nothing.",
+    river: "Flows along tile EDGES rather than filling a tile, so a river always sits on top of some other terrain and adds its bonus to whatever that terrain already yields. Standing on a river tile also puts out Burning.",
+    road: "Built by a Pioneer. Roads are the movement network: they make a route cheap to walk regardless of what's underneath, and a unit that BEGINS its turn on one gets +1 movement on top of that. The two stack, so a road chain is far faster than the raw per-step cost suggests. Some kingdoms' techs also make roads yield.",
+    bridge: "A Pioneer-built span across shallow water. It makes an otherwise impassable Coast tile walkable for land units and counts as a road for movement -- ships still sail underneath it unaffected. Bridges can't be built over deep Ocean.",
+  };
+
+  /** IMPASSABLE renders as a word, not "Infinity" -- and a fractional cost
+   *  (the road's 0.25) keeps its decimals rather than rounding to 0. */
+  function moveCostLabel(cost) {
+    if (cost == null || cost === window.GameData.IMPASSABLE) return "Impassable";
+    return String(cost);
+  }
+
+  /** "+2 Harvest, +1 Coin" for any {harvest,coin,lore} bag, or null when the
+   *  bag is empty/all-zero -- callers use the null to drop the row entirely
+   *  rather than printing a meaningless "+0". Same icon treatment and same
+   *  harvest/coin/lore ordering as STRUCTURE_EFFECTS' own yield line. */
+  function yieldLabelHtml(bag) {
+    if (!bag) return null;
+    const parts = ["harvest", "coin", "lore"]
+      .filter((k) => bag[k])
+      .map((k) => `${resourceIconHtml(k)}+${bag[k]} ${titleCase(k)}`);
+    return parts.length ? parts.join(", ") : null;
+  }
+
+  /**
+   * The whole page's content, rebuilt from live data on every render.
+   *
+   * Each entry carries `spriteKey` (what drawTerrainPortrait previews),
+   * `baseTerrain` (the terrain id this entry is previewed ON -- itself for
+   * a terrain, the ground underneath for an overlay; its terrain.js `color`
+   * doubles as the swatch shown while the art loads), and a
+   * `rows` list of label/value pairs already formatted. Building the rows
+   * HERE, rather than in the profile renderer, is what keeps the three
+   * different SHAPES of entry (a terrain with two movement costs, a
+   * resource with a validTerrain list, a feature with neither) from turning
+   * the renderer into a pile of type checks.
+   */
+  function terrainCatalog() {
+    const T = window.GameData.TERRAIN;
+    const R = window.GameData.RESOURCES;
+    const groups = [];
+
+    // --- Terrain -------------------------------------------------------
+    groups.push({
+      key: "terrain",
+      label: "Terrain",
+      entries: window.GameData.TERRAIN_LIST.map((id) => {
+        const t = T[id];
+        const rows = [];
+        const y = yieldLabelHtml(t.yield);
+        rows.push(["Yield", y || "Nothing on its own"]);
+        rows.push(["Land Movement", moveCostLabel(t.moveCostLand)]);
+        rows.push(["Naval Movement", moveCostLabel(t.moveCostNaval)]);
+        // Only listed on terrain that can actually host something, so a
+        // Mountains profile doesn't carry an empty "Resources" row.
+        const hosts = window.GameData.RESOURCE_LIST.filter((rid) => R[rid].validTerrain.includes(id));
+        if (hosts.length) rows.push(["Resources Found Here", hosts.map((rid) => escapeHtml(R[rid].label)).join(", ")]);
+        return {
+          key: id,
+          label: t.label,
+          kind: t.isWater ? "Water Terrain" : "Land Terrain",
+          spriteKey: `terrain/${id}`,
+          baseTerrain: id,
+          rows,
+        };
+      }),
+    });
+
+    // --- Resources -----------------------------------------------------
+    groups.push({
+      key: "resources",
+      label: "Tile Resources",
+      entries: window.GameData.RESOURCE_LIST.map((id) => {
+        const r = R[id];
+        const rows = [];
+        // Treasure Chest's `bonus: {}` is deliberate, not missing data --
+        // see terrain.js's own comment on it -- so it gets an explicit
+        // "none" rather than a dropped row that would read as an oversight.
+        rows.push(["Tile Bonus", yieldLabelHtml(r.bonus) || "None — not a worked tile"]);
+        rows.push(["Found On", r.validTerrain.map((tid) => escapeHtml(T[tid].label)).join(", ")]);
+        return {
+          key: id,
+          label: r.label,
+          kind: "Tile Resource",
+          spriteKey: `enhancement/resource_${id}`,
+          // Resource art is an overlay with no color of its own -- preview
+          // it over the first terrain it can actually appear on, so a Fish
+          // Shoal sits on water and an Iron Deposit on hills.
+          baseTerrain: r.validTerrain[0],
+          rows,
+        };
+      }),
+    });
+
+    // --- Features ------------------------------------------------------
+    const featureEntries = [];
+
+    featureEntries.push({
+      key: "ruin", label: window.GameData.RUIN_LABEL, kind: "Tile Feature",
+      spriteKey: "enhancement/ruin", baseTerrain: "plains",
+      rows: [
+        ["Tile Bonus", yieldLabelHtml(window.GameData.RUIN_YIELD_BONUS) || "None"],
+        ["Action", "Delving — any unit, any kingdom"],
+      ],
+    });
+    featureEntries.push({
+      key: "cave", label: window.GameData.CAVE_LABEL, kind: "Tile Feature",
+      spriteKey: "enhancement/cave", baseTerrain: "hills",
+      rows: [
+        ["Tile Bonus", "None"],
+        ["Action", "Enter Cave — costs the unit's whole turn"],
+      ],
+    });
+    featureEntries.push({
+      key: "river", label: "River", kind: "Tile Feature",
+      spriteKey: "river/cardinal", baseTerrain: "plains",
+      rows: [
+        ["Tile Bonus", yieldLabelHtml(window.GameData.RIVER_YIELD_BONUS) || "None"],
+        ["Land Movement", "The terrain underneath it — a river never changes what a tile costs to cross"],
+      ],
+    });
+    // The road's real movement number lives in the engine, not in tile data
+    // -- see this page's own doc comment above.
+    featureEntries.push({
+      key: "road", label: "Road", kind: "Built Improvement",
+      spriteKey: "road/hub", baseTerrain: "plains",
+      rows: [
+        ["Tile Bonus", "None by default — some kingdoms' techs add one"],
+        ["Land Movement", `${window.GameEngine.ai.ROAD_MOVE_COST} to leave a road tile, whatever terrain is underneath`],
+        ["Starting Here", "+1 Movement for the turn"],
+        ["Built By", "Pioneer"],
+      ],
+    });
+    featureEntries.push({
+      key: "bridge", label: "Bridge", kind: "Built Improvement",
+      spriteKey: null, baseTerrain: "coast",
+      rows: [
+        ["Tile Bonus", "None"],
+        ["Land Movement", `Counts as a road — ${window.GameEngine.ai.ROAD_MOVE_COST} to leave`],
+        ["Buildable On", escapeHtml(T.coast.label)],
+        ["Built By", "Pioneer"],
+      ],
+    });
+    groups.push({ key: "features", label: "Features & Improvements", entries: featureEntries });
+
+    return groups;
+  }
+
+  /** Flat key -> entry lookup across every group, so the profile pane can
+   *  resolve a selection without knowing which group it came from. */
+  function terrainEntry(key) {
+    for (const g of terrainCatalog()) {
+      const found = g.entries.find((e) => e.key === key);
+      if (found) return found;
+    }
+    return null;
+  }
+
+  /** Draws `entry`'s tile art onto `canvas`, over its flat terrain color.
+   *
+   *  The color underneath is not just a fallback -- resource/ruin/road/
+   *  river art are transparent OVERLAYS (that's how render.js layers them
+   *  on a real map), so without a terrain color behind them they'd preview
+   *  as floating fragments on nothing. Same lazy-load-then-redraw shape as
+   *  drawUnitPortrait, against ensureTerrainArtLoaded. */
+  function drawTerrainPortrait(canvas, entryKey) {
+    if (!canvas) return;
+    const entry = terrainEntry(entryKey);
+    if (!entry) return;
+    const ctx = canvas.getContext("2d");
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    const baseTerrain = window.GameData.TERRAIN[entry.baseTerrain];
+    // Flat color first, always -- it's what shows while the art loads, and
+    // it's the same value render.js paints the tile with.
+    if (baseTerrain) {
+      ctx.fillStyle = baseTerrain.color;
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+    }
+    const draw = (sprite) => {
+      const f = window.UI.sprites.currentFrame(sprite.manifest, "idle", null);
+      ctx.drawImage(sprite.image, f.sx, f.sy, f.sw, f.sh, 0, 0, canvas.width, canvas.height);
+    };
+    // Ground layer. For a terrain entry this IS the entry; for an overlay
+    // it's the tile underneath, without which the overlay would preview as
+    // floating fragments on a flat color instead of on real ground.
+    const baseSprite = entry.baseTerrain ? window.UI.sprites.pick(`terrain/${entry.baseTerrain}`, null) : null;
+    if (baseSprite) draw(baseSprite);
+    // Overlay layer, when this entry is one (resource/ruin/cave/river/road).
+    const isOverlay = entry.spriteKey && !entry.spriteKey.startsWith("terrain/");
+    const overlaySprite = isOverlay ? window.UI.sprites.pick(entry.spriteKey, null) : null;
+    if (overlaySprite) draw(overlaySprite);
+    // Retry only while something this entry actually wants is still absent
+    // -- an entry with no overlay art at all (Bridge) must not schedule a
+    // reload forever.
+    const stillMissing = !baseSprite || (isOverlay && !overlaySprite);
+    // `terrainArtRetried` makes the reload strictly one-shot per canvas.
+    // Without it, art that genuinely 404s would spin: the load settles,
+    // this redraws, the sprite is STILL missing, and it schedules another
+    // pass immediately -- a hot loop rather than a graceful fallback to the
+    // flat color swatch.
+    if (!stillMissing || canvas.dataset.terrainArtRetried === "1") return;
+    if (!window.UI.sprites.ensureTerrainArtLoaded) return;
+    canvas.dataset.terrainArtRetried = "1";
+    window.UI.sprites.ensureTerrainArtLoaded().then(() => {
+      // Guarded exactly like drawUnitPortrait: the player may have clicked
+      // a different entry (or closed the page) while the art was loading.
+      if (canvas.isConnected && canvas.dataset.portraitTerrainKey === entryKey) {
+        drawTerrainPortrait(canvas, entryKey);
+      }
+    });
+  }
+
+  function renderTerrainListHtml(selectedKey) {
+    return terrainCatalog().map((g) => `
+      <div class="kb-list-group">
+        <div class="kb-list-group-label">${escapeHtml(g.label)}</div>
+        ${g.entries.map((e) => {
+          const selected = e.key === selectedKey ? " kb-list-btn-selected" : "";
+          return `<button class="kb-list-btn${selected}" data-terrain-id="${escapeHtml(e.key)}">
+            <span class="kb-list-btn-swatch" style="background:${escapeHtml(window.GameData.TERRAIN[e.baseTerrain]?.color || "transparent")}"></span>
+            <span>${escapeHtml(e.label)}</span>
+          </button>`;
+        }).join("")}
+      </div>
+    `).join("");
+  }
+
+  /** Right-hand profile pane. Rows are already formatted by
+   *  terrainCatalog() -- see its doc comment for why. */
+  function renderTerrainProfileHtml(selectedKey) {
+    const entry = selectedKey ? terrainEntry(selectedKey) : null;
+    if (!entry) {
+      return `<div class="kb-profile-empty">Select a terrain, resource, or feature on the left to view its profile.</div>`;
+    }
+    const rowsHtml = entry.rows
+      .map(([label, value]) => `<div class="stat-row"><span>${escapeHtml(label)}</span><span>${value}</span></div>`)
+      .join("");
+    const description = TERRAIN_DESCRIPTIONS[entry.key];
+    return `
+      <div class="kb-profile-header">
+        <canvas class="kb-terrain-portrait" width="128" height="128" data-portrait-terrain-key="${escapeHtml(entry.key)}"></canvas>
+        <div>
+          <h2>${escapeHtml(entry.label)}</h2>
+          <div class="kb-profile-subline">${escapeHtml(entry.kind)}</div>
+        </div>
+      </div>
+      <h3>At a Glance</h3>
+      ${rowsHtml}
+      ${description ? `<h3>Notes</h3><div class="kb-stat-desc">${escapeHtml(description)}</div>` : ""}
+    `;
+  }
+
+  /** Full HTML for the Terrain page -- same list+profile layout every other
+   *  KMKB page uses. */
+  function renderTerrain(selectedKey) {
+    return `
+      <div class="kb-header"><h2>Terrain</h2></div>
+      <div class="kb-body">
+        <div class="kb-list-pane">${renderTerrainListHtml(selectedKey)}</div>
+        <div class="kb-profile-pane">${renderTerrainProfileHtml(selectedKey)}</div>
+      </div>`;
+  }
+
   // conditionDisplayName exported (2026-08-26) so techtree.js's own
   // condition cross-links (conditionLinksHtml) render the exact same label
   // this page's own list does, rather than a second hand-copied version
   // that could drift.
   window.UI.knowledgebase = {
-    renderUnits, renderConditions, renderStats, renderStructures, renderActions,
-    drawUnitPortrait, drawStructurePortrait, wireCombatSimulator, conditionDisplayName,
+    renderUnits, renderConditions, renderStats, renderStructures, renderActions, renderTerrain,
+    drawUnitPortrait, drawStructurePortrait, drawTerrainPortrait, wireCombatSimulator, conditionDisplayName,
   };
 })();

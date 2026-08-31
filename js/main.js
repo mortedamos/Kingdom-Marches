@@ -12,9 +12,10 @@
   let viewState = null;
   // Knowledge Base state is module-level rather than part of viewState --
   // the Knowledge menu has to work from the title screen too, before
-  // viewState (or gameState) exists. "units" | "structures" | "conditions" |
-  // "stats" | "techtrees" | null; knowledgeSelectedUnitId/
-  // knowledgeSelectedStructureId/knowledgeSelectedConditionKey/
+  // viewState (or gameState) exists. "units" | "structures" | "terrain" |
+  // "conditions" | "stats" | "actions" | "techtrees" | null;
+  // knowledgeSelectedUnitId/knowledgeSelectedStructureId/
+  // knowledgeSelectedTerrainKey/knowledgeSelectedConditionKey/
   // knowledgeSelectedStatKey/knowledgeSelectedRaceId each only matter for
   // their own page. See setupKnowledgeBase/renderKnowledgeOverlay.
   let knowledgeView = null;
@@ -23,6 +24,11 @@
   let knowledgeSelectedConditionKey = null;
   let knowledgeSelectedStatKey = null;
   let knowledgeSelectedActionKey = null;
+  // Terrain page (2026-08-31, user-directed): which catalog entry is open.
+  // One key space across all three of its groups (terrain ids, resource
+  // ids, and the feature keys ruin/cave/river/road/bridge) -- see
+  // knowledgebase.js's terrainCatalog, which the page resolves through.
+  let knowledgeSelectedTerrainKey = null;
   // Tech Trees page (2026-08-26, user-directed): which race's tree is
   // showing. Reference-only, gameplay-free -- see buildReferenceCiv --
   // unlike the sidebar's "View Tech Tree" (a specific LIVE civ's actual
@@ -1116,6 +1122,22 @@
       setMobileMenuOpen(!document.body.classList.contains("m-menu-open"));
     });
     $("title-m-scrim")?.addEventListener("click", () => setMobileMenuOpen(false));
+    // Opening a destination must not leave the drawer stacked behind it --
+    // the exact counterpart of setupMobileShell's own delegation for the
+    // in-game menu bar, which this was missing (2026-08-31): picking
+    // Knowledge > Units here opened the page with the drawer AND its scrim
+    // still up underneath, so closing the page dumped you back into an open
+    // drawer you never asked to still be there.
+    //
+    // Same two constraints as that one: matched on the LEAF buttons only
+    // (a section header like #title-menu-knowledge-btn just expands an
+    // accordion and must keep the drawer open), and reached via .closest()
+    // from a button known to be in the TITLE menu bar rather than a bare
+    // document.querySelector(".menu-bar") -- see setupMenuBar's own comment
+    // on why that query silently finds the wrong one of the two.
+    $("title-menu-file-btn")?.closest(".menu-bar")?.addEventListener("click", (e) => {
+      if (e.target.closest(".menu-dropdown-btn")) setMobileMenuOpen(false);
+    });
   }
 
   /** Open/close wiring for the launch options modal. Closing is deliberately
@@ -1305,6 +1327,23 @@
           renderKnowledgeOverlay();
         };
       }
+    } else if (knowledgeView === "terrain") {
+      // Terrain page (2026-08-31, user-directed): every terrain type plus
+      // the resource/ruin/cave/river/road/bridge layers that sit on one.
+      // No playerRaceId reordering, unlike Units/Structures -- terrain
+      // isn't owned by a kingdom, so there's no "your kingdom's own" group
+      // to float to the top.
+      content.innerHTML = window.UI.knowledgebase.renderTerrain(knowledgeSelectedTerrainKey);
+      const canvas = content.querySelector(".kb-terrain-portrait");
+      if (canvas) {
+        window.UI.knowledgebase.drawTerrainPortrait(canvas, canvas.dataset.portraitTerrainKey);
+      }
+      for (const btn of content.querySelectorAll(".kb-list-btn[data-terrain-id]")) {
+        btn.onclick = () => {
+          knowledgeSelectedTerrainKey = btn.dataset.terrainId;
+          renderKnowledgeOverlay();
+        };
+      }
     } else {
       // Player's own kingdom first (2026-08-27, user-directed): only in a
       // running single-player game (not spectating, not the title screen,
@@ -1345,6 +1384,7 @@
     knowledgeSelectedConditionKey = null;
     knowledgeSelectedStatKey = null;
     knowledgeSelectedActionKey = null;
+    knowledgeSelectedTerrainKey = null;
     knowledgeSelectedRaceId = null;
     knowledgeBackTarget = null;
     renderKnowledgeOverlay();
@@ -1492,6 +1532,8 @@
     if (unitsBtn) unitsBtn.addEventListener("click", () => openKnowledge("units"));
     const structuresBtn = $("kb-structures-btn");
     if (structuresBtn) structuresBtn.addEventListener("click", () => openKnowledge("structures"));
+    const terrainBtn = $("kb-terrain-btn");
+    if (terrainBtn) terrainBtn.addEventListener("click", () => openKnowledge("terrain"));
     const actionsBtn = $("kb-actions-btn");
     if (actionsBtn) actionsBtn.addEventListener("click", () => openKnowledge("actions"));
     const conditionsBtn = $("kb-conditions-btn");
@@ -1504,6 +1546,8 @@
     if (titleUnitsBtn) titleUnitsBtn.addEventListener("click", () => openKnowledge("units"));
     const titleStructuresBtn = $("title-kb-structures-btn");
     if (titleStructuresBtn) titleStructuresBtn.addEventListener("click", () => openKnowledge("structures"));
+    const titleTerrainBtn = $("title-kb-terrain-btn");
+    if (titleTerrainBtn) titleTerrainBtn.addEventListener("click", () => openKnowledge("terrain"));
     const titleActionsBtn = $("title-kb-actions-btn");
     if (titleActionsBtn) titleActionsBtn.addEventListener("click", () => openKnowledge("actions"));
     const titleConditionsBtn = $("title-kb-conditions-btn");
@@ -1513,7 +1557,17 @@
     const titleTechTreesBtn = $("title-kb-techtrees-btn");
     if (titleTechTreesBtn) titleTechTreesBtn.addEventListener("click", () => openKnowledge("techtrees"));
     $("knowledge-close-btn").addEventListener("click", closeKnowledge);
-    overlay.addEventListener("mousedown", (e) => { if (e.target === overlay) closeKnowledge(); });
+    // Pointer, not mouse (2026-08-31): a real touch tap fires a
+    // browser-synthesized compatibility mousedown AFTER touchend, and
+    // Safari re-hit-tests it against whatever is under the finger at that
+    // moment -- which, for a tap that just opened this overlay, is this
+    // overlay. A mousedown listener therefore reads its own opening tap as
+    // a click on the backdrop and closes the page immediately. Same ghost-
+    // event trap (and same fix) setupContextMenuDismissal documents at
+    // length for the ring menu; Chrome's touch emulation does NOT reproduce
+    // it, so this is deliberately fixed by matching that known-good
+    // precedent rather than by repro.
+    overlay.addEventListener("pointerdown", (e) => { if (e.target === overlay) closeKnowledge(); });
     document.addEventListener("keydown", (e) => {
       if (e.key === "Escape" && knowledgeView) closeKnowledge();
     });
