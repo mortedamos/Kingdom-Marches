@@ -229,12 +229,12 @@ window.GameData.UNITS = {
   },
   knight: {
     id: "knight", label: "Knight", symbol: "♞", category: "military", raceOnly: "human",
-    attack: 8, defense: 7, movement: 5, visionRadius: 3, // replaces Cavalry via the Knighthood tech
+    attack: 8, defense: 7, movement: 4, visionRadius: 3, // replaces Cavalry via the Knighthood tech
     coinCost: 32, firstStrikePct: 0.1, biggerPct: .25, attackChars: ["⚔", "🗡"],
   },
   paladin: {
     id: "paladin", label: "Paladin", symbol: "♞", category: "military", raceOnly: "human",
-    attack: 10, defense: 8, movement: 5, visionRadius: 4, firstStrikePct: 0.2, doubleStrikePct: 0.1, // replaces Knight via the Chivalric Order tech
+    attack: 10, defense: 8, movement: 4, visionRadius: 4, firstStrikePct: 0.2, doubleStrikePct: 0.1, // replaces Knight via the Chivalric Order tech
     coinCost: 42, biggerPct: .4, attackChars: ["⚔", "🗡", "🛡"], rare: true,
   },
   archer: {
@@ -249,7 +249,7 @@ window.GameData.UNITS = {
   },
   catapult: {
     id: "catapult", label: "Catapult", symbol: "⚙", category: "military", raceOnly: "human", range: 2,
-    attack: 7, defense: 3, movement: 2, visionRadius: 2, siegePct: 1.75, siegeAtRange: true, attackChars: ["🪨", "☄"],
+    attack: 7, defense: 3, movement: 2, visionRadius: 2, siegePct: 1.75, siegeAtRange: true, attackChars: ["🪨"],
     coinCost: 28, biggerPct: .5,
     // impactSmoke: a burst of dust/debris drawn on the TARGET's tile once
     // the lobbed stone lands -- see overlays.js's activeImpactSmoke/
@@ -275,7 +275,7 @@ window.GameData.UNITS = {
     // * 0.6^owned`) is entirely stat-independent by design.
     id: "wizard", label: "Wizard", symbol: "🧙‍♂️", category: "military", raceOnly: "human",
     attack: 3, defense: 2, movement: 2, visionRadius: 3, range: 2, burnChancePct: 0.1, frozenChancePct: 0.1, 
-    coinCost: 35, attackChars: ["⚡", "❄️", "🔥", "☄", "✨"], biggerPct: .1,
+    coinCost: 35, attackChars: ["⚡", "❄️", "🔥", "✨"], biggerPct: .1,
   },
 
   // --- ELF full roster (see techs.js) ---
