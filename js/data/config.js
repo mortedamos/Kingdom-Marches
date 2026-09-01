@@ -65,9 +65,9 @@ window.GameConfig = {
     /** Local date this build was cut, YYYY-MM-DD. */
     date: "2026-08-31",
     /** Local time this build was cut, 24-hour HH:MM. */
-    time: "20:46",
+    time: "20:49",
     /** Monotonic build counter -- increment it, don't recompute it. */
-    number: 221,
+    number: 222,
   },
 
   // =========================================================================
@@ -799,7 +799,7 @@ window.GameConfig = {
      *  (5/8/10/13/15 per level) so surviving a few fights pays off visibly
      *  early, while level 5 stays a genuine long-game achievement.
      *  sidebar.js's "X / Y XP" readout shows this threshold raw, unrounded. */
-    xpThresholds: [5, 13, 23, 36, 51],
+    xpThresholds: [5, 15, 25, 35, 45],
 
     /** XP awarded per combat action: a flat participation grant, a per-point
      *  of damage dealt grant, and a kill bonus that scales with how strong
