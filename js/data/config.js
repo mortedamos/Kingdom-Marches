@@ -65,9 +65,9 @@ window.GameConfig = {
     /** Local date this build was cut, YYYY-MM-DD. */
     date: "2026-08-31",
     /** Local time this build was cut, 24-hour HH:MM. */
-    time: "20:44",
+    time: "20:46",
     /** Monotonic build counter -- increment it, don't recompute it. */
-    number: 220,
+    number: 221,
   },
 
   // =========================================================================
@@ -346,7 +346,7 @@ window.GameConfig = {
      *  needed to reach max population. Paired deliberately with
      *  fillRateRadiusScale below; tune the two together, not separately. */
     growthThresholdPerPop: 100.0,
-    growthThresholdExponent: 1.6,
+    growthThresholdExponent: 1.7,
 
     /** Cap on NATURAL (population-driven) growth and radius. Tech/building
      *  radius bonuses still stack on top of this, uncapped. */

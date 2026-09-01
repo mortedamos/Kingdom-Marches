@@ -40,21 +40,21 @@ window.GameData.TERRAIN = {
   ocean: {
     id: "ocean", label: "Ocean", color: "#1c3f5e",
     isWater: true, isDeepWater: true, blendPriority: 0,
-    yield: { harvest: 0, coin: 0, lore: 0 },
+    yield: { harvest: 1, coin: 0, lore: 0 },
     moveCostLand: window.GameData.IMPASSABLE,
     moveCostNaval: 1,
   },
   coast: {
     id: "coast", label: "Shallow Water / Coast", color: "#3a6f8f",
     isWater: true, isDeepWater: false, blendPriority: 1,
-    yield: { harvest: 2, coin: 1, lore: 0 },
+    yield: { harvest: 2, coin: 0, lore: 0 },
     moveCostLand: window.GameData.IMPASSABLE,
     moveCostNaval: 1,
   },
   plains: {
     id: "plains", label: "Plains", color: "#9bb35b",
     isWater: false, blendPriority: 3,
-    yield: { harvest: 2, coin: 1, lore: 0 },
+    yield: { harvest: 2, coin: 0, lore: 0 },
     moveCostLand: 1,
     moveCostNaval: window.GameData.IMPASSABLE,
   },
@@ -68,7 +68,7 @@ window.GameData.TERRAIN = {
   hills: {
     id: "hills", label: "Hills", color: "#a08b5f",
     isWater: false, blendPriority: 6,
-    yield: { harvest: 1, coin: 2, lore: 0 },
+    yield: { harvest: 1, coin: 1, lore: 0 },
     moveCostLand: 2,
     moveCostNaval: window.GameData.IMPASSABLE,
   },
@@ -83,7 +83,7 @@ window.GameData.TERRAIN = {
     id: "desert", label: "Desert", color: "#cbb878",
     isWater: false, blendPriority: 2,
     yield: { harvest: 0, coin: 1, lore: 0 },
-    moveCostLand: 1,
+    moveCostLand: 2,
     moveCostNaval: window.GameData.IMPASSABLE,
   },
   swamp: {
