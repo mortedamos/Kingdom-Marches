@@ -137,6 +137,20 @@ body.mobile .menu-bar {
   z-index: 60;
   width: min(82vw, 20rem);
   flex-direction: column;
+  /* Desktop's base .menu-bar rule (css/style.css) sets `flex-wrap: wrap` for
+     its own horizontal button row, and this override never reset it back to
+     nowrap for the column layout below. A `flex-direction: column` +
+     `flex-wrap: wrap` container that overflows its height doesn't scroll --
+     it starts a NEW COLUMN for whatever didn't fit, and on at least one
+     real device (2026-08-31, user-reported) that second column rendered at
+     the same origin as the first, visually merging "Reports" into "File".
+     Root-caused by resizing the emulated viewport short enough to overflow
+     by only a few pixels -- reproduced here, not on the real device, but
+     the mechanism is confirmed: without this line, .menu-bar's own
+     scrollHeight never exceeds its clientHeight even when content plainly
+     doesn't fit, because the overflow was being absorbed by a phantom
+     column instead of the `overflow-y: auto` this rule asks for. */
+  flex-wrap: nowrap;
   align-items: stretch;
   gap: 0;
   overflow-y: auto;
