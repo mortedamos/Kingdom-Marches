@@ -249,7 +249,7 @@ window.GameData.UNITS = {
   },
   catapult: {
     id: "catapult", label: "Catapult", symbol: "⚙", category: "military", raceOnly: "human", range: 2,
-    attack: 7, defense: 3, movement: 2, visionRadius: 2, siegePct: 1.75, siegeAtRange: true, attackChars: ["🪨"],
+    attack: 7, defense: 3, movement: 2, visionRadius: 2, siegePct: 1.25, siegeAtRange: true, attackChars: ["🪨"],
     coinCost: 28, biggerPct: .5,
     // impactSmoke: a burst of dust/debris drawn on the TARGET's tile once
     // the lobbed stone lands -- see overlays.js's activeImpactSmoke/
@@ -260,7 +260,7 @@ window.GameData.UNITS = {
   },
   trebuchet: {
     id: "trebuchet", label: "Trebuchet", symbol: "⚙", category: "military", raceOnly: "human", range: 3,
-    attack: 8, defense: 4, movement: 2, visionRadius: 2, siegePct: 2.25, siegeAtRange: true, // replaces Catapult
+    attack: 8, defense: 4, movement: 2, visionRadius: 2, siegePct: 1.5, siegeAtRange: true, // replaces Catapult
     coinCost: 40, attackChars: ["🪨", "☄"], biggerPct: .6,
     impactSmoke: true, // see catapult's own comment on this flag
     nameSpecial: true, // a machine, not a person -- see unit-names.js
@@ -343,7 +343,7 @@ window.GameData.UNITS = {
   // the Titan.
   awakened_oak: {
     id: "awakened_oak", label: "Awakened Oak", symbol: "♣", category: "military", raceOnly: "elf",
-    attack: 10, defense: 9, movement: 3, visionRadius: 3, siegePct: 2.0,
+    attack: 10, defense: 9, movement: 3, visionRadius: 3, siegePct: 1.5,
     coinCost: 65, biggerPct: 1.0, attackChars: ["🌳", "𖣂", "🌿", "🫚"],
     rare: true, neverExplores: true,
     nameSpecial: true, // a living tree, not a person -- see unit-names.js
@@ -356,7 +356,7 @@ window.GameData.UNITS = {
   // from, same name, same upkeep.
   dire_bear: {
     id: "dire_bear", label: "Dire Bear", symbol: "🐻", category: "military", raceOnly: "elf",
-    attack: 9, defense: 9, movement: 3, visionRadius: 2, siegePct: 0.50,
+    attack: 9, defense: 9, movement: 3, visionRadius: 2, siegePct: 0.3,
     attackChars: ["𓆩", "彡"], biggerPct: .6, doubleStrikePct: 0.1,
     cityBuildable: false,
   },
@@ -487,7 +487,7 @@ window.GameData.UNITS = {
     // High defense is load-bearing: near-indestructible to an ordinary
     // attacker, so Resilient Spirit/Unyielding's death-save shouldn't fire
     // on a hit against a full-health Titan.
-    attack: 10, defense: 18, movement: 2, visionRadius: 2, siegePct: 3.50,
+    attack: 10, defense: 18, movement: 2, visionRadius: 2, siegePct: 2.5,
     coinCost: 60, biggerPct: 1.2, attackChars: ["🪨", "💥", "👊"],
     veryRare: true, neverExplores: true, siegeTarget: true,
     nameSpecial: true, // a construct, not a person -- see unit-names.js
@@ -503,7 +503,7 @@ window.GameData.UNITS = {
   // the unit never throws a normal punch with it.
   bombard: {
     id: "bombard", label: "Bombard", symbol: "⛰", category: "military", raceOnly: "dwarf", range: 3,
-    attack: 8, defense: 4, movement: 2, visionRadius: 3, siegePct: 2.75, siegeAtRange: true,
+    attack: 8, defense: 4, movement: 2, visionRadius: 3, siegePct: 1.5, siegeAtRange: true,
     attackChars: ["⚫️", "💥"], biggerPct: .6, burnChancePct: 0.5,
     noOrdinaryAttack: true, neverExplores: true, muzzleSmoke: true,
     nameSpecial: true, // a machine, not a person -- see unit-names.js
@@ -583,7 +583,7 @@ window.GameData.UNITS = {
   },
   battering_ram: {
     id: "battering_ram", label: "Battering Ram", symbol: "⚙", category: "military", raceOnly: "orc",
-    attack: 7, defense: 6, movement: 2, visionRadius: 2, siegePct: 2.0,
+    attack: 7, defense: 6, movement: 2, visionRadius: 2, siegePct: 1.5,
     coinCost: 30, biggerPct: .5, attackChars: ["💥"],
     nameSpecial: true, // a machine, not a person -- see unit-names.js
   },

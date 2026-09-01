@@ -65,9 +65,9 @@ window.GameConfig = {
     /** Local date this build was cut, YYYY-MM-DD. */
     date: "2026-08-31",
     /** Local time this build was cut, 24-hour HH:MM. */
-    time: "20:49",
+    time: "20:55",
     /** Monotonic build counter -- increment it, don't recompute it. */
-    number: 222,
+    number: 223,
   },
 
   // =========================================================================
@@ -805,9 +805,9 @@ window.GameConfig = {
      *  of damage dealt grant, and a kill bonus that scales with how strong
      *  the victim was (so farming weak targets is a poor way to level). */
     xpParticipation: 1,
-    xpPerDamage: 0.15,
+    xpPerDamage: 0.1,
     xpKillBase: 3,
-    xpKillPowerMult: 0.5,
+    xpKillPowerMult: 0.25,
 
     /** Per-level bonus for each of the seven upgrade paths a leveling unit
      *  can pick. Attack/Defense are flat +1 (meaningful on this game's small
@@ -823,9 +823,9 @@ window.GameConfig = {
     bonusValues: {
       attack: 1,
       defense: 1,
-      siegePct: 0.20,
-      firstStrikePct: 0.04,
-      doubleStrikePct: 0.07,
+      siegePct: 0.10,
+      firstStrikePct: 0.05,
+      doubleStrikePct: 0.075,
       visionRadius: 1,
       movement: 0.5,
     },
