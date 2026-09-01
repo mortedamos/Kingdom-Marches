@@ -1686,7 +1686,7 @@ window.GameEngine = window.GameEngine || {};
     return hits;
   }
 
-  const FIREBALL_DAMAGE_PCT = 0.66;
+  const FIREBALL_DAMAGE_PCT = 0.5;
 
   /**
    * Human "Fireball!" (see ai.js's performWizardFireball): a standalone

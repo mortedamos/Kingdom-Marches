@@ -65,9 +65,9 @@ window.GameConfig = {
     /** Local date this build was cut, YYYY-MM-DD. */
     date: "2026-08-31",
     /** Local time this build was cut, 24-hour HH:MM. */
-    time: "20:55",
+    time: "21:43",
     /** Monotonic build counter -- increment it, don't recompute it. */
-    number: 223,
+    number: 224,
   },
 
   // =========================================================================
@@ -808,6 +808,16 @@ window.GameConfig = {
     xpPerDamage: 0.1,
     xpKillBase: 3,
     xpKillPowerMult: 0.25,
+
+    /** XP awarded per ROUND (once per turn it's still active) of any
+     *  gathering channel -- Dungeon Delving, Galley Fishing, Hunt Game, Farm
+     *  Soil, Mine Vein (2026-08-31, user-directed). Flat, not scaled by the
+     *  channel's own resource payout -- gathering has no "damage dealt" or
+     *  "kill" analogue, so this is the whole grant, routed through the same
+     *  grantXPAndAutoLevel path combat XP uses (see turns.js's own call
+     *  sites) so it still picks up Altar of Ages/Neighborhood Pub/Runeforged
+     *  Tools' XP-rate bonuses like any other XP grant. */
+    xpPerGatheringRound: 1,
 
     /** Per-level bonus for each of the seven upgrade paths a leveling unit
      *  can pick. Attack/Defense are flat +1 (meaningful on this game's small

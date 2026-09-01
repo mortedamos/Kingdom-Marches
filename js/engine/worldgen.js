@@ -125,7 +125,7 @@ window.GameEngine = window.GameEngine || {};
    * today's original behavior, unchanged) -- see main.js's Game Options
    * "World Type" slider.
    */
-  function generateMap(width, height, seed, worldType) {
+  function generateMap(width, height, seed, worldType, numCivs) {
     const typeConfig = WORLD_TYPE_CONFIG[worldType] || WORLD_TYPE_CONFIG.continent;
     const rng = makeRng(seed);
     const elevationNoise = makeValueNoise(rng);
@@ -348,8 +348,10 @@ window.GameEngine = window.GameEngine || {};
     // --- Ruins (guaranteed minimum per landmass, land-only, never on water) ---
     placeRuins(tiles, width, height, rng, landmasses);
 
-    // --- Caves (1-2 linked pairs per map, land-only, never on water) ---
-    placeCaves(tiles, width, height, rng, landmasses);
+    // --- Caves (2-3 linked pairs per map, land-only, never on water; plus a
+    //     guaranteed island-to-mainland link for every landmass a kingdom
+    //     actually starts on) ---
+    placeCaves(tiles, width, height, rng, landmasses, numCivs || 1);
 
     return { width, height, tiles, seed, landmasses };
   }
@@ -695,44 +697,73 @@ window.GameEngine = window.GameEngine || {};
     }
   }
 
-  /** Caves (2026-08-19, user-directed): 1-2 linked PAIRS per map, land-only
-   *  (never on water, same constraint as Ruins), reusing the same
-   *  min-spacing-via-rejection-sampling shape as placeRuins above. Unlike
-   *  Ruins, a cave's two tiles are stamped as a linked PAIR spanning the
-   *  whole map (not per-landmass) -- see js/engine/orders.js's
-   *  performEnterCave, which reads tile.caveLinkX/caveLinkY to know where a
-   *  unit standing on tile.isCave teleports to. A pair is deliberately
-   *  required to land far apart (at least a quarter of the map's diagonal)
-   *  so it reads as a real shortcut, not two adjacent tiles that happen to
-   *  be linked. */
-  function placeCaves(tiles, width, height, rng, landmasses) {
-    const PAIR_COUNT = rng() < 0.5 ? 1 : 2;
+  /** Caves (2026-08-19, user-directed; bumped 2026-08-31): 2-3 linked PAIRS
+   *  per map (was 1-2), land-only (never on water, same constraint as
+   *  Ruins), reusing the same min-spacing-via-rejection-sampling shape as
+   *  placeRuins above. Unlike Ruins, a cave's two tiles are stamped as a
+   *  linked PAIR spanning the whole map (not per-landmass) -- see
+   *  js/engine/orders.js's performEnterCave, which reads tile.caveLinkX/
+   *  caveLinkY to know where a unit standing on tile.isCave teleports to. A
+   *  pair is deliberately required to land far apart (at least a quarter of
+   *  the map's diagonal) so it reads as a real shortcut, not two adjacent
+   *  tiles that happen to be linked.
+   *
+   *  `numCivs` (2026-08-31, user-directed) drives a SECOND, guaranteed pass
+   *  after the random one above: every landmass a civ can actually start on
+   *  EXCEPT the biggest one -- an "island kingdom" under this game's own
+   *  round-robin start rule (js/main.js's createNewGame: landmasses sorted
+   *  biggest-first, one civ per landmass until civs run out, wrapping if
+   *  there are more civs than landmasses) -- gets its own cave pair to the
+   *  biggest landmass, unless the random pass above already happened to
+   *  land one there. Loosely mirrors main.js's own eligibility rule rather
+   *  than importing it: worldgen has already erased every landmass under 13
+   *  tiles (enforceMinimumLandmassSize above), so main.js's own >= 8 filter
+   *  can never actually exclude anything by the time landmasses reaches
+   *  here -- every survivor is eligible. */
+  function placeCaves(tiles, width, height, rng, landmasses, numCivs) {
+    const PAIR_COUNT = (rng() < 0.5 ? 1 : 2) + 1;
     const MIN_LINK_DIST = Math.floor(Math.hypot(width, height) / 4);
     const MIN_SPACING_FROM_OTHER_CAVES = 3;
-    const eligible = [];
-    for (const group of landmasses) {
-      for (const idx of group) {
-        const t = tiles[idx];
-        // Mountains is technically part of a landmass (findLandmasses
-        // groups by "not water", not by "actually walkable" -- see its own
-        // doc comment), but genuinely IMPASSABLE for ordinary land
-        // movement. A cave linking there was still a legal placement, and
-        // performEnterCave has no passability check of its own (a cave is
-        // meant to bypass terrain rules) -- so a unit that used one
-        // arrived somewhere it could never take a single step away from
-        // again, since leaving Mountains costs the same IMPASSABLE value
-        // that blocks ever entering it (2026-08-19 bugfix; see
-        // ai.js's getMoveCost for the runtime safety net that also covers
-        // any cave already placed on Mountains in an existing save).
-        if (t.terrain === "mountains") continue;
-        if (!t.isRuin && !t.resource) eligible.push(idx);
-      }
-    }
+
+    // Per-landmass eligible pools (land, not Mountains, no ruin/resource
+    // already sitting there) -- built once, reused both by the random pass
+    // below (which pools every landmass together) and the guarantee pass
+    // (which needs one specific landmass's own pool at a time).
+    const eligibleByLandmass = landmasses.map((group) => group.filter((idx) => {
+      const t = tiles[idx];
+      // Mountains is technically part of a landmass (findLandmasses
+      // groups by "not water", not by "actually walkable" -- see its own
+      // doc comment), but genuinely IMPASSABLE for ordinary land
+      // movement. A cave linking there was still a legal placement, and
+      // performEnterCave has no passability check of its own (a cave is
+      // meant to bypass terrain rules) -- so a unit that used one
+      // arrived somewhere it could never take a single step away from
+      // again, since leaving Mountains costs the same IMPASSABLE value
+      // that blocks ever entering it (2026-08-19 bugfix; see
+      // ai.js's getMoveCost for the runtime safety net that also covers
+      // any cave already placed on Mountains in an existing save).
+      if (t.terrain === "mountains") return false;
+      return !t.isRuin && !t.resource;
+    }));
+    const eligible = eligibleByLandmass.flat();
+
     const placedTiles = [];
     const tooCloseToPlaced = (cx, cy) => placedTiles.some((pIdx) => {
       const px = pIdx % width, py = Math.floor(pIdx / width);
       return Math.max(Math.abs(px - cx), Math.abs(py - cy)) <= MIN_SPACING_FROM_OTHER_CAVES;
     });
+    function linkPair(idxA, idxB) {
+      const ax = idxA % width, ay = Math.floor(idxA / width);
+      const bx = idxB % width, by = Math.floor(idxB / width);
+      tiles[idxA].isCave = true;
+      tiles[idxA].caveLinkX = bx;
+      tiles[idxA].caveLinkY = by;
+      tiles[idxB].isCave = true;
+      tiles[idxB].caveLinkX = ax;
+      tiles[idxB].caveLinkY = ay;
+      placedTiles.push(idxA, idxB);
+    }
+
     let pairsPlaced = 0;
     let pairAttempts = 0;
     while (pairsPlaced < PAIR_COUNT && pairAttempts < 60) {
@@ -750,15 +781,37 @@ window.GameEngine = window.GameEngine || {};
         break;
       }
       if (idxB === null) continue; // no far-enough partner found this attempt -- retry pair from scratch
-      const bx = idxB % width, by = Math.floor(idxB / width);
-      tiles[idxA].isCave = true;
-      tiles[idxA].caveLinkX = bx;
-      tiles[idxA].caveLinkY = by;
-      tiles[idxB].isCave = true;
-      tiles[idxB].caveLinkX = ax;
-      tiles[idxB].caveLinkY = ay;
-      placedTiles.push(idxA, idxB);
+      linkPair(idxA, idxB);
       pairsPlaced++;
+    }
+
+    // --- Guaranteed island -> mainland link -------------------------------
+    // "Mainland" = the biggest landmass. Every OTHER landmass a civ can
+    // actually start on (main.js's own round-robin, see this function's own
+    // doc comment) gets checked for an existing cave whose partner already
+    // sits on the mainland, and gets one forced in if it doesn't have one.
+    if (landmasses.length > 1 && numCivs > 1) {
+      const byOriginalIdx = landmasses
+        .map((group, idx) => ({ idx, size: group.length }))
+        .sort((a, b) => b.size - a.size);
+      const mainlandIdx = byOriginalIdx[0].idx;
+      const settledCount = Math.min(numCivs, byOriginalIdx.length);
+      for (let i = 1; i < settledCount; i++) {
+        const islandIdx = byOriginalIdx[i].idx;
+        const alreadyLinked = landmasses[islandIdx].some((idx) => {
+          const t = tiles[idx];
+          if (!t.isCave) return false;
+          return tiles[t.caveLinkY * width + t.caveLinkX].landmassId === mainlandIdx;
+        });
+        if (alreadyLinked) continue;
+        const islandPool = eligibleByLandmass[islandIdx].filter((idx) => !tiles[idx].isCave);
+        const mainlandPool = eligibleByLandmass[mainlandIdx].filter((idx) => !tiles[idx].isCave);
+        if (islandPool.length === 0 || mainlandPool.length === 0) continue; // no legal tile left -- give up gracefully, same shape as the random pass's own attempt cap
+        linkPair(
+          islandPool[Math.floor(rng() * islandPool.length)],
+          mainlandPool[Math.floor(rng() * mainlandPool.length)],
+        );
+      }
     }
   }
 

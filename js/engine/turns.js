@@ -908,6 +908,10 @@ window.GameEngine = window.GameEngine || {};
         // accumulateChannelStash's doc comment above. 3x payout (2026-08-17,
         // user-directed, applies to every prospecting/gathering action).
         accumulateChannelStash(unit, { coin: 9 * marketcraftMult, lore: 9 * marketcraftMult });
+        // Gathering XP (2026-08-31, user-directed): 1 per round for every
+        // gathering channel, not just this one -- see config.js's
+        // leveling.xpPerGatheringRound doc comment.
+        window.GameEngine.ai.grantXPAndAutoLevel(unit, civ, window.GameConfig.leveling.xpPerGatheringRound);
 
         // Ruin encounters: each can fire AT MOST ONCE per Ruin, ever --
         // tracked on the TILE itself (not the unit), so it survives a
@@ -990,6 +994,9 @@ window.GameEngine = window.GameEngine || {};
       // accumulateChannelStash's doc comment above. 3x payout plus the
       // withProspectingLore kicker (2026-08-17, user-directed).
       accumulateChannelStash(unit, withProspectingLore({ harvest: 15 * marketcraftMult, coin: 6 * marketcraftMult }));
+      // Gathering XP -- see the Dungeon Delve block above for why this is
+      // flat and shared across every gathering channel.
+      window.GameEngine.ai.grantXPAndAutoLevel(unit, civ, window.GameConfig.leveling.xpPerGatheringRound);
       if (Math.random() < resourceExhaustionChanceFor(civ)) {
         scheduleResourceRespawn(gameState, tile.resource);
         tile.resource = null;
@@ -1024,6 +1031,8 @@ window.GameEngine = window.GameEngine || {};
       }
       // 3x payout plus the withProspectingLore kicker (2026-08-17, user-directed).
       accumulateChannelStash(unit, withProspectingLore({ harvest: 9 * marketcraftMult }));
+      // Gathering XP -- see the Dungeon Delve block above.
+      window.GameEngine.ai.grantXPAndAutoLevel(unit, civ, window.GameConfig.leveling.xpPerGatheringRound);
       if (Math.random() < resourceExhaustionChanceFor(civ)) {
         scheduleResourceRespawn(gameState, tile.resource);
         tile.resource = null;
@@ -1043,6 +1052,8 @@ window.GameEngine = window.GameEngine || {};
       }
       // 3x payout plus the withProspectingLore kicker (2026-08-17, user-directed).
       accumulateChannelStash(unit, withProspectingLore({ harvest: 9 * marketcraftMult }));
+      // Gathering XP -- see the Dungeon Delve block above.
+      window.GameEngine.ai.grantXPAndAutoLevel(unit, civ, window.GameConfig.leveling.xpPerGatheringRound);
       if (Math.random() < resourceExhaustionChanceFor(civ)) {
         scheduleResourceRespawn(gameState, tile.resource);
         tile.resource = null;
@@ -1079,6 +1090,8 @@ window.GameEngine = window.GameEngine || {};
         + (civ.mechanicValues?.deep_mines_yield || 0);
       // 3x payout plus the withProspectingLore kicker (2026-08-17, user-directed).
       accumulateChannelStash(unit, withProspectingLore({ coin: 9 * yieldMult * marketcraftMult }));
+      // Gathering XP -- see the Dungeon Delve block above.
+      window.GameEngine.ai.grantXPAndAutoLevel(unit, civ, window.GameConfig.leveling.xpPerGatheringRound);
       if (Math.random() < resourceExhaustionChanceFor(civ)) {
         scheduleResourceRespawn(gameState, tile.resource);
         tile.resource = null;

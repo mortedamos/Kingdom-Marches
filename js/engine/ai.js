@@ -8812,17 +8812,34 @@ window.GameEngine = window.GameEngine || {};
     return best;
   }
 
-  /** Every cave entrance on the map, as {x, y, linkX, linkY} pairs (one
-   *  entry per entrance, both ends of a pair each get their own entry
-   *  pointing at the other). Caves are a permanent worldgen feature (see
-   *  worldgen.js's placeCaves) with only 1-2 pairs per map, so a flat scan
-   *  is cheap -- no fog gating, same omniscient-world-feature convention as
-   *  nearestEnemyLandmark above. */
-  function allCaveEntrances(map) {
+  /** Every cave entrance THIS CIV HAS ACTUALLY DISCOVERED, as {x, y, linkX,
+   *  linkY} pairs (one entry per entrance, both ends of a pair each get
+   *  their own entry pointing at the other). Caves are a permanent worldgen
+   *  feature (see worldgen.js's placeCaves) with only a handful of pairs
+   *  per map, so a flat scan of this civ's own explored set is cheap.
+   *
+   *  Gated on gameState.tileMemory[civ.id] (2026-08-31, user-directed:
+   *  "AI player should ... remember where [caves] go") -- turns.js's
+   *  refreshVisibility already snapshots `isCave` into every civ's own
+   *  persistent per-tile memory the instant a cave tile is first seen, and
+   *  that memory "only ever grows (never forgets a tile once seen)" per its
+   *  own doc comment, so this reads as exactly "remembered forever once
+   *  discovered," no new state needed. Only the boolean lives in memory --
+   *  `caveLinkX/caveLinkY` are read straight off the live tile regardless,
+   *  since a cave's exit is fixed at worldgen and never changes over the
+   *  game, same as reading a remembered tile's static `terrain` never needs
+   *  gating either. This replaces the previous fully-omniscient whole-map
+   *  scan, which let the AI route through caves it had no way to have ever
+   *  actually seen. */
+  function allCaveEntrances(map, civId, gameState) {
+    const memory = gameState.tileMemory?.[civId];
+    if (!memory) return [];
     const entrances = [];
-    for (let idx = 0; idx < map.tiles.length; idx++) {
+    for (const idxKey in memory) {
+      if (!memory[idxKey].isCave) continue;
+      const idx = Number(idxKey);
       const t = map.tiles[idx];
-      if (t.isCave) entrances.push({ x: t.x, y: t.y, linkX: t.caveLinkX, linkY: t.caveLinkY });
+      entrances.push({ x: idx % map.width, y: Math.floor(idx / map.width), linkX: t.caveLinkX, linkY: t.caveLinkY });
     }
     return entrances;
   }
@@ -8839,10 +8856,18 @@ window.GameEngine = window.GameEngine || {};
    *   worth going" that doesn't need to know what the unit's actual current
    *   task is.
    *
-   *   NOT YET ON ONE: only walks toward a known cave if doing so is a
-   *   REAL shortcut -- entrance-then-jump distance to the nearest enemy
-   *   city must beat walking there directly, by the same margin. Prevents
-   *   idle units wandering cross-map to a cave that wouldn't actually help.
+   *   NOT YET ON ONE: only walks toward a KNOWN cave (see allCaveEntrances'
+   *   own doc comment -- gated on this civ's own remembered tiles, not
+   *   omniscient) if doing so is a REAL shortcut -- entrance-then-jump
+   *   distance to the nearest enemy city must beat walking there directly,
+   *   by the same margin. Prevents idle units wandering cross-map to a
+   *   cave that wouldn't actually help.
+   *
+   *  Checked every turn for every unit that reaches this point in the
+   *  idle-fallback cascade (see runUnitTurn's own call site) -- not a
+   *  one-off action, so a civ's normal march toward the front line already
+   *  detours through a remembered cave whenever one's actually a shortcut,
+   *  same as any of its other routine turn-by-turn decisions.
    *
    *  Deliberately race-agnostic and tech-free -- caves are a universal
    *  terrain feature, unlike Dwarf-only Deep Gate. Returns true if it
@@ -8883,7 +8908,7 @@ window.GameEngine = window.GameEngine || {};
 
     const directDist = window.GameEngine.influence.chebyshev(unit.x, unit.y, target.x, target.y);
     let best = null, bestDist = Infinity;
-    for (const entrance of allCaveEntrances(map)) {
+    for (const entrance of allCaveEntrances(map, civ.id, gameState)) {
       const toEntrance = window.GameEngine.influence.chebyshev(unit.x, unit.y, entrance.x, entrance.y);
       const fromLinkToTarget = window.GameEngine.influence.chebyshev(entrance.linkX, entrance.linkY, target.x, target.y);
       const viaCave = toEntrance + fromLinkToTarget;
@@ -14878,5 +14903,11 @@ window.GameEngine = window.GameEngine || {};
     performPlayerBladeSweep,
     primeUnitForAutomation,
     runAutomatedUnitTurn,
+    // Exported (2026-08-31) so turns.js's gathering channel blocks (Delving/
+    // Fishing/Hunt Game/Farm Soil/Mine Vein) can award XP through the same
+    // race/building-bonus-aware path combat XP already uses (Altar of Ages,
+    // Neighborhood Pub, Runeforged Tools), rather than a second bare
+    // `combat.grantXP` call that would silently skip those bonuses.
+    grantXPAndAutoLevel,
   };
 })();

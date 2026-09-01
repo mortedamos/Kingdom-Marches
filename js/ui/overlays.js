@@ -496,7 +496,18 @@ window.UI = window.UI || {};
     else if (age > QUIP_ANIM_MS - QUIP_FADE_MS) alpha = Math.max(0, (QUIP_ANIM_MS - age) / QUIP_FADE_MS);
 
     const fontSize = Math.max(9, ts * 0.22);
-    ctx.font = `${fontSize}px "Comic Sans MS", "Chalkboard SE", cursive, sans-serif`;
+    // No bare `cursive` in this stack (2026-08-31, user-reported: quips
+    // rendered in italics on mobile, unlike desktop's upright Comic Sans).
+    // `cursive` is a CSS generic family, not an actual font -- the browser
+    // ALWAYS resolves it to something (never skips it to try the next name),
+    // and Android's own default mapping for it is a slanted script face,
+    // unlike desktop Windows/macOS where Comic Sans MS/Chalkboard SE are
+    // themselves usually installed and get picked before the fallback chain
+    // is ever reached. Dropping `cursive` lets a device with neither named
+    // font fall all the way through to plain sans-serif -- upright, and the
+    // same family every other canvas label in this file already uses --
+    // instead of landing on whatever `cursive` happens to mean locally.
+    ctx.font = `${fontSize}px "Comic Sans MS", "Chalkboard SE", sans-serif`;
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
 

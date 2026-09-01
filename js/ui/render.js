@@ -854,18 +854,32 @@ window.UI = window.UI || {};
     // three loops -- resolveSelection (input.js) guarantees at most one
     // selected* is set, and the city loop runs before these queues exist
     // anyway (same constraint the city floating-text pass below works
-    // around). A unit shows its TYPE, not its proper name.
+    // around).
+    //
+    // `text` is a unit/structure's TYPE (e.g. "Scout"), rendered in the
+    // existing monospace HUD pill; `name` (2026-08-31, user-directed) is a
+    // PROPER name -- a unit's own personal first name (combat.js's
+    // initUnitHP stamps a full "First Epithet" onto unit.name; only the
+    // first word is shown here, the same trim sidebar.js's own name display
+    // does not need since it has more room) drawn in a distinct pill ABOVE
+    // the type pill (see drawSelectionLabel), or a city's own proper name,
+    // which has no separate "type" line to sit above -- a city IS its name,
+    // so `text` stays null and only the name pill renders.
     let selectionLabel = null;
     if (selectedUnit) {
-      selectionLabel = { x: selectedUnit.x, y: selectedUnit.y, text: window.GameData.getUnit(selectedUnit.typeId).label };
+      selectionLabel = {
+        x: selectedUnit.x, y: selectedUnit.y,
+        text: window.GameData.getUnit(selectedUnit.typeId).label,
+        name: selectedUnit.name ? selectedUnit.name.split(" ")[0] : null,
+      };
     } else if (selectedCity) {
-      selectionLabel = { x: selectedCity.x, y: selectedCity.y, text: selectedCity.name };
+      selectionLabel = { x: selectedCity.x, y: selectedCity.y, text: null, name: selectedCity.name };
     } else if (selectedStructure && selectedStructure.record) {
       // findStructureAt returns { civ, city, record, building } -- the label
       // is already resolved on it, no second getBuilding lookup needed.
       selectionLabel = {
         x: selectedStructure.record.x, y: selectedStructure.record.y,
-        text: selectedStructure.building.label,
+        text: selectedStructure.building.label, name: null,
       };
     }
     if (selectionLabel && !visible.has(selectionLabel.y * map.width + selectionLabel.x)) selectionLabel = null;
@@ -1270,7 +1284,7 @@ window.UI = window.UI || {};
     // The selected TILE itself, always -- see drawSelectedTileMarker.
     drawSelectedTileMarker(ctx, viewState, offsetX, offsetY, ts);
     if (selectionLabel) {
-      drawSelectionLabel(ctx, selectionLabel.text,
+      drawSelectionLabel(ctx, selectionLabel.text, selectionLabel.name,
         selectionLabel.x * ts + offsetX + ts / 2, selectionLabel.y * ts + offsetY);
     }
   }
@@ -1318,14 +1332,39 @@ window.UI = window.UI || {};
    *  without: its own save/restore (drawPreviewLabel sets font/align/baseline
    *  and never restores them), and clamping so a selection on the top map row
    *  draws its pill just below the tile instead of off-screen. */
-  function drawSelectionLabel(ctx, text, cx, tileTopY) {
+  /** `name` (2026-08-31, user-directed) is a PROPER name -- a unit's own
+   *  first name, or a city's own name -- drawn in drawNameLabel's distinct
+   *  italic serif pill, stacked ABOVE `text`'s existing monospace type pill
+   *  when both are given (a unit), or alone in `text`'s usual slot when
+   *  `text` is null (a city, which has no separate "type" line -- see this
+   *  function's own caller for why). */
+  function drawSelectionLabel(ctx, text, name, cx, tileTopY) {
     const PILL_H = 14;
     ctx.save();
     // Above the tile normally; flipped to just below its top edge when there
     // isn't room, so the label never leaves the canvas.
     const bottomY = tileTopY - 2 >= PILL_H ? tileTopY - 2 : tileTopY + PILL_H + 2;
-    drawPreviewLabel(ctx, text, cx, bottomY, "#ffeb3b"); // matches the selection outline
+    if (text) drawPreviewLabel(ctx, text, cx, bottomY, "#ffeb3b"); // matches the selection outline
+    if (name) drawNameLabel(ctx, name, cx, text ? bottomY - PILL_H : bottomY, "#ffe9a8");
     ctx.restore();
+  }
+
+  /** Personal/proper-name pill -- same shape as drawPreviewLabel (measure,
+   *  dark backing rect, centered text) but in a visually distinct italic
+   *  serif face at a slightly larger size, so a name reads as flavor text
+   *  rather than another system-HUD label. Used for a unit's own first name
+   *  (stacked above its type pill) and a city's own name (see
+   *  drawSelectionLabel). */
+  function drawNameLabel(ctx, text, cx, bottomY, color) {
+    ctx.font = "italic bold 13px serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "bottom";
+    const PILL_H = 17;
+    const w = ctx.measureText(text).width + 10;
+    ctx.fillStyle = "rgba(0,0,0,0.75)";
+    ctx.fillRect(cx - w / 2, bottomY - PILL_H, w, PILL_H);
+    ctx.fillStyle = color;
+    ctx.fillText(text, cx, bottomY - 3);
   }
 
   // --- Player order overlays ----------------------------------------------

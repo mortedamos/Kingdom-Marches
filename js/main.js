@@ -1993,7 +1993,7 @@
 
   function createNewGame(raceIds, seed, monsterCapPerKingdom, worldType) {
     const { width: mapWidth, height: mapHeight } = mapSizeForCivCount(raceIds.length);
-    const map = window.GameEngine.worldgen.generateMap(mapWidth, mapHeight, seed, worldType);
+    const map = window.GameEngine.worldgen.generateMap(mapWidth, mapHeight, seed, worldType, raceIds.length);
     const MIN_STARTING_ISLAND_SIZE = 8;
     // A civ that starts on a landmass smaller than this gets a free Galley
     // in place of its second starting Scout (see the starting-unit loop

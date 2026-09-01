@@ -926,6 +926,26 @@ body.mobile .knowledge-nav-item {
   min-height: 44px;
 }
 
+/* Report text (2026-08-31, user-reported: "the font is very small and hard
+   to read" on mobile) -- desktop's own report typography (css/style.css)
+   sits at 10-12px throughout, sized for a mouse-distance monitor. Every
+   size below is that same desktop value bumped roughly 25-30%, not a fresh
+   scale, so relative hierarchy (chart axis labels smaller than the AI
+   action log's own body text, etc.) is preserved exactly, just legible at
+   arm's length. The SVG chart's own axis/legend text (js/ui/reports.js)
+   is set via inline font-size="10"/"11" attributes -- an SVG presentation
+   attribute carries the lowest possible specificity, so this plain
+   selector overrides it with no !important needed. */
+body.mobile .reports-chart-wrap svg text { font-size: 13px !important; }
+body.mobile .reports-subtitle { font-size: 15px; }
+body.mobile .reports-legend-item { font-size: 15px; }
+body.mobile .reports-tooltip { font-size: 14px; }
+body.mobile .ai-action-log-controls,
+body.mobile .ai-action-log-controls select,
+body.mobile .ai-action-log-controls button { font-size: 15px; }
+body.mobile .ai-action-log-summary { font-size: 13px; }
+body.mobile .ai-action-log-row { font-size: 14px; line-height: 1.5; }
+
 /* --------------------------------------------------------------------------
    PHASE 3 — THE RING GESTURE
 
