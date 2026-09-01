@@ -594,7 +594,18 @@ window.GameEngine = window.GameEngine || {};
         // Dark Ritual and Dungeon Delve both apply to any unit.
         const isDelvingUnit = hasDungeonDelve;
         const qualifies = hasDarkRitual || isDelvingUnit;
-        const oldX = unit._lastRitualX, oldY = unit._lastRitualY;
+        // Falls back to the unit's OWN current position when it has never
+        // been tracked before (2026-08-31 bugfix): comparing a real
+        // coordinate against a genuinely-undefined _lastRitualX/Y always
+        // came out false, so a unit's very FIRST round of Delving read as
+        // "moved away from an untracked past" instead of "just arrived,"
+        // instantly clearing the channel it had just started -- user-
+        // reported as needing to click Start Delving twice (the second
+        // click's round then had a real prior position to compare against,
+        // so it stuck from there on). Falling back to the unit's own
+        // current x/y makes `stayedPut` trivially true the first time,
+        // exactly like a fresh anchor should read.
+        const oldX = unit._lastRitualX ?? unit.x, oldY = unit._lastRitualY ?? unit.y;
         if (isDelvingUnit) {
           civ._trackedDelvingUnits = civ._trackedDelvingUnits || [];
           if (!civ._trackedDelvingUnits.includes(unit)) civ._trackedDelvingUnits.push(unit);
