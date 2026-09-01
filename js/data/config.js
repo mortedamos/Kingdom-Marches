@@ -63,11 +63,11 @@ window.GameConfig = {
   // stamp, and the only cost of forgetting is being told the wrong thing.
   build: {
     /** Local date this build was cut, YYYY-MM-DD. */
-    date: "2026-08-31",
+    date: "2026-09-01",
     /** Local time this build was cut, 24-hour HH:MM. */
-    time: "23:06",
+    time: "00:01",
     /** Monotonic build counter -- increment it, don't recompute it. */
-    number: 225,
+    number: 226,
   },
 
   // =========================================================================
@@ -250,7 +250,13 @@ window.GameConfig = {
         bonusStartingUnits: 1, grantsStartingTech: true,
         enforceRaceCultureAversion: true },
       { id: "hard", label: "Hard",
-        buildSpeedMult: 0.65, researchSpeedMult: 0.60,
+        // buildSpeedMult nudged 0.65 -> 0.72 (2026-08-31, user-directed:
+        // "hard difficulty is too hard, reduce ai unit build speed
+        // slightly"). Affects building turns too, not just units -- one
+        // shared dial, per the user (asked to split it, then said it's
+        // fine either way) -- rather than adding a second field for a
+        // change this small.
+        buildSpeedMult: 0.72, researchSpeedMult: 0.60,
         militaryCapMult: 2.20, militaryCapFloor: 10,
         bonusStartingUnits: 2, grantsStartingTech: true,
         enforceRaceCultureAversion: true },
