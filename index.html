@@ -2,6 +2,31 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
+<script>
+// Every asset below is referenced with a bare relative path (js/..., css/...,
+// assets/..., manifest.json -- no leading "/" or "./"), which only resolves
+// correctly if the current URL's directory really is this page's own folder.
+// GitHub Pages 301-redirects a project URL missing its trailing slash
+// (".../Kingdom-Marches" -> ".../Kingdom-Marches/") before serving anything,
+// so that's always true there. Azure Blob static-website hosting does not
+// redirect -- it serves this same index.html for ".../Kingdom-Marches" (no
+// slash), but the browser still treats "Kingdom-Marches" as a FILE segment
+// per URL-resolution rules, so every relative path above resolves one
+// directory too high and every asset 404s (2026-09-02, user-reported: game
+// loads fine from github.io, "cannot find resources" from
+// gameworlds.z13.web.core.windows.net). Force the trailing slash ourselves,
+// before any relative resource loads, so this page works the same on any
+// static host regardless of whether it redirects. Only fires when the last
+// path segment has no dot in it, so a direct ".../index.html" link (which
+// already ends in the right place) is never touched.
+(function () {
+  var path = location.pathname;
+  var lastSegment = path.slice(path.lastIndexOf("/") + 1);
+  if (lastSegment !== "" && lastSegment.indexOf(".") === -1) {
+    location.replace(path + "/" + location.search + location.hash);
+  }
+})();
+</script>
 <!-- viewport-fit=cover lets the page paint under a notch and the home
      indicator, which is what makes env(safe-area-inset-*) resolve to real
      values instead of 0 (see css/mobile.css). maximum-scale/user-scalable
