@@ -595,7 +595,7 @@ window.GameData.UNITS = {
 
   dragon: {
     id: "dragon", label: "Dragon", symbol: "🐉", category: "military", raceOnly: "orc",
-    attack: 10, defense: 9, movement: 4, visionRadius: 5, flying: true, range: 2, siegePct: 1.00, burnChancePct: 0.50,
+    attack: 10, defense: 9, movement: 6, visionRadius: 5, flying: true, range: 2, siegePct: 1.00, burnChancePct: 0.50,
     coinCost: 55, biggerPct: 1.0, attackChars: ["🔥", "💥", "彡"], impactSmoke: true,
     // No `rare` (2026-08-24): the build-cost premium was how the Dragon was
     // kept scarce back when Dragon Den was a +10% coin building. The Den is

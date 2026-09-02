@@ -874,7 +874,8 @@ window.UI = window.UI || {};
       const budget = unit.movesRemaining != null
         ? unit.movesRemaining
         : window.GameEngine.ai.computeMovementBudget(unit, gameState.map, gameState.civs);
-      const moveText = unit.channeling ? "Channeling" : `${budget} / ${baseUnit.movement}`;
+      const budgetRounded = Math.round(budget * 10) / 10;
+      const moveText = unit.channeling ? "Channeling" : `${budgetRounded} / ${baseUnit.movement}`;
       const actionText = unit.usedThisTurn ? "Used" : "Available";
       turnStatus = `
         <div class="stat-row"><span>Movement Left</span><span>${escapeHtml(moveText)}</span></div>
