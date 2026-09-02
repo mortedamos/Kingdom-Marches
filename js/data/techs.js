@@ -1328,12 +1328,13 @@ window.GameData.TECHS = {
     // justifies Coin, not Harvest, coming out of a Swamp tile. Bonus
     // replaced with a flat +0.5 coin (2026-09-01, user-directed) -- was
     // briefly +0.25 coin/+0.5 lore; the lore half was dropped, not kept
-    // alongside this, so Bog Iron is coin-only again.
+    // alongside this, so Bog Iron is coin-only again. Raised 0.5->0.75 coin
+    // (2026-09-02, user-directed).
     id: "orc_bog_harvest", label: "Bog Iron", category: "civic", layer: 1, cost: 20,
     prereqs: [], raceOnly: "orc",
-    description: "+0.5 coin from Swamp.",
+    description: "+0.75 coin from Swamp.",
     costBreakdown: { lore: 14, coin: 6 },
-    effects: [{ type: "unlock_tile_bonus", terrain: "swamp", bonus: { coin: 0.5 } }],
+    effects: [{ type: "unlock_tile_bonus", terrain: "swamp", bonus: { coin: 0.75 } }],
   },
   orc_warcraft: {
     id: "orc_warcraft", label: "War Camp", category: "building", layer: 1, cost: 22,
