@@ -466,6 +466,11 @@
           </span>
         </label>
         <p class="launch-hint">Caps Wandering Monsters, scaled by kingdom count. 0 disables them.</p>
+        <label class="launch-row launch-row-check">
+          <span>Territorial Victory</span>
+          <input type="checkbox" id="territorial-victory-toggle" checked>
+        </label>
+        <p class="launch-hint">Win by controlling enough of the map. Turn off to require Elimination instead.</p>
       </div>
       </div>
 
@@ -1766,6 +1771,15 @@
     }
 
     gameState = createNewGame(racesInPlay, seed, monsterCapPerKingdom, worldType);
+    // Territorial Victory toggle (2026-09-02, user-directed): reuses the
+    // exact flag "Keep Fighting!" already sets mid-game when a human
+    // player declines a territorial win (see turns.js's checkVictory,
+    // dialog.js) -- unchecking this here just sets that same flag UP
+    // FRONT instead of reactively, so Elimination becomes the only way to
+    // win from turn 1. A plain gameState boolean, so save/load round-trips
+    // it for free through savegame.js's generic JSON walk -- no special
+    // handling needed there.
+    gameState.disableTerritorialVictory = !$("territorial-victory-toggle").checked;
     // createNewGame leaves visibility empty -- without this, nothing is
     // visible (full fog) until the first End Turn runs beginRound.
     window.GameEngine.turns.refreshVisibility(gameState);
