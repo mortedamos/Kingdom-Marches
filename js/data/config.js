@@ -65,9 +65,9 @@ window.GameConfig = {
     /** Local date this build was cut, YYYY-MM-DD. */
     date: "2026-09-01",
     /** Local time this build was cut, 24-hour HH:MM. */
-    time: "22:00",
+    time: "22:12",
     /** Monotonic build counter -- increment it, don't recompute it. */
-    number: 235,
+    number: 236,
   },
 
   // =========================================================================
@@ -556,7 +556,7 @@ window.GameConfig = {
 
     /** Minimum Chebyshev distance between any two cities, anywhere, and the
      *  relaxed floor used only when a civ is stranded with no legal site. */
-    minCitySpacing: 6,
+    minCitySpacing: 5,
     emergencyCitySpacing: 3,
   },
 
