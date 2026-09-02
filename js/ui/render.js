@@ -584,10 +584,25 @@ window.UI = window.UI || {};
             const iconScale = (resDef && resDef.iconScale) || 1.0;
             const sz = ts * iconScale;
             const { boxX, boxY } = tileIconBox(screenX, screenY, ts, sz, x, y);
-            deferredIcons.push(() => ctx.drawImage(resSprite.image, f.sx, f.sy, f.sw, f.sh, boxX, boxY, sz, sz));
+            const isChest = tile.resource === "chest";
+            deferredIcons.push(() => {
+              // Treasure Chest: a brief "just fell to the ground" drop
+              // animation right after it spawns -- see overlays.js's
+              // chestDropOffsetFor. Returns null once settled, so a chest
+              // at rest draws exactly as before.
+              const drop = isChest ? overlays.chestDropOffsetFor(x, y, performance.now()) : null;
+              if (!drop) {
+                ctx.drawImage(resSprite.image, f.sx, f.sy, f.sw, f.sh, boxX, boxY, sz, sz);
+                return;
+              }
+              const w = sz * drop.scaleX, h = sz * drop.scaleY;
+              const dx = boxX - (w - sz) / 2;
+              const dy = boxY + drop.yOffsetFrac * sz + (sz - h);
+              ctx.drawImage(resSprite.image, f.sx, f.sy, f.sw, f.sh, dx, dy, w, h);
+            });
             // Treasure Chest: an occasional glint on top of the icon --
             // see overlays.js's drawChestSparkle.
-            if (tile.resource === "chest") {
+            if (isChest) {
               deferredIcons.push(() => overlays.drawChestSparkle(ctx, tile, boxX, boxY, sz, performance.now()));
             }
             // Iron/Gold: same occasional-glint treatment, recolored per

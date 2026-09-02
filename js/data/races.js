@@ -297,3 +297,20 @@ window.GameData.getRace = function (raceId) {
   }
   return race;
 };
+
+/** The unit id a race's own startingTech unlocks (Human -> "spearguard",
+ *  Orc -> "raider", ...) -- i.e. that race's signature Layer-1 fighter,
+ *  guaranteed buildable from turn 1 of every game (see main.js's
+ *  createNewGame). null for a race with no startingTech (the Monster
+ *  pseudo-race) or whose startingTech carries no unlock_unit effect.
+ *  Depends on window.GameData.getTech, so callers must wait until techs.js
+ *  has loaded -- fine for every real caller (sprites.js's preloadAll/
+ *  sfx.js's init, both called well after all js/data/*.js scripts have run),
+ *  never called during this file's own top-level evaluation. */
+window.GameData.raceStartingUnitId = function (raceId) {
+  const race = window.GameData.getRace(raceId);
+  if (!race.startingTech) return null;
+  const tech = window.GameData.getTech(race.startingTech);
+  const effect = tech.effects.find((e) => e.type === "unlock_unit");
+  return effect ? effect.unit : null;
+};

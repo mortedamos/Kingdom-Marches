@@ -123,7 +123,11 @@ window.SfxSystem = (function () {
           variants.push(n);
         }
       }
-      if (variants.length) clipIndex.set(pairKey, { raceId, variants });
+      // unitId retained alongside raceId (2026-09-02) so clipKeysForRaces can
+      // sort clips into critical/background by unit without re-parsing
+      // pairKey -- unsafe in general, since an action can itself contain an
+      // underscore (see this function's own doc comment above).
+      if (variants.length) clipIndex.set(pairKey, { raceId, unitId, variants });
     }
   }
 
@@ -168,17 +172,36 @@ window.SfxSystem = (function () {
     });
   }
 
-  /** Every clip key belonging to one of `racesInPlay`. Clips for races that
-   *  aren't in this game are skipped entirely -- there are ~190 files total
-   *  and a 5-race game only ever needs its own slice of them. */
+  /** Every clip key belonging to one of `racesInPlay`, split into a
+   *  CRITICAL tier (Pioneer, Scout, and that race's own starting combat
+   *  unit -- the exact "guaranteed on screen from turn 1" set sprites.js's
+   *  preloadAll uses for its own critical/background split, see races.js's
+   *  raceStartingUnitId) and a BACKGROUND tier (every other unit). Clips for
+   *  races that aren't in this game are skipped entirely either way --
+   *  there are ~190 files total and a 5-race game only ever needs its own
+   *  slice of them.
+   *
+   *  2026-09-02, user-directed: sfx never split critical from background
+   *  before -- init() awaited this whole list in one flat batch, so a 4-5
+   *  race game's ENTIRE sound library gated the loading screen equally,
+   *  whether it was Pioneer's move sound needed the instant the game
+   *  screen appears or a Dragon's death roar needed only many turns in. */
   function clipKeysForRaces(racesInPlay) {
     const wanted = racesInPlay && racesInPlay.length ? new Set(racesInPlay) : null;
-    const keys = [];
-    for (const [pairKey, { raceId, variants }] of clipIndex) {
-      if (wanted && !wanted.has(raceId)) continue;
-      for (const n of variants) keys.push(`${pairKey}_${n}`);
+    const criticalUnitIds = new Set(["pioneer", "scout"]);
+    if (wanted) {
+      for (const raceId of wanted) {
+        const startingUnitId = window.GameData.raceStartingUnitId(raceId);
+        if (startingUnitId) criticalUnitIds.add(startingUnitId);
+      }
     }
-    return keys;
+    const critical = [], background = [];
+    for (const [pairKey, { raceId, unitId, variants }] of clipIndex) {
+      if (wanted && !wanted.has(raceId)) continue;
+      const bucket = criticalUnitIds.has(unitId) ? critical : background;
+      for (const n of variants) bucket.push(`${pairKey}_${n}`);
+    }
+    return { critical, background };
   }
 
   /** One playable voice for `key`, reusing a finished clone when possible so
@@ -345,9 +368,13 @@ window.SfxSystem = (function () {
   function setVisibilityCheck(fn) { visibilityCheck = fn || null; }
 
   /**
-   * Public: build the clip index and preload every clip for `racesInPlay`,
-   * reporting (done, total) to onProgress as it goes. Awaited by main.js's
-   * loading gate alongside sprites and music.
+   * Public: build the clip index and preload the CRITICAL tier of clips for
+   * `racesInPlay`, reporting (done, total) to onProgress as it goes, then
+   * keeps loading the BACKGROUND tier afterward without making the caller
+   * wait on it (same split as sprites.js's preloadAll/runTiered -- see
+   * clipKeysForRaces' own doc comment for exactly what falls in each tier).
+   * Awaited by main.js's loading gate alongside sprites and music, which
+   * only ever waits on the critical half now.
    *
    * Loads in small batches rather than all at once: ~40 clips fired
    * simultaneously contend with the sprite and music preloads for the
@@ -363,19 +390,33 @@ window.SfxSystem = (function () {
 
     // System sfx (button click, research-complete stings) are race-
     // independent -- always queued here regardless of which races are in
-    // play, unlike clipKeysForRaces' per-race slice below.
-    const keys = [...systemKeys(), ...clipKeysForRaces(racesInPlay)];
-    const total = keys.length;
-    if (!total) { if (onProgress) onProgress(1, 1); return; }
-
+    // play, unlike clipKeysForRaces' per-race slice below. Always critical:
+    // both can fire the instant the title screen's own buttons are clicked,
+    // well before a game (or its races) even exists.
+    const { critical, background } = clipKeysForRaces(racesInPlay);
+    const criticalKeys = [...systemKeys(), ...critical];
+    const total = criticalKeys.length;
     const BATCH = 6;
-    let done = 0;
-    for (let i = 0; i < keys.length; i += BATCH) {
-      await Promise.all(keys.slice(i, i + BATCH).map((k) => preloadClip(k).then(() => {
-        done++;
-        if (onProgress) onProgress(done, total);
-      })));
+
+    if (total) {
+      let done = 0;
+      for (let i = 0; i < criticalKeys.length; i += BATCH) {
+        await Promise.all(criticalKeys.slice(i, i + BATCH).map((k) => preloadClip(k).then(() => {
+          done++;
+          if (onProgress) onProgress(done, total);
+        })));
+      }
+    } else if (onProgress) {
+      onProgress(1, 1);
     }
+
+    // Background tier: fire-and-forget, same as sprites.js's runTiered --
+    // keeps loading after the loading screen has already moved on.
+    (async () => {
+      for (let i = 0; i < background.length; i += BATCH) {
+        await Promise.all(background.slice(i, i + BATCH).map((k) => preloadClip(k)));
+      }
+    })();
   }
 
   return {

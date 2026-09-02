@@ -57,6 +57,23 @@ window.UI = window.UI || {};
   // to hand and every sprite category's manifest object is distinct.)
   const animStateCaches = new Map();
 
+  // Every sprite file that actually exists, read once from the generated
+  // manifest (js/data/sprite-file-manifest.js -- regenerate with
+  // working/tools/build-sprite-manifest.ps1 after adding/removing art),
+  // same "manifest instead of probe-and-read-the-404s" fix sfx.js already
+  // got on 2026-08-03 (see that file's own buildIndex). loadVariants/
+  // loadSingle/loadCityTiers below all check this before ever firing a
+  // network request for a variant, a bare fallback, or a .json sidecar --
+  // none of the three used to know in advance which of those existed.
+  const spriteFileSet = new Set(window.GameData.SPRITE_FILES || []);
+  /** `assetPath` is a full "assets/..." path, the same string a caller is
+   *  about to hand to loadImage/fetch -- the manifest itself is stored
+   *  relative to assets/ (see the generator script), so this strips that
+   *  one fixed prefix before checking. */
+  function fileExists(assetPath) {
+    return spriteFileSet.has(assetPath.replace(/^assets\//, ""));
+  }
+
   // preloadAll() below fires off hundreds-to-thousands of these (every
   // variant slot of every terrain/unit/building/resource/road/river), all
   // essentially at once. Throttled the same way music.js/sfx.js's probeFile
@@ -137,29 +154,40 @@ window.UI = window.UI || {};
     if (registry[key]) return;
 
     const MAX_VARIANTS = 6;
-    const attemptBases = Array.from({ length: MAX_VARIANTS }, (_, i) => `${basePath}_${i + 1}`);
-    const results = await Promise.allSettled(attemptBases.map((b) => loadImage(`${b}.png`)));
-    // variantNumber retained per entry (not just array position) so a gap in
-    // the numbering (e.g. _1/_3 present but not _2) doesn't shift parity --
-    // pick()'s gender-matching relies on the real file number, not index.
-    let loaded = results
-      .map((r, i) => (r.status === "fulfilled" ? { image: r.value, base: attemptBases[i], variantNumber: i + 1 } : null))
-      .filter(Boolean);
+    // Only ever attempt a numbered slot the manifest confirms is real --
+    // no more blind _1.._6 probing and reading the 404s to find out (see
+    // spriteFileSet's own doc comment). variantNumber retained per entry
+    // (not just array position) so a gap in the numbering (e.g. _1/_3
+    // present but not _2) doesn't shift parity -- pick()'s gender-matching
+    // relies on the real file number, not index.
+    const candidates = [];
+    for (let i = 1; i <= MAX_VARIANTS; i++) {
+      const base = `${basePath}_${i}`;
+      if (fileExists(`${base}.png`)) candidates.push({ base, variantNumber: i });
+    }
 
-    if (loaded.length === 0) {
-      // No numbered variants — fall back to a single un-numbered file.
-      // variantNumber: null since there's no gender pairing to speak of
-      // (moot anyway -- pick() short-circuits on a single-variant entry
-      // before gender logic ever runs).
+    let loaded;
+    if (candidates.length) {
+      const results = await Promise.allSettled(candidates.map((c) => loadImage(`${c.base}.png`)));
+      loaded = results
+        .map((r, i) => (r.status === "fulfilled" ? { image: r.value, base: candidates[i].base, variantNumber: candidates[i].variantNumber } : null))
+        .filter(Boolean);
+    } else if (fileExists(`${basePath}.png`)) {
+      // No numbered variants shipped -- a single un-numbered file. variantNumber:
+      // null since there's no gender pairing to speak of (moot anyway --
+      // pick() short-circuits on a single-variant entry before gender logic
+      // ever runs).
       try {
         loaded = [{ image: await loadImage(`${basePath}.png`), base: basePath, variantNumber: null }];
       } catch {
-        return; // nothing found at all — skip silently
+        return; // manifest said it exists but the load itself failed -- skip silently
       }
+    } else {
+      return; // nothing shipped for this key at all
     }
 
     const variants = await Promise.all(loaded.map(async ({ image, base, variantNumber }) => {
-      const jsonManifest = await loadManifestJson(`${base}.json`);
+      const jsonManifest = fileExists(`${base}.json`) ? await loadManifestJson(`${base}.json`) : null;
       return { image, manifest: jsonManifest || resolveManifest(key, image), variantNumber };
     }));
     registry[key] = { variants };
@@ -177,13 +205,14 @@ window.UI = window.UI || {};
    *  missing registry entry as "no art shipped yet, fall back". */
   async function loadSingle(key, basePath) {
     if (registry[key]) return;
+    if (!fileExists(`${basePath}.png`)) return; // nothing shipped -- see spriteFileSet
     let image;
     try {
       image = await loadImage(`${basePath}.png`);
     } catch {
       return;
     }
-    const jsonManifest = await loadManifestJson(`${basePath}.json`);
+    const jsonManifest = fileExists(`${basePath}.json`) ? await loadManifestJson(`${basePath}.json`) : null;
     registry[key] = { variants: [{ image, manifest: jsonManifest || resolveManifest(key, image), variantNumber: null }] };
   }
 
@@ -197,20 +226,21 @@ window.UI = window.UI || {};
 
   /** Loads whichever of a race's per-tier city images exist; missing tiers
    *  (or a race with none at all) are skipped silently -- callers fall back
-   *  to the plain city/${raceId} variant-based entry via pick() instead. */
+   *  to the plain city/${raceId} variant-based entry via pick() instead.
+   *  Only ever attempts a tier the manifest confirms is real -- see
+   *  spriteFileSet's own doc comment. */
   async function loadCityTiers(raceId) {
     const key = `city-tiers/${raceId}`;
     if (registry[key]) return;
     const attempts = [];
     for (let tier = 1; tier <= MAX_CITY_TIER; tier++) {
-      attempts.push(
-        loadImage(`assets/cities/${raceId}_city_${tier}.png`)
-          .then((image) => ({ tier, image }))
-          .catch(() => null)
-      );
+      const path = `assets/cities/${raceId}_city_${tier}.png`;
+      if (!fileExists(path)) continue;
+      attempts.push(loadImage(path).then((image) => ({ tier, image })).catch(() => null));
     }
+    if (!attempts.length) return; // no tiered art for this race -- skip
     const loaded = (await Promise.all(attempts)).filter(Boolean);
-    if (loaded.length === 0) return; // no tiered art for this race -- skip
+    if (loaded.length === 0) return;
     const tiers = {};
     for (const { tier, image } of loaded) tiers[tier] = image;
     registry[key] = { tiers };
@@ -462,12 +492,16 @@ window.UI = window.UI || {};
     return frameRect(frames[state.frameIdx]);
   }
 
-  // The only units that exist the instant a game starts (see main.js's
-  // createNewGame) -- everything else (buildings, every other unit type)
-  // takes several turns to ever appear on screen, so it doesn't need to
-  // block the loading screen. See preloadAll's own doc comment for the full
-  // critical/background split.
-  const STARTING_UNIT_IDS = ["pioneer", "scout"];
+  // The units guaranteed to exist the instant a game starts (see main.js's
+  // createNewGame): Pioneer and Scout, universal to every race. Everything
+  // else (buildings, every other unit type) takes several turns to ever
+  // appear on screen, so it doesn't need to block the loading screen. See
+  // preloadAll's own doc comment for the full critical/background split, and
+  // its own criticalUnitIds for the race-specific addition to this base set
+  // (2026-09-02, user-directed: each race's own starting combat unit --
+  // Raider, Spearguard, ... -- is exactly as guaranteed-on-screen-from-turn-1
+  // as Pioneer/Scout are, so it belongs in the same tier).
+  const ALWAYS_CRITICAL_UNIT_IDS = ["pioneer", "scout"];
 
   /** Runs `criticalFns` (each a zero-arg function that KICKS OFF one load
    *  when called -- deferred like this so background loads don't start
@@ -511,6 +545,15 @@ window.UI = window.UI || {};
   function preloadAll(racesInPlay, onProgress) {
     const critical = [];
     const background = [];
+    // This game's own critical unit set: the universal pair plus each
+    // race in play's own guaranteed-turn-1 starting combat unit (see
+    // races.js's raceStartingUnitId and ALWAYS_CRITICAL_UNIT_IDS's own doc
+    // comment).
+    const criticalUnitIds = new Set(ALWAYS_CRITICAL_UNIT_IDS);
+    for (const raceId of racesInPlay) {
+      const startingUnitId = window.GameData.raceStartingUnitId(raceId);
+      if (startingUnitId) criticalUnitIds.add(startingUnitId);
+    }
     for (const id of Object.keys(window.GameData.TERRAIN))
       critical.push(() => loadVariants(`terrain/${id}`, `assets/terrain/${id}`));
     // Dramatic tall/overhanging mountain peak art -- a separate pool from
@@ -523,7 +566,7 @@ window.UI = window.UI || {};
       (id) => !window.GameData.UNITS[id].raceOnly || racesInPlay.includes(window.GameData.UNITS[id].raceOnly)
     );
     for (const id of inPlayUnitIds) {
-      const tier = STARTING_UNIT_IDS.includes(id) ? critical : background;
+      const tier = criticalUnitIds.has(id) ? critical : background;
       tier.push(() => loadVariants(`unit/${id}`, `assets/units/${id}`));
     }
     // Units with no raceOnly (Pioneer, Scout, Galley) may additionally ship
@@ -542,7 +585,7 @@ window.UI = window.UI || {};
       (id) => !window.GameData.UNITS[id].raceOnly && !window.GameData.MONSTER_UNIT_IDS.has(id)
     );
     for (const unitId of universalUnitIds) {
-      const tier = STARTING_UNIT_IDS.includes(unitId) ? critical : background;
+      const tier = criticalUnitIds.has(unitId) ? critical : background;
       for (const raceId of racesInPlay) {
         tier.push(() => loadVariants(`unit/${unitId}/${raceId}`, `assets/units/${raceId}_${unitId}`));
       }

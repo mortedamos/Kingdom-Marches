@@ -14379,6 +14379,10 @@ window.GameEngine = window.GameEngine || {};
     if (!tile || tile.resource) return;
     if (!window.GameData.RESOURCES.chest.validTerrain.includes(tile.terrain)) return;
     tile.resource = "chest";
+    // Cosmetic-only (2026-09-02, user-directed): queues the brief "just
+    // fell to the ground" animation -- see deathfx.js/overlays.js's
+    // chestDropOffsetFor. Fires only on an actual spawn, not every death.
+    window.GameEngine.deathFx.spawnChestDrop(deadUnit.x, deadUnit.y);
   }
 
   /** Single chokepoint every combat-kill path in this file funnels a dead

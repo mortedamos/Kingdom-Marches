@@ -378,6 +378,62 @@ window.UI = window.UI || {};
     }
   }
 
+  /**
+   * Treasure Chest drop (2026-09-02, user-directed): a quick "just fell to
+   * the ground" cosmetic the instant a dying unit drops one -- drained each
+   * frame from window.GameEngine.deathFx's chest-drop queue (see ai.js's
+   * maybeSpawnDeathChest, which only fires this on the chance-gated deaths
+   * that actually spawn a chest). Tile-position-anchored, same reasoning as
+   * activeDeathEffects -- there's no unit left to key a per-unit pass off
+   * of, and unlike a unit the chest itself is a plain tile.resource field,
+   * not an object this module could stash per-instance state on directly.
+   */
+  const CHEST_DROP_ANIM_MS = 380;
+  // Fraction of one tile height the chest starts above its resting spot.
+  const CHEST_DROP_HEIGHT_FRAC = 0.55;
+  let activeChestDropEffects = [];
+
+  function updateChestDropEffects(now) {
+    const newEvents = window.GameEngine.deathFx.drainChestDropEvents();
+    for (const evt of newEvents) {
+      activeChestDropEffects.push({ x: evt.x, y: evt.y, start: now });
+    }
+    if (activeChestDropEffects.length) {
+      activeChestDropEffects = activeChestDropEffects.filter((d) => now - d.start < CHEST_DROP_ANIM_MS);
+    }
+  }
+
+  /** { yOffsetFrac, scaleX, scaleY } (fractions/multiples of the chest's own
+   *  icon box) for the chest at tile (x, y) if it's still mid-drop, or null
+   *  once it's settled (or if there's nothing dropping there at all) --
+   *  render.js applies these to its own boxX/boxY/sz before drawing the
+   *  resource sprite, and draws at rest (no lookup needed) once this
+   *  returns null. First 75% of the animation is the fall itself, easing IN
+   *  (accelerating, like gravity) from CHEST_DROP_HEIGHT_FRAC above rest
+   *  down to 0; the last 25% is a quick squash-and-recover on landing (one
+   *  bounce, not a bouncing-ball loop -- this is meant to read as "it just
+   *  landed", not call attention to itself). Reduced motion skips the
+   *  animation outright (always null, chest simply appears at rest), same
+   *  "show the end state, not the motion" convention drawChestSparkle's own
+   *  reduced-motion branch uses. */
+  function chestDropOffsetFor(x, y, now) {
+    if (window.UI.motion && window.UI.motion.isReduced()) return null;
+    const e = activeChestDropEffects.find((d) => d.x === x && d.y === y);
+    if (!e) return null;
+    const t = Math.min(1, (now - e.start) / CHEST_DROP_ANIM_MS);
+    const fallT = Math.min(1, t / 0.75);
+    const settle = 1 - fallT;
+    const yOffsetFrac = -CHEST_DROP_HEIGHT_FRAC * settle * settle;
+    let scaleX = 1, scaleY = 1;
+    if (t > 0.75) {
+      const landT = (t - 0.75) / 0.25;
+      const squash = Math.sin(landT * Math.PI) * 0.18; // 0 -> peak -> 0, one pass
+      scaleY = 1 - squash;
+      scaleX = 1 + squash * 0.6;
+    }
+    return { yOffsetFrac, scaleX, scaleY };
+  }
+
   /** Read-only access to the live combat-anim/area-effect/death-effect
    *  queues, for a caller (render3d.js's HUD pass) that needs to iterate
    *  them itself with its own per-tile projection instead of the affine
@@ -411,6 +467,7 @@ window.UI = window.UI || {};
     updateQuipBubbles(now);
     updateFloatingTexts(now);
     updateDeathEffects(now);
+    updateChestDropEffects(now);
   }
 
   /** Color/weight per floating-text `kind` (see engine/floatingtext.js's
@@ -1924,6 +1981,7 @@ window.UI = window.UI || {};
   window.UI.overlays = {
     tick,
     updateCombatAnims, updateAreaEffects, updateQuipBubbles, updateFloatingTexts, updateDeathEffects,
+    updateChestDropEffects, chestDropOffsetFor,
     drawAreaEffects, drawAreaEffectBox, drawCombatSlashes, drawCombatSlashAt,
     drawQuipBubble, drawFloatingTexts, drawDeathEffects, drawDeathEffectAt,
     drawMuzzleSmoke, drawMuzzleSmokeAt, drawImpactSmoke, drawImpactSmokeAt,
