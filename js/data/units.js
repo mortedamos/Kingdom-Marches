@@ -201,12 +201,12 @@ window.GameData.UNITS = {
   },
   scout: {
     id: "scout", label: "Tracker", symbol: "⊙", category: "civilian",
-    attack: 1, defense: 1, movement: 3, visionRadius: 3, range: 2,
+    attack: 1, defense: 1, movement: 2, visionRadius: 3, range: 2,
     canExplore: true, canProspect: true, canBuildRoad: true, attackChars: ["➵", "➳"],
   },
   galley: {
     id: "galley", label: "Galley", symbol: "⛵", category: "military",
-    attack: 1, defense: 2, movement: 5, visionRadius: 4, range: 1,
+    attack: 1, defense: 2, movement: 4, visionRadius: 4, range: 1,
     isNaval: true, canCarryUnit: true, biggerPct: .5,
     // A ship, not a person -- see unit-names.js's UNIT_TYPE_PROPER_NAMES doc.
     nameSpecial: true,
@@ -219,22 +219,22 @@ window.GameData.UNITS = {
   // --- HUMAN full roster (see tech_tree_design.md) ---
   spearguard: {
     id: "spearguard", label: "Spearguard", symbol: "⚔", category: "military", raceOnly: "human",
-    attack: 3, defense: 5, movement: 1, visionRadius: 2, attackChars: ["𐃆"],
+    attack: 3, defense: 5, movement: 2, visionRadius: 2, attackChars: ["𐃆"],
     coinCost: 15,
   },
   cavalry: {
     id: "cavalry", label: "Cavalry", symbol: "♞", category: "military", raceOnly: "human",
-    attack: 6, defense: 4, movement: 4, visionRadius: 3, firstStrikePct: 0.05,
+    attack: 6, defense: 4, movement: 3, visionRadius: 3, firstStrikePct: 0.05,
     coinCost: 22, biggerPct: .2,  attackChars: ["⚔", "🗡"],
   },
   knight: {
     id: "knight", label: "Knight", symbol: "♞", category: "military", raceOnly: "human",
-    attack: 8, defense: 7, movement: 4, visionRadius: 3, // replaces Cavalry via the Knighthood tech
+    attack: 8, defense: 7, movement: 3, visionRadius: 3, // replaces Cavalry via the Knighthood tech
     coinCost: 32, firstStrikePct: 0.1, biggerPct: .25, attackChars: ["⚔", "🗡"],
   },
   paladin: {
     id: "paladin", label: "Paladin", symbol: "♞", category: "military", raceOnly: "human",
-    attack: 10, defense: 8, movement: 4, visionRadius: 4, firstStrikePct: 0.2, doubleStrikePct: 0.1, // replaces Knight via the Chivalric Order tech
+    attack: 10, defense: 8, movement: 3, visionRadius: 4, firstStrikePct: 0.2, doubleStrikePct: 0.1, // replaces Knight via the Chivalric Order tech
     coinCost: 42, biggerPct: .4, attackChars: ["⚔", "🗡", "🛡"], rare: true,
   },
   archer: {
@@ -249,7 +249,7 @@ window.GameData.UNITS = {
   },
   catapult: {
     id: "catapult", label: "Catapult", symbol: "⚙", category: "military", raceOnly: "human", range: 2,
-    attack: 7, defense: 3, movement: 2, visionRadius: 2, siegePct: 1.25, siegeAtRange: true, attackChars: ["🪨"],
+    attack: 7, defense: 3, movement: 1, visionRadius: 2, siegePct: 1.25, siegeAtRange: true, attackChars: ["🪨"],
     coinCost: 28, biggerPct: .5,
     // impactSmoke: a burst of dust/debris drawn on the TARGET's tile once
     // the lobbed stone lands -- see overlays.js's activeImpactSmoke/
@@ -260,7 +260,7 @@ window.GameData.UNITS = {
   },
   trebuchet: {
     id: "trebuchet", label: "Trebuchet", symbol: "⚙", category: "military", raceOnly: "human", range: 3,
-    attack: 8, defense: 4, movement: 2, visionRadius: 2, siegePct: 1.5, siegeAtRange: true, // replaces Catapult
+    attack: 8, defense: 4, movement: 1, visionRadius: 2, siegePct: 1.5, siegeAtRange: true, // replaces Catapult
     coinCost: 40, attackChars: ["🪨", "☄"], biggerPct: .6,
     impactSmoke: true, // see catapult's own comment on this flag
     nameSpecial: true, // a machine, not a person -- see unit-names.js
@@ -343,7 +343,7 @@ window.GameData.UNITS = {
   // the Titan.
   awakened_oak: {
     id: "awakened_oak", label: "Awakened Oak", symbol: "♣", category: "military", raceOnly: "elf",
-    attack: 10, defense: 9, movement: 3, visionRadius: 3, siegePct: 1.5,
+    attack: 10, defense: 9, movement: 2, visionRadius: 3, siegePct: 1.5,
     coinCost: 65, biggerPct: 1.0, attackChars: ["🌳", "𖣂", "🌿", "🫚"],
     rare: true, neverExplores: true,
     nameSpecial: true, // a living tree, not a person -- see unit-names.js
@@ -356,7 +356,7 @@ window.GameData.UNITS = {
   // from, same name, same upkeep.
   dire_bear: {
     id: "dire_bear", label: "Dire Bear", symbol: "🐻", category: "military", raceOnly: "elf",
-    attack: 9, defense: 9, movement: 3, visionRadius: 2, siegePct: 0.3,
+    attack: 9, defense: 9, movement: 2, visionRadius: 2, siegePct: 0.3,
     attackChars: ["𓆩", "彡"], biggerPct: .6, doubleStrikePct: 0.1,
     cityBuildable: false,
   },
@@ -380,7 +380,7 @@ window.GameData.UNITS = {
   },
   pony_patrol: {
     id: "pony_patrol", label: "Pony Patrol", symbol: "♞", category: "military", raceOnly: "halfellow",
-    attack: 4, defense: 5, movement: 4, visionRadius: 3, firstStrikePct: 0.02,
+    attack: 4, defense: 5, movement: 3, visionRadius: 3, firstStrikePct: 0.02,
     coinCost: 20, biggerPct: .2
   },
   militia: {
@@ -527,7 +527,7 @@ window.GameData.UNITS = {
   },
   raider: {
     id: "raider", label: "Raider", symbol: "⚔", category: "military", raceOnly: "orc",
-    attack: 4, defense: 1, movement: 3, visionRadius: 2,
+    attack: 4, defense: 1, movement: 2, visionRadius: 2,
     coinCost: 15, attackChars: ["🪓", "🔪", "𓌜"],
   },
   // A beast, not a real fighter -- its value is the "hunt" AI behavior
@@ -537,7 +537,7 @@ window.GameData.UNITS = {
   // its own dedicated AI job and isn't a person to be gendered/epitheted.
   dire_wolf: {
     id: "dire_wolf", label: "Dire Wolf", symbol: "🐺", category: "military", raceOnly: "orc",
-    attack: 3, defense: 1, movement: 4, visionRadius: 4, firstStrikePct: 0.03,
+    attack: 2, defense: 1, movement: 4, visionRadius: 4, firstStrikePct: 0.03,
     coinCost: 12, attackChars: ["𓆩"], doubleStrikePct: 0.1,
     neverExplores: true, nameSpecial: true,
   },
@@ -583,13 +583,13 @@ window.GameData.UNITS = {
   },
   battering_ram: {
     id: "battering_ram", label: "Battering Ram", symbol: "⚙", category: "military", raceOnly: "orc",
-    attack: 8, defense: 6, movement: 2, visionRadius: 2, siegePct: 1.5,
+    attack: 8, defense: 6, movement: 1, visionRadius: 2, siegePct: 1.5,
     coinCost: 30, biggerPct: .5, attackChars: ["💥"], impactSmoke: true,
     nameSpecial: true, // a machine, not a person -- see unit-names.js
   },
   ogre: {
     id: "ogre", label: "Ogre", symbol: "⚔", category: "military", raceOnly: "orc",
-    attack: 9, defense: 6, movement: 3, visionRadius: 3, siegePct: 0.50, attackChars: ["🪓", "💥", "🪨"],
+    attack: 9, defense: 6, movement: 2, visionRadius: 3, siegePct: 0.50, attackChars: ["🪓", "💥", "🪨"],
     coinCost: 32,  biggerPct: .5, rare: true,
   },
 

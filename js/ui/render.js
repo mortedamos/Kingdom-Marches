@@ -1284,8 +1284,9 @@ window.UI = window.UI || {};
     // The selected TILE itself, always -- see drawSelectedTileMarker.
     drawSelectedTileMarker(ctx, viewState, offsetX, offsetY, ts);
     if (selectionLabel) {
+      const tileTop = selectionLabel.y * ts + offsetY;
       drawSelectionLabel(ctx, selectionLabel.text, selectionLabel.name,
-        selectionLabel.x * ts + offsetX + ts / 2, selectionLabel.y * ts + offsetY);
+        selectionLabel.x * ts + offsetX + ts / 2, tileTop, tileTop + ts);
     }
   }
 
@@ -1334,18 +1335,32 @@ window.UI = window.UI || {};
    *  draws its pill just below the tile instead of off-screen. */
   /** `name` (2026-08-31, user-directed) is a PROPER name -- a unit's own
    *  first name, or a city's own name -- drawn in drawNameLabel's distinct
-   *  italic serif pill, stacked ABOVE `text`'s existing monospace type pill
+   *  italic serif pill, stacked with `text`'s existing monospace type pill
    *  when both are given (a unit), or alone in `text`'s usual slot when
    *  `text` is null (a city, which has no separate "type" line -- see this
-   *  function's own caller for why). */
-  function drawSelectionLabel(ctx, text, name, cx, tileTopY) {
+   *  function's own caller for why). `text`, when present, is always the
+   *  pill CLOSER to the tile; `name` sits one pill-height further out. */
+  function drawSelectionLabel(ctx, text, name, cx, tileTopY, tileBottomY) {
     const PILL_H = 14;
+    const NAME_PILL_H = 17;
+    const stackH = (text ? PILL_H : 0) + (name ? NAME_PILL_H : 0);
     ctx.save();
-    // Above the tile normally; flipped to just below its top edge when there
-    // isn't room, so the label never leaves the canvas.
-    const bottomY = tileTopY - 2 >= PILL_H ? tileTopY - 2 : tileTopY + PILL_H + 2;
-    if (text) drawPreviewLabel(ctx, text, cx, bottomY, "#ffeb3b"); // matches the selection outline
-    if (name) drawNameLabel(ctx, name, cx, text ? bottomY - PILL_H : bottomY, "#ffe9a8");
+    // Below the tile normally (2026-09-01, user-reported: sitting above the
+    // unit made it occlude floating text -- resource/XP gain popups, which
+    // drift UPWARD from this same tile, see overlays.js's
+    // drawFloatingTexts -- so a permanent label up there was fighting a
+    // transient one for the exact same space). Flipped back above the
+    // tile's own top edge only when there isn't room below (a selection on
+    // the map's bottom row), so the label never leaves the canvas.
+    if (cssH(ctx.canvas) - tileBottomY >= stackH) {
+      let bottomY = tileBottomY + (text ? PILL_H : NAME_PILL_H);
+      if (text) drawPreviewLabel(ctx, text, cx, bottomY, "#ffeb3b"); // matches the selection outline
+      if (name) drawNameLabel(ctx, name, cx, text ? bottomY + NAME_PILL_H : bottomY, "#ffe9a8");
+    } else {
+      const bottomY = tileTopY - 2 >= PILL_H ? tileTopY - 2 : tileTopY + PILL_H + 2;
+      if (text) drawPreviewLabel(ctx, text, cx, bottomY, "#ffeb3b");
+      if (name) drawNameLabel(ctx, name, cx, text ? bottomY - PILL_H : bottomY, "#ffe9a8");
+    }
     ctx.restore();
   }
 
