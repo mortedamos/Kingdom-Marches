@@ -4721,27 +4721,28 @@ window.GameEngine = window.GameEngine || {};
     return window.GameEngine.cities.cityHasStructure(city, required);
   }
 
-  /** Orc Butchery ("Blood Feast"): percentage-points of max HP healed on any
-   *  kill while a Butchery stands, on top of whatever the race already
-   *  grants. Same 0-100 scale as races.js's healOnKillPct (Undead 30). */
-  const BUTCHERY_HEAL_ON_KILL_PCT = 15;
-
-  /** Total heal-on-kill percentage for `civ` -- the race's own innate
-   *  healOnKillPct (Undead's 30) plus Orc's Butchery building bonus, which
-   *  is revocable the moment the structure is destroyed. Single source of
+  /** Total heal-on-kill percentage for `unit` -- the race's own innate
+   *  healOnKillPct (Undead's 30) plus Orc's Butchery bonus, which (2026-09-02,
+   *  user-directed) is now a BUILDING_UNIT_STAMPS permanent stamp keyed to
+   *  the unit's OWN home city at build time, same shape as War Camp's
+   *  movement bonus below -- a unit built in a city with a standing Butchery
+   *  keeps healing on kill forever, even if that Butchery is later
+   *  destroyed; one built before the Butchery went up never gets it, even
+   *  retroactively. `unit` is optional so a caller with only a civ in hand
+   *  still gets the race-only portion rather than throwing. Single source of
    *  truth for both kill sites (the ordinary attack path and Blade Dancer's
    *  sweep), so the two can't drift apart. */
-  function healOnKillPctFor(civ) {
+  function healOnKillPctFor(civ, unit) {
     const race = window.GameData.getRace(civ.raceId);
-    let pct = race.healOnKillPct || 0;
-    if (window.GameEngine.cities.civHasBuiltBuilding(civ, "butchery")) pct += BUTCHERY_HEAL_ON_KILL_PCT;
-    return pct;
+    return (race.healOnKillPct || 0) + (unit?.buildingBonuses?.healOnKillPct || 0);
   }
 
   const BUILDING_UNIT_STAMPS = [
     { buildingId: "deep_forge", stat: "attack", amount: 1 },        // Dwarf "Forged Arms"
     { buildingId: "silverleaf_atelier", stat: "defense", amount: 1 }, // Elf "Silversteel Mail"
     { buildingId: "war_camp", stat: "movement", amount: 1 },        // Orc War Camp
+    { buildingId: "war_camp", stat: "firstStrikePct", amount: 0.05 }, // Orc War Camp (2026-09-02)
+    { buildingId: "butchery", stat: "healOnKillPct", amount: 15 },  // Orc Butchery (2026-09-02)
   ];
 
   /** Halfellow Farmers Market ("Well Fed"): flat +2 max HP, permanently, for
@@ -7661,7 +7662,7 @@ window.GameEngine = window.GameEngine || {};
       if (target.hp <= 0) {
         killCount++;
         otherCivRemoveDeadUnit(civs, target, civ.id);
-        const sweepHealPct = healOnKillPctFor(civ);
+        const sweepHealPct = healOnKillPctFor(civ, unit);
         if (sweepHealPct && unit.hp > 0) {
           const beforeKillHeal = unit.hp;
           unit.hp = Math.min(unit.maxHp, unit.hp + Math.max(1, Math.round(unit.maxHp * sweepHealPct / 100)));
@@ -13556,8 +13557,8 @@ window.GameEngine = window.GameEngine || {};
           defenderCiv.stockpile.lore = (defenderCiv.stockpile.lore || 0) + defenderCiv.deathLoreBonus;
         }
         // Heal on kill: Undead's innate race bonus, plus Orc's Butchery
-        // building if one is standing -- see healOnKillPctFor.
-        const killHealPct = healOnKillPctFor(civ);
+        // stamp on this specific unit -- see healOnKillPctFor.
+        const killHealPct = healOnKillPctFor(civ, unit);
         if (killHealPct && unit.hp > 0) {
           const beforeKillHeal = unit.hp;
           unit.hp = Math.min(unit.maxHp, unit.hp + Math.max(1, Math.round(unit.maxHp * killHealPct / 100)));
@@ -14514,22 +14515,27 @@ window.GameEngine = window.GameEngine || {};
   /**
    * Orc-specific post-combat effects layered on top of the core damage/counter
    * exchange in resolveRound: Bog Witch's curse-on-death (whoever lands the
-   * kill on her is cursed), Malefic Malediction (any hit she lands curses the
-   * target, kill or not -- requires the tech), and Violent Momentum (the
-   * attacker gets a temporary movement/First Strike/Double Strike buff if
-   * this hit killed the defender -- requires the tech). All CONDITIONS (see
-   * combat.js) -- read via unit.conditions.curse/killMomentum by
-   * combat.js's effectiveAttack/effectiveFirstStrikePct/
-   * effectiveDoubleStrikePct and ai.js's moveUnitToward; expiry is cleared
-   * once per civ-turn in runAITurn via tickConditions.
+   * kill on her -- or one of her Wisps -- is cursed), Malefic Malediction
+   * (a chance any hit she lands curses the target, kill or not -- requires
+   * the tech), and Violent Momentum (the attacker gets a temporary
+   * movement/First Strike/Double Strike buff if this hit killed the
+   * defender -- requires the tech). All CONDITIONS (see combat.js) -- read
+   * via unit.conditions.curse/killMomentum by combat.js's effectiveAttack/
+   * effectiveFirstStrikePct/effectiveDoubleStrikePct and ai.js's
+   * moveUnitToward; expiry is cleared once per civ-turn in runAITurn via
+   * tickConditions.
    */
   function applyOrcCombatMechanics(attackerUnit, attackerCiv, defenderUnit, defenderCiv, result, gameState) {
     const turn = gameState.turnNumber || 0;
     const setCondition = window.GameEngine.combat.setCondition;
 
     // Bog Witch's own death-curse: baked into the unit itself (see units.js),
-    // always active regardless of tech -- fires the instant she dies.
-    if (defenderUnit.typeId === "bog_witch" && defenderUnit.hp <= 0 && !result.fullNegated) {
+    // always active regardless of tech -- fires the instant she OR one of
+    // her summoned Wisps dies (2026-09-02, user-directed: widened from
+    // Bog Witch alone). Both reuse the exact same curseOnDeath data off the
+    // Bog Witch unit type -- a Wisp doesn't carry its own copy.
+    if ((defenderUnit.typeId === "bog_witch" || defenderUnit.typeId === "wisp")
+        && defenderUnit.hp <= 0 && !result.fullNegated) {
       const curse = window.GameData.getUnit("bog_witch").curseOnDeath;
       if (curse) {
         setCondition(attackerUnit, "curse", { attackMult: curse.attackMult, moveMult: curse.moveMult, expiresAtTurn: turn + curse.duration });
@@ -14537,51 +14543,49 @@ window.GameEngine = window.GameEngine || {};
         window.GameEngine.combat.spawnAreaEffect(attackerUnit.x, attackerUnit.y, 0, "curse");
       }
     }
-    // Malefic Malediction: a Bog Witch curses whatever she hits, kill or not
-    // -- once per LANDED HIT this round (see landedHitCount, which already
-    // excludes a whiffed Flying-evasion miss or negated hit), so a landed
-    // Double Strike follow-up curses again too, same as the ordinary hit.
-    if (attackerUnit.typeId === "bog_witch" &&
-        attackerCiv.unlockedMechanics && attackerCiv.unlockedMechanics.has("malefic_malediction")) {
-      for (let i = 0; i < landedHitCount(result); i++) {
-        setCondition(defenderUnit, "curse", { attackMult: 0.5, moveMult: 0.5, expiresAtTurn: turn + CURSE_DURATION });
-        window.SfxSystem.playAction(attackerCiv.raceId, "bog_witch", "curse", defenderUnit.x, defenderUnit.y);
-        window.GameEngine.combat.spawnAreaEffect(defenderUnit.x, defenderUnit.y, 0, "curse");
-      }
-    }
-    // Orc "Afflictions of Anguish"/"Pyromania": generic on-hit chances,
-    // same shape as Elf's Poisonous Extracts (applyElfCombatMechanics) --
-    // per-unit data field, gated behind whichever tech actually grants that
-    // unit its non-zero value. Rolled once per LANDED HIT this round (see
-    // landedHitCount) -- a landed Double Strike follow-up gets its own
-    // independent shot at each condition, same as the ordinary hit. Each
-    // condition below is also its own separate Math.random() call, so a
-    // unit with more than one non-zero chance (e.g. a Bog Witch with both
-    // Afflictions' curse and freeze) can inflict several different
-    // conditions off the very same hit, not just one or the other. Poison
-    // is shared by both techs (Bog Witch via Afflictions, Goblin Miscreant
-    // via Pyromania), so it checks either mechanic; Befuddled/Curse/Frozen
-    // are Afflictions-only.
+    // Orc "Malefic Malediction"/"Afflictions of Anguish"/"Pyromania": generic
+    // on-hit chances, same shape as Elf's Poisonous Extracts
+    // (applyElfCombatMechanics) -- per-unit data field, gated behind
+    // whichever tech actually grants that unit its non-zero value. Rolled
+    // once per LANDED HIT this round (see landedHitCount, which already
+    // excludes a whiffed Flying-evasion miss or negated hit) -- a landed
+    // Double Strike follow-up gets its own independent shot at each
+    // condition, same as the ordinary hit. Each condition below is also its
+    // own separate Math.random() call, so a unit with more than one
+    // non-zero chance (e.g. a Bog Witch with both curse and freeze) can
+    // inflict several different conditions off the very same hit, not just
+    // one or the other. Poison is shared by both techs (Bog Witch via
+    // Afflictions, Goblin Miscreant via Pyromania), so it checks either
+    // mechanic; Curse is Malefic Malediction-only (2026-09-02, user-
+    // directed: moved off its own unconditional-100% special case into this
+    // same generic chance roll); Befuddled/Frozen/Webbed are
+    // Afflictions-only.
     if (attackerCiv.unlockedMechanics) {
       for (let i = 0; i < landedHitCount(result); i++) {
         if (attackerCiv.unlockedMechanics.has("afflictions_of_anguish") || attackerCiv.unlockedMechanics.has("pyromania")) {
           const poisonChance = window.GameEngine.combat.getUnitProperty(attackerUnit, attackerCiv, "poisonChancePct", 0);
           if (poisonChance > 0 && Math.random() < poisonChance) applyPoisoned(defenderUnit, gameState);
         }
-        if (attackerCiv.unlockedMechanics.has("afflictions_of_anguish")) {
-          const befuddleChance = window.GameEngine.combat.getUnitProperty(attackerUnit, attackerCiv, "befuddledChancePct", 0);
-          if (befuddleChance > 0 && Math.random() < befuddleChance) {
-            window.GameEngine.combat.applyBefuddled(defenderUnit, turn);
-          }
+        if (attackerCiv.unlockedMechanics.has("malefic_malediction")) {
           const curseChance = window.GameEngine.combat.getUnitProperty(attackerUnit, attackerCiv, "curseChancePct", 0);
           if (curseChance > 0 && Math.random() < curseChance) {
             setCondition(defenderUnit, "curse", { attackMult: 0.5, moveMult: 0.5, expiresAtTurn: turn + CURSE_DURATION });
             window.SfxSystem.playAction(attackerCiv.raceId, attackerUnit.typeId, "curse", defenderUnit.x, defenderUnit.y);
             window.GameEngine.combat.spawnAreaEffect(defenderUnit.x, defenderUnit.y, 0, "curse");
           }
+        }
+        if (attackerCiv.unlockedMechanics.has("afflictions_of_anguish")) {
+          const befuddleChance = window.GameEngine.combat.getUnitProperty(attackerUnit, attackerCiv, "befuddledChancePct", 0);
+          if (befuddleChance > 0 && Math.random() < befuddleChance) {
+            window.GameEngine.combat.applyBefuddled(defenderUnit, turn);
+          }
           const freezeChance = window.GameEngine.combat.getUnitProperty(attackerUnit, attackerCiv, "frozenChancePct", 0);
           if (freezeChance > 0 && Math.random() < freezeChance) {
             setCondition(defenderUnit, "frozen", { attackMult: 0.75, expiresAtTurn: turn + FROZEN_DURATION });
+          }
+          const webChance = window.GameEngine.combat.getUnitProperty(attackerUnit, attackerCiv, "webChancePct", 0);
+          if (webChance > 0 && Math.random() < webChance) {
+            applyWebbed(defenderUnit, gameState);
           }
         }
       }

@@ -172,6 +172,10 @@ window.GameEngine = window.GameEngine || {};
     const baseUnit = window.GameData.getUnit(unit.typeId);
     const ov = getUnitOverride(civ, unit.typeId);
     let pct = (baseUnit.firstStrikePct || 0) + (ov.firstStrikePct || 0);
+    // buildingBonuses: Orc War Camp's +5% First Strike, stamped at build
+    // time (2026-09-02) -- same shape as the attack/defense/maxHp stamps
+    // above.
+    pct += unit.buildingBonuses?.firstStrikePct || 0;
     // Dwarf "Power Metal"/"Epic Metal": Troubadour's aura -- see turns.js's
     // per-turn application and effectiveAttack's matching check above.
     pct += unit.conditions?.powerMetalAura?.firstStrikePctBonus || 0;

@@ -542,8 +542,8 @@ window.GameData.UNITS = {
     neverExplores: true, nameSpecial: true,
   },
   impaler: {
-    id: "impaler", label: "Impaler", symbol: "▲", category: "military", raceOnly: "orc",
-    attack: 3, defense: 3, movement: 2, visionRadius: 2, attackChars: ["𐃆"], firstStrikePct: 0.1,
+    id: "impaler", label: "Impaler", symbol: "▲", category: "military", raceOnly: "orc", range: 2,
+    attack: 3, defense: 3, movement: 1, visionRadius: 2, attackChars: ["𐃆"], firstStrikePct: 0.1,
     coinCost: 18,
   },
   wolf_rider: {
@@ -553,7 +553,7 @@ window.GameData.UNITS = {
   },
   bog_witch: {
     id: "bog_witch", label: "Bog Witch", symbol: "✦", category: "military", raceOnly: "orc",
-    attack: 5, defense: 3, movement: 2, visionRadius: 3, range: 2,
+    attack: 5, defense: 3, movement: 2, visionRadius: 3, 
     coinCost: 22, poisonChancePct: 0.5,
     // Baked directly into the unit rather than a tech effect -- the curse is
     // inherent to the Bog Witch herself, always active the moment you have

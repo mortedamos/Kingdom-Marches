@@ -147,15 +147,21 @@ window.GameData.BUILDINGS = {
 
   // ---------- ORC — the war host: fast units, blood-feasting, dragons, and
   // ancestors who rouse the living ----------
-  // No unitCostMult: units built in this city are created with +1 movement,
-  // permanently (see ai.js's BUILDING_UNIT_STAMPS) -- the Orc rush identity
-  // expressed as speed on the board rather than a discount.
+  // No unitCostMult: units built in this city are created with +1 movement
+  // and +5% First Strike, permanently (see ai.js's BUILDING_UNIT_STAMPS) --
+  // the Orc rush identity expressed as speed and aggression on the board
+  // rather than a discount.
   war_camp: {
     id: "war_camp", label: "War Camp", symbol: "⚑", raceOnly: "orc",
     coinCost: 20, maxHp: 24,
   },
-  // No yieldPct: "Blood Feast" -- while one stands, this civ's units heal
-  // 15% of max HP (minimum 1) on any kill. See ai.js's healOnKillPctFor.
+  // No yieldPct: "Blood Feast" -- a unit built in a city with one standing
+  // heals 15% of max HP (minimum 1) on any kill, permanently (2026-09-02,
+  // user-directed: moved from a civ-wide live check to the same
+  // BUILDING_UNIT_STAMPS permanent-stamp shape as War Camp's movement bonus
+  // above -- destroying this Butchery later doesn't take the bonus away
+  // from units already stamped, and a unit built before this Butchery went
+  // up never gets it, even retroactively). See ai.js's healOnKillPctFor.
   butchery: {
     id: "butchery", label: "Butchery", symbol: "X", raceOnly: "orc",
     coinCost: 22, maxHp: 24,

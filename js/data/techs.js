@@ -1338,7 +1338,7 @@ window.GameData.TECHS = {
   orc_warcraft: {
     id: "orc_warcraft", label: "War Camp", category: "building", layer: 1, cost: 22,
     prereqs: [], raceOnly: "orc",
-    description: "Unlocks the War Camp. Units built in this city march harder: +1 movement, permanently.",
+    description: "Unlocks the War Camp. Units built in this city march and strike harder: +1 movement and +5% First Strike, permanently.",
     costBreakdown: { lore: 18, coin: 4 },
     effects: [{ type: "unlock_building", building: "war_camp" }],
   },
@@ -1369,7 +1369,13 @@ window.GameData.TECHS = {
   orc_bog_witch: {
     id: "orc_bog_witch", label: "Bog Witch", category: "mystic", layer: 2, cost: 25,
     prereqs: [], raceOnly: "orc",
-    description: "Unlocks the Bog Witch. Any unit that kills a Bog Witch loses 50% attack and 50% movement for 5 turns -- a death-curse for whoever finishes her off.",
+    // 2026-09-02, user-directed: description now names the Curse condition
+    // explicitly (it always set condition "curse" mechanically -- see
+    // ai.js's applyOrcCombatMechanics -- the wording just didn't say so
+    // before) and covers her summoned Wisps too, which now carry the same
+    // death-curse (see orc_bog_spirit's unlock and ai.js's own doc comment
+    // on this block).
+    description: "Unlocks the Bog Witch. Any unit that kills a Bog Witch -- or one of her summoned Wisps -- gains the Curse condition: -50% Attack and -50% Movement for 5 turns.",
     costBreakdown: { lore: 18, coin: 7 },
     effects: [{ type: "unlock_unit", unit: "bog_witch" }],
   },
@@ -1377,14 +1383,15 @@ window.GameData.TECHS = {
     id: "orc_swift_hunters", label: "Swift Hunters", category: "military", layer: 2, cost: 24,
     prereqs: ["orc_wolf_riders"], raceOnly: "orc",
     // firstStrikePct is genuinely additive with the unit's own base value
-    // (see combat.js's effectiveFirstStrikePct) -- this +0.02 stacks on top
-    // of Wolf Rider's baked-in base (see units.js) rather than replacing it.
-    // 0.015 -> 0.02.
-    description: "Wolf Rider gains 2% First Strike and increased attack and movement. Raider also gains +1 movement.",
+    // (see combat.js's effectiveFirstStrikePct) -- this stacks on top of
+    // Wolf Rider's baked-in base (see units.js) rather than replacing it.
+    // 0.02 -> 0.20 (2026-09-02, user-directed).
+    description: "Wolf Rider gains 20% First Strike and increased attack and movement. Impaler and Raider each also gain +1 movement.",
     costBreakdown: { lore: 17, coin: 7 },
     effects: [
-      { type: "unit_stat_upgrade", unit: "wolf_rider", changes: { firstStrikePct: 0.02, attack: 2, movement: 1 } },
+      { type: "unit_stat_upgrade", unit: "wolf_rider", changes: { firstStrikePct: 0.20, attack: 2, movement: 1 } },
       { type: "unit_stat_upgrade", unit: "raider", changes: { movement: 1 } },
+      { type: "unit_stat_upgrade", unit: "impaler", changes: { movement: 1 } },
     ],
   },
   orc_spoils_of_war: {
@@ -1417,16 +1424,16 @@ window.GameData.TECHS = {
   orc_butchery_rites: {
     id: "orc_butchery_rites", label: "Butchery", category: "building", layer: 2, cost: 35,
     prereqs: [], raceOnly: "orc",
-    description: "Unlocks the Butchery. While at least one stands, your units heal 15% of their maximum health (minimum 1) whenever they kill an enemy.",
+    description: "Unlocks the Butchery. A unit built in a city with one standing heals 15% of its maximum health (minimum 1), permanently, whenever it kills an enemy.",
     costBreakdown: { lore: 28, coin: 7 },
     effects: [{ type: "unlock_building", building: "butchery" }],
   },
   orc_tip_of_the_spear: {
     id: "orc_tip_of_the_spear", label: "Tip of the Spear", category: "military", layer: 3, cost: 22,
     prereqs: ["orc_impaler_rite"], raceOnly: "orc",
-    description: "Impaler gains First Strike 10%.",
+    description: "Impaler gains First Strike 20%, +1 Attack, +1 Movement, and +1 Vision.",
     costBreakdown: { lore: 22 },
-    effects: [{ type: "unit_stat_upgrade", unit: "impaler", changes: { firstStrikePct: 0.10 } }],
+    effects: [{ type: "unit_stat_upgrade", unit: "impaler", changes: { firstStrikePct: 0.20, attack: 1, movement: 1, visionRadius: 1 } }],
   },
   orc_battering_ram: {
     id: "orc_battering_ram", label: "Battering Ram", category: "military", layer: 3, cost: 40,
@@ -1442,33 +1449,46 @@ window.GameData.TECHS = {
     costBreakdown: { lore: 28, coin: 14 },
     effects: [{ type: "unlock_unit", unit: "ogre" }],
   },
+  // 2026-09-02, user-directed rework: adds Bog Witch's Range (see the effect
+  // comment below), and replaces the old unconditional-100%-on-every-hit
+  // curse with a 25% curseChancePct roll (see ai.js's
+  // applyOrcCombatMechanics, which used to special-case
+  // unlockedMechanics.has("malefic_malediction") to apply "curse"
+  // unconditionally -- that branch is gone, folded into the same generic
+  // per-hit-chance loop afflictions_of_anguish already used, just gated on
+  // THIS mechanic instead). Bog Witch no longer carries a baked-in base
+  // `range` (see units.js) -- this tech is now the only source of it.
   orc_malefic_malediction: {
     id: "orc_malefic_malediction", label: "Malefic Malediction", category: "mystic", layer: 3, cost: 38,
     prereqs: ["orc_bog_witch"], raceOnly: "orc",
-    description: "Any unit damaged by a Bog Witch loses 50% attack and 50% movement for 5 turns. Stacks alongside the Bog Witch's own death-curse.",
+    description: "Bog Witch gains Range 2. Any unit she damages has a 25% chance to gain the Curse condition (-50% Attack, -50% Movement, 5 turns) -- stacks alongside her own death-curse.",
     costBreakdown: { lore: 38 },
-    effects: [{ type: "unlock_mechanic", mechanic: "malefic_malediction" }],
+    // range: 1, not 2 -- tech.js's unit_stat_upgrade ADDS this override to
+    // the unit's own base range (effectiveRange), and Bog Witch's base
+    // range is gone from units.js (melee default of 1 applies), so 1 (base
+    // default) + 1 (this override) = the effective Range 2 this tech grants.
+    effects: [
+      { type: "unit_stat_upgrade", unit: "bog_witch", changes: { range: 1, curseChancePct: 0.25 } },
+      { type: "unlock_mechanic", mechanic: "malefic_malediction" },
+    ],
   },
   // New per-unit data fields introduced here: befuddledChancePct and
-  // curseChancePct, same generic on-hit-chance convention as
+  // webChancePct, same generic on-hit-chance convention as
   // poisonChancePct/frozenChancePct/burnChancePct -- see ai.js's
-  // applyOrcCombatMechanics for where they're actually rolled. curseChancePct
-  // reuses Malefic Malediction's own debuff shape (-50% attack, -50%
-  // movement, 5 turns) -- since Malefic Malediction is a required prereq
-  // here and already applies that same curse unconditionally on every
-  // landed Bog Witch hit, this specific clause is currently redundant in
-  // practice (curse already always lands once both techs are known); kept
-  // as authored since the tech's own wording asks for it, and it stops
-  // being redundant if Malefic Malediction's own unconditional application
-  // is ever reworked.
+  // applyOrcCombatMechanics for where they're actually rolled.
+  // curseChancePct moved to orc_malefic_malediction above (2026-09-02,
+  // user-directed) -- this tech no longer touches Curse at all. frozenChancePct
+  // is this tech's own combined total (0.10 baseline this tech already had
+  // + 0.15 stated increase = 0.25), same "absolute value, not the delta"
+  // convention orc_pyromania uses.
   orc_afflictions_of_anguish: {
     id: "orc_afflictions_of_anguish", label: "Afflictions of Anguish", category: "mystic", layer: 4, cost: 65,
     prereqs: ["orc_bog_witch", "orc_malefic_malediction"], raceOnly: "orc",
-    description: "Bog Witch gains +1 vision. Her attacks gain a 20% chance to inflict Poison, 25% chance to inflict Befuddled, 25% chance to Curse (the same debuff Malefic Malediction already applies), and +10% chance to inflict Frozen.",
+    description: "Bog Witch gains +1 vision. Her attacks gain a 25% chance to inflict Poison, 25% chance to inflict Befuddled, +15% chance to inflict Frozen, and 15% chance to inflict Webbed.",
     costBreakdown: { lore: 45, coin: 20 },
     effects: [
       { type: "unit_stat_upgrade", unit: "bog_witch", changes: {
-        visionRadius: 1, poisonChancePct: 0.20, befuddledChancePct: 0.25, curseChancePct: 0.25, frozenChancePct: 0.10,
+        visionRadius: 1, poisonChancePct: 0.25, befuddledChancePct: 0.25, frozenChancePct: 0.25, webChancePct: 0.15,
       } },
       { type: "unlock_mechanic", mechanic: "afflictions_of_anguish" },
     ],
@@ -1520,20 +1540,23 @@ window.GameData.TECHS = {
   // are the COMBINED total (Burn It All Down's own 0.10 baseline + this
   // tech's stated bonus), not just this tech's own increment, so the two
   // techs' effects actually stack instead of one silently overwriting the
-  // other: Raider 0.10+0.10=0.20, Goblin Miscreant 0.10+0.20=0.30.
+  // other: Impaler 0.10+0.05=0.15, Raider 0.10+0.10=0.20, Goblin Miscreant
+  // 0.10+0.15=0.25 (2026-09-02, user-directed: Goblin Miscreant's Pyromania
+  // poison chance was also dropped entirely in this same pass).
   orc_pyromania: {
     id: "orc_pyromania", label: "Pyromania", category: "military", layer: 4, cost: 60,
     prereqs: ["orc_burn_it_all_down"], raceOnly: "orc",
-    description: "Raider gains +1 attack and +10% chance to inflict Burning (on top of Burn It All Down's own 10%). Goblin Miscreant gains +20% chance to inflict Burning (on top of Burn It All Down's own 10%) and +10% chance to inflict Poison.",
+    description: "Impaler gains +5% chance to inflict Burning (on top of Burn It All Down's own 10%). Raider gains +1 attack and +10% chance to inflict Burning (on top of Burn It All Down's own 10%). Goblin Miscreant gains +15% chance to inflict Burning (on top of Burn It All Down's own 10%).",
     costBreakdown: { lore: 30, coin: 20, harvest: 10 },
     effects: [
+      { type: "unit_stat_upgrade", unit: "impaler", changes: { burnChancePct: 0.15 } },
       { type: "unit_stat_upgrade", unit: "raider", changes: { attack: 1, burnChancePct: 0.20 } },
-      { type: "unit_stat_upgrade", unit: "goblin_miscreant", changes: { burnChancePct: 0.30, poisonChancePct: 0.10 } },
+      { type: "unit_stat_upgrade", unit: "goblin_miscreant", changes: { burnChancePct: 0.25 } },
       { type: "unlock_mechanic", mechanic: "pyromania" },
     ],
   },
   orc_wasteland_riders: {
-    id: "orc_wasteland_riders", label: "Wasteland Riders", category: "military", layer: 2, cost: 24,
+    id: "orc_wasteland_riders", label: "Wasteland Riders", category: "civic", layer: 2, cost: 24,
     prereqs: ["orc_forced_march"], raceOnly: "orc",
     // Civ-wide, not unit-restricted, same fix
     // and same reasoning as orc_forced_march above.
@@ -1570,7 +1593,7 @@ window.GameData.TECHS = {
   orc_honor_the_dead: {
     id: "orc_honor_the_dead", label: "Honor the Dead", category: "mystic", layer: 1, cost: 55,
     prereqs: [], raceOnly: "orc",
-    description: "When an Orc unit dies, gain +30 lore. Orc units have a 50% chance to resist being raised from the dead (if an Orc unit is slain by an Undead unit, only a 50% chance the Undead civ turns it into a zombie under its control).",
+    description: "When an Orc unit dies, gain +30 lore. A fallen Orc unit also has a 50% chance to resist being reanimated by whatever enemy struck it down.",
     costBreakdown: { lore: 45, harvest: 10 },
     effects: [
       { type: "death_lore_bonus", value: 30 },
@@ -2059,7 +2082,7 @@ window.GameData.TECHS = {
   halfellow_resilient_spirit: {
     id: "halfellow_resilient_spirit", label: "Resilient Spirit", category: "military", layer: 5, cost: 90,
     prereqs: ["halfellow_family_and_friendship"], raceOnly: "halfellow",
-    description: "If the next hit against a Halfellow unit (forward or counter) would kill it, 33% chance to negate all of that damage instead. Triggering forces the unit to Rest next turn, and permanently reduces that same unit's own trigger chance by 15 percentage points (floored at 0%) -- diminishing returns per unit, never resets. Additionally, Halfellow units have a 50% chance to resist being raised from the dead (if killed by an undead unit, only a 50% chance the undead turns it into a zombie under its control).",
+    description: "If the next hit against a Halfellow unit (forward or counter) would kill it, 33% chance to negate all the damage instead. Triggering forces a turn of Rest and permanently lowers that unit's own trigger chance by 15 points (floored at 0%). Halfellow units also have a 50% chance to resist being reanimated by whatever enemy struck them down.",
     costBreakdown: { lore: 55, harvest: 35 },
     effects: [
       { type: "unlock_mechanic", mechanic: "resilient_spirit", value: 0.33 },
