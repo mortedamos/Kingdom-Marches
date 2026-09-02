@@ -489,7 +489,7 @@ window.GameData.UNITS = {
     // on a hit against a full-health Titan.
     attack: 10, defense: 18, movement: 2, visionRadius: 2, siegePct: 2.5,
     coinCost: 60, biggerPct: 1.2, attackChars: ["🪨", "💥", "👊"],
-    veryRare: true, neverExplores: true, siegeTarget: true,
+    veryRare: true, neverExplores: true, siegeTarget: true, impactSmoke: true,
     nameSpecial: true, // a construct, not a person -- see unit-names.js
   },
   // dwarf_bombardment: a squat, mortar-shaped bombard (think Mons Meg/Tsar
@@ -584,7 +584,7 @@ window.GameData.UNITS = {
   battering_ram: {
     id: "battering_ram", label: "Battering Ram", symbol: "⚙", category: "military", raceOnly: "orc",
     attack: 8, defense: 6, movement: 2, visionRadius: 2, siegePct: 1.5,
-    coinCost: 30, biggerPct: .5, attackChars: ["💥"],
+    coinCost: 30, biggerPct: .5, attackChars: ["💥"], impactSmoke: true,
     nameSpecial: true, // a machine, not a person -- see unit-names.js
   },
   ogre: {
@@ -596,7 +596,7 @@ window.GameData.UNITS = {
   dragon: {
     id: "dragon", label: "Dragon", symbol: "🐉", category: "military", raceOnly: "orc",
     attack: 10, defense: 9, movement: 4, visionRadius: 5, flying: true, range: 2, siegePct: 1.00, burnChancePct: 0.50,
-    coinCost: 55, biggerPct: 1.0, attackChars: ["🔥", "💥", "彡"],
+    coinCost: 55, biggerPct: 1.0, attackChars: ["🔥", "💥", "彡"], impactSmoke: true,
     // No `rare` (2026-08-24): the build-cost premium was how the Dragon was
     // kept scarce back when Dragon Den was a +10% coin building. The Den is
     // now a hard structural prerequisite instead (see ai.js's
