@@ -65,9 +65,9 @@ window.GameConfig = {
     /** Local date this build was cut, YYYY-MM-DD. */
     date: "2026-09-02",
     /** Local time this build was cut, 24-hour HH:MM. */
-    time: "16:31",
+    time: "19:39",
     /** Monotonic build counter -- increment it, don't recompute it. */
-    number: 248,
+    number: 249,
   },
 
   // =========================================================================
@@ -366,7 +366,7 @@ window.GameConfig = {
      *  from rare Ruins), so unlike harvest/coin it wouldn't otherwise scale
      *  with a growing city working more tiles -- this is what keeps lore
      *  income growing with city size instead of staying flat. */
-    intrinsicCoinRate: 0.1,
+    intrinsicCoinRate: 1,
     intrinsicLoreRate: 3,
 
     /** Flat per-city, per-turn yield, before any tiles are worked -- keeps a
@@ -396,7 +396,7 @@ window.GameConfig = {
      *  set the { harvest, lore } cost as a flat amount plus a per-population
      *  scale, so the price keeps pace with a growing city the same way
      *  researchBoostAmount's payoff already does. */
-    cultureSpreadInfluenceMult: 1.5,
+    cultureSpreadInfluenceMult: 1.4,
     cultureSpreadCostBase: { harvest: 5, coin: 5, lore: 5 },
     cultureSpreadCostPerPop: { harvest: 5, coin: 5, lore: 5 },
 
@@ -511,7 +511,7 @@ window.GameConfig = {
      *  tiles around turn 150, not to make filling instant. */
     fillThreshold: 3,
     fillRateBase: 1.0935,
-    fillRatePerIndustriousness: 1.3122,
+    fillRatePerIndustriousness: 1.2,
 
     /** How much the fill rate above scales with the city's CURRENT radius:
      *  the per-turn rate is multiplied by (1 + (influenceRadius - 1) * this).
