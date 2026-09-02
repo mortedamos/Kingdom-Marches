@@ -1771,7 +1771,14 @@ window.UI = window.UI || {};
       // Spelled out rather than abbreviated ("mp") since it floats on the
       // map with nothing nearby to decode it from, unlike H/C/L which the
       // sidebar spells out elsewhere first.
-      drawPreviewLabel(ctx, `${preview.cost} movement point${preview.cost === 1 ? "" : "s"}`, cx, screenY - 2, color);
+      //
+      // Rounded to the nearest tenth (2026-09-01, user-directed): cost is a
+      // BFS-accumulated sum of per-tile costs, which since the terrain-speed
+      // tech rework can include repeating fractions (2/3, etc.) -- without
+      // this a multi-tile path could show something like
+      // "1.9999999999999998 movement points" instead of "2".
+      const roundedCost = Math.round(preview.cost * 10) / 10;
+      drawPreviewLabel(ctx, `${roundedCost} movement point${roundedCost === 1 ? "" : "s"}`, cx, screenY - 2, color);
     } else {
       // Blocked: a slash through the tile, plus why.
       ctx.beginPath();
