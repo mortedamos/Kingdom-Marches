@@ -1415,7 +1415,7 @@ window.GameData.TECHS = {
   // project_campaign_of_terror_fix / project_pairwise_balance_human_orc_halfellow
   // memory for the investigation this grew out of.
   orc_pillage_and_loot: {
-    id: "orc_pillage_and_loot", label: "Pillage and Loot", category: "civic", layer: 4, cost: 40,
+    id: "orc_pillage_and_loot", label: "Pillage and Loot", category: "civic", layer: 3, cost: 40,
     prereqs: ["orc_spoils_of_war"], raceOnly: "orc",
     description: "An Orc unit standing within an enemy city's radius suppresses enemy influence in a 2-tile radius around itself, stripping it fully after 3 turns, and pays +1 harvest, +1 coin, and +1 lore per tile suppressed this turn. Ends when the unit moves out of range, leaves the enemy radius, or dies.",
     costBreakdown: { lore: 26, coin: 14 },
