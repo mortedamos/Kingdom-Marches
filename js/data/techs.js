@@ -1601,7 +1601,7 @@ window.GameData.TECHS = {
     ],
   },
   orc_dragon_den_rite: {
-    id: "orc_dragon_den_rite", label: "Dragon Den", category: "building", layer: 3, cost: 55,
+    id: "orc_dragon_den_rite", label: "Dragon Den", category: "building", layer: 4, cost: 55,
     prereqs: [], raceOnly: "orc",
     description: "Unlocks the Dragon Den. Dragons may only be built in a city that has one -- lose the Den and that city can no longer raise them.",
     costBreakdown: { lore: 40, coin: 15 },
@@ -1632,7 +1632,7 @@ window.GameData.TECHS = {
   // "Campaign of Terror" removed entirely (2026-07-14) -- merged into
   // orc_pillage_and_loot above (see its comment).
   orc_ancestral_dolmen_rite: {
-    id: "orc_ancestral_dolmen_rite", label: "Ancestral Dolmen", category: "building", layer: 4, cost: 95,
+    id: "orc_ancestral_dolmen_rite", label: "Ancestral Dolmen", category: "building", layer: 3, cost: 95,
     prereqs: ["orc_the_old_ways"], raceOnly: "orc",
     description: "Unlocks the Ancestral Dolmen. When a unit built in this city falls anywhere on the map, every friendly unit within 3 tiles is roused to avenge it: +25% attack for 3 turns.",
     costBreakdown: { lore: 95 },
