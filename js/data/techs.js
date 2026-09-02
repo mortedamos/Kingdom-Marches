@@ -927,7 +927,7 @@ window.GameData.TECHS = {
   elf_shadowsteed: {
     id: "elf_shadowsteed", label: "Shadowsteed", category: "mystic", layer: 5, cost: 95,
     prereqs: ["elf_air_beneath_eyes_above", "elf_quick_as_a_shadow"], raceOnly: "elf",
-    description: "The Druid may instantly summon a Shadowsteed, a flying horse made of shadow, the same way it summons a Raptor: appearing on an open adjacent tile. It cannot carry an Awakened Oak, a Raptor, or a Galley. While carrying another unit, it takes on that unit's range, attack, defense, siege, and First Strike (keeping its own First Strike if higher), then adds its own bonuses on top. Cities cannot build Shadowsteed units directly.",
+    description: "The Druid may instantly summon a Shadowsteed, a flying horse of shadow, onto an open adjacent tile (cities cannot build one directly). It cannot carry an Awakened Oak, Raptor, or Galley. While carrying another unit, it fights using that unit's range, attack, defense, siege, and First Strike, plus a small bonus of its own.",
     costBreakdown: { lore: 55, coin: 25, harvest: 15 },
     effects: [
       { type: "unlock_unit", unit: "shadowsteed" },
@@ -944,7 +944,7 @@ window.GameData.TECHS = {
   elf_natures_fury: {
     id: "elf_natures_fury", label: "Nature's Fury", category: "mystic", layer: 5, cost: 95,
     prereqs: ["elf_sanctuary_under_green_boughs", "elf_beast_sight"], raceOnly: "elf",
-    description: "The Druid may embrace the power of nature and become a Dire Bear (a full-turn action), trading its healing/summoning/city-founding kit for a hulking combat form -- same name, same veteran bonuses, HP carried over as a percentage of max HP. A Dire Bear may likewise spend a full turn to revert to Druid form. Neither form can be built by cities or summoned; a Dire Bear also still counts as a Druid for the purposes of the civ's Raptor/Shadowsteed summon capacity.",
+    description: "The Druid may spend a full turn to transform into a Dire Bear, trading its healing/summoning/city-founding kit for a hulking combat form (same name and veteran bonuses, HP carried over as a percentage). A Dire Bear may likewise spend a turn to revert, and still counts as a Druid for its civ's Raptor/Shadowsteed summon cap.",
     costBreakdown: { lore: 55, coin: 25, harvest: 15 },
     effects: [
       { type: "unlock_unit", unit: "dire_bear" },
@@ -1059,7 +1059,7 @@ window.GameData.TECHS = {
   dwarf_the_long_reckoning: {
     id: "dwarf_the_long_reckoning", label: "The Long Reckoning", category: "civic", layer: 3, cost: 42,
     prereqs: ["dwarf_chronicle_in_stone"], raceOnly: "dwarf",
-    description: "Dwarves do not forgive. If an enemy civ ever destroys one of this civ's cities or buildings (not walls), that civ is permanently marked as a rival: this civ's units gain +25% attack against that specific civ's units, cities, and structures forever after (tracked per-enemy-civ, never expires, does not require the mark-holder to still be alive).",
+    description: "Dwarves do not forgive: if an enemy civ ever destroys one of this civ's cities or buildings (not walls), it is marked as a rival forever. This civ's units gain a permanent +25% attack against that specific civ's units, cities, and structures from then on.",
     costBreakdown: { coin: 24, lore: 18 },
     effects: [{ type: "unlock_mechanic", mechanic: "the_long_reckoning" }],
   },
@@ -1300,7 +1300,7 @@ window.GameData.TECHS = {
   orc_dire_wolf: {
     id: "orc_dire_wolf", label: "Dire Wolf", category: "military", layer: 1, cost: 13,
     prereqs: [], raceOnly: "orc",
-    description: "Unlocks the Dire Wolf: a fast, savage hunter-beast. Regardless of fog of war, a Dire Wolf always knows the way to the nearest enemy unit on its own landmass and relentlessly closes the distance, attacking anything it catches along the way -- its preferred action, ahead of every other Orc strategy. Orc civ strategy always tries to keep at least one Dire Wolf active, and stops building new Scouts once Dire Wolf is available.",
+    description: "Unlocks the Dire Wolf, a fast, savage hunter-beast. Regardless of fog of war, it always knows the way to the nearest enemy unit on its own landmass and relentlessly closes the distance, attacking anything it catches along the way.",
     costBreakdown: { lore: 9, coin: 4 },
     effects: [{ type: "unlock_unit", unit: "dire_wolf" }],
   },
@@ -1417,7 +1417,7 @@ window.GameData.TECHS = {
   orc_pillage_and_loot: {
     id: "orc_pillage_and_loot", label: "Pillage and Loot", category: "civic", layer: 4, cost: 40,
     prereqs: ["orc_spoils_of_war"], raceOnly: "orc",
-    description: "An Orc unit standing within an enemy city's radius has a 2-tile (Chebyshev) radius around itself which removes any filled-in enemy influence from those tiles -- cutting off their yield immediately and fully stripping the tile after 3 turns of sustained suppression -- and generates +1 harvest, +1 coin, and +1 lore for EACH tile where influence was actually suppressed this turn. Lasts until the unit moves to a new tile (the effect moves with it), leaves the enemy city's radius, or is killed. Does not stack with other Orc units on the same tile.",
+    description: "An Orc unit standing within an enemy city's radius suppresses enemy influence in a 2-tile radius around itself, stripping it fully after 3 turns, and pays +1 harvest, +1 coin, and +1 lore per tile suppressed this turn. Ends when the unit moves out of range, leaves the enemy radius, or dies.",
     costBreakdown: { lore: 26, coin: 14 },
     effects: [{ type: "unlock_mechanic", mechanic: "pillage_and_loot" }],
   },
@@ -1496,7 +1496,7 @@ window.GameData.TECHS = {
   orc_bog_spirit: {
     id: "orc_bog_spirit", label: "Bog Spirit", category: "mystic", layer: 3, cost: 40,
     prereqs: ["orc_bog_witch"], raceOnly: "orc",
-    description: "The Bog Witch may instantly summon a Wisp, a small flying spirit of the swamp, into any swamp tile the Orc kingdom has ever explored -- even one it can't currently see. A Wisp can hide, and is permanently bound to swamp terrain: it flies at speed over swamp but can never cross onto any other kind of tile. The Orc kingdom may field at most one Wisp per living Bog Witch -- if a Bog Witch dies and that leaves too many Wisps behind, one must be disbanded.",
+    description: "The Bog Witch may instantly summon a Wisp, a small flying spirit bound permanently to Swamp, onto any explored swamp tile. A Wisp can Hide, but can never leave Swamp terrain. The kingdom may field at most one Wisp per living Bog Witch.",
     // unlock_unit registers "wisp" with techForUnit (so unitBuildCost can
     // derive its resource split from this tech's costBreakdown) even though
     // no CITY can ever build one -- see units.js's cityBuildable: false.
@@ -1790,7 +1790,7 @@ window.GameData.TECHS = {
   halfellow_keep_an_eye_out: {
     id: "halfellow_keep_an_eye_out", label: "Keep an Eye Out", category: "military", layer: 1, cost: 22,
     prereqs: [], raceOnly: "halfellow",
-    description: "Any Halfellow unit may spend its whole turn to go Hidden and hold position, gaining +3 vision radius for as long as it stays there. Also applies automatically to a Halfellow unit standing on Sentry: it stays Hidden with +3 vision for as long as Sentry holds, reverting to plain visibility the instant Sentry ends or it fires on something. Ends the same way Hidden normally ends otherwise (moving, an enemy walking onto its tile, attacking, ...).",
+    description: "Any Halfellow unit may spend its whole turn to go Hidden and hold position, gaining +3 vision radius for as long as it stays there. This also applies automatically to a unit standing on Sentry, for as long as Sentry holds.",
     costBreakdown: { harvest: 12, lore: 10 },
     effects: [{ type: "unlock_mechanic", mechanic: "keep_an_eye_out", value: 3 }],
   },
@@ -1934,7 +1934,15 @@ window.GameData.TECHS = {
   halfellow_making_trouble: {
     id: "halfellow_making_trouble", label: "Making Trouble", category: "mystic", layer: 2, cost: 45,
     prereqs: ["halfellow_pub_crawl"], raceOnly: "halfellow",
-    description: "Unlocks the Trouble Maker, a stealthy rogue with two built-in tricks: Resource Heist (steal a targeted enemy unit's accumulated prospecting/delving/fishing stash, resetting their claim to zero, and leaves the victim Befuddled) and Unlock the Gate (disables a targeted wall and every wall adjacent to it -- zeroing their defense and suppressing any special wall defenses -- for 3 rounds). When opening a Treasure Chest, a Trouble Maker is able to disarm traps: a trap that would have sprung is instead disarmed harmlessly.",
+    // Unlock the Gate's clause corrected (2026-09-02) to match its
+    // 2026-08-27 rework -- see combat.js's isCityWallDefenseSuppressed doc
+    // comment: it's a CITY-WIDE cut to the wall-defense term (to 25% of
+    // normal), not a per-wall/adjacent-walls effect, and it does NOT
+    // suppress the wall-potshot counterattack mechanic (only the passive
+    // defense score). Separately (and not previously mentioned at all), the
+    // one targeted wall tile itself becomes crossable for the duration --
+    // see ai.js's performUnlockTheGate.
+    description: "Unlocks the Trouble Maker. Resource Heist steals a targeted enemy's accumulated gathering claim and leaves it Befuddled; Unlock the Gate makes a targeted wall crossable and cuts that city's overall wall defense to 25% for 3 turns. It can also disarm a Treasure Chest trap instead of springing it.",
     costBreakdown: { harvest: 22, lore: 23 },
     effects: [
       { type: "unlock_unit", unit: "trouble_maker" },
@@ -2100,7 +2108,7 @@ window.GameData.TECHS = {
   halfellow_banish_the_darkness: {
     id: "halfellow_banish_the_darkness", label: "Banish the Darkness", category: "mystic", layer: 5, cost: 95,
     prereqs: ["halfellow_hearth_and_homeland", "halfellow_devoted_companions"], raceOnly: "halfellow",
-    description: "The Wanderer gains a new full-turn action: Create The Great Bonfire, summoning it onto an open adjacent tile (not Water or Mountains). Only one Great Bonfire may burn at a time for this kingdom -- summoning a new one dismisses the old. It burns for 5 turns before self-dismissing, and radiates Bonfire's Blessing in a 4-tile radius: allied units there (including the Bonfire itself) heal 10% of their max HP per turn (minimum 1) regardless of resting, gain +2 defense, +2 vision, +1 movement, +5% First Strike, and +10% Double Strike, and are cured of, and immune to, Burning, Poisoned, Frozen, Curse, Befuddled, and Webbed for as long as they stay in range.",
+    description: "The Wanderer gains a full-turn action to summon the Great Bonfire onto an open adjacent tile, replacing this kingdom's own Bonfire if it already has one. It burns for 5 turns, granting nearby allies healing, several combat bonuses, and immunity to harmful conditions for as long as they stay within 4 tiles.",
     costBreakdown: { lore: 55, coin: 25, harvest: 15 },
     effects: [
       { type: "unlock_unit", unit: "great_bonfire" },
@@ -2127,7 +2135,7 @@ window.GameData.TECHS = {
   halfellow_set_the_trap: {
     id: "halfellow_set_the_trap", label: "Set the Trap", category: "mystic", layer: 3, cost: 90,
     prereqs: ["halfellow_nice_day_fishing"], raceOnly: "halfellow",
-    description: "The Trouble Maker may set a Frost Trap or a Fire Trap on any unoccupied tile within its own range. Either trap stays hidden indefinitely -- it is never spotted by normal means, though a splash/area attack that happens to land on it can still catch it by accident, same as any other hidden unit. The instant an enemy unit ends a move adjacent to it, the trap springs: 4 damage plus Frozen (0 movement, -25% attack, 3 turns) for a Frost Trap, or 4 damage plus Burning (1 damage/turn for 3 turns, no effect on Coast/Ocean/river) for a Fire Trap -- then the trap is spent. The Halfellow kingdom may field at most one trap (of either flavor) per living Trouble Maker.",
+    description: "The Trouble Maker may set a hidden Frost or Fire Trap on an unoccupied tile within its own range. The first enemy to move adjacent springs it: 4 damage plus Frozen (Frost) or Burning (Fire), then the trap is spent. The kingdom may field at most one trap, of either flavor, per living Trouble Maker.",
     costBreakdown: { harvest: 8, coin: 12, lore: 20 },
     effects: [
       { type: "unlock_unit", unit: "trap_frost" },
