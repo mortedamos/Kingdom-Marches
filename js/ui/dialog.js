@@ -18,7 +18,7 @@
  *   { kind: "unitBuilt", cityName, unitLabel, unitProperName, onGoToCity(), onGoToUnit(), onDismiss() }
  *   { kind: "confirmAutomatedAction", unitLabel, actionLabel, onConfirm(), onDecline() }
  *   { kind: "attackNotice", unitLabel, onGoTo(), onSkip() }
- *   { kind: "gameOver", turnsSurvived, citiesFounded, citiesLost, techsResearched, onReturnToTitle() }
+ *   { kind: "gameOver", turnsSurvived, citiesFounded, citiesLost, techsResearched, influenceInfo?: {winnerLabel, winnerTiles, ownTiles, tileTarget}, onViewInfluenceReport()?, onKeepFighting()?, onReturnToTitle() }
  *   { kind: "victoryStats", raceId, raceLabel, timeTaken, totalTurns, militaryPower, influenceLevel, unitKills, unitsLost, rivals: [{label,color,eliminated,territoryPct}], onReturnToTitle() }
  *
  * Every kind rendered here needs a matching branch in main.js's
@@ -329,16 +329,26 @@ window.UI = window.UI || {};
     if (dialog.kind === "gameOver") {
       // Human defeat: fires the instant this
       // civ is eliminated, or another civ wins first -- see main.js's
-      // finishRoundBookkeeping/openGameOverDialog. Stats-only, single exit
-      // (no "keep playing" option -- the game has genuinely ended for this
-      // player either way).
+      // finishRoundBookkeeping/openGameOverDialog. Stats plus, when
+      // dialog.influenceInfo is set (2026-09-02, user-directed: lost to
+      // another civ's territorial victory, not this civ's own elimination),
+      // a look at how the influence race actually went and a way back into
+      // the game instead of the single Return to Title exit every other
+      // loss gets.
+      const info = dialog.influenceInfo;
       return `
         <h2>You Have Lost</h2>
         <div class="stat-row"><span>Turns Survived</span><span>${dialog.turnsSurvived}</span></div>
         <div class="stat-row"><span>Cities Founded</span><span>${dialog.citiesFounded}</span></div>
         <div class="stat-row"><span>Cities Lost</span><span>${dialog.citiesLost}</span></div>
         <div class="stat-row"><span>Technologies Researched</span><span>${dialog.techsResearched}</span></div>
+        ${info ? `
+        <p>${escapeHtml(info.winnerLabel)} claimed territorial dominance with
+        ${info.winnerTiles.toLocaleString()} / ${info.tileTarget.toLocaleString()} tiles
+        (you held ${info.ownTiles.toLocaleString()}).</p>` : ""}
         <div class="game-dialog-actions">
+          ${info ? `<button class="menu-dropdown-btn" id="game-dialog-view-report-btn">View Influence Report</button>` : ""}
+          ${info ? `<button class="menu-dropdown-btn" id="game-dialog-keep-fighting-btn">Keep On Fighting!</button>` : ""}
           <button class="menu-dropdown-btn game-dialog-primary" id="game-dialog-ok-btn">Return to Title Screen</button>
         </div>`;
     }

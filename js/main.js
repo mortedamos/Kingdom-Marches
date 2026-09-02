@@ -1798,6 +1798,10 @@
       fogMode: "off", fogCivIds: new Set(Object.keys(gameState.civs)), // spectator-only; see setupFogControls
       tileScoreCivId: null, // Interface menu's Tile City Score overlay -- available in both spectator and human modes
       dialog: null, // in-game confirm/prompt/alert replacement -- see js/ui/dialog.js
+      // Stashed gameOver dialog while the Influence report is open on top of
+      // it -- see openGameOverDialog's onViewInfluenceReport and
+      // reports-close-btn's handler, which hands it back.
+      dialogBeforeReport: null,
       turnBanner: null, // "<Race> Kingdom Taking Its Turn..." -- see advanceTurn()
       // { x, y, start } while a jump-to-tile link's brief highlight is
       // animating -- see goToTile/render.js's drawTileFlash.
@@ -1893,7 +1897,7 @@
       is3D: false,
       fogMode: "off", fogCivIds: new Set(Object.keys(gameState.civs)),
       tileScoreCivId: null,
-      dialog: null, turnBanner: null, ringMenu: null,
+      dialog: null, dialogBeforeReport: null, turnBanner: null, ringMenu: null,
       onTechTreeClosed: null,
     };
     const racesInPlay = [...new Set(Object.values(gameState.civs).map((c) => c.raceId))];
@@ -2991,7 +2995,7 @@
       // this now (see input.js's SELECTION MODEL).
       selection: null,
       fogMode: "off", fogCivIds: new Set(Object.keys(gameState.civs)),
-      tileScoreCivId: null, dialog: null, turnBanner: null, ringMenu: null,
+      tileScoreCivId: null, dialog: null, dialogBeforeReport: null, turnBanner: null, ringMenu: null,
       onTechTreeClosed: null,
     });
 
@@ -3644,7 +3648,7 @@
     }
 
     if (humanLost) {
-      openGameOverDialog(gameState.civs[humanCivId]);
+      openGameOverDialog(gameState.civs[humanCivId], victoryResult);
     } else if (victoryResult) {
       const text = victoryResult.type === "elimination"
         ? `${victoryResult.winner} has conquered all rivals!`
@@ -3790,16 +3794,59 @@
    *  already tracked civ-wide (no new tracking needed): cityEvents (see
    *  cities.js's foundCity/destroyCity) survives the civ's own elimination
    *  since it's an append-only log on the civ object, not derived from
-   *  civ.cities itself (which is empty by the time this fires). */
-  function openGameOverDialog(civ) {
+   *  civ.cities itself (which is empty by the time this fires).
+   *
+   *  `victoryResult` (2026-09-02, user-directed) is whichever result made
+   *  this a loss -- checkImmediateVictory's is always elimination-type
+   *  (only checkEliminationVictory runs mid-round), finishRoundBookkeeping's
+   *  own endRound sweep can be either. Only a territorial win that ISN'T
+   *  this civ's own elimination gets the influence-loss treatment below --
+   *  an elimination loss has no tile count to show and no army left to
+   *  "keep fighting" with. */
+  function openGameOverDialog(civ, victoryResult) {
     clearInterval(autoplayTimer);
     const events = civ.cityEvents || [];
+    const lostToInfluence = !!(victoryResult && victoryResult.type === "territory"
+      && victoryResult.winner !== civ.id && !civ.eliminated);
+    let influenceInfo = null;
+    if (lostToInfluence) {
+      const winnerCiv = gameState.civs[victoryResult.winner];
+      const winnerRace = window.GameData.getRace(winnerCiv.raceId);
+      const { counts } = window.GameEngine.influence.countTerritory(gameState);
+      influenceInfo = {
+        winnerLabel: winnerRace.label,
+        winnerTiles: Math.round(counts[victoryResult.winner] || 0),
+        ownTiles: Math.round(counts[civ.id] || 0),
+        tileTarget: window.GameEngine.turns.VICTORY_TILE_TARGET,
+      };
+    }
     viewState.dialog = {
       kind: "gameOver",
       turnsSurvived: gameState.turnNumber || 0,
       citiesFounded: events.filter((e) => e.type === "founded").length,
       citiesLost: events.filter((e) => e.type === "razed").length,
       techsResearched: civ.completedTechs ? civ.completedTechs.size : 0,
+      influenceInfo,
+      // Stashes the gameOver dialog itself and hands off to the Influence
+      // report overlay -- reports-close-btn's own handler (redraw()) hands
+      // it right back so the player returns to this exact screen rather than
+      // straight into gameplay. Needs to CLEAR viewState.dialog (not just
+      // leave it set underneath) since #game-dialog-overlay sits later in
+      // the DOM than #reports-overlay and would otherwise render on top of
+      // it, hiding the report entirely.
+      onViewInfluenceReport: influenceInfo ? () => {
+        viewState.dialogBeforeReport = viewState.dialog;
+        viewState.dialog = null;
+        viewState.reportView = "influence";
+      } : undefined,
+      // "Keep On Fighting!" (2026-09-02, user-directed): the losing-side
+      // counterpart to showVictorySequence's "Keep Fighting!" -- same flag,
+      // same permanent-for-the-rest-of-this-game effect, just reached from
+      // the other end. Drops straight back into ordinary play rather than
+      // Return to Title.
+      onKeepFighting: influenceInfo ? () => {
+        gameState.disableTerritorialVictory = true;
+      } : undefined,
       onReturnToTitle: handleReturnToTitle,
     };
     // Fixed game_over.mp3, overriding any situational/victory theme (see
@@ -3836,7 +3883,7 @@
     const humanLost = !!humanCivId && victoryResult.winner !== humanCivId
       && !!gameState.civs[humanCivId]?.eliminated;
     if (humanLost) {
-      openGameOverDialog(gameState.civs[humanCivId]);
+      openGameOverDialog(gameState.civs[humanCivId], victoryResult);
     } else {
       // Same plain-civId text finishRoundBookkeeping's own elimination-type
       // victory branch uses ("HUMAN has conquered all rivals!", not the
@@ -4794,7 +4841,18 @@
       // wide in style.css) -- every other report type keeps the narrower
       // default sized for its chart/log content.
       $("reports-modal").classList.toggle("reports-modal-wide", viewState.reportView === "ai_tech_trees");
-      $("reports-close-btn").onclick = () => { viewState.reportView = null; redraw(); };
+      $("reports-close-btn").onclick = () => {
+        viewState.reportView = null;
+        // Hands the game-over screen back if that's what sent the player
+        // here (see openGameOverDialog's onViewInfluenceReport) -- otherwise
+        // this is the ordinary top-menu Reports flow and there's nothing to
+        // restore.
+        if (viewState.dialogBeforeReport) {
+          viewState.dialog = viewState.dialogBeforeReport;
+          viewState.dialogBeforeReport = null;
+        }
+        redraw();
+      };
       reportsOverlay.style.display = "flex";
     } else {
       lastRenderedReportKey = null;
@@ -5198,6 +5256,23 @@
     } else if (dialog.kind === "gameOver" || dialog.kind === "victoryStats") {
       const okBtn = $("game-dialog-ok-btn");
       if (okBtn) okBtn.onclick = () => dialog.onReturnToTitle();
+      if (dialog.kind === "gameOver") {
+        const viewReportBtn = $("game-dialog-view-report-btn");
+        if (viewReportBtn) viewReportBtn.onclick = () => {
+          dialog.onViewInfluenceReport();
+          redraw();
+        };
+        // Deliberately does NOT also call dialog.onReturnToTitle -- same
+        // "decline and drop straight back into play" shape as the "message"
+        // kind's own Keep Fighting button above.
+        const keepFightingBtn = $("game-dialog-keep-fighting-btn");
+        if (keepFightingBtn) keepFightingBtn.onclick = () => {
+          viewState.dialog = null;
+          lastRenderedDialog = null;
+          dialog.onKeepFighting();
+          redraw();
+        };
+      }
     } else if (dialog.kind === "chooseTech") {
       const modal = $("game-dialog-modal");
       if (modal) {
