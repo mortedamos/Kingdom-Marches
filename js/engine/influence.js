@@ -187,7 +187,7 @@ window.GameEngine = window.GameEngine || {};
 
     // --- Orc "Pillage and Loot": only while an Orc unit is standing within
     // some OTHER civ's city radius (raiding range, not anywhere on the map),
-    // it projects a zone of terror in a 2-tile (Chebyshev) radius around
+    // it projects a zone of terror in a 1-tile (Chebyshev) radius around
     // itself that nullifies every OTHER civ's (already filled-in) influence
     // there entirely -- its own civ's influence is untouched. Gated fresh
     // every turn on the unit's current position (see the tech's own wording:
@@ -199,11 +199,12 @@ window.GameEngine = window.GameEngine || {};
     //
     // Merged from the former standalone
     // "Campaign of Terror" tech into Pillage and Loot -- see that tech's
-    // comment in techs.js. Radius raised 1->2 and a resolveOwnership bug
+    // comment in techs.js. A resolveOwnership bug
     // fixed (see its own comment) in the same pass that made this mechanic
     // actually demote OWNED tiles, not just already-contested ones --
     // previously a near-total no-op against stable enemy territory, its
-    // actual intended target.
+    // actual intended target. Radius was 2 tiles from that pass until
+    // 2026-09-02, when it was brought back down to 1.
     //
     // Also now records how many tiles each unit ACTUALLY suppressed this
     // turn (i.e. tiles that had a real enemy influence entry to delete, not
@@ -226,8 +227,8 @@ window.GameEngine = window.GameEngine || {};
         });
         if (!nearEnemyCity) continue;
         let suppressedCount = 0;
-        for (let dy = -2; dy <= 2; dy++) {
-          for (let dx = -2; dx <= 2; dx++) {
+        for (let dy = -1; dy <= 1; dy++) {
+          for (let dx = -1; dx <= 1; dx++) {
             const tx = unit.x + dx, ty = unit.y + dy;
             if (tx < 0 || tx >= map.width || ty < 0 || ty >= map.height) continue;
             const civMap = influenceByTile.get(ty * map.width + tx);

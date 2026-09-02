@@ -1417,7 +1417,7 @@ window.GameData.TECHS = {
   orc_pillage_and_loot: {
     id: "orc_pillage_and_loot", label: "Pillage and Loot", category: "civic", layer: 3, cost: 40,
     prereqs: ["orc_spoils_of_war"], raceOnly: "orc",
-    description: "An Orc unit standing within an enemy city's radius suppresses enemy influence in a 2-tile radius around itself, stripping it fully after 3 turns, and pays +1 harvest, +1 coin, and +1 lore per tile suppressed this turn. Ends when the unit moves out of range, leaves the enemy radius, or dies.",
+    description: "An Orc unit standing within an enemy city's radius suppresses enemy influence in a 1-tile radius around itself, stripping it fully after 3 turns, and pays +1 harvest, +1 coin, and +1 lore per tile suppressed this turn. Ends when the unit moves out of range, leaves the enemy radius, or dies.",
     costBreakdown: { lore: 26, coin: 14 },
     effects: [{ type: "unlock_mechanic", mechanic: "pillage_and_loot" }],
   },

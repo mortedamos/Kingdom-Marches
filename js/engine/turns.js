@@ -1126,6 +1126,9 @@ window.GameEngine = window.GameEngine || {};
         civ.resources.harvest += tilesSuppressed;
         civ.resources.coin += tilesSuppressed;
         civ.resources.lore += tilesSuppressed;
+        window.GameEngine.floatingText.spawnResourceGain(unit, {
+          harvest: tilesSuppressed, coin: tilesSuppressed, lore: tilesSuppressed,
+        });
       }
     }
 
