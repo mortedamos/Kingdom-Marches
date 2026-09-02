@@ -1317,11 +1317,20 @@ window.GameData.TECHS = {
     ],
   },
   orc_bog_harvest: {
-    id: "orc_bog_harvest", label: "Wetland Harvest", category: "civic", layer: 1, cost: 20,
+    // Label/effect reworked 2026-09-01, user-directed (id kept stable for
+    // save compatibility -- an existing save's completedTechs still
+    // resolves to this same tech slot, just with its new effect): was
+    // "Wetland Harvest", +0.25 Harvest from Swamp. Now grants Coin instead,
+    // same +0.25 magnitude and civic/layer-1/cost-20 shape as the other
+    // race's coin-from-terrain techs (Elf's Gems of Starlight, Dwarf's
+    // Wealth of the Earth/Quarry) -- bog iron is a real historical
+    // practice (iron ore that naturally forms in wetlands), which is what
+    // justifies Coin, not Harvest, coming out of a Swamp tile.
+    id: "orc_bog_harvest", label: "Bog Iron", category: "civic", layer: 1, cost: 20,
     prereqs: [], raceOnly: "orc",
-    description: "+0.25 Harvest from Swamp.",
-    costBreakdown: { lore: 14, harvest: 6 },
-    effects: [{ type: "unlock_tile_bonus", terrain: "swamp", bonus: { harvest: 0.25 } }],
+    description: "+0.25 coin from Swamp.",
+    costBreakdown: { lore: 14, coin: 6 },
+    effects: [{ type: "unlock_tile_bonus", terrain: "swamp", bonus: { coin: 0.25 } }],
   },
   orc_warcraft: {
     id: "orc_warcraft", label: "War Camp", category: "building", layer: 1, cost: 22,
