@@ -45,14 +45,25 @@
  *   raid_kill_bonus         { harvest, coin, lore }   flat stockpile bonus on kill, adds to race baseline
  *   death_lore_bonus        { value }       +lore when this civ's own unit dies in combat
  *   raise_dead_resistance   { value }       chance (0-1) this civ's defeated units resist an enemy's raise-dead
- *   ignore_terrain_penalty  { terrain }      caps that terrain's move cost to 1
+ *   terrain_movement_override { terrain, value }  sets an ABSOLUTE movement cost for LEAVING that
+ *                                                  terrain to exactly `value` (civ-wide), regardless of
+ *                                                  the terrain's own normal cost -- see ai.js's
+ *                                                  landCostForTerrain. "river" is a pseudo-terrain key
+ *                                                  (rivers overlay any base terrain, tile.hasRiver) checked
+ *                                                  as an independent candidate alongside the real terrain
+ *                                                  id, cheaper one wins. Applies every time a unit steps
+ *                                                  off a matching tile, anywhere on its path, not just at
+ *                                                  the start of its turn. Replaces the old
+ *                                                  ignore_terrain_penalty (a hardcoded value:1 special case
+ *                                                  of this).
+ *   unit_terrain_movement_override { terrain, value, units }  same, but scoped to specific unit type ids only
  *   terrain_movement_discount  { terrain, value }  reduces the movement cost of LEAVING that terrain by
  *                                                  `value`, floored at 0.5 (civ-wide) -- see ai.js's
  *                                                  landCostForTerrain. Applies every time a unit steps off a
  *                                                  matching tile, anywhere on its path, not just at the start
  *                                                  of its turn.
  *   unit_terrain_movement_discount { terrain, value, units }  same, but scoped to specific unit type ids only
- *   unlock_mountain_tunneling               makes Mountains passable (slow) for this civ
+ *   unlock_mountain_tunneling               makes Mountains passable, at a flat cost of 1, for this civ
  *   unlock_mechanic         { mechanic }     generic flag for bespoke mechanics (e.g. "dark_ritual")
  *   building_count_bonus    { bonus }        flat per-turn yield scaling with a city's built (non-wall) structure count
  *   fill_rate_mult          { value }        multiplies a city's per-turn tile fill-in rate (civ-wide)
@@ -247,24 +258,24 @@ window.GameData.TECHS = {
   spirit_of_exploration: {
     id: "spirit_of_exploration", label: "Spirit of Exploration", category: "civic", layer: 1, cost: 14,
     prereqs: [], raceOnly: "human",
-    description: "Reduces the movement cost of Plains by 0.5. +0.1 lore per Plains tile under your influence.",
+    description: "Movement over Plains costs 2/3 a movement point per tile. +0.5 lore per Plains tile under your influence.",
     costBreakdown: { lore: 14 },
     effects: [
-      { type: "terrain_movement_discount", terrain: "plains", value: 0.5 },
-      { type: "lore_per_influence_tile", terrain: "plains", value: 0.1 },
+      { type: "terrain_movement_override", terrain: "plains", value: 2 / 3 },
+      { type: "lore_per_influence_tile", terrain: "plains", value: 0.5 },
     ],
   },
   rivercraft: {
     id: "rivercraft", label: "Rivercraft", category: "civic", layer: 1, cost: 14,
     prereqs: [], raceOnly: "human",
-    description: "Reduces the movement cost of River tiles by 0.5. +0.2 lore per River tile under your influence.",
+    description: "Movement over a river tile costs 1/2 a movement point per tile, regardless of terrain. +0.2 lore per River tile under your influence.",
     costBreakdown: { lore: 14 },
     // "river" is a pseudo-terrain key: rivers overlay any base terrain
     // (tile.hasRiver), so getMoveCost/landCostForTerrain check it separately
     // -- see ai.js. Same pseudo-terrain key reused by the
     // lore_per_influence_tile effect below -- see turns.js's beginCivTurn.
     effects: [
-      { type: "terrain_movement_discount", terrain: "river", value: 0.5 },
+      { type: "terrain_movement_override", terrain: "river", value: 1 / 2 },
       { type: "lore_per_influence_tile", terrain: "river", value: 0.2 },
     ],
   },
@@ -602,9 +613,9 @@ window.GameData.TECHS = {
   elf_home_in_the_trees: {
     id: "elf_home_in_the_trees", label: "Home in the Trees", category: "civic", layer: 1, cost: 12,
     prereqs: [], raceOnly: "elf",
-    description: "Reduces the movement cost of Forest by 0.5.",
+    description: "Movement over Forest costs 2/3 a movement point per tile.",
     costBreakdown: { lore: 12 },
-    effects: [{ type: "terrain_movement_discount", terrain: "forest", value: 0.5 }],
+    effects: [{ type: "terrain_movement_override", terrain: "forest", value: 2 / 3 }],
   },
   elf_nature_provides: {
     id: "elf_nature_provides", label: "Nature Provides", category: "civic", layer: 1, cost: 18,
@@ -640,9 +651,9 @@ window.GameData.TECHS = {
   elf_longstrider: {
     id: "elf_longstrider", label: "Longstrider", category: "civic", layer: 2, cost: 20,
     prereqs: [], raceOnly: "elf",
-    description: "Reduces the movement cost of Plains by 0.5.",
+    description: "Movement over Plains costs 2/3 a movement point per tile.",
     costBreakdown: { lore: 20 },
-    effects: [{ type: "terrain_movement_discount", terrain: "plains", value: 0.5 }],
+    effects: [{ type: "terrain_movement_override", terrain: "plains", value: 2 / 3 }],
   },
   elf_gems_of_starlight: {
     id: "elf_gems_of_starlight", label: "Gems of Starlight", category: "civic", layer: 3, cost: 30,
@@ -972,10 +983,10 @@ window.GameData.TECHS = {
   dwarf_stonecunning: {
     id: "dwarf_stonecunning", label: "Stonecunning", category: "civic", layer: 1, cost: 14,
     prereqs: [], raceOnly: "dwarf",
-    description: "Dwarves read stone like a map: ignores Hills movement penalty and tunnels through Mountains. Dwarves still cannot build cities, buildings, or walls on Mountains.",
+    description: "Dwarves read stone like a map: may move through Mountains at a rate of 1 per tile, and movement over Hills costs 2/3 a movement point per tile. Dwarves still cannot build cities, buildings, or walls on Mountains.",
     costBreakdown: { coin: 9, lore: 5 },
     effects: [
-      { type: "ignore_terrain_penalty", terrain: "hills" },
+      { type: "terrain_movement_override", terrain: "hills", value: 2 / 3 },
       { type: "unlock_mountain_tunneling" },
     ],
   },
@@ -1238,18 +1249,18 @@ window.GameData.TECHS = {
   orc_marsh_paths: {
     id: "orc_marsh_paths", label: "Marsh Paths", category: "civic", layer: 1, cost: 12,
     prereqs: [], raceOnly: "orc",
-    description: "Reduces the movement cost of Swamp by 0.5.",
+    description: "Movement over Swamp costs 2/3 a movement point per tile.",
     costBreakdown: { lore: 12 },
-    effects: [{ type: "terrain_movement_discount", terrain: "swamp", value: 0.5 }],
+    effects: [{ type: "terrain_movement_override", terrain: "swamp", value: 2 / 3 }],
   },
   orc_forced_march: {
     id: "orc_forced_march", label: "Forced March", category: "civic", layer: 2, cost: 14,
     prereqs: [], raceOnly: "orc",
-    // Civ-wide: terrain_movement_discount applies to every unit this civ
-    // owns (unlike unit_terrain_movement_discount's units:[] allowlist).
-    description: "Reduces the movement cost of Plains by 0.5.",
+    // Civ-wide: terrain_movement_override applies to every unit this civ
+    // owns (unlike unit_terrain_movement_override's units:[] allowlist).
+    description: "Movement over Plains costs 2/3 a movement point per tile.",
     costBreakdown: { lore: 10, harvest: 4 },
-    effects: [{ type: "terrain_movement_discount", terrain: "plains", value: 0.5 }],
+    effects: [{ type: "terrain_movement_override", terrain: "plains", value: 2 / 3 }],
   },
   orc_violent_momentum: {
     id: "orc_violent_momentum", label: "Violent Momentum", category: "civic", layer: 1, cost: 14,
@@ -1298,11 +1309,11 @@ window.GameData.TECHS = {
   orc_wolf_riders: {
     id: "orc_wolf_riders", label: "Wolf Riders", category: "military", layer: 2, cost: 16,
     prereqs: ["orc_dire_wolf"], raceOnly: "orc",
-    description: "Unlocks the Wolf Rider, a fast-moving mounted raider. Also reduces the movement cost of Forest by 0.5 for Wolf Riders only.",
+    description: "Unlocks the Wolf Rider, a fast-moving mounted raider. Movement over Forest costs 2/3 a movement point per tile for Wolf Riders only.",
     costBreakdown: { lore: 12, coin: 4 },
     effects: [
       { type: "unlock_unit", unit: "wolf_rider" },
-      { type: "unit_terrain_movement_discount", terrain: "forest", value: 0.5, units: ["wolf_rider"] },
+      { type: "unit_terrain_movement_override", terrain: "forest", value: 2 / 3, units: ["wolf_rider"] },
     ],
   },
   orc_bog_harvest: {
@@ -1514,9 +1525,9 @@ window.GameData.TECHS = {
     prereqs: ["orc_forced_march"], raceOnly: "orc",
     // Civ-wide, not unit-restricted, same fix
     // and same reasoning as orc_forced_march above.
-    description: "Reduces the movement cost of Desert by 0.5.",
+    description: "Movement over Desert costs 2/3 a movement point per tile.",
     costBreakdown: { lore: 18, harvest: 6 },
-    effects: [{ type: "terrain_movement_discount", terrain: "desert", value: 0.5 }],
+    effects: [{ type: "terrain_movement_override", terrain: "desert", value: 2 / 3 }],
   },
   orc_hound_and_hunter: {
     id: "orc_hound_and_hunter", label: "Hound and Hunter", category: "military", layer: 3, cost: 28,
@@ -1613,9 +1624,9 @@ window.GameData.TECHS = {
   undead_mire_walkers: {
     id: "undead_mire_walkers", label: "Mire-Walkers", category: "civic", layer: 1, cost: 12,
     prereqs: [], raceOnly: "undead",
-    description: "The dead do not tire in the bog. Reduces the movement cost of Swamp by 0.5.",
+    description: "The dead do not tire in the bog. Movement over Swamp costs 2/3 a movement point per tile.",
     costBreakdown: { lore: 12 },
-    effects: [{ type: "terrain_movement_discount", terrain: "swamp", value: 0.5 }],
+    effects: [{ type: "terrain_movement_override", terrain: "swamp", value: 2 / 3 }],
   },
 
   undead_barrow_rite: {
@@ -1696,26 +1707,26 @@ window.GameData.TECHS = {
     prereqs: [], raceOnly: "halfellow",
     // Wanderer's ability to found a city removed 2026-08-17, user-directed
     // (see units.js's wanderer entry) -- description below updated to match.
-    description: "Unlocks the Wanderer, the halfellows' basic melee fighter. Also reduces the movement cost of Plains by 0.5.",
+    description: "Unlocks the Wanderer, the halfellows' basic melee fighter. Movement over Plains costs 2/3 a movement point per tile.",
     costBreakdown: { harvest: 15 },
     effects: [
       { type: "unlock_unit", unit: "wanderer" },
-      { type: "terrain_movement_discount", terrain: "plains", value: 0.5 },
+      { type: "terrain_movement_override", terrain: "plains", value: 2 / 3 },
     ],
   },
   halfellow_singing_hills: {
     id: "halfellow_singing_hills", label: "Singing Hills", category: "civic", layer: 1, cost: 12,
     prereqs: [], raceOnly: "halfellow",
-    description: "Reduces the movement cost of Hills by 0.5. (Does not stack with Riverfolk on a hill-with-river tile -- only the higher of the two applies.)",
+    description: "Movement over Hills costs 2/3 a movement point per tile. (Does not stack with Riverfolk on a hill-with-river tile -- only the cheaper of the two applies, which is currently Riverfolk's.)",
     costBreakdown: { lore: 12 },
-    effects: [{ type: "terrain_movement_discount", terrain: "hills", value: 0.5 }],
+    effects: [{ type: "terrain_movement_override", terrain: "hills", value: 2 / 3 }],
   },
   halfellow_riverfolk: {
     id: "halfellow_riverfolk", label: "Riverfolk", category: "civic", layer: 1, cost: 12,
     prereqs: [], raceOnly: "halfellow",
-    description: "Reduces the movement cost of River tiles by 0.5. (Does not stack with Singing Hills on a hill-with-river tile -- only the higher of the two applies.)",
+    description: "Movement over a river tile costs 1/2 a movement point per tile, regardless of terrain. (Does not stack with Singing Hills on a hill-with-river tile -- only the cheaper of the two applies, which is currently this one's.)",
     costBreakdown: { lore: 12 },
-    effects: [{ type: "terrain_movement_discount", terrain: "river", value: 0.5 }],
+    effects: [{ type: "terrain_movement_override", terrain: "river", value: 1 / 2 }],
   },
   // Moved from L2 (2026-07-12): Halfellow's stealth kit was coming online
   // too late to matter during the exact early-rush window that was

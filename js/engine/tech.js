@@ -172,7 +172,8 @@ window.GameEngine = window.GameEngine || {};
     civ.coinFromHarvestPct = civ.coinFromHarvestPct || 0;
     civ.siegeAttackBonus = civ.siegeAttackBonus || 0;
     civ.raidKillBonus = civ.raidKillBonus || { harvest: 0, coin: 0, lore: 0 };
-    civ.terrainMoveOverride = civ.terrainMoveOverride || {}; // { terrainId: cappedCost }
+    civ.terrainMoveOverride = civ.terrainMoveOverride || {}; // { terrainId|"river": absoluteCost } -- see ai.js's landCostForTerrain
+    civ.unitTerrainMoveOverride = civ.unitTerrainMoveOverride || {}; // { unitTypeId: { terrainId|"river": absoluteCost } }
     civ.terrainMoveBonus = civ.terrainMoveBonus || {};       // { terrainId: extraMovement }
     civ.terrainMoveDiscount = civ.terrainMoveDiscount || {}; // { terrainId: costReduction } -- see ai.js's landCostForTerrain
     civ.unitTerrainMoveDiscount = civ.unitTerrainMoveDiscount || {}; // { unitTypeId: { terrainId: costReduction } }
@@ -225,9 +226,42 @@ window.GameEngine = window.GameEngine || {};
           civ.raidKillBonus.coin += effect.coin || 0;
           civ.raidKillBonus.lore += effect.lore || 0;
           break;
-        case "ignore_terrain_penalty":
-          // Caps movement cost onto this terrain to 1 (removes the penalty entirely)
-          civ.terrainMoveOverride[effect.terrain] = 1;
+        // terrain_movement_override/unit_terrain_movement_override
+        // (2026-08-31, replacing the old ignore_terrain_penalty, now
+        // retired -- it was a hardcoded value:1 special case of exactly
+        // this): sets an ABSOLUTE movement cost for leaving a terrain,
+        // rather than terrain_movement_discount's relative subtraction off
+        // whatever the terrain's own base cost happens to be. User-
+        // directed: every one of these terrain-speed techs (Spirit of
+        // Exploration, Home in the Trees, Stonecunning's Hills clause,
+        // Marsh Paths, Singing Hills, and the four pre-existing techs this
+        // was generalized to match -- Longstrider, Forced March, Wasteland
+        // Riders, Mire-Walkers, Wanderer) should land on the SAME flat
+        // 0.667 regardless of the terrain's own normal cost, so Forest/
+        // Hills/Swamp (base 2) drop exactly as far as Plains (base 1)
+        // does -- a relative discount could never do that. "river" is the
+        // same pseudo-terrain key terrain_movement_discount already uses
+        // (rivers overlay any base terrain) -- see ai.js's
+        // landCostForTerrain, which checks it as an independent candidate
+        // alongside the real terrain id and takes whichever is cheaper.
+        // Takes the MIN with anything already set for this terrain, not an
+        // overwrite -- if two techs somehow ever target the same terrain
+        // for the same civ, the better one should win, same "best applies"
+        // rule terrain_movement_discount's own callers document (e.g.
+        // Singing Hills vs Riverfolk on a hill-with-river tile).
+        case "terrain_movement_override":
+          civ.terrainMoveOverride[effect.terrain] = civ.terrainMoveOverride[effect.terrain] != null
+            ? Math.min(civ.terrainMoveOverride[effect.terrain], effect.value)
+            : effect.value;
+          break;
+        case "unit_terrain_movement_override":
+          for (const unitId of effect.units) {
+            const existing = civ.unitTerrainMoveOverride[unitId] || {};
+            existing[effect.terrain] = existing[effect.terrain] != null
+              ? Math.min(existing[effect.terrain], effect.value)
+              : effect.value;
+            civ.unitTerrainMoveOverride[unitId] = existing;
+          }
           break;
         case "terrain_movement_bonus":
           civ.terrainMoveBonus[effect.terrain] = (civ.terrainMoveBonus[effect.terrain] || 0) + effect.value;

@@ -2117,14 +2117,15 @@ window.GameEngine = window.GameEngine || {};
     return true;
   }
 
-  // A road tile flattens the cost to LEAVE it to a flat 0.25, REGARDLESS of
-  // the terrain underneath -- not a discount off the terrain's own cost (see
-  // moveUnitToward's separate +1 movement bonus for starting a turn on a
-  // road, which stacks with this). Applies when LEAVING a road tile, not
-  // arriving: walking a chain of road tiles is flat-rate the whole way, but
-  // stepping off rough terrain onto a road doesn't discount that step -- the
-  // road pays off starting with the NEXT step.
-  const ROAD_MOVE_COST = 0.25;
+  // A road tile flattens the cost to LEAVE it to a flat 0.5 (2026-08-31,
+  // user-directed, was 0.25), REGARDLESS of the terrain underneath -- not a
+  // discount off the terrain's own cost (see moveUnitToward's separate +1
+  // movement bonus for starting a turn on a road, which stacks with this).
+  // Applies when LEAVING a road tile, not arriving: walking a chain of road
+  // tiles is flat-rate the whole way, but stepping off rough terrain onto a
+  // road doesn't discount that step -- the road pays off starting with the
+  // NEXT step.
+  const ROAD_MOVE_COST = 0.5;
 
   /**
    * Effective LAND movement cost of `terrain` under `mods` (a unit's
@@ -2135,30 +2136,41 @@ window.GameEngine = window.GameEngine || {};
    * and destination (passability) evaluations below, so tunneling/override
    * behave identically regardless of which side of a step they're read from.
    *
-   * `hasRiver`/`unitTypeId` feed the discount
-   * half only -- terrainDiscount/unitTerrainDiscount, see civMoveMods --
-   * which is why they're optional and only the ORIGIN call site in
-   * getMoveCost below ever passes them. Discounting the DESTINATION side
-   * would be pointless: that call only ever asks "is this IMPASSABLE?", and
-   * a discount can never turn IMPASSABLE finite (Infinity minus any real
-   * number is still Infinity) the way canTunnel/terrainOverride above
-   * genuinely can, so there's nothing for it to change there.
+   * `hasRiver`/`unitTypeId` feed the override and discount halves only --
+   * terrainOverride/unitTerrainOverride/terrainDiscount/unitTerrainDiscount,
+   * see civMoveMods -- which is why they're optional and only the ORIGIN
+   * call site in getMoveCost below ever passes them. Applying them to the
+   * DESTINATION side would be pointless for a discount (a discount can
+   * never turn IMPASSABLE finite -- Infinity minus any real number is still
+   * Infinity), but an override genuinely CAN (see canTunnel/terrainOverride
+   * below), so the destination call in getMoveCost still gets right answer
+   * there via the separate canTunnel branch, which needs neither.
    *
-   * Civ-wide and per-unit-type discounts ADD together, but WITHIN each of
-   * those two layers a tile matching multiple keys (e.g. a Hills tile that
-   * also has a river) takes the single best one, not the sum -- identical
-   * "add across layers, max within a layer" stacking rule
-   * computeMovementBudget's own terrain BONUS uses, so the two mechanisms
-   * read consistently even though only one of them is live on any tech
-   * right now. Floored at 0.5 (never lower, never zero) so a heavily
-   * discounted terrain still costs SOMETHING -- a 0-cost step would let a
-   * unit with movesRemaining a hair above 0 cross it for free forever.
+   * Overrides (absolute costs) and discounts (relative reductions) both
+   * follow the same "add across layers, take the single best WITHIN a
+   * layer" stacking rule computeMovementBudget's own terrain BONUS uses:
+   * civ-wide vs per-unit-type is one split (discounts SUM across these two;
+   * overrides don't need to, since a civ-wide and a per-unit override on
+   * the same terrain would be redundant, not additive), and terrain-id vs
+   * the "river" pseudo-key is the other (a tile matching both, e.g. a Hills
+   * tile that also has a river, takes whichever one is BETTER -- cheapest
+   * for an override, biggest for a discount -- never both). Discount is
+   * floored at 0.5 (never lower, never zero) so a heavily discounted
+   * terrain still costs SOMETHING -- a 0-cost step would let a unit with
+   * movesRemaining a hair above 0 cross it for free forever; an override is
+   * an author-chosen absolute value, so it carries no such floor.
    */
   function landCostForTerrain(terrain, mods, hasRiver, unitTypeId) {
     if (terrain.id === "mountains" && terrain.moveCostLand === window.GameData.IMPASSABLE && mods?.canTunnel) {
-      return 3; // slow but passable
+      return 1; // Dwarf Stonecunning -- tunnels through at a flat rate
     }
-    const override = mods?.terrainOverride?.[terrain.id];
+    const overrideCandidates = [
+      mods?.terrainOverride?.[terrain.id],
+      hasRiver ? mods?.terrainOverride?.river : undefined,
+      mods?.unitTerrainOverride?.[unitTypeId]?.[terrain.id],
+      hasRiver ? mods?.unitTerrainOverride?.[unitTypeId]?.river : undefined,
+    ].filter((v) => v != null);
+    const override = overrideCandidates.length ? Math.min(...overrideCandidates) : null;
     let cost = override != null ? Math.min(terrain.moveCostLand, override) : terrain.moveCostLand;
     if (cost === window.GameData.IMPASSABLE) return cost;
 
@@ -2448,7 +2460,8 @@ window.GameEngine = window.GameEngine || {};
    */
   function civMoveMods(civ) {
     return {
-      terrainOverride: civ.terrainMoveOverride || {}, // { terrainId: cappedCost } -- hard cap (ignore_terrain_penalty)
+      terrainOverride: civ.terrainMoveOverride || {}, // { terrainId|"river": absoluteCost }
+      unitTerrainOverride: civ.unitTerrainMoveOverride || {}, // { unitTypeId: { terrainId|"river": absoluteCost } }
       terrainBonus: civ.terrainMoveBonus || {}, // { terrainId: extraMovement } -- adds to the turn's starting budget
       unitTerrainBonus: civ.unitTerrainMoveBonus || {}, // { unitTypeId: { terrainId: extraMovement } }
       // terrainDiscount/unitTerrainDiscount:
