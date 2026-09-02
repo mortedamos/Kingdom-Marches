@@ -527,7 +527,7 @@ window.GameData.UNITS = {
   },
   raider: {
     id: "raider", label: "Raider", symbol: "⚔", category: "military", raceOnly: "orc",
-    attack: 3, defense: 1, movement: 2, visionRadius: 2,
+    attack: 4, defense: 1, movement: 3, visionRadius: 2,
     coinCost: 15, attackChars: ["🪓", "🔪", "𓌜"],
   },
   // A beast, not a real fighter -- its value is the "hunt" AI behavior
@@ -537,13 +537,13 @@ window.GameData.UNITS = {
   // its own dedicated AI job and isn't a person to be gendered/epitheted.
   dire_wolf: {
     id: "dire_wolf", label: "Dire Wolf", symbol: "🐺", category: "military", raceOnly: "orc",
-    attack: 2, defense: 1, movement: 4, visionRadius: 4, firstStrikePct: 0.03,
+    attack: 3, defense: 1, movement: 4, visionRadius: 4, firstStrikePct: 0.03,
     coinCost: 12, attackChars: ["𓆩"], doubleStrikePct: 0.1,
     neverExplores: true, nameSpecial: true,
   },
   impaler: {
     id: "impaler", label: "Impaler", symbol: "▲", category: "military", raceOnly: "orc",
-    attack: 4, defense: 3, movement: 2, visionRadius: 2, attackChars: ["𐃆"], firstStrikePct: 0.1,
+    attack: 3, defense: 3, movement: 2, visionRadius: 2, attackChars: ["𐃆"], firstStrikePct: 0.1,
     coinCost: 18,
   },
   wolf_rider: {
@@ -583,7 +583,7 @@ window.GameData.UNITS = {
   },
   battering_ram: {
     id: "battering_ram", label: "Battering Ram", symbol: "⚙", category: "military", raceOnly: "orc",
-    attack: 7, defense: 6, movement: 2, visionRadius: 2, siegePct: 1.5,
+    attack: 8, defense: 6, movement: 2, visionRadius: 2, siegePct: 1.5,
     coinCost: 30, biggerPct: .5, attackChars: ["💥"],
     nameSpecial: true, // a machine, not a person -- see unit-names.js
   },
@@ -670,7 +670,7 @@ window.GameData.UNITS = {
   },
   frost_lynx: {
     id: "frost_lynx", label: "Frost Lynx", symbol: "🐆", category: "military",
-    attack: 4, defense: 3, movement: 3, visionRadius: 4, restrictedToTerrain: "tundra",
+    attack: 3, defense: 2, movement: 3, visionRadius: 4, restrictedToTerrain: "tundra",
     frozenChancePct: 0.20,
     coinCost: 14, attackChars: ["𓆩"],
     cityBuildable: false, noUpkeep: true, nameSpecial: true, neverExplores: true,
