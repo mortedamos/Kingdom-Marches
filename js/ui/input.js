@@ -61,6 +61,27 @@
  * (Rest/Defend/Disband/Build Road/channels) working unchanged -- and gives
  * them the right meaning for free, since "the selected unit" now means "the
  * unit whose tab you are looking at."
+ *
+ * INSPECT: PEEKING WITHOUT RESELECTING (2026-09-02, user-directed)
+ * -------------------------------------------------------------
+ * A plain click/tap that lands on nothing actionable -- an enemy, an ally,
+ * empty ground, or any tile where orders.js's mapMenuOptions has nothing to
+ * offer beyond the universal "About This Space" pill -- no longer opens a
+ * ring menu just to get to that one pill. It goes straight to
+ * viewState.inspect, a second, read-only mirror of viewState.selection built
+ * the exact same way (see inspectTile/resolveInspect below), so the sidebar
+ * can show what's on that tile without touching viewState.selection at all.
+ * The REAL selection -- map highlighting, the ring menu's subject, Next
+ * Unit, everything syncLegacySelection feeds -- is completely unaffected:
+ * whatever was armed before the peek is still armed after it.
+ *
+ * sidebar.js prefers viewState.inspect over viewState.selection whenever
+ * it's set, so a peek's info displaces the real selection's panel on
+ * screen -- but only on screen. Inspect is cleared the instant a REAL
+ * selection event happens (handleTileClick or setActiveTab, i.e. clicking
+ * an actionable tile or working the sidebar's own tab strip), so the
+ * player's own selection reasserts itself the moment they interact with it
+ * again; it never has to be dismissed by hand.
  */
 
 window.UI = window.UI || {};
@@ -437,8 +458,19 @@ window.UI = window.UI || {};
           if (idx >= 0) setActiveTab(gameState, viewState, idx);
         }
         res = orders.mapMenuOptions(gameState, viewState, tilePos.x, tilePos.y, viewState.humanCivId);
-      } else if (!res.options.length) {
-        handleTileClick(tilePos, gameState, viewState);
+      } else if (!res.options.length
+          || (res.options.length === 1 && res.options[0].kind === "aboutThisSpace")) {
+        // Nothing actionable here (an enemy, an ally, empty ground, or an
+        // out-of-range target for whatever's currently selected) -- go
+        // straight to a read-only peek instead of popping a ring just to
+        // reach its lone "About This Space" pill. Leaves the real selection
+        // (map highlight, ring subject, Next Unit) completely untouched --
+        // see this file's own INSPECT doc comment. Long-press/right-click
+        // still open the real ring here (openRingMenu doesn't share this
+        // branch), since those are an explicit "show me the menu" gesture.
+        inspectTile(gameState, viewState, tilePos.x, tilePos.y);
+        onChange();
+        return;
       }
       if (res.options.length) {
         viewState.ringMenu = { x: tilePos.x, y: tilePos.y, subject: res.subject, page: null };
@@ -620,6 +652,10 @@ window.UI = window.UI || {};
   }
 
   function handleTileClick({ x, y }, gameState, viewState) {
+    // A real (re)selection always wins over a lingering peek -- see this
+    // file's own INSPECT doc comment above.
+    viewState.inspect = null;
+
     // Carry the previously-active tab KIND (not the index, and not the
     // specific object) onto the new tile, so clicking tile-to-tile while
     // reading Terrain keeps showing Terrain instead of snapping back to
@@ -809,14 +845,87 @@ window.UI = window.UI || {};
   }
 
   /** Switches which tab is active without re-running tile detection. Used by
-   *  the sidebar's tab strip and by the city panel's clickable garrison list. */
+   *  the sidebar's tab strip and by the city panel's clickable garrison list.
+   *  Also clears a lingering inspect peek -- working the REAL selection's own
+   *  tab strip means the player is looking at it again, not at whatever a
+   *  previous peek left on screen (see this file's INSPECT doc comment). */
   function setActiveTab(gameState, viewState, index) {
     const sel = viewState.selection;
     if (!sel || !sel.tabs[index]) return;
+    viewState.inspect = null;
     sel.activeKind = sel.tabs[index].kind;
     sel.activeRef = sel.tabs[index].ref;
     resolveSelection(gameState, viewState);
   }
 
-  window.UI.input = { attach, handleTileClick, resolveSelection, setActiveTab };
+  /** INSPECT: sets viewState.inspect to tile (x,y)'s tabs, the read-only
+   *  peek counterpart to handleTileClick -- see this file's own INSPECT doc
+   *  comment for the full picture. Deliberately does NOT touch
+   *  viewState.selection or call syncLegacySelection: the real selection
+   *  (map highlight, ring-menu subject, Next Unit) stays exactly as it was.
+   *  Same "unit tab wins, else carry the previous kind forward" shape as
+   *  handleTileClick, kept as its own copy rather than a shared helper since
+   *  the two write to different fields and must never touch each other's. */
+  function inspectTile(gameState, viewState, x, y) {
+    const prev = viewState.inspect;
+    const insp = {
+      x, y,
+      tabs: [],
+      activeTab: 0,
+      activeKind: prev ? prev.activeKind : null,
+      activeRef: null,
+    };
+    viewState.inspect = insp;
+    resolveInspect(gameState, viewState);
+
+    if (insp.activeKind !== "unit" && insp.tabs.some((t) => t.kind === "unit")) {
+      insp.activeKind = "unit";
+      insp.activeRef = null;
+      resolveInspect(gameState, viewState);
+    }
+  }
+
+  /** Rebuilds viewState.inspect.tabs from live game state, same staleness
+   *  guard resolveSelection gives the real selection (a peeked-at unit can
+   *  die or move between redraws same as a selected one). Safe to call every
+   *  redraw; no-ops when nothing is being inspected. Does NOT follow a
+   *  peeked-at unit that moves on its own the way resolveSelection follows a
+   *  selected one -- inspect is a snapshot of "what's on this TILE", not a
+   *  standing watch on one particular unit, so a peeked unit that wanders off
+   *  its tile on its own just drops off the tab list rather than dragging
+   *  the peek along after it. */
+  function resolveInspect(gameState, viewState) {
+    const insp = viewState.inspect;
+    if (!insp) return [];
+    const tabs = buildTileTabs(gameState, insp.x, insp.y);
+    insp.tabs = tabs;
+
+    let idx = -1;
+    if (insp.activeRef) idx = tabs.findIndex((t) => t.ref === insp.activeRef);
+    if (idx < 0 && insp.activeKind) idx = tabs.findIndex((t) => t.kind === insp.activeKind);
+    if (idx < 0) idx = 0;
+
+    insp.activeTab = idx;
+    const active = tabs[idx];
+    insp.activeKind = active ? active.kind : null;
+    insp.activeRef = active ? active.ref : null;
+    return tabs;
+  }
+
+  /** Switches the active INSPECT tab -- the peek counterpart to setActiveTab,
+   *  used by the sidebar's tab strip/garrison list/contents list when they're
+   *  rendering viewState.inspect rather than the real selection (see
+   *  sidebar.js's isInspect threading). Never touches viewState.selection. */
+  function setInspectActiveTab(gameState, viewState, index) {
+    const insp = viewState.inspect;
+    if (!insp || !insp.tabs[index]) return;
+    insp.activeKind = insp.tabs[index].kind;
+    insp.activeRef = insp.tabs[index].ref;
+    resolveInspect(gameState, viewState);
+  }
+
+  window.UI.input = {
+    attach, handleTileClick, resolveSelection, setActiveTab,
+    inspectTile, resolveInspect, setInspectActiveTab,
+  };
 })();

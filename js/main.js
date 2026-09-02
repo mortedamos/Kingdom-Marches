@@ -1794,6 +1794,11 @@
       // Tabbed tile inspector -- the selected* fields above are derived from
       // this now (see input.js's SELECTION MODEL).
       selection: null,
+      // Read-only peek at some OTHER tile, shown in the sidebar in place of
+      // (never alongside) the real selection above -- see input.js's INSPECT
+      // doc comment. Cleared automatically the moment a real (re)selection
+      // happens, so this never needs explicit resetting on its own.
+      inspect: null,
       is3D: false, // 2D-only for now -- see render3d.js; the Interface menu's "Toggle 3D View" button was removed
       fogMode: "off", fogCivIds: new Set(Object.keys(gameState.civs)), // spectator-only; see setupFogControls
       tileScoreCivId: null, // Interface menu's Tile City Score overlay -- available in both spectator and human modes
@@ -1894,6 +1899,7 @@
       endTurnRemindersEnabled: true,
       selectedUnit: null, selectedCity: null, selectedTile: null, humanCivId,
       selection: null,
+      inspect: null,
       is3D: false,
       fogMode: "off", fogCivIds: new Set(Object.keys(gameState.civs)),
       tileScoreCivId: null,
@@ -2994,6 +3000,11 @@
       // Tabbed tile inspector -- the selected* fields above are derived from
       // this now (see input.js's SELECTION MODEL).
       selection: null,
+      // Read-only peek at some OTHER tile, shown in the sidebar in place of
+      // (never alongside) the real selection above -- see input.js's INSPECT
+      // doc comment. Cleared automatically the moment a real (re)selection
+      // happens, so this never needs explicit resetting on its own.
+      inspect: null,
       fogMode: "off", fogCivIds: new Set(Object.keys(gameState.civs)),
       tileScoreCivId: null, dialog: null, dialogBeforeReport: null, turnBanner: null, ringMenu: null,
       onTechTreeClosed: null,
@@ -4607,6 +4618,10 @@
     // both of them, not just ahead of the sidebar. See input.js's
     // SELECTION MODEL comment.
     window.UI.input.resolveSelection(gameState, viewState);
+    // Same staleness guard as the real selection, for whatever's merely
+    // being peeked at (viewState.inspect) -- see input.js's INSPECT doc
+    // comment. No-ops when nothing is being inspected.
+    window.UI.input.resolveInspect(gameState, viewState);
     if (viewState.is3D) {
       window.UI.render3d.render($("map-canvas-3d"), gameState, viewState);
     } else {
@@ -4639,9 +4654,17 @@
     // Tile-inspector tabs, plus the in-panel shortcuts that jump to one (the
     // city panel's garrison list and the terrain panel's contents list) --
     // both carry the same data-tab-index, so one handler covers them.
+    // data-inspect marks a button rendered for a peek (sidebar.js's
+    // isInspect) rather than the real selection -- routes to the INSPECT
+    // counterpart so switching tabs within a peek can never touch the real
+    // selection (see input.js's INSPECT doc comment).
     for (const btn of document.querySelectorAll(".tile-tab, .tile-tab-link")) {
       btn.onclick = () => {
-        window.UI.input.setActiveTab(gameState, viewState, Number(btn.dataset.tabIndex));
+        if (btn.dataset.inspect) {
+          window.UI.input.setInspectActiveTab(gameState, viewState, Number(btn.dataset.tabIndex));
+        } else {
+          window.UI.input.setActiveTab(gameState, viewState, Number(btn.dataset.tabIndex));
+        }
         redraw();
       };
     }
@@ -5810,20 +5833,23 @@
       return;
     }
 
-    // "About This Space" (2026-08-28, user-directed): same "runs before the
-    // unit guard" reasoning as City Actions just above -- orders.js's
-    // mapMenuOptions offers this pill on EVERY ring, including a tile with
-    // no unit selected and nothing else on it at all, so this has to work
-    // without one too. Forces the Terrain tab specifically (not whichever
-    // tab handleTileClick would otherwise default to, e.g. a unit standing
-    // there) -- "About This Space" means the tile itself, same reasoning
-    // selectCityAt below forces the City tab on a garrisoned one.
+    // "About This Space" (2026-08-28, user-directed; 2026-09-02: switched to
+    // a read-only peek): same "runs before the unit guard" reasoning as City
+    // Actions just above -- orders.js's mapMenuOptions offers this pill on
+    // EVERY ring, including a tile with no unit selected and nothing else on
+    // it at all, so this has to work without one too. Uses inspectTile, not
+    // handleTileClick -- "About This Space" is a look, not a selection, so
+    // it must never disturb whatever the player actually has selected (see
+    // input.js's INSPECT doc comment). Forces the Terrain tab specifically
+    // (not whichever tab inspectTile would otherwise default to, e.g. a unit
+    // standing there) -- "About This Space" means the tile itself, same
+    // reasoning selectCityAt below forces the City tab on a garrisoned one.
     if (kind === "aboutThisSpace") {
-      window.UI.input.handleTileClick({ x: menu.x, y: menu.y }, gameState, viewState);
-      const sel = viewState.selection;
-      if (sel) {
-        const idx = sel.tabs.findIndex((t) => t.kind === "terrain");
-        if (idx >= 0) window.UI.input.setActiveTab(gameState, viewState, idx);
+      window.UI.input.inspectTile(gameState, viewState, menu.x, menu.y);
+      const insp = viewState.inspect;
+      if (insp) {
+        const idx = insp.tabs.findIndex((t) => t.kind === "terrain");
+        if (idx >= 0) window.UI.input.setInspectActiveTab(gameState, viewState, idx);
       }
       // Mobile (2026-08-28, user-directed): the sidebar is a collapsible
       // bottom sheet there (see setSheetDetent's own doc comment), so

@@ -960,7 +960,7 @@ window.UI = window.UI || {};
       description: "Targets one enemy Wall segment: suppresses that city's ENTIRE wall-derived Defense score by 75% for 3 turns (every alive wall's contribution, not just the targeted one), AND separately makes that one specific wall passable to enemy movement for the same window -- every other wall the city has keeps blocking movement as normal.",
     },
     {
-      key: "summonRaptor", label: "Summon Raptor", icon: "🦖", restriction: "Elf — Druid",
+      key: "summonRaptor", label: "Summon Raptor", icon: "🦅", restriction: "Elf — Druid",
       description: "Instantly summons a Raptor on an open tile adjacent to the Druid -- one live Raptor per Druid at a time; once it dies (or hasn't been summoned yet), summoning again is free to do.",
     },
     {
@@ -1223,12 +1223,12 @@ window.UI = window.UI || {};
     ruin: "The remains of something older. Any unit can channel Delving here (granted free to every kingdom at the start of the game), which pays out coin and lore when the channel ends. While delving, each turn also carries a small independent chance of waking a monster or turning up buried treasure -- each can happen only once per ruin, ever. An exhausted ruin reappears somewhere else after a few turns.",
     cave: "Always found in linked pairs. A unit that spends a full turn to Enter Cave is moved to its partner cave wherever that is on the map -- a shortcut, not a yield. Caves produce nothing.",
     river: "Flows along tile EDGES rather than filling a tile, so a river always sits on top of some other terrain and adds its bonus to whatever that terrain already yields. Standing on a river tile also puts out Burning.",
-    road: "Built by a Pioneer. Roads are the movement network: they make a route cheap to walk regardless of what's underneath, and a unit that BEGINS its turn on one gets +1 movement on top of that. The two stack, so a road chain is far faster than the raw per-step cost suggests. Some kingdoms' techs also make roads yield.",
-    bridge: "A Pioneer-built span across shallow water. It makes an otherwise impassable Coast tile walkable for land units and counts as a road for movement -- ships still sail underneath it unaffected. Bridges can't be built over deep Ocean.",
+    road: "Built by a Pioneer. Leaving a road tile costs only 0.5 movement points, whatever terrain lies beneath it, and a unit that BEGINS its turn already standing on a road gets +1 movement point on top of that. The two combine, so a connected road chain lets a unit travel much farther in a single turn than the terrain alone would allow. Some kingdoms' techs also make roads yield.",
+    bridge: "A Pioneer-built span across shallow water. It makes an otherwise impassable Coast tile walkable for land units, and matches a road for movement exactly: 0.5 movement points to leave, plus +1 movement point for a unit that begins its turn there. Ships still sail underneath it unaffected. Bridges can't be built over deep Ocean.",
   };
 
   /** IMPASSABLE renders as a word, not "Infinity" -- and a fractional cost
-   *  (the road's 0.25) keeps its decimals rather than rounding to 0. */
+   *  (the road's 0.5) keeps its decimals rather than rounding to 0. */
   function moveCostLabel(cost) {
     if (cost == null || cost === window.GameData.IMPASSABLE) return "Impassable";
     return String(cost);
@@ -1361,6 +1361,7 @@ window.UI = window.UI || {};
       rows: [
         ["Tile Bonus", "None"],
         ["Land Movement", `Counts as a road — ${window.GameEngine.ai.ROAD_MOVE_COST} to leave`],
+        ["Starting Here", "+1 Movement for the turn"],
         ["Buildable On", escapeHtml(T.coast.label)],
         ["Built By", "Pioneer"],
       ],

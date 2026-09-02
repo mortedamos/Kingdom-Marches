@@ -2535,15 +2535,21 @@ window.GameEngine = window.GameEngine || {};
     const terrainBonus = civWideBonus + perUnitBonus;
     if (terrainBonus) movement += terrainBonus;
 
-    // Roads: +1 movement for a unit starting its turn on a road tile
-    // -- universal and tech-independent, unlike
-    // the tiered terrain bonuses above, so it stacks on top of them rather
-    // than competing in the same "best of" comparison. Pairs with
-    // getMoveCost's ROAD_MOVE_COST (roads also flattening the cost to leave
-    // them to 0.25 regardless of terrain) -- together a road network both
-    // starts a unit's turn with extra movement AND makes every road tile
-    // along the route cheap to cross.
-    if (startTile?.hasRoad) movement += 1;
+    // Roads (and bridges, which count as a road for movement -- see
+    // cities.js's tileCountsAsRoad, the canonical "counts as a road" check
+    // every other such system in the game already reads through): +1
+    // movement for a unit starting its turn on one -- universal and
+    // tech-independent, unlike the tiered terrain bonuses above, so it
+    // stacks on top of them rather than competing in the same "best of"
+    // comparison. Pairs with getMoveCost's ROAD_MOVE_COST (roads and
+    // bridges also flattening the cost to leave them to 0.5 regardless of
+    // terrain) -- together a road network both starts a unit's turn with
+    // extra movement AND makes every road/bridge tile along the route cheap
+    // to cross. 2026-09-02, user-directed: bridges previously only got the
+    // cheap-to-leave half of this (checked via their own isBridge flag, not
+    // this shared helper) -- switched to tileCountsAsRoad so the two match
+    // exactly, as the KB's own bridge entry already claimed.
+    if (startTile && window.GameEngine.cities.tileCountsAsRoad(startTile)) movement += 1;
 
     // Tech: Orc "Violent Momentum" -- +2 movement for a unit that killed an
     // enemy the previous turn (see applyOrcCombatMechanics/killMomentum).

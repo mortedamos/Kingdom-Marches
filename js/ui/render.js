@@ -799,12 +799,6 @@ window.UI = window.UI || {};
           ctx.fillText(String(pop), cx, cy + ts * 0.18);
         }
 
-        if (selectedCity === city) {
-          ctx.strokeStyle = "#ffeb3b";
-          ctx.lineWidth = 2;
-          ctx.strokeRect(screenX + 1, screenY + 1, ts - 2, ts - 2);
-        }
-
         // Idle badge -- human-civ-only (no visibility into a foreign civ's
         // build queue, and no agency over it anyway; see cities.js's
         // isCityIdle, shared with the sidebar's per-city tag and the End
@@ -960,19 +954,6 @@ window.UI = window.UI || {};
             ctx.fillRect(bx, by, bw, bh);
             ctx.fillStyle = "#5fbf5f";
             ctx.fillRect(bx, by, bw * Math.max(0, s.hp) / s.maxHp, bh);
-          }
-          // Selected-structure outline (2026-08-26): the unit and city
-          // passes have always drawn one for their own selection; a
-          // structure had none at all, so clicking a wall or a building
-          // lit up the sidebar and changed nothing on the map. Same
-          // solid-yellow box as the other two. selectedStructure is
-          // findStructureAt's {civ, city, record, building} wrapper, so
-          // identity is compared against `.record`, the object this loop
-          // actually iterates.
-          if (selectedStructure && selectedStructure.record === s) {
-            ctx.strokeStyle = "#ffeb3b";
-            ctx.lineWidth = 2;
-            ctx.strokeRect(screenX + 1, screenY + 1, ts - 2, ts - 2);
           }
           // Floating text anchored to a STRUCTURE record rather than a unit
           // (burning walls/buildings) -- matched by object identity against
@@ -1222,11 +1203,6 @@ window.UI = window.UI || {};
         ctx.fillRect(barX, barY, barW, 2);
         ctx.fillStyle = "#4caf50";
         ctx.fillRect(barX, barY, barW * pct, 2);
-      }
-      if (selectedUnit === unit) {
-        ctx.strokeStyle = "#ffeb3b";
-        ctx.lineWidth = 2;
-        ctx.strokeRect(boxX + 1, boxY + 1, boxSize - 2, boxSize - 2);
       }
       overlays.drawConditionBadges(ctx, unit, boxX, boxY, boxSize, ts);
       overlays.drawChannelStashLabel(ctx, unit, screenX, screenY, ts);

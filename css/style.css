@@ -953,6 +953,21 @@ html, body {
   line-height: 1.45;
 }
 
+/* Peek panel banner (2026-09-02) -- see input.js's INSPECT doc comment.
+   Deliberately quieter than .placement-banner above: nothing is pending or
+   needs a decision here, this just flags that the panel below is a look at
+   some OTHER tile, not the player's actual selection. */
+.sidebar-inspect-banner {
+  padding: 8px 10px;
+  margin-bottom: 12px;
+  background: rgba(120, 170, 220, 0.10);
+  border: 1px solid rgba(120, 170, 220, 0.5);
+  border-radius: 4px;
+  color: #9fc2e0;
+  font-size: 11px;
+  line-height: 1.4;
+}
+
 /* --- Awaiting-orders cycler (sidebar footer) --- */
 .next-unit-btn {
   width: 100%;

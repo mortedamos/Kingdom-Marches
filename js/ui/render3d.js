@@ -2663,7 +2663,7 @@ window.UI = window.UI || {};
     const hud = ctx.canvas;
     ctx.clearRect(0, 0, hud.width, hud.height);
     const overlays = window.UI.overlays;
-    const { selectedUnit, selectedCity, selectedStructure, humanCivId } = viewState;
+    const { humanCivId } = viewState;
 
     // Selected-tile marker -- the 3D twin of render.js's
     // drawSelectedTileMarker (see that function for the full rationale).
@@ -2757,10 +2757,6 @@ window.UI = window.UI || {};
           ctx.fillStyle = "#400"; ctx.fillRect(barX, barY, barW, 2);
           ctx.fillStyle = "#4caf50"; ctx.fillRect(barX, barY, barW * pct, 2);
         }
-        if (selectedUnit === unit) {
-          ctx.strokeStyle = "#ffeb3b"; ctx.lineWidth = 2;
-          ctx.strokeRect(boxX + 1, boxY + 1, boxSize - 2, boxSize - 2);
-        }
         overlays.drawConditionBadges(ctx, unit, boxX, boxY, boxSize, ts);
         overlays.drawChannelStashLabel(ctx, unit, sx, sy, ts);
         if (overlays.hasActiveQuip(unit)) quipQueue.push({ unit, screenX: sx, screenY: sy, ts });
@@ -2772,15 +2768,6 @@ window.UI = window.UI || {};
           const bx = boxX + barPad, by = boxY + boxSize - barPad - bh;
           ctx.fillStyle = "rgba(0,0,0,0.6)"; ctx.fillRect(bx, by, bw, bh);
           ctx.fillStyle = "#5fbf5f"; ctx.fillRect(bx, by, bw * Math.max(0, s.hp) / s.maxHp, bh);
-        }
-        // Selection ring -- structures had none in either renderer until
-        // 2026-08-26 (see render.js's structure pass). selectedStructure is
-        // findStructureAt's {civ, city, record, building} wrapper, so
-        // identity is compared against `.record`, which is what
-        // collectBillboards puts on b.structure.
-        if (selectedStructure && selectedStructure.record === s) {
-          ctx.strokeStyle = "#ffeb3b"; ctx.lineWidth = 2;
-          ctx.strokeRect(boxX + 1, boxY + 1, boxSize - 2, boxSize - 2);
         }
         if (overlays.hasActiveFloatingText(s)) floatQueue.push({ unit: s, screenX, screenY, ts });
       } else if (b.kind === "city") {
@@ -2795,10 +2782,6 @@ window.UI = window.UI || {};
         ctx.strokeText(String(pop), px, py);
         ctx.fillText(String(pop), px, py);
         ctx.restore();
-        if (selectedCity === city) {
-          ctx.strokeStyle = "#ffeb3b"; ctx.lineWidth = 2;
-          ctx.strokeRect(boxX + 1, boxY + 1, boxSize - 2, boxSize - 2);
-        }
       }
     }
 

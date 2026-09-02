@@ -16,7 +16,16 @@ window.UI = window.UI || {};
   function render(container, gameState, viewState) {
     const { civs, turnNumber } = gameState;
     const humanCiv = civs[viewState.humanCivId];
-    const sel = viewState.selection;
+    // A peek (viewState.inspect, see input.js's INSPECT doc comment) wins the
+    // sidebar's tab panel over the real selection whenever it's set -- but
+    // only the panel. Everything else in here (footer, End Turn, the unit
+    // cycler, territory) stays keyed to the real civ state, untouched by
+    // what's merely being looked at. inspect is cleared the moment a real
+    // (re)selection happens, so this can never get permanently stuck showing
+    // a peek instead of the player's own selection.
+    const insp = viewState.inspect;
+    const isInspecting = !!(insp && insp.tabs && insp.tabs.length);
+    const sel = isInspecting ? insp : viewState.selection;
 
     // Gilded frame (see css/style.css's .sidebar.race-* rules): themed per
     // the human player's kingdom, or the neutral spectator frame when
@@ -44,12 +53,20 @@ window.UI = window.UI || {};
     }
 
     if (sel && sel.tabs && sel.tabs.length) {
-      html += renderTabStrip(sel);
+      // Peek banner: the one visible cue that this panel is a look-without-
+      // touching peek, not the player's actual selection -- everything below
+      // it renders exactly like a real selection would (see this game's own
+      // "sidebar panels are information-only, verbs live on the ring" split,
+      // which is what makes a peek panel safe to show read-only for free).
+      if (isInspecting) {
+        html += `<div class="sidebar-inspect-banner">Looking at this tile — your selection is unchanged</div>`;
+      }
+      html += renderTabStrip(sel, isInspecting);
       const tab = sel.tabs[sel.activeTab];
-      if (tab.kind === "city")           html += renderCityPanel(tab.city, civs, sel, gameState, viewState);
+      if (tab.kind === "city")           html += renderCityPanel(tab.city, civs, sel, gameState, viewState, isInspecting);
       else if (tab.kind === "unit")      html += renderUnitPanel(tab.unit, civs, viewState, gameState);
       else if (tab.kind === "structure") html += renderStructurePanel(tab.structure);
-      else if (tab.kind === "terrain")   html += renderTilePanel(tab.tile, civs, sel);
+      else if (tab.kind === "terrain")   html += renderTilePanel(tab.tile, civs, sel, isInspecting);
       else if (tab.kind === "kingdom")   html += renderKingdomPanel(tab.civ, gameState, viewState);
     } else {
       html += renderKingdomPanel(humanCiv, gameState, viewState);
@@ -207,15 +224,16 @@ window.UI = window.UI || {};
   /** The tab strip itself. Suppressed for a bare terrain tile -- a lone
    *  "Terrain" tab is pure noise, since that's self-evidently what the panel
    *  below it is showing. */
-  function renderTabStrip(sel) {
+  function renderTabStrip(sel, isInspect) {
     if (sel.tabs.length <= 1) return "";
+    const inspectAttr = isInspect ? ' data-inspect="1"' : "";
     const buttons = sel.tabs.map((t, i) =>
-      `<button class="tile-tab${i === sel.activeTab ? " tile-tab-active" : ""}" data-tab-index="${i}">${escapeHtml(t.label)}</button>`
+      `<button class="tile-tab${i === sel.activeTab ? " tile-tab-active" : ""}" data-tab-index="${i}"${inspectAttr}>${escapeHtml(t.label)}</button>`
     ).join("");
     return `<div class="tile-tabs">${buttons}</div>`;
   }
 
-  function renderCityPanel(city, civs, sel, gameState, viewState) {
+  function renderCityPanel(city, civs, sel, gameState, viewState, isInspect) {
     const civ = civs[city.civId];
     const race = civ ? window.GameData.getRace(civ.raceId) : null;
     const y = city.lastYield || { harvest: 0, coin: 0, lore: 0 };
@@ -269,7 +287,7 @@ window.UI = window.UI || {};
         // An enemy unit on your city tile is possible (a flying unit isn't
         // blocked by the city) -- flag it rather than implying it's yours.
         const foreign = uCiv && uCiv.id !== city.civId ? ` <em>(${escapeHtml(uRace ? uRace.label : uCiv.id)})</em>` : '';
-        return `<button class="tile-tab-link" data-tab-index="${i}">
+        return `<button class="tile-tab-link" data-tab-index="${i}"${isInspect ? ' data-inspect="1"' : ""}>
           <span>${escapeHtml(t.label)}${foreign}</span><span>${u.hp}/${u.maxHp} hp</span>
         </button>`;
       }).join("");
@@ -455,7 +473,7 @@ window.UI = window.UI || {};
     }).join("");
   }
 
-  function renderTilePanel(tile, civs, sel) {
+  function renderTilePanel(tile, civs, sel, isInspect) {
     const terrain = window.GameData.TERRAIN[tile.terrain];
     const y = terrain.yield;
     const ownerCiv = tile.ownerCivId ? civs[tile.ownerCivId] : null;
@@ -466,10 +484,14 @@ window.UI = window.UI || {};
     // terrain type in terrain.js has exactly one of the two as a real
     // number and the other as IMPASSABLE (no amphibious units exist), so
     // a single row covers it without showing an always-irrelevant value.
-    // A road overrides the land cost to a flat 1 regardless of terrain
-    // (see ai.js's getMoveCost) -- roads are a land-only feature, so this
-    // never applies to the naval-cost branch.
-    const moveCost = terrain.isWater ? terrain.moveCostNaval : (tile.hasRoad ? 1 : terrain.moveCostLand);
+    // A road (or a bridge, which counts as one -- see cities.js's
+    // tileCountsAsRoad) overrides the land cost to ROAD_MOVE_COST
+    // regardless of terrain underneath (see ai.js's getMoveCost) -- roads
+    // are a land-only feature, so this never applies to the naval-cost
+    // branch. 2026-09-02 bugfix: this was hardcoded to 1, stale since
+    // ROAD_MOVE_COST last changed to 0.5, and didn't check bridges at all.
+    const moveCost = terrain.isWater ? terrain.moveCostNaval
+      : (window.GameEngine.cities.tileCountsAsRoad(tile) ? window.GameEngine.ai.ROAD_MOVE_COST : terrain.moveCostLand);
     const moveCostLabel = terrain.isWater ? "Movement Cost (Naval)" : "Movement Cost";
     const moveCostDisplay = moveCost === window.GameData.IMPASSABLE ? "Impassable" : moveCost;
 
@@ -524,7 +546,7 @@ window.UI = window.UI || {};
         .filter(({ t }) => t.kind === "city" || t.kind === "unit" || t.kind === "structure")
         .map(({ t, i }) => {
           const KIND_LABEL = { city: "City", unit: "Unit", structure: "Building" };
-          return `<button class="tile-tab-link" data-tab-index="${i}">
+          return `<button class="tile-tab-link" data-tab-index="${i}"${isInspect ? ' data-inspect="1"' : ""}>
             <span>${escapeHtml(KIND_LABEL[t.kind])}</span><span>${escapeHtml(t.label)}</span>
           </button>`;
         }).join("");
