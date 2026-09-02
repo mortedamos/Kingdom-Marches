@@ -1666,16 +1666,54 @@ window.UI = window.UI || {};
     }
   }
 
+  /** Draws the reticle itself, centered at (cx, cy) -- shared by every kind
+   *  of enemy-in-range target (unit, city, structure) below so all three
+   *  read as the exact same "in range" mark rather than three different
+   *  conventions (2026-09-02, user-directed: painting a target on units
+   *  in range but not structures/cities read as inconsistent). */
+  function drawTargetTickReticle(ctx, cx, cy, ts) {
+    ctx.save();
+    ctx.strokeStyle = "rgba(255,60,60,0.85)";
+    ctx.lineWidth = Math.max(1, ts * 0.03);
+    ctx.beginPath();
+    ctx.arc(cx, cy, ts * 0.24, 0, Math.PI * 2);
+    ctx.stroke();
+    // Crosshair ticks, gapped around the ring rather than crossing all the
+    // way through the center -- reads as a "target" mark, not just a
+    // circle-with-a-plus.
+    ctx.beginPath();
+    ctx.moveTo(cx - ts * 0.32, cy); ctx.lineTo(cx - ts * 0.17, cy);
+    ctx.moveTo(cx + ts * 0.17, cy); ctx.lineTo(cx + ts * 0.32, cy);
+    ctx.moveTo(cx, cy - ts * 0.32); ctx.lineTo(cx, cy - ts * 0.17);
+    ctx.moveTo(cx, cy + 0.17 * ts); ctx.lineTo(cx, cy + ts * 0.32);
+    ctx.stroke();
+    ctx.fillStyle = "rgba(255,60,60,0.85)";
+    ctx.beginPath();
+    ctx.arc(cx, cy, ts * 0.05, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+
   /**
-   * Small red target reticle over every enemy unit currently in range of
-   * the selected unit -- reuses ai.js's canAttackUnitNow (the same
-   * range/visibility/line-of-sight/
-   * reachability check considerAttackOrGarrison itself consults) rather
-   * than re-deriving range logic here, so this can never promise a target
-   * that clicking wouldn't actually let the player attack. Deliberately
-   * simpler than drawOrderPreview's own attack reticle (no odds label, no
-   * tile-square outline) -- this is an at-a-glance "these are in range"
-   * scan across the whole visible board, not a considered look at one tile.
+   * Small red target reticle over every enemy unit, city, or structure
+   * (wall, building, bridge) currently in range of the selected unit.
+   * Units reuse ai.js's canAttackUnitNow (the same range/visibility/line-
+   * of-sight/reachability check considerAttackOrGarrison itself consults)
+   * rather than re-deriving range logic here, so this can never promise a
+   * target that clicking wouldn't actually let the player attack.
+   *
+   * Cities and structures (2026-09-02, user-directed: brought in line with
+   * units, which is all this used to scan) use the same distance/visibility
+   * gate orders.js's previewOrder itself uses for these two kinds --
+   * line-of-sight is deliberately NOT re-checked here, matching that same
+   * function's own "let the engine have the final say" simplification, so
+   * this ambient scan never disagrees with what hovering the exact tile
+   * would show.
+   *
+   * Deliberately simpler than drawOrderPreview's own attack reticle (no
+   * odds label, no tile-square outline) -- this is an at-a-glance "these
+   * are in range" scan across the whole visible board, not a considered
+   * look at one tile.
    */
   function drawEnemyTargets(ctx, gameState, viewState, offsetX, offsetY, ts) {
     const orders = window.GameEngine.orders;
@@ -1692,35 +1730,41 @@ window.UI = window.UI || {};
     const baseUnit = window.GameData.getUnit(unit.typeId);
     if (!baseUnit || !(baseUnit.attack > 0)) return;
 
+    const { map } = gameState;
+    const visible = gameState.visibility[civ.id] || new Set();
+    const range = window.GameEngine.combat.effectiveRange(unit, civ);
+
+    const paintAt = (x, y) => {
+      const screenX = x * ts + offsetX, screenY = y * ts + offsetY;
+      if (screenX < -ts || screenX > cssW(ctx.canvas) || screenY < -ts || screenY > cssH(ctx.canvas)) return;
+      drawTargetTickReticle(ctx, screenX + ts / 2, screenY + ts / 2, ts);
+    };
+
     for (const otherCiv of Object.values(gameState.civs)) {
       if (otherCiv.id === civ.id) continue;
+
       for (const enemy of otherCiv.units) {
         if (enemy.carriedBy) continue; // not a real, targetable board presence
         if (!ai.canAttackUnitNow(civ, unit, enemy, gameState)) continue;
-        const screenX = enemy.x * ts + offsetX, screenY = enemy.y * ts + offsetY;
-        if (screenX < -ts || screenX > cssW(ctx.canvas) || screenY < -ts || screenY > cssH(ctx.canvas)) continue;
-        const cx = screenX + ts / 2, cy = screenY + ts / 2;
+        paintAt(enemy.x, enemy.y);
+      }
 
-        ctx.save();
-        ctx.strokeStyle = "rgba(255,60,60,0.85)";
-        ctx.lineWidth = Math.max(1, ts * 0.03);
-        ctx.beginPath();
-        ctx.arc(cx, cy, ts * 0.24, 0, Math.PI * 2);
-        ctx.stroke();
-        // Crosshair ticks, gapped around the ring rather than crossing all
-        // the way through the center -- reads as a "target" mark, not just
-        // a circle-with-a-plus.
-        ctx.beginPath();
-        ctx.moveTo(cx - ts * 0.32, cy); ctx.lineTo(cx - ts * 0.17, cy);
-        ctx.moveTo(cx + ts * 0.17, cy); ctx.lineTo(cx + ts * 0.32, cy);
-        ctx.moveTo(cx, cy - ts * 0.32); ctx.lineTo(cx, cy - ts * 0.17);
-        ctx.moveTo(cx, cy + 0.17 * ts); ctx.lineTo(cx, cy + ts * 0.32);
-        ctx.stroke();
-        ctx.fillStyle = "rgba(255,60,60,0.85)";
-        ctx.beginPath();
-        ctx.arc(cx, cy, ts * 0.05, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.restore();
+      for (const city of otherCiv.cities) {
+        if (!visible.has(city.y * map.width + city.x)) continue;
+        if (window.GameEngine.influence.chebyshev(unit.x, unit.y, city.x, city.y) > range) continue;
+        paintAt(city.x, city.y);
+      }
+
+      // Structures: every city's own wall/building roster, plus this civ's
+      // bridges (a separate flat list, not attached to any one city -- see
+      // cities.js's placeBridgeSegment) -- the same two sources
+      // findStructureAt draws from when resolving a single tile.
+      const structures = otherCiv.cities.flatMap((c) => c.structures).concat(otherCiv.bridges || []);
+      for (const structure of structures) {
+        if (structure.hp <= 0) continue;
+        if (!visible.has(structure.y * map.width + structure.x)) continue;
+        if (window.GameEngine.influence.chebyshev(unit.x, unit.y, structure.x, structure.y) > range) continue;
+        paintAt(structure.x, structure.y);
       }
     }
   }
