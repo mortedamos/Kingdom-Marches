@@ -82,8 +82,11 @@ window.GameEngine = window.GameEngine || {};
   const PARTY_ATTACK_BONUS = 1;
   const PARTY_DEFENSE_BONUS = 1;
   const PARTY_MOVEMENT_BONUS = 2; // deliberately the biggest of the three -- the point is "go explore", not "stay and fight"
-  const PARTY_CONFETTI_BURSTS = 3; // a few poofs at the city tile, not one flash
-  const PARTY_CONFETTI_STAGGER_MS = 280;
+  // Confetti/fireworks keep popping for a while after the party fires
+  // (2026-09-03, user-directed), not just an instant flourish -- see the
+  // scattered spawnAreaEffect loop in applyThrowAParty below.
+  const PARTY_CONFETTI_DURATION_MS = 10000;
+  const PARTY_CONFETTI_INTERVAL_MS = 800; // roughly one new poof this often -- long enough each fades (AREA_EFFECT_ANIM_MS=700) before the next lands
 
   // city.influenceRadius is now the SINGLE radius governing both territory
   // influence (influence.js's computeInfluenceMap) and worked-tile yield
@@ -1037,11 +1040,22 @@ window.GameEngine = window.GameEngine || {};
     // fade-in-then-out (see combat.js's spawnAreaEffect doc comment) rather
     // than a lingering overlay -- fires once, not repeated.
     window.GameEngine.combat.spawnAreaEffect(city.x, city.y, PARTY_RADIUS, "throw_a_party");
-    // A few confetti poofs at the city tile itself, staggered so it reads as
-    // a little celebration rather than one instant burst.
-    for (let i = 0; i < PARTY_CONFETTI_BURSTS; i++) {
-      setTimeout(() => window.GameEngine.combat.spawnAreaEffect(city.x, city.y, 0, "party_confetti"),
-        i * PARTY_CONFETTI_STAGGER_MS);
+    // Confetti keeps popping across the party's footprint for
+    // PARTY_CONFETTI_DURATION_MS after it fires, not just an instant
+    // flourish. Each poof is jittered to a random tile within PARTY_RADIUS
+    // of the city (still a radius-0 spawnAreaEffect -- a single-tile poof,
+    // not a wider highlight) so ten seconds of these reads as confetti
+    // settling scattered across the block party, not one spot flashing
+    // repeatedly in place -- each poof still uses spawnAreaEffect's own
+    // gentle fade-in/hold/fade-out envelope, same as every other area
+    // effect, so this stays well clear of anything that could read as
+    // strobing regardless of how many stack up.
+    for (let elapsed = 0; elapsed < PARTY_CONFETTI_DURATION_MS; elapsed += PARTY_CONFETTI_INTERVAL_MS) {
+      setTimeout(() => {
+        const jx = city.x + Math.floor(Math.random() * (PARTY_RADIUS * 2 + 1)) - PARTY_RADIUS;
+        const jy = city.y + Math.floor(Math.random() * (PARTY_RADIUS * 2 + 1)) - PARTY_RADIUS;
+        window.GameEngine.combat.spawnAreaEffect(jx, jy, 0, "party_confetti");
+      }, elapsed);
     }
     window.SfxSystem.playHalfellowParty(city.x, city.y);
 
