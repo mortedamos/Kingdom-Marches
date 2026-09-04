@@ -68,6 +68,22 @@ window.GameEngine = window.GameEngine || {};
   const RESEARCH_BOOST_COST_PER_POP = CFG.researchBoostCostPerPop;
   // "Expedite Unit Build" (see applyExpediteBuild below).
   const EXPEDITE_COST_MULT = CFG.expediteCostMult;
+  // "Throw a Party" (Halfellow-only, see applyThrowAParty below). Cost is
+  // config-driven like Spread Culture/Research above; everything else about
+  // the effect is tuning kept local here rather than in config.js, matching
+  // how every other condition's numbers (Crusade, Riddle, ...) live next to
+  // their own implementation instead of centralized.
+  const PARTY_COST_BASE = CFG.partyCostBase;
+  const PARTY_COST_PER_POP = CFG.partyCostPerPop;
+  const PARTY_RADIUS = 2; // Chebyshev, inclusive of the city tile itself
+  const PARTY_HEAL_PCT = 0.5; // one-time, on trigger only -- not a heal-over-time
+  const PARTY_BUFF_DURATION = 3; // turns
+  const PARTY_COOLDOWN_TURNS = 6; // per city -- long enough that a static garrison can't chain-trigger and stay permanently buffed
+  const PARTY_ATTACK_BONUS = 1;
+  const PARTY_DEFENSE_BONUS = 1;
+  const PARTY_MOVEMENT_BONUS = 2; // deliberately the biggest of the three -- the point is "go explore", not "stay and fight"
+  const PARTY_CONFETTI_BURSTS = 3; // a few poofs at the city tile, not one flash
+  const PARTY_CONFETTI_STAGGER_MS = 280;
 
   // city.influenceRadius is now the SINGLE radius governing both territory
   // influence (influence.js's computeInfluenceMap) and worked-tile yield
@@ -933,6 +949,106 @@ window.GameEngine = window.GameEngine || {};
   }
 
   /**
+   * THROW A PARTY (2026-09-03, user-directed -- Halfellow "Homesteader"
+   * flavor, halfellow_throw_a_party)
+   * ---------------------------------------------------------------------
+   * A paid, repeatable city action: every Halfellow unit within PARTY_RADIUS
+   * tiles of the city (Chebyshev, including the city tile itself) gets a
+   * one-time 50% heal (min 1, not a heal-over-time -- see healUnit for the
+   * normal per-turn heal, which this is independent of) plus a
+   * PARTY_BUFF_DURATION-turn rally: +1 attack, +1 defense, +2 movement (the
+   * movement bonus deliberately the largest of the three -- this is meant to
+   * send a player OUT exploring afterward, not to just win the next fight).
+   *
+   * Shape notes, in the terms Spread Culture/Expedite Build above already
+   * established:
+   *   - Paid from STOCKPILE, like Spread Culture -- doesn't touch the city's
+   *     own build queue.
+   *   - Gated on its own tech (unlockedMechanics.has("throw_a_party")),
+   *     unlike Spread Culture, which every race gets for free.
+   *   - Turn-stamped (partyTurn) for "already did this today", exactly like
+   *     cultureSpreadTurn -- BUT also cooldown-stamped (lastPartyTurn) on
+   *     top, since a radius-AoE combat buff is a materially better deal than
+   *     Spread Culture's influence tick and needs a real cooldown, not just
+   *     a per-turn cap, or a player could chain-trigger it every few turns
+   *     and keep a garrison permanently buffed. See canThrowParty.
+   */
+
+  /** Stockpile price to throw a party at `city` -- same { base, perPop }
+   *  shape as spreadCultureCost above. Pure -- the ring menu calls this
+   *  every render to label the pill. */
+  function partyCost(city) {
+    const pop = Math.max(1, Math.floor((city && city.population) || 1));
+    const out = {};
+    for (const k of Object.keys(PARTY_COST_BASE)) {
+      out[k] = PARTY_COST_BASE[k] + PARTY_COST_PER_POP[k] * pop;
+    }
+    return out;
+  }
+
+  /** Can `city` throw a party right now? Needs the tech, to be off its own
+   *  cooldown, and not already thrown one this turn. Pure -- callers (the
+   *  ring menu, the AI) use this to decide whether to even try, separate
+   *  from affordability, which applyThrowAParty checks on its own. */
+  function canThrowParty(city, civ, gameState) {
+    if (!city || !civ) return false;
+    if (!civ.unlockedMechanics || !civ.unlockedMechanics.has("throw_a_party")) return false;
+    const turn = gameState.turnNumber || 0;
+    if (city.partyTurn === turn) return false;
+    if (city.lastPartyTurn != null && turn - city.lastPartyTurn < PARTY_COOLDOWN_TURNS) return false;
+    return true;
+  }
+
+  function isThrowingParty(city, gameState) {
+    return !!city && city.partyTurn === (gameState.turnNumber || 0);
+  }
+
+  /** Throws a party at `city`: heals and buffs every one of `civ`'s units
+   *  within PARTY_RADIUS tiles (see this section's doc comment above).
+   *  Returns the cost paid, or null if it wasn't allowed (see
+   *  canThrowParty) or the civ can't afford it. */
+  function applyThrowAParty(city, civ, gameState, targetTurn) {
+    if (!canThrowParty(city, civ, gameState)) return null;
+    const turn = targetTurn != null ? targetTurn : (gameState.turnNumber || 0);
+
+    const cost = partyCost(city);
+    civ.stockpile = civ.stockpile || { harvest: 0, coin: 0, lore: 0 };
+    if (!Object.entries(cost).every(([k, v]) => (civ.stockpile[k] || 0) >= v)) return null;
+    for (const [k, v] of Object.entries(cost)) {
+      civ.stockpile[k] = Math.max(0, (civ.stockpile[k] || 0) - v);
+    }
+
+    city.partyTurn = turn;
+    city.lastPartyTurn = turn;
+
+    for (const unit of civ.units) {
+      if (window.GameEngine.influence.chebyshev(city.x, city.y, unit.x, unit.y) > PARTY_RADIUS) continue;
+      const before = unit.hp;
+      unit.hp = Math.min(unit.maxHp, unit.hp + Math.max(1, Math.round(unit.maxHp * PARTY_HEAL_PCT)));
+      window.GameEngine.floatingText.spawnHealGain(unit, unit.hp - before);
+      window.GameEngine.combat.setCondition(unit, "partyBuff", {
+        expiresAtTurn: turn + PARTY_BUFF_DURATION,
+        attackBonus: PARTY_ATTACK_BONUS, defenseBonus: PARTY_DEFENSE_BONUS, movementBonus: PARTY_MOVEMENT_BONUS,
+      });
+    }
+
+    window.GameEngine.floatingText.spawnFloatingText(city, "Party Time!", "resource");
+    // Radius pulse: shows exactly which tiles were covered, a quick
+    // fade-in-then-out (see combat.js's spawnAreaEffect doc comment) rather
+    // than a lingering overlay -- fires once, not repeated.
+    window.GameEngine.combat.spawnAreaEffect(city.x, city.y, PARTY_RADIUS, "throw_a_party");
+    // A few confetti poofs at the city tile itself, staggered so it reads as
+    // a little celebration rather than one instant burst.
+    for (let i = 0; i < PARTY_CONFETTI_BURSTS; i++) {
+      setTimeout(() => window.GameEngine.combat.spawnAreaEffect(city.x, city.y, 0, "party_confetti"),
+        i * PARTY_CONFETTI_STAGGER_MS);
+    }
+    window.SfxSystem.playHalfellowParty(city.x, city.y);
+
+    return cost;
+  }
+
+  /**
    * EXPEDITE UNIT BUILD (2026-08-26, user-directed -- the Human Bazaar's
    * replacement effect)
    * ---------------------------------------------------------------------
@@ -1702,6 +1818,11 @@ window.GameEngine = window.GameEngine || {};
     spreadCultureCost,
     isSpreadingCulture,
     applyCultureSpread,
+    partyCost,
+    canThrowParty,
+    isThrowingParty,
+    applyThrowAParty,
+    PARTY_RADIUS,
     canExpediteBuild,
     expediteBuildCost,
     isExpeditingBuild,

@@ -93,6 +93,7 @@ window.UI = window.UI || {};
     keepingWatch: "Posted as a lookout (Halfellow's Keep an Eye Out) -- holds position with +3 Vision.",
     greatBonfireAura: "Within The Great Bonfire's warmth (Halfellow's Banish the Darkness): heals 10% of max HP per turn (minimum 1) regardless of resting, +2 Defense, +2 Vision, +1 Movement, +5% First Strike, and +10% Double Strike -- also cures, and grants immunity to, Burning, Poisoned, Frozen, Curse, Befuddled, and Webbed. Refreshed every turn the aura still reaches it.",
     ancestralRage: "+25% Attack for 3 turns -- Orc's Ancestral Dolmen: when a unit whose home city holds a standing Dolmen falls anywhere on the map, every surviving friendly unit within 3 tiles of the death is roused to avenge it. The fallen are honored by being avenged, not resurrected.",
+    partyBuff: "Still riding the high of a Halfellow city's party (Throw a Party): +1 Attack, +1 Defense, +2 Movement for 3 turns. Granted once, at the moment the party fires, to every Halfellow unit within 2 tiles of the city -- unlike an aura, it does NOT refresh if the unit stays nearby, it just counts down.",
   };
 
   // Every stat shown on a unit's profile, cross-linked to its own KMKB
@@ -227,6 +228,10 @@ window.UI = window.UI || {};
   // plain transform would be wrong.
   const CONDITION_DISPLAY_NAME_OVERRIDES = {
     greatBonfireAura: "Bonfire's Blessing",
+    // "Party Buff" (the plain titleCase of the condition key) read as a
+    // generic stat-block label rather than something a Halfellow unit would
+    // actually feel -- see cities.js's applyThrowAParty for the mechanic.
+    partyBuff: "Well Cheered",
   };
   function conditionDisplayName(key) {
     return CONDITION_DISPLAY_NAME_OVERRIDES[key] || titleCase(key);
@@ -828,6 +833,10 @@ window.UI = window.UI || {};
     {
       key: "spreadCulture", label: "Spread Culture", icon: "🎭",
       description: "A paid, one-turn boost to this city's influence-tile spread rate (+50%), funded entirely from the civ's stockpile rather than the city's own production -- so it stacks freely with a queued build, Gather Resources, or Research Tech the very same turn. Cost scales with the city's population.",
+    },
+    {
+      key: "throwAParty", label: "Throw a Party", icon: "🎉", restriction: "Requires Throw a Party (Halfellow)",
+      description: "A paid city action, funded from the civ's stockpile like Spread Culture rather than the city's production, so it stacks freely with a queued build. Every one of this civ's units within 2 tiles of the city (including the city tile itself) heals 50% of its own max HP (minimum 1) and gains a 3-turn rally: +1 Attack, +1 Defense, +2 Movement. Cost scales with the city's population. Each city can only throw one party every 6 turns, whether or not it could afford another sooner.",
     },
     {
       key: "toggleAutomate", label: "Automate City", icon: "🤖",

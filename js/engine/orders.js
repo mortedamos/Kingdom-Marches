@@ -1598,6 +1598,21 @@ window.GameEngine = window.GameEngine || {};
       }
     }
 
+    // "Throw a Party" (Halfellow only, halfellow_throw_a_party): same
+    // stockpile-paid, outside-the-build-queue-gate shape as Spread Culture
+    // just above -- see cities.js's applyThrowAParty/canThrowParty for the
+    // cooldown that (unlike Spread Culture) also has to be satisfied.
+    if (cities.canThrowParty(city, civ, gameState)) {
+      const partyCost = cities.partyCost(city);
+      const canAffordParty = Object.entries(partyCost)
+        .every(([k, v]) => ((civ.stockpile && civ.stockpile[k]) || 0) >= v);
+      if (canAffordParty) {
+        const partyCostLabel = Object.entries(partyCost)
+          .map(([k, v]) => `${Math.ceil(v)}${k[0].toUpperCase()}`).join(" ");
+        options.push({ kind: "city:throwAParty", label: `Throw a Party (-${partyCostLabel})` });
+      }
+    }
+
     // "Automate City": hands this city's
     // turn-by-turn culture/gather/research decision to the engine until the
     // player turns it back off -- see cities.js's runCityAutomation. Never

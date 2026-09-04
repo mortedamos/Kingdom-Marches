@@ -5782,6 +5782,9 @@
       case "city:spreadCulture":
         handleSpreadCulture(city);
         break;
+      case "city:throwAParty":
+        handleThrowAParty(city);
+        break;
       case "city:expediteBuild":
         handleExpediteBuild(city);
         break;
@@ -6662,6 +6665,18 @@
     const civ = humanCivId && gameState.civs[humanCivId];
     if (!civ || !city || city.civId !== humanCivId) return;
     if (!window.GameEngine.cities.applyCultureSpread(city, civ, gameState)) return;
+    redraw();
+  }
+
+  /** Halfellow "Throw a Party" (see cities.js's applyThrowAParty). Same
+   *  shape as handleSpreadCulture just above -- stockpile-paid, doesn't
+   *  consume the city's turn, stays on the same city rather than jumping
+   *  away. Its own sfx/confetti/radius-pulse cosmetics all fire from inside
+   *  applyThrowAParty itself, not here. */
+  function handleThrowAParty(city) {
+    const civ = humanCivId && gameState.civs[humanCivId];
+    if (!civ || !city || city.civId !== humanCivId) return;
+    if (!window.GameEngine.cities.applyThrowAParty(city, civ, gameState)) return;
     redraw();
   }
 

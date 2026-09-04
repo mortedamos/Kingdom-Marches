@@ -295,9 +295,15 @@ window.SfxSystem = (function () {
   const SYSTEM_TREASURE_CHEST_OPEN_KEY = "system_treasure_chest_open_1";
   const SYSTEM_RESEARCH_COMPLETE_VARIANTS = 3;
   let lastResearchCompleteVariant = null;
+  // Halfellow "Throw a Party" (see cities.js's applyThrowAParty) -- a single
+  // clip, not the per-race/unit/action variant system above, since it isn't
+  // tied to any one unit. Still world-anchored like a unit action (unlike
+  // the other system keys, which are dialog stings) -- see
+  // playHalfellowParty's visibility gate below.
+  const SYSTEM_HALFELLOW_PARTY_KEY = "halfellow_party_1";
 
   function systemKeys() {
-    const keys = [SYSTEM_BUTTON_CLICK_KEY, SYSTEM_CONFIRM_ACTION_KEY, SYSTEM_TREASURE_CHEST_OPEN_KEY];
+    const keys = [SYSTEM_BUTTON_CLICK_KEY, SYSTEM_CONFIRM_ACTION_KEY, SYSTEM_TREASURE_CHEST_OPEN_KEY, SYSTEM_HALFELLOW_PARTY_KEY];
     for (let n = 1; n <= SYSTEM_RESEARCH_COMPLETE_VARIANTS; n++) keys.push(`system_research_complete_${n}`);
     return keys;
   }
@@ -343,6 +349,18 @@ window.SfxSystem = (function () {
    *  dialog. */
   function playTreasureChestOpen() {
     playSystemKey(SYSTEM_TREASURE_CHEST_OPEN_KEY);
+  }
+
+  /** Public: Halfellow "Throw a Party" fires (see cities.js's
+   *  applyThrowAParty). Unlike the other system stings above (all dialog
+   *  moments, inherently on-screen), this is a spontaneous world event that
+   *  can happen anywhere on the map -- gated by the same on-screen
+   *  visibility check playAction() uses, so an AI-thrown party elsewhere
+   *  doesn't sound off. */
+  function playHalfellowParty(x, y) {
+    if (focusSuspended) return;
+    if (visibilityCheck && x !== undefined && y !== undefined && !visibilityCheck(x, y)) return;
+    playSystemKey(SYSTEM_HALFELLOW_PARTY_KEY);
   }
 
   function setMasterVolume(v) { masterVolume = Math.max(0, Math.min(1, v)); }
@@ -427,6 +445,7 @@ window.SfxSystem = (function () {
     playConfirmAction,
     playResearchComplete,
     playTreasureChestOpen,
+    playHalfellowParty,
     setMasterVolume,
     setSfxVolume,
     setMuted,

@@ -2501,10 +2501,13 @@ window.GameEngine = window.GameEngine || {};
     // Halfellow "Banish the Darkness": +1 movement while inside The Great
     // Bonfire's aura -- see turns.js's beginCivTurn per-turn application.
     const bonfireMovement = unit.conditions?.greatBonfireAura?.movementBonus || 0;
+    // Halfellow "Throw a Party": +2 movement for a few turns after a city's
+    // party -- see cities.js's applyThrowAParty.
+    const partyMovement = unit.conditions?.partyBuff?.movementBonus || 0;
     // Orc War Camp: +1 movement stamped on permanently at build time -- see
     // BUILDING_UNIT_STAMPS.
     const buildingMovement = unit.buildingBonuses?.movement || 0;
-    let movement = baseUnit.movement + overrideMovement + levelMovement + bonfireMovement + buildingMovement;
+    let movement = baseUnit.movement + overrideMovement + levelMovement + bonfireMovement + partyMovement + buildingMovement;
     // Tech-unlocked terrain movement bonus: extra movement points while standing
     // on the race's favored terrain at the start of this move (e.g. Human on Plains).
     // "river" is a pseudo-terrain key checked separately since rivers overlay
@@ -2908,6 +2911,10 @@ window.GameEngine = window.GameEngine || {};
       : weights;
 
     for (const city of civ.cities) {
+      // Halfellow "Throw a Party": a stockpile-only action like Spread
+      // Culture/Expedite Build below, so it's tried regardless of whether
+      // this city has a build queued -- it never competes with that turn.
+      maybeThrowAParty(civ, city, gameState, log);
       if (city.buildQueue) {
         // Human Bazaar "Expedite Unit Build": buy a turn off this build
         // BEFORE counting it down, so a turn bought this turn is a turn
@@ -3047,6 +3054,35 @@ window.GameEngine = window.GameEngine || {};
     const receipt = cities.applyExpediteBuild(city, civ, gameState);
     if (!receipt) return false;
     log.push(`Expedite: ${civ.id}'s ${city.name} pays to rush ${receipt.unitLabel} (${receipt.turnsRemaining} turn${receipt.turnsRemaining === 1 ? "" : "s"} left)`);
+    return true;
+  }
+
+  /** Halfellow "Throw a Party" -- the AI half of the city action (see
+   *  cities.js's applyThrowAParty). Unlike Expedite Build, this isn't
+   *  threat-gated: the whole point is a heal-and-rally, so it's worth
+   *  considering any turn it's off cooldown and there's an actual wounded
+   *  unit sitting in range to benefit (otherwise it's stockpile spent on
+   *  nobody). Reserve-gated like Expedite Build -- affordability alone isn't
+   *  enough, a civ that empties its stockpile on this stops building
+   *  anything else for turns -- and rolled probabilistically so it doesn't
+   *  fire the instant it comes off cooldown every single time. */
+  const PARTY_RESERVE_MULT = 2.0;
+  const PARTY_CHANCE = 0.5;
+  function maybeThrowAParty(civ, city, gameState, log) {
+    const cities = window.GameEngine.cities;
+    if (!cities.canThrowParty(city, civ, gameState)) return false;
+    const cost = cities.partyCost(city);
+    const stock = civ.stockpile || {};
+    if (!Object.entries(cost).every(([k, v]) => (stock[k] || 0) >= v * PARTY_RESERVE_MULT)) return false;
+
+    const inRange = civ.units.filter((u) =>
+      window.GameEngine.influence.chebyshev(city.x, city.y, u.x, u.y) <= cities.PARTY_RADIUS);
+    if (!inRange.some((u) => u.hp < u.maxHp)) return false;
+
+    if (Math.random() >= PARTY_CHANCE) return false;
+
+    if (!cities.applyThrowAParty(city, civ, gameState)) return false;
+    log.push(`Party: ${civ.id}'s ${city.name} throws a party (${inRange.length} unit${inRange.length === 1 ? "" : "s"} in range)`);
     return true;
   }
 

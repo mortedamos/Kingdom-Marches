@@ -1794,6 +1794,21 @@ window.GameData.TECHS = {
     costBreakdown: { harvest: 12, lore: 10 },
     effects: [{ type: "unlock_mechanic", mechanic: "keep_an_eye_out", value: 3 }],
   },
+  // New (2026-09-03, user-directed): an active, repeatable early-game lever
+  // -- the early tech list here was otherwise all passive civic bonuses
+  // (movement discounts, vision) with nothing to actually DO turn to turn.
+  // A city action rather than a passive bonus, same "paid from stockpile,
+  // once-per-city cooldown" shape as Spread Culture/Expedite Build -- see
+  // cities.js's applyThrowAParty for the cost/cooldown/effect numbers (kept
+  // there rather than duplicated in this description) and combat.js/ai.js
+  // for where the partyBuff condition it grants is actually read.
+  halfellow_throw_a_party: {
+    id: "halfellow_throw_a_party", label: "Throw a Party", category: "civic", layer: 1, cost: 20,
+    prereqs: [], raceOnly: "halfellow",
+    description: "Unlocks a city action: Throw a Party. Every Halfellow unit within 2 tiles of the city heals 50% of its max HP (minimum 1) and gains +1 attack, +1 defense, and +2 movement for 3 turns. Each city can throw one party every 6 turns.",
+    costBreakdown: { coin: 12, harvest: 8 },
+    effects: [{ type: "unlock_mechanic", mechanic: "throw_a_party" }],
+  },
 
   // --- Layer 2 ---
   halfellow_road_goes_ever_on: {
@@ -1983,11 +1998,15 @@ window.GameData.TECHS = {
   halfellow_hearth_and_homeland: {
     id: "halfellow_hearth_and_homeland", label: "Hearth and Homeland", category: "civic", layer: 4, cost: 50,
     prereqs: [], raceOnly: "halfellow",
-    // 25%, minimum 1 point (2026-08-17, user-directed -- was 10% with no
-    // floor of its own; see combat.js's healUnit for the floor).
-    description: "Heal an extra 25% (minimum 1 point) per turn when resting on a filled-in tile within one of your own cities' borders (not just inside the city itself).",
+    // Flat +1 HP (2026-09-03, user-directed -- was 25% of the base heal
+    // roll, minimum 1 point). Flat rather than a percentage specifically so
+    // it can be added on top of Rest and Defend's OWN flat heal (see
+    // turns.js) instead of being silently skipped by it -- the old
+    // percentage-of-roll shape lived entirely inside combat.js's healUnit,
+    // which Rest and Defend's separate flat-rate heal never calls.
+    description: "Heal an extra flat 1 HP per turn when resting on a filled-in tile within one of your own cities' borders (not just inside the city itself). Stacks with Rest and Defend's own heal.",
     costBreakdown: { harvest: 26, lore: 24 },
-    effects: [{ type: "unlock_mechanic", mechanic: "hearth_and_homeland", value: 0.25 }],
+    effects: [{ type: "unlock_mechanic", mechanic: "hearth_and_homeland" }],
   },
   halfellow_historical_society: {
     id: "halfellow_historical_society", label: "Historical Society", category: "building", layer: 3, cost: 52,

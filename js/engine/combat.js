@@ -698,6 +698,11 @@ window.GameEngine = window.GameEngine || {};
     // both conditions at once, so no double-dipping is possible here.
     if (unit.conditions?.powerMetalAura) atk += unit.conditions.powerMetalAura.attackBonus || 0;
 
+    // Halfellow "Throw a Party": a temporary rally granted by a city's party
+    // (see cities.js's applyThrowAParty) -- same flat-bonus-condition shape
+    // as Crusade/Power Metal above.
+    if (unit.conditions?.partyBuff) atk += unit.conditions.partyBuff.attackBonus || 0;
+
     // Dwarf "The Long Reckoning": +25% attack against a civ marked as a
     // rival (see markRival below) -- applies to that civ's units, cities,
     // AND structures alike, since every real-damage call site below passes
@@ -764,6 +769,11 @@ window.GameEngine = window.GameEngine || {};
     // Halfellow "Banish the Darkness": The Great Bonfire's aura -- same
     // shape as Crusade/Heavy Metal above, see turns.js's per-turn application.
     if (unit.conditions?.greatBonfireAura) def += unit.conditions.greatBonfireAura.defenseBonus || 0;
+
+    // Halfellow "Throw a Party": same flat-bonus-condition shape as
+    // Crusade/Heavy Metal/Great Bonfire above -- see cities.js's
+    // applyThrowAParty and effectiveAttack's matching partyBuff read.
+    if (unit.conditions?.partyBuff) def += unit.conditions.partyBuff.defenseBonus || 0;
 
     // Dwarf "Shield Wall": flat +2 defense as long as at least one other
     // Dwarf military unit is adjacent -- doesn't scale with how many are
@@ -1248,21 +1258,18 @@ window.GameEngine = window.GameEngine || {};
     // 0, which reads as Rest having silently done nothing at all.
     const healAmount = Math.max(1, Math.round((unit.maxHp * pct) / 100));
 
-    // Halfellow "Hearth and Homeland": an extra, separately-floored heal
-    // bonus on any filled-in tile within one of the civ's city borders, not
-    // just inside the city itself. 25%, minimum 1 point (2026-08-17,
-    // user-directed -- was a 10% fold-in on the raw rate MULTIPLIER above,
-    // rolled together with the base heal and with no floor of its own, so a
-    // small early heal could round the whole bonus away to nothing).
-    // Computed as a percentage OF THE BASE HEAL just rolled above (already
-    // reflecting extraMult, same as the base heal does) rather than folded
-    // into the pre-roll multiplier, so it can be floored independently --
-    // same "a real bonus should visibly do SOMETHING" reasoning healAmount's
-    // own floor just above already follows.
+    // Halfellow "Hearth and Homeland": an extra flat +1 HP on any filled-in
+    // tile within one of the civ's city borders, not just inside the city
+    // itself. Flat (2026-09-03, user-directed -- was 25% of healAmount,
+    // minimum 1 point) specifically so the SAME bonus can be added to Rest
+    // and Defend's own separate flat heal in turns.js, which never calls
+    // this function -- a percentage of "the base heal roll" has no meaning
+    // there, but a flat +1 does. See turns.js's restAndDefend heal loop for
+    // the matching addition.
     let hearthBonus = 0;
     if (!inOwnCity && civ.unlockedMechanics?.has("hearth_and_homeland")
         && window.GameEngine.cities.isTileFilledForCiv(civ, unit.x, unit.y)) {
-      hearthBonus = Math.max(1, Math.round(healAmount * (civ.mechanicValues?.hearth_and_homeland || 0)));
+      hearthBonus = 1;
     }
 
     const before = unit.hp;

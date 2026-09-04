@@ -1566,7 +1566,9 @@ window.GameEngine = window.GameEngine || {};
     // Rest and Defend heal (2026-08-19, user-directed): a flat 20% of
     // maxHp per turn, minimum 1 -- deliberately NOT the generic roll3d6
     // heal above, so the rate is exactly predictable regardless of
-    // location/race bonuses. Applies to ANY civ's unit currently
+    // location/race bonuses, EXCEPT Halfellow "Hearth and Homeland"'s own
+    // flat +1 add-on just below, which is meant to stack with this
+    // (2026-09-03, user-directed). Applies to ANY civ's unit currently
     // channeling restAndDefend (human via main.js's handleRestAndDefend,
     // AI via ai.js's Ramparts branch) -- one rate for the one named
     // action, however it was triggered; the AI branch already re-sets
@@ -1591,13 +1593,23 @@ window.GameEngine = window.GameEngine || {};
     for (const unit of civ.units) {
       if (unit.channeling !== "restAndDefend") continue;
       const race = window.GameData.getRace(civ.raceId);
+      const inOwnCity = civ.cities.some((c) => c.x === unit.x && c.y === unit.y);
       if (!race.noHealing && unit.hp < unit.maxHp) {
-        const healAmount = Math.max(1, Math.round(unit.maxHp * 0.20));
+        let healAmount = Math.max(1, Math.round(unit.maxHp * 0.20));
+        // Tech: Halfellow "Hearth and Homeland" -- +1 flat HP on top, same
+        // gating (own territory, filled tile, not inside the city itself)
+        // as combat.js's healUnit applies for a plain Rest. Added here
+        // separately, and deliberately (2026-09-03, user-directed: this
+        // heal should stack with it), since Rest and Defend's flat rate
+        // never goes through healUnit at all.
+        if (civ.unlockedMechanics?.has("hearth_and_homeland") && !inOwnCity
+            && window.GameEngine.cities.isTileFilledForCiv(civ, unit.x, unit.y)) {
+          healAmount += 1;
+        }
         const before = unit.hp;
         unit.hp = Math.min(unit.maxHp, unit.hp + healAmount);
         window.GameEngine.floatingText.spawnHealGain(unit, unit.hp - before);
       }
-      const inOwnCity = civ.cities.some((c) => c.x === unit.x && c.y === unit.y);
       if (unit.hp >= unit.maxHp && !inOwnCity) {
         unit.channeling = null;
         unit.resting = false;

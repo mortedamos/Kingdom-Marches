@@ -65,9 +65,9 @@ window.GameConfig = {
     /** Local date this build was cut, YYYY-MM-DD. */
     date: "2026-09-03",
     /** Local time this build was cut, 24-hour HH:MM. */
-    time: "21:48",
+    time: "23:01",
     /** Monotonic build counter -- increment it, don't recompute it. */
-    number: 251,
+    number: 252,
   },
 
   // =========================================================================
@@ -408,6 +408,17 @@ window.GameConfig = {
      *  instead of it. */
     researchBoostCostBase: { harvest: 5, coin: 10, lore: 10 },
     researchBoostCostPerPop: { harvest: 5, coin: 10, lore: 10 },
+
+    /** "Throw a Party" (Halfellow-only, see cities.js's applyThrowAParty /
+     *  techs.js's halfellow_throw_a_party): a paid, repeatable city action,
+     *  same { base, perPop } stockpile-cost shape as Spread Culture/Research
+     *  above -- everything else about it (heal %, buff size/duration,
+     *  radius, per-city cooldown) is tuning that lives next to the effect
+     *  itself in cities.js, not here, matching how every other condition's
+     *  numbers (Crusade, Riddle, Devoted Companions, ...) are kept local to
+     *  their own implementation rather than centralized. */
+    partyCostBase: { harvest: 10, coin: 10 },
+    partyCostPerPop: { harvest: 4, coin: 4 },
 
     /** "Expedite Unit Build" (see cities.js's applyExpediteBuild) -- the
      *  Human Bazaar's city action: pay stockpile to knock one turn off the

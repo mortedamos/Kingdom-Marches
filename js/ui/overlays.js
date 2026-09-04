@@ -63,7 +63,8 @@ window.UI = window.UI || {};
     webbed: "🕸️",
     poisoned: "🤢",
     greatBonfireAura: "♨️",
-    ancestralRage: "🗿"
+    ancestralRage: "🗿",
+    partyBuff: "🎉"
   };
   const CARRYING_ICON = "🫴";
 
@@ -192,6 +193,12 @@ window.UI = window.UI || {};
     curse: "140,60,190", // Orc Bog Witch curse -- matches CURSE_TINT_COLOR
     dire_bear_transform: "110,75,45", // Elf Druid -> Dire Bear -- earthy brown fur/claws
     druid_revert: "120,205,95", // Elf Dire Bear -> Druid -- matches natures_grace's living green
+    // Halfellow "Throw a Party" (see cities.js's applyThrowAParty): warm
+    // festive gold, distinct from fireball's orange-red and unlock_the_
+    // gate's muted brass. Both kinds share the color -- radius is the
+    // "who got buffed" readout, confetti is the "something happened" poof.
+    throw_a_party: "255,205,86",
+    party_confetti: "255,205,86",
     default: "255,255,255",
   };
 
@@ -214,6 +221,12 @@ window.UI = window.UI || {};
     curse: { chars: ["💀", "🌀", "💜"], drift: -0.3 },
     dire_bear_transform: { chars: ["🐾", "🍂", "🐾"], drift: -0.3 },
     druid_revert: { chars: ["🍃", "✨", "🍃"], drift: -0.5 },
+    // Halfellow "Throw a Party" confetti poof at the city tile -- fired a
+    // few times in a row (see cities.js's applyThrowAParty), each one its
+    // own instance of this glyph set. The radius-2 "who got buffed" pulse
+    // (kind: throw_a_party) deliberately has NO entry here -- it's meant to
+    // read as a clean coverage wash, not compete with this for attention.
+    party_confetti: { chars: ["🎉", "🎊", "🍻"], drift: -0.6 },
   };
   const AREA_EFFECT_GLYPH_COUNT = 7;
 
