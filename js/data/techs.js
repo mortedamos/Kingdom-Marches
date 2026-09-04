@@ -525,8 +525,7 @@ window.GameData.TECHS = {
   // ring-menu pill in orders.js's contextMenuOptions). Costs the DIFFERENCE
   // between the two units' build costs, not the replacement's full price --
   // this is a promotion, not a fresh purchase. No fixed prereq: applies to
-  // whichever replace_unit tech(s) the civ has already researched, same
-  // context-dependent shape Envoy's mechanic-gate has.
+  // whichever replace_unit tech(s) the civ has already researched.
   battlefield_promotion: {
     id: "battlefield_promotion", label: "Battlefield Promotion", category: "military", layer: 4, cost: 55,
     prereqs: [], raceOnly: "human",
@@ -1797,15 +1796,8 @@ window.GameData.TECHS = {
   },
 
   // --- Layer 2 ---
-  halfellow_hillside_harvest: {
-    id: "halfellow_hillside_harvest", label: "Hillside Harvest", category: "civic", layer: 1, cost: 20,
-    prereqs: ["halfellow_singing_hills"], raceOnly: "halfellow",
-    description: "+0.25 harvest from Hills.",
-    costBreakdown: { lore: 13, coin: 7 },
-    effects: [{ type: "unlock_tile_bonus", terrain: "hills", bonus: { harvest: 0.25 } }],
-  },
   halfellow_road_goes_ever_on: {
-    id: "halfellow_road_goes_ever_on", label: "The Road Goes Ever On", category: "civic", layer: 2, cost: 22,
+    id: "halfellow_road_goes_ever_on", label: "The Road Goes Ever On", category: "civic", layer: 1, cost: 22,
     prereqs: [], raceOnly: "halfellow",
     description: "+0.5 lore per road tile within a city's radius.",
     costBreakdown: { lore: 14, harvest: 8 },
@@ -1901,18 +1893,11 @@ window.GameData.TECHS = {
     effects: [{ type: "unlock_feature_bonus", feature: "river", bonus: { coin: 0.5 } }],
   },
   halfellow_nice_day_fishing: {
-    id: "halfellow_nice_day_fishing", label: "A Nice Day for Fishing", category: "civic", layer: 2, cost: 38,
+    id: "halfellow_nice_day_fishing", label: "A Nice Day for Fishing", category: "civic", layer: 1, cost: 38,
     prereqs: ["halfellow_riverfolk"], raceOnly: "halfellow",
-    description: "+0.5 harvest from Rivers.",
+    description: "+0.5 lore per river tile within a city's radius.",
     costBreakdown: { lore: 22, coin: 16 },
-    effects: [{ type: "unlock_feature_bonus", feature: "river", bonus: { harvest: 0.5 } }],
-  },
-  halfellow_ice_fishing: {
-    id: "halfellow_ice_fishing", label: "Ice Fishing", category: "civic", layer: 3, cost: 40,
-    prereqs: ["halfellow_riverfolk"], raceOnly: "halfellow",
-    description: "+1 harvest from Tundra.",
-    costBreakdown: { lore: 16, coin: 12, harvest: 12 },
-    effects: [{ type: "unlock_tile_bonus", terrain: "tundra", bonus: { harvest: 1 } }],
+    effects: [{ type: "unlock_feature_bonus", feature: "river", bonus: { lore: 0.5 } }],
   },
   halfellow_neighborhood_pub: {
     id: "halfellow_neighborhood_pub", label: "Neighborhood Pub", category: "building", layer: 2, cost: 35,
@@ -1968,8 +1953,12 @@ window.GameData.TECHS = {
   halfellow_hedge_walls: {
     // category "building" despite unlocking no
     // building of its own -- same call as Ramparts above.
+    // prereqs emptied (2026-09-02): its old prereq, Hillside Harvest, was
+    // removed as a tech (user-directed) -- no thematic replacement, so this
+    // just falls back to the layer-3 city gate alone, same as most of its
+    // neighbors here.
     id: "halfellow_hedge_walls", label: "Hedge Walls", category: "building", layer: 3, cost: 38,
-    prereqs: ["halfellow_hillside_harvest"], raceOnly: "halfellow",
+    prereqs: [], raceOnly: "halfellow",
     description: "Walls heal 5% of their max HP every turn.",
     costBreakdown: { harvest: 22, lore: 16 },
     effects: [{ type: "unlock_mechanic", mechanic: "hedge_walls" }],
@@ -1977,49 +1966,19 @@ window.GameData.TECHS = {
 
   // --- Layer 4 ---
   halfellow_community_fellowship: {
-    id: "halfellow_community_fellowship", label: "Community Fellowship", category: "civic", layer: 4, cost: 55,
+    id: "halfellow_community_fellowship", label: "Community Fellowship", category: "civic", layer: 3, cost: 55,
     prereqs: ["halfellow_neighborhood_pub"], raceOnly: "halfellow",
-    // Pacing/balance experiment (2026-07-12): raised from 2.00 (+100%) to
-    // 2.50 -- Halfellow's win rate had been sliding badly against Orc at
-    // the time (10% vs. Orc's 65% in the most recent batch then). See
-    // project_pacing_experiment memory for that history.
-    // Tried cutting to 2.00 (2026-07-14) alongside a War Camp discount
-    // increase and an Orc attack buff -- the combined pass made Orc's win
-    // rate WORSE in both Halfellow and Human matchups and lengthened games,
-    // so reverted back to 2.50. See project_pairwise_balance_human_orc_halfellow
-    // memory.
-    // Cut back to 2.00 again, this time paired
-    // with a brand-new tool for the same job -- Envoy (below) lets a
-    // Pioneer/Wanderer claim a specific in-radius tile outright in a single
-    // turn (originally a flat 2-turn channel; changed to a one-turn action
-    // 2026-08-17, user-directed), independent of this multiplier. Dropping
-    // this back to 2.00 keeps Envoy meaningfully useful for longer instead
-    // of being immediately dwarfed by a maxed-out passive rate once this
-    // tech is researched.
-    description: "Gain influence in tiles 100% faster.",
+    // Pacing/balance history: 2.00 -> 2.50 (2026-07-12, Halfellow was
+    // sliding badly against Orc) -> reverted to 2.50 after a 2.00 retry
+    // made things worse elsewhere (2026-07-14) -> back to 2.00 once Envoy
+    // gave the race a second, independent tool for the same job (2026-08-17)
+    // -- see project_pacing_experiment / project_pairwise_balance_human_
+    // orc_halfellow memory for that back-and-forth. Envoy tech has since
+    // been removed (2026-09-02, user-directed); cut to 1.50 (+50%) and
+    // moved to Layer 3 in the same pass, user-directed.
+    description: "Gain influence in tiles 50% faster.",
     costBreakdown: { harvest: 20, coin: 18, lore: 17 },
-    effects: [{ type: "fill_rate_mult", value: 2.00 }],
-  },
-  // A one-shot action for Pioneer/Wanderer (2026-08-17: changed from a
-  // 2-turn channel to a single full-turn action, user-directed; 2026-08-29:
-  // widened from the city's CURRENT radius to its eventual max radius,
-  // user-directed -- see ai.js's envoyMaxRadius/resolveEnvoyClaim/
-  // envoyTargetAt and its own ring-menu pill in orders.js's
-  // contextMenuOptions) -- stand on any not-yet-owned tile within the
-  // city's eventual full radius and spend the turn to claim it outright,
-  // independent of the normal fill-rate math -- guaranteed speed and,
-  // critically, lets the player/AI CHOOSE which tile gets priority instead
-  // of waiting on the passive fill order, including reserving land the
-  // radius hasn't grown out to yet (that claim sits inert until the radius
-  // catches up, then counts immediately with no fill-in roll needed). Small
-  // cost so it isn't spammed for free; deliberately not a big enough cost
-  // to matter early.
-  halfellow_envoy: {
-    id: "halfellow_envoy", label: "Envoy", category: "civic", layer: 4, cost: 30,
-    prereqs: [], raceOnly: "halfellow",
-    description: "Pioneer and Wanderer may spend a full turn on any unclaimed tile within the city's eventual full radius (not just its current one) to claim it outright, independent of the normal gradual fill-in rate. A claim beyond the current radius sits reserved until growth reaches it, then counts immediately.",
-    costBreakdown: { coin: 10, harvest: 8, lore: 6 },
-    effects: [{ type: "unlock_mechanic", mechanic: "envoy" }],
+    effects: [{ type: "fill_rate_mult", value: 1.50 }],
   },
   halfellow_hearth_and_homeland: {
     id: "halfellow_hearth_and_homeland", label: "Hearth and Homeland", category: "civic", layer: 4, cost: 50,

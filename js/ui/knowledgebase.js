@@ -911,10 +911,6 @@ window.UI = window.UI || {};
     },
     // -- Race-specific special abilities --
     {
-      key: "actAsEnvoy", label: "Act as Envoy", icon: "📜", restriction: "Halfellow — Pioneer or Wanderer",
-      description: "Standing on any still-unclaimed tile within one of this kingdom's cities' eventual full radius -- even beyond its current radius -- claims that tile outright on the spot, instead of waiting for the city's normal gradual fill-in rate to reach it. A claim beyond the current radius sits reserved until growth catches up to it, then counts immediately.",
-    },
-    {
       key: "battlefieldPromotion", label: "Battlefield Promotion", icon: "🎖️",
       restriction: "Human — a unit whose type has been superseded (Archer, Cavalry, Knight, Catapult)",
       description: "Converts the unit outright into its own replacement (Longbowman, Knight, Paladin, or Trebuchet), paying only the cost difference between the two units rather than the replacement's full price. The unit's name, level, and XP are retained.",

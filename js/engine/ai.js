@@ -1561,12 +1561,6 @@ window.GameEngine = window.GameEngine || {};
           moveUnitToward(pioneer, rememberedSpot.x, rememberedSpot.y, gameState.map, gameState.civs);
           pioneer.currentMission = `Heading toward a remembered good site at (${rememberedSpot.x},${rememberedSpot.y})`;
           log.push(`Pioneer at (${pioneer.x},${pioneer.y}) — no settle site found nearby, heading toward a remembered good site at (${rememberedSpot.x},${rememberedSpot.y})`);
-        } else if (maybeEnvoyPlay(civ, pioneer, gameState, log)) {
-          // Halfellow "Envoy": nothing left to settle, but there's still an
-          // unclaimed in-radius tile worth claiming outright -- see
-          // maybeEnvoyPlay's doc comment. Tried before the road-connector/
-          // wander fallbacks below since it's genuinely productive, not
-          // just "less random."
         } else if (maybeBuildBridge(civ, pioneer, gameState, weights, log)) {
           // See maybeBuildBridge's own doc comment -- either continuing an
           // already-started span, or a fresh one worth starting (reconnects
@@ -3428,7 +3422,7 @@ window.GameEngine = window.GameEngine || {};
    */
   function buildingOption(civ, buildingId) {
     const b = window.GameData.getBuilding(buildingId);
-    const cost = window.GameData.buildingBuildCost(buildingId);
+    const cost = window.GameData.buildingBuildCost(buildingId, civ.raceId);
     if (!cost) return { kind: "building", id: buildingId, label: b.label, coinCost: b.coinCost };
     return { kind: "building", id: buildingId, label: b.label, cost, turns: buildingBuildTurns(civ, buildingId) };
   }
@@ -5319,22 +5313,16 @@ window.GameEngine = window.GameEngine || {};
       if (maybeHalfellowStealthPlay(civ, unit, gameState, weights, difficulty, log)) continue;
 
       // Halfellow "Riddle" (Wanderer -- Trouble Maker's own use lives in
-      // maybeTroubleMakerPlay above): a proactive debuff play, checked
-      // before Envoy since disabling a real threat outranks an economy
-      // action. See maybeRiddlePlay's doc comment.
+      // maybeTroubleMakerPlay above): a proactive debuff play, checked ahead
+      // of the general cascade since disabling a real threat outranks an
+      // economy action. See maybeRiddlePlay's doc comment.
       if (unit.typeId === "wanderer" && maybeRiddlePlay(civ, unit, gameState, log)) continue;
 
       // Halfellow "Banish the Darkness" (Wanderer only): situational support
-      // play -- checked before Envoy since backing up a fight or a hurting
-      // ally outranks a pure economy action too, same reasoning as Riddle
-      // just above. See maybeCreateGreatBonfirePlay's doc comment.
+      // play -- checked early since backing up a fight or a hurting ally
+      // outranks a pure economy action too, same reasoning as Riddle just
+      // above. See maybeCreateGreatBonfirePlay's doc comment.
       if (unit.typeId === "wanderer" && maybeCreateGreatBonfirePlay(civ, unit, gameState, log)) continue;
-
-      // Halfellow "Envoy" (Wanderer only -- Pioneer's own equivalent lives
-      // in maybeFoundCity): opportunistic, lower priority than combat/
-      // stealth above, so only fires when a Wanderer has nothing more
-      // urgent to do. See maybeEnvoyPlay's doc comment.
-      if (unit.typeId === "wanderer" && maybeEnvoyPlay(civ, unit, gameState, log)) continue;
 
       // Elf "fight smarter, not harder": same idea as Halfellow's above, but
       // split by whether the unit is Ranged (the Ranger's hide-shoot-hide
@@ -12816,138 +12804,6 @@ window.GameEngine = window.GameEngine || {};
     return true;
   }
 
-  /** The farthest offset Envoy may ever claim for `city`: population-driven
-   *  radius growth caps out at MAX_CITY_POPULATION (see cities.js's
-   *  tickCity), but tech/building radius bonuses (extraRadiusBonus/
-   *  structureRadiusBonus) stack uncapped on top of that -- so this is the
-   *  city's own eventual ceiling, not the game-wide theoretical max. Always
-   *  >= the city's current influenceRadius. Claiming out to this line (2026-
-   *  08-29, user-directed) lets Envoy reserve tiles AHEAD of natural growth
-   *  instead of only mopping up leftovers behind an already-filled radius --
-   *  a claimed-but-not-yet-in-radius offset sits completely inert (every
-   *  consumer of filledOffsets -- computeWorkedTileYield, the influence
-   *  projection loop, advanceCityFill's own candidate search -- still bounds
-   *  itself by the CURRENT influenceRadius, not raw filledOffsets
-   *  membership) until the city's radius naturally grows to reach it, at
-   *  which point it's already filled and starts contributing immediately,
-   *  with no separate fill-in roll needed. */
-  function envoyMaxRadius(city) {
-    return Math.floor(window.GameConfig.city.maxPopulation)
-      + (city.extraRadiusBonus || 0) + (city.structureRadiusBonus || 0);
-  }
-
-  /** Nearest currently-unclaimed (not yet in city.filledOffsets), within-
-   *  envoyMaxRadius tile across all of `civ`'s own cities -- the pool Envoy
-   *  draws from (organic growth/Cultural Influence still only draw from the
-   *  narrower currently-in-radius pool -- see advanceCityFill). Returns
-   *  { x, y, city, key } or null if every city's eventual radius is already
-   *  fully claimed. */
-  function findEnvoyTarget(civ, unit, gameState) {
-    const { map } = gameState;
-    let best = null, bestDist = Infinity;
-    for (const city of civ.cities) {
-      const radius = envoyMaxRadius(city);
-      for (let dy = -radius; dy <= radius; dy++) {
-        for (let dx = -radius; dx <= radius; dx++) {
-          const key = `${dx},${dy}`;
-          if (city.filledOffsets.has(key)) continue;
-          const tx = city.x + dx, ty = city.y + dy;
-          if (tx < 0 || tx >= map.width || ty < 0 || ty >= map.height) continue;
-          if (window.GameData.TERRAIN[map.tiles[ty * map.width + tx].terrain].isWater) continue;
-          const dist = window.GameEngine.influence.chebyshev(unit.x, unit.y, tx, ty);
-          if (dist < bestDist) { bestDist = dist; best = { x: tx, y: ty, city, key }; }
-        }
-      }
-    }
-    return best;
-  }
-
-  /** Whether (x,y) is a legal Envoy claim target for `civ` RIGHT NOW: inside
-   *  some city's eventual radius (envoyMaxRadius, not just its CURRENT
-   *  influence radius -- see that function's doc comment), land (not
-   *  water), and not already filled in. Returns { x, y, city, key } (same
-   *  shape findEnvoyTarget returns) or null. Unlike findEnvoyTarget's civ-
-   *  wide nearest-tile search (AI-only, used to pick where to head), this
-   *  checks one specific tile -- it's the ring-menu gate (orders.js's
-   *  contextMenuOptions) for the player's own "Act as Envoy" pill, same
-   *  manual-trigger convention the mining/farming/fishing channels use: the
-   *  player moves the unit onto the tile themselves, and the pill appears
-   *  once they're standing somewhere eligible, same as Mine Vein appearing
-   *  once a Prospector stands on a vein. */
-  function envoyTargetAt(civ, gameState, x, y) {
-    const { map } = gameState;
-    const tile = map.tiles[y * map.width + x];
-    if (!tile || window.GameData.TERRAIN[tile.terrain].isWater) return null;
-    for (const city of civ.cities) {
-      const dx = x - city.x, dy = y - city.y;
-      if (Math.max(Math.abs(dx), Math.abs(dy)) > envoyMaxRadius(city)) continue;
-      const key = `${dx},${dy}`;
-      if (city.filledOffsets.has(key)) continue;
-      return { x, y, city, key };
-    }
-    return null;
-  }
-
-  /**
-   * Halfellow "Envoy": resolves a claim for `unit` on whichever tile it's
-   * currently standing on -- adds that tile to its city's filledOffsets
-   * outright (the same underlying claim mechanism organic growth uses),
-   * independent of the normal gradual fill-in rate. A full-turn action
-   * (2026-08-17, user-directed -- was a flat 2-turn channel before this):
-   * resolves completely the instant the unit reaches the tile, spending
-   * that whole turn, rather than requiring the unit to sit still channeling
-   * across two MORE turns after arrival.
-   *
-   * Re-derives eligibility via envoyTargetAt rather than trusting a
-   * previously-found target blindly -- the tile could have been claimed by
-   * organic growth, Spread Culture, or another Envoy the very same civ-turn
-   * between when a target was first found and when this actually runs, same
-   * "don't trust a stale lookup" reasoning main.js's castFlight
-   * re-validation uses. Spawns its own floating-text confirmation, same
-   * "the engine function that has the visible effect shows it" convention
-   * cities.js's applyCultureSpread and openTreasureChest's reward branch
-   * already use -- shared as-is by maybeEnvoyPlay (AI, additionally appends
-   * its own log line) and main.js's "actAsEnvoy" ring handler (player).
-   * Returns the resolved { x, y, city } on success, or null if `unit`'s
-   * current tile no longer qualifies (stale ring click, or the AI's target
-   * turned out to already be gone).
-   */
-  function resolveEnvoyClaim(civ, unit, gameState) {
-    const target = envoyTargetAt(civ, gameState, unit.x, unit.y);
-    if (!target) return null;
-    target.city.filledOffsets.add(target.key);
-    unit.usedThisTurn = true;
-    unit.currentMission = `Acted as Envoy, claiming (${target.x},${target.y})`;
-    window.GameEngine.floatingText.spawnFloatingText(unit, "Claimed for " + target.city.name, "resource");
-    return { x: target.x, y: target.y, city: target.city };
-  }
-
-  /**
-   * Halfellow "Envoy": Pioneer or Wanderer heads for the nearest
-   * already-in-radius, unclaimed tile and claims it in one turn once there
-   * (see resolveEnvoyClaim) -- lets the AI CHOOSE which tile gets priority
-   * instead of waiting on the passive fill order. Checked as a low priority
-   * (secondary to settling/fighting) opportunistic action for an otherwise
-   * idle Pioneer/Wanderer -- see its call sites in maybeFoundCity (Pioneer)
-   * and runUnitTurn (Wanderer). Returns true if it consumed the turn. */
-  function maybeEnvoyPlay(civ, unit, gameState, log) {
-    if (civ.raceId !== "halfellow" || !civ.unlockedMechanics || !civ.unlockedMechanics.has("envoy")) return false;
-    if (unit.typeId !== "pioneer" && unit.typeId !== "wanderer") return false;
-
-    const target = findEnvoyTarget(civ, unit, gameState);
-    if (!target) return false;
-    if (unit.x !== target.x || unit.y !== target.y) {
-      moveUnitToward(unit, target.x, target.y, gameState.map, gameState.civs);
-      unit.usedThisTurn = true;
-      unit.currentMission = `Heading to act as Envoy at (${target.x},${target.y})`;
-      return true;
-    }
-    const result = resolveEnvoyClaim(civ, unit, gameState);
-    if (!result) return false; // stale target (claimed by something else this same civ-turn) -- fall through
-    log.push(`Envoy: ${civ.id}'s ${describeUnit(unit)} claims (${result.x},${result.y}) for ${result.city.name}`);
-    return true;
-  }
-
   /** The resource cost of Human "Battlefield Promotion": the DIFFERENCE
    *  between the two units' own build costs (window.GameData.unitBuildCost),
    *  per resource, floored at 0 -- a promotion, not a fresh purchase.
@@ -12968,16 +12824,15 @@ window.GameEngine = window.GameEngine || {};
    * Human "Battlefield Promotion": converts `unit` in place into its
    * replace_unit upgrade target (window.GameData.unitUpgradeTarget), paying
    * battlefieldPromotionCost from the civ's stockpile. A full-turn action,
-   * same one-shot "resolves the instant it's clicked" shape as
-   * resolveEnvoyClaim above, not a channel -- shared as-is by both the
-   * player's own "battlefieldPromotion" ring handler (main.js) and the AI's
-   * maybeBattlefieldPromotionPlay just below.
+   * a one-shot "resolves the instant it's clicked" effect, not a channel --
+   * shared as-is by both the player's own "battlefieldPromotion" ring
+   * handler (main.js) and the AI's maybeBattlefieldPromotionPlay just below.
    *
    * Re-derives eligibility (upgrade path still exists, target still
    * unlocked, still affordable) rather than trusting a stale ring click --
    * the civ's stockpile could have been spent on something else between
    * when the ring was drawn and when this resolves, same "don't trust a
-   * stale lookup" reasoning resolveEnvoyClaim/castFlight use.
+   * stale lookup" reasoning main.js's castFlight re-validation uses.
    *
    * Only unit.typeId, .maxHp, and .hp (clamped to the new, higher max --
    * never healed, never reduced) change. Name, gender, level, xp,
@@ -13054,8 +12909,7 @@ window.GameEngine = window.GameEngine || {};
    * unit, is within GREAT_BONFIRE_TRIGGER_RADIUS of this Wanderer. Checked
    * after Riddle (see its call site's comment: "disabling a real threat
    * outranks an economy action" -- the same reasoning ranks THIS above pure
-   * economy too) and before Envoy, in runUnitTurn. Returns true if it
-   * consumed the turn.
+   * economy too), in runUnitTurn. Returns true if it consumed the turn.
    */
   function maybeCreateGreatBonfirePlay(civ, unit, gameState, log) {
     if (civ.raceId !== "halfellow" || !civ.unlockedMechanics || !civ.unlockedMechanics.has("banish_the_darkness")) return false;
@@ -14849,9 +14703,6 @@ window.GameEngine = window.GameEngine || {};
     maybeDungeonDelvePlay,
     openTreasureChest,
     maybeOpenChestPlay,
-    envoyTargetAt,
-    resolveEnvoyClaim,
-    maybeEnvoyPlay,
     battlefieldPromotionCost,
     resolveBattlefieldPromotion,
     maybeBattlefieldPromotionPlay,

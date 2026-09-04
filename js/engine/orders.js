@@ -1150,26 +1150,11 @@ window.GameEngine = window.GameEngine || {};
         options.push({ kind: "openChest", label: "Open Chest" });
       }
 
-      // Halfellow "Envoy" (2026-08-17, changed from a 2-turn channel to a
-      // full-turn action, user-directed): a Pioneer or Wanderer standing on
-      // an already-in-radius, unclaimed tile of one of this civ's own
-      // cities can claim it outright, on the spot -- same one-shot,
-      // resolves-instantly shape as Open Chest just above, not a channel.
-      // Gated on envoyTargetAt (ai.js) so the pill only appears once the
-      // player has actually moved the unit somewhere eligible, same
-      // manual-trigger convention the mining/farming/fishing channels use.
-      if (!unit.usedThisTurn && !unit.channeling
-          && civ.raceId === "halfellow" && civ.unlockedMechanics && civ.unlockedMechanics.has("envoy")
-          && (unit.typeId === "pioneer" || unit.typeId === "wanderer")
-          && window.GameEngine.ai.envoyTargetAt(civ, gameState, unit.x, unit.y)) {
-        options.push({ kind: "actAsEnvoy", label: "Act as Envoy" });
-      }
-
       // Human "Battlefield Promotion": an existing unit of an obsoleted
       // type (Archer, Cavalry, Knight, Catapult -- any `replace_unit`
       // `from`) can spend the turn converting itself into its own
       // replacement outright. Same one-shot, resolves-instantly shape as
-      // Act as Envoy just above, not a channel. Gated on the target still
+      // Open Chest above, not a channel. Gated on the target still
       // being unlocked (civ.unlockedUnits -- always true once its own
       // replace_unit tech is researched, since that's the only way a `to`
       // unit gets added) so the pill only shows an upgrade this civ can

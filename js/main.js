@@ -6010,23 +6010,9 @@
         }
         break;
       }
-      case "actAsEnvoy": {
-        // Halfellow "Envoy" -- a full-turn
-        // action now (2026-08-17, was a 2-turn channel): ai.js's
-        // resolveEnvoyClaim does the actual claim (and its own floating-text
-        // confirmation, same "engine function shows its own effect"
-        // convention openChest's reward branch above uses) and
-        // re-validates eligibility itself, since the tile could have been
-        // claimed by something else between when the ring was drawn and
-        // when this click resolves -- no dialog needed, just redraw.
-        const civ = gameState.civs[humanCivId];
-        if (civ) window.GameEngine.ai.resolveEnvoyClaim(civ, unit, gameState);
-        redraw();
-        break;
-      }
       case "battlefieldPromotion": {
-        // Human "Battlefield Promotion" -- same shape as Act as Envoy just
-        // above: ai.js's resolveBattlefieldPromotion re-validates eligibility
+        // Human "Battlefield Promotion": ai.js's resolveBattlefieldPromotion
+        // re-validates eligibility
         // (upgrade path still unlocked, still affordable) and does its own
         // floating-text confirmation, since the stockpile could have been
         // spent on something else between when the ring was drawn and when

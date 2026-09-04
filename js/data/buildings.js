@@ -345,19 +345,31 @@ window.GameData.buildingTechLayer = function (buildingId) {
  *  back to the legacy flat-coinCost model whenever this returns null, the
  *  same convention window.GameData.unitBuildCost already established for
  *  units (kept only as a defensive path for a hypothetical future building
- *  authored without a costBreakdown-bearing unlock). */
-window.GameData.buildingBuildCost = function (buildingId) {
+ *  authored without a costBreakdown-bearing unlock).
+ *
+ *  `raceId` is optional and only ever changes anything for a wall: Halfellow
+ *  walls cost Harvest instead of Coin (2026-09-02, user-directed) -- every
+ *  other race, and every non-wall building, still prices off the shared
+ *  unlocking tech's own split untouched. Wall_section's "walls" tech stays
+ *  universal/race-agnostic; this is a per-race override applied on top of
+ *  its result, not a second tech. */
+window.GameData.buildingBuildCost = function (buildingId, raceId) {
   const techId = window.GameData.techForBuilding(buildingId);
   if (!techId) return null;
   const breakdown = window.GameData.TECHS[techId].costBreakdown;
   if (!breakdown) return null;
   const sum = Object.values(breakdown).reduce((a, b) => a + b, 0);
   if (sum <= 0) return null;
-  const total = window.GameData.getBuilding(buildingId).coinCost || 0;
+  const building = window.GameData.getBuilding(buildingId);
+  const total = building.coinCost || 0;
   if (total <= 0) return null;
   const cost = {};
   for (const [k, v] of Object.entries(breakdown)) {
     cost[k] = Math.round(total * (v / sum));
+  }
+  if (raceId === "halfellow" && building.isWall) {
+    cost.harvest = (cost.harvest || 0) + (cost.coin || 0);
+    cost.coin = 0;
   }
   return cost;
 };
