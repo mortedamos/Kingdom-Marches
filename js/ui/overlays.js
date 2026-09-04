@@ -25,6 +25,23 @@ window.UI = window.UI || {};
   const ATTACK_ANIM_MS = 500; // total lifetime of a combat "wiggle" (attacker lunge / defender recoil)
   const SLASH_ANIM_MS = 260; // shorter-lived slash/swipe overlay drawn on top
   const AREA_EFFECT_ANIM_MS = 700; // AoE radius highlight (Blade Dancer sweep, Fireball splash) -- quick flash, not a lingering overlay
+  // Per-kind override for an area effect that doesn't fit the shared 700ms
+  // flash-and-fade above -- currently just Halfellow "Throw a Party"'s
+  // radius pulse (see cities.js's applyThrowAParty), which is meant to stay
+  // readable as a "who got covered" readout, not just a combat-instant
+  // flash: flashes in fast, then fades out over the full 6s (2026-09-03,
+  // user-directed), no hold plateau -- see areaEffectDuration/
+  // areaEffectAlpha below for how this actually changes the envelope. A
+  // kind missing here just uses AREA_EFFECT_ANIM_MS and the shared pop-in/
+  // hold/fade shape.
+  const AREA_EFFECT_TIMING_OVERRIDES = {
+    throw_a_party: { durationMs: 6000, flashInMs: 200 },
+  };
+  /** Total lifetime for one area effect -- its own override if it has one,
+   *  else the shared default. */
+  function areaEffectDuration(a) {
+    return (AREA_EFFECT_TIMING_OVERRIDES[a.kind] || {}).durationMs || AREA_EFFECT_ANIM_MS;
+  }
   const QUIP_ANIM_MS = 2200; // total lifetime of a speech bubble (incl. fade in/out)
   const QUIP_FADE_MS = 250; // fade-in and fade-out duration at each end of QUIP_ANIM_MS
   const FLOAT_TEXT_ANIM_MS = 3000; // total lifetime of a floating-text popup (incl. fade in/hold/fade out)
@@ -175,7 +192,7 @@ window.UI = window.UI || {};
     const newEvents = window.GameEngine.combat.drainAreaEffectEvents();
     for (const evt of newEvents) activeAreaEffects.push({ ...evt, start: now });
     if (activeAreaEffects.length) {
-      activeAreaEffects = activeAreaEffects.filter((a) => now - a.start < AREA_EFFECT_ANIM_MS);
+      activeAreaEffects = activeAreaEffects.filter((a) => now - a.start < areaEffectDuration(a));
     }
   }
 
@@ -240,7 +257,7 @@ window.UI = window.UI || {};
     const cfg = AREA_EFFECT_GLYPHS[a.kind];
     if (!cfg) return;
     const cx = (minX + maxX) / 2, cy = (minY + maxY) / 2;
-    const t = Math.min(1, (now - a.start) / AREA_EFFECT_ANIM_MS);
+    const t = Math.min(1, (now - a.start) / areaEffectDuration(a));
     const spread = Math.max(maxX - minX, lineW) * 0.55;
     ctx.save();
     ctx.globalAlpha = alpha;
