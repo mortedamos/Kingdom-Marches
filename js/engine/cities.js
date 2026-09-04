@@ -594,7 +594,7 @@ window.GameEngine = window.GameEngine || {};
     const tileYield = computeWorkedTileYield(city, civ, map);
     const struct = computeStructureEffects(city, map);
 
-    // Tech: building_count_bonus (e.g. Halfellow "Pub Crawl", +1 coin per
+    // Tech: building_count_bonus (e.g. Halfellow "Pub Crawl", +3 lore per
     // building) -- flat yield per non-wall structure this city has, independent
     // of tiles/terrain entirely. Added into each resource's raw total below,
     // same tier as struct.yield, before any percentage multipliers apply.

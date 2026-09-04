@@ -1924,9 +1924,9 @@ window.GameData.TECHS = {
   halfellow_pub_crawl: {
     id: "halfellow_pub_crawl", label: "Pub Crawl", category: "civic", layer: 2, cost: 40,
     prereqs: ["halfellow_neighborhood_pub"], raceOnly: "halfellow",
-    description: "+3 coin per building constructed in a city (walls don't count).",
+    description: "+3 lore per building constructed in a city (walls don't count).",
     costBreakdown: { lore: 16, coin: 12, harvest: 12 },
-    effects: [{ type: "building_count_bonus", bonus: { coin: 3 } }],
+    effects: [{ type: "building_count_bonus", bonus: { lore: 3 } }],
   },
   // Unlocks the Trouble Maker unit, with Resource Heist and Unlock the Gate
   // already built in (see ai.js's maybeResourceHeistPlay/
