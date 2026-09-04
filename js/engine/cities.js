@@ -85,8 +85,8 @@ window.GameEngine = window.GameEngine || {};
   // Confetti/fireworks keep popping for a while after the party fires
   // (2026-09-03, user-directed), not just an instant flourish -- see the
   // scattered spawnAreaEffect loop in applyThrowAParty below.
-  const PARTY_CONFETTI_DURATION_MS = 10000;
-  const PARTY_CONFETTI_INTERVAL_MS = 800; // roughly one new poof this often -- long enough each fades (AREA_EFFECT_ANIM_MS=700) before the next lands
+  const PARTY_CONFETTI_DURATION_MS = 6000;
+  const PARTY_CONFETTI_INTERVAL_MS = 700; // roughly one new poof this often -- long enough each fades (AREA_EFFECT_ANIM_MS=700) before the next lands
 
   // city.influenceRadius is now the SINGLE radius governing both territory
   // influence (influence.js's computeInfluenceMap) and worked-tile yield
