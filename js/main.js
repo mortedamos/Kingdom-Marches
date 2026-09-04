@@ -4365,7 +4365,7 @@
   // advanceTurn's processBatch. All-AI Spectator keeps its own much
   // shorter, hardcoded 260ms cycle instead (that mode's whole appeal is
   // watching civs cycle fast).
-  const TURN_BANNER_PAUSE_MS = 2000;
+  const TURN_BANNER_PAUSE_MS = 1500;
   // Post-attack pause (2026-08-19, user-directed): separate from the delay
   // above, which only ever ran BEFORE the hit landed (letting the camera
   // settle on "Go To", nothing at all on "Skip"). Once an AI attack against
@@ -4571,12 +4571,12 @@
       const race = window.GameData.getRace(civ.raceId);
       viewState.turnBanner = `${race.label} Kingdom Taking Its Turn...`;
       redraw();
-      // Single player (2026-08-26, user-directed): long enough to actually
-      // read the banner before it's overwritten by the next civ's. All-AI
-      // Spectator keeps the original quick cycle -- that mode's whole
-      // appeal is watching many civs cycle fast, even faster still at the
-      // Speed menu's higher multipliers, and a forced 2s-per-civ floor
-      // would fight that at every setting.
+      // Single player (2026-08-26, user-directed; shortened to 1.5s on
+      // 2026-09-04): long enough to actually read the banner before it's
+      // overwritten by the next civ's. All-AI Spectator keeps the original
+      // quick cycle -- that mode's whole appeal is watching many civs cycle
+      // fast, even faster still at the Speed menu's higher multipliers, and
+      // a forced per-civ floor would fight that at every setting.
       setTimeout(processBatch, spectatorMode ? 260 : TURN_BANNER_PAUSE_MS);
     }
     processBatch();

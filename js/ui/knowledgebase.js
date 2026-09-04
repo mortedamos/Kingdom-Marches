@@ -982,7 +982,7 @@ window.UI = window.UI || {};
     },
     {
       key: "setTrap", label: "Set a Trap", icon: "🪤", restriction: "Halfellow — Trouble Maker",
-      description: "Plants a Frost or Fire trap, hidden, on an unoccupied tile within 2 of the caster. The first enemy unit to end movement within 1 tile of it springs it: 4 flat damage plus Frozen (frost) or Burning (fire), then the trap is consumed. Capped civ-wide at one live trap per Trouble Maker, both flavors sharing the same pool.",
+      description: "Plants a Frost or Fire trap, hidden, on an unoccupied tile within 2 of the caster. The first enemy unit to end movement within 1 tile of it springs it: 1-4 random damage plus Frozen (frost) or Burning (fire), then the trap is consumed. Capped civ-wide at one live trap per Trouble Maker, both flavors sharing the same pool.",
     },
     {
       key: "createGreatBonfire", label: "Create The Great Bonfire", icon: "🔥", restriction: "Halfellow — Wanderer",

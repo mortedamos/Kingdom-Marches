@@ -8337,7 +8337,8 @@ window.GameEngine = window.GameEngine || {};
   // Halfellow "Set the Trap": see units.js's
   // "trap_frost"/"trap_fire" for the unit shape.
   const TRAP_PLACEMENT_RANGE = 2; // matches the Trouble Maker's own `range` stat
-  const TRAP_DAMAGE = 4;
+  const TRAP_DAMAGE_MIN = 1;
+  const TRAP_DAMAGE_MAX = 4; // random 2026-09-02, user-directed -- was a flat 4
 
   /** Halfellow "Set the Trap" placement target: any tile within
    *  TRAP_PLACEMENT_RANGE of `troubleMaker` (a short-range plant, unlike the
@@ -8582,8 +8583,9 @@ window.GameEngine = window.GameEngine || {};
    *  DIFFERENT civ within 1 tile (adjacent OR the same tile -- a mover can
    *  walk straight onto a Hidden trap's tile the same way it can onto any
    *  other Hidden unit's, see buildOccupancySet's exclusion) of `mover`'s
-   *  new position. Springs at most one trap per call (first found): flat
-   *  TRAP_DAMAGE plus the trap's own condition (Frozen for trap_frost,
+   *  new position. Springs at most one trap per call (first found): random
+   *  TRAP_DAMAGE_MIN-TRAP_DAMAGE_MAX damage (2026-09-02, user-directed --
+   *  was a flat 4) plus the trap's own condition (Frozen for trap_frost,
    *  Burning for trap_fire -- reusing both conditions' existing engine
    *  support wholesale, see FROZEN_DURATION/applyBurning above), a floating
    *  text callout, then the trap is removed from its owner's civ.units
@@ -8599,8 +8601,9 @@ window.GameEngine = window.GameEngine || {};
         (u.typeId === "trap_frost" || u.typeId === "trap_fire")
         && window.GameEngine.influence.chebyshev(u.x, u.y, mover.x, mover.y) <= 1);
       if (!trap) continue;
-      mover.hp = Math.max(0, mover.hp - TRAP_DAMAGE);
-      window.GameEngine.floatingText.spawnFloatingText(mover, `-${TRAP_DAMAGE} (Trap!)`, "warning");
+      const damage = TRAP_DAMAGE_MIN + Math.floor(Math.random() * (TRAP_DAMAGE_MAX - TRAP_DAMAGE_MIN + 1));
+      mover.hp = Math.max(0, mover.hp - damage);
+      window.GameEngine.floatingText.spawnFloatingText(mover, `-${damage} (Trap!)`, "warning");
       if (trap.typeId === "trap_frost") {
         window.GameEngine.combat.setCondition(mover, "frozen", { attackMult: 0.75, expiresAtTurn: turnNumber + FROZEN_DURATION });
       } else {

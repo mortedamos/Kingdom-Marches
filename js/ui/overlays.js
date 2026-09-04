@@ -281,11 +281,24 @@ window.UI = window.UI || {};
   }
 
   /** Fade envelope shared by both renderers' area-effect draw: quick pop-in,
-   *  hold, quick fade -- returns null if `a` has already expired. */
+   *  hold, quick fade -- returns null if `a` has already expired. A kind
+   *  listed in AREA_EFFECT_TIMING_OVERRIDES gets its own duration AND its
+   *  own shape instead: flash in fast, then fade out for the entire rest of
+   *  the (longer) duration, no hold plateau -- Halfellow "Throw a Party"'s
+   *  radius pulse (2026-09-04, user-directed) needs to stay legible over
+   *  several seconds as a "who got covered" readout, not read as an
+   *  instant combat flash the way every other kind here is meant to. */
   function areaEffectAlpha(a, now) {
     const elapsed = now - a.start;
-    if (elapsed > AREA_EFFECT_ANIM_MS) return null;
-    const t = elapsed / AREA_EFFECT_ANIM_MS;
+    const override = AREA_EFFECT_TIMING_OVERRIDES[a.kind];
+    const duration = areaEffectDuration(a);
+    if (elapsed > duration) return null;
+    if (override) {
+      const flashIn = override.flashInMs;
+      if (elapsed < flashIn) return elapsed / flashIn;
+      return Math.max(0, 1 - (elapsed - flashIn) / (duration - flashIn));
+    }
+    const t = elapsed / duration;
     return t < 0.15 ? t / 0.15 : (t > 0.5 ? Math.max(0, 1 - (t - 0.5) / 0.5) : 1);
   }
 

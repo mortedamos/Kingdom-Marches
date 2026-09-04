@@ -2114,7 +2114,7 @@ window.GameData.TECHS = {
   halfellow_set_the_trap: {
     id: "halfellow_set_the_trap", label: "Set the Trap", category: "mystic", layer: 3, cost: 90,
     prereqs: ["halfellow_nice_day_fishing"], raceOnly: "halfellow",
-    description: "The Trouble Maker may set a hidden Frost or Fire Trap on an unoccupied tile within its own range. The first enemy to move adjacent springs it: 4 damage plus Frozen (Frost) or Burning (Fire), then the trap is spent. The kingdom may field at most one trap, of either flavor, per living Trouble Maker.",
+    description: "The Trouble Maker may set a hidden Frost or Fire Trap on an unoccupied tile within its own range. The first enemy to move adjacent springs it: 1-4 random damage plus Frozen (Frost) or Burning (Fire), then the trap is spent. The kingdom may field at most one trap, of either flavor, per living Trouble Maker.",
     costBreakdown: { harvest: 8, coin: 12, lore: 20 },
     effects: [
       { type: "unlock_unit", unit: "trap_frost" },
