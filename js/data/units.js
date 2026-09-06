@@ -556,7 +556,7 @@ window.GameData.UNITS = {
   },
   raider: {
     id: "raider", label: "Raider", symbol: "⚔", category: "military", raceOnly: "orc",
-    attack: 4, defense: 1, movement: 2, visionRadius: 2,
+    attack: 3, defense: 2, movement: 2, visionRadius: 2,
     coinCost: 15, attackChars: ["🪓", "🔪", "𓌜"],
   },
   // A beast, not a real fighter -- its value is the "hunt" AI behavior
@@ -572,7 +572,7 @@ window.GameData.UNITS = {
   },
   impaler: {
     id: "impaler", label: "Impaler", symbol: "▲", category: "military", raceOnly: "orc", range: 2,
-    attack: 3, defense: 3, movement: 1, visionRadius: 2, attackChars: ["𐃆"], firstStrikePct: 0.1,
+    attack: 2, defense: 3, movement: 1, visionRadius: 2, attackChars: ["𐃆"], firstStrikePct: 0.1,
     coinCost: 18,
   },
   wolf_rider: {
