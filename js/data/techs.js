@@ -1101,7 +1101,7 @@ window.GameData.TECHS = {
   dwarf_meeting_of_the_clans: {
     id: "dwarf_meeting_of_the_clans", label: "Meeting of the Clans", category: "building", layer: 3, cost: 36,
     prereqs: ["dwarf_imported_goods"], raceOnly: "dwarf",
-    description: "Unlocks the Great Hall. All Dwarf units Resting and Defending on any of this kingdom's cities, buildings, or walls defend at +50%.",
+    description: "Unlocks the Great Hall. All Dwarf units Resting and Defending on any of this kingdom's cities, buildings, or walls gain +10% defense per Great Hall built, additive.",
     costBreakdown: { coin: 20, lore: 16 },
     effects: [{ type: "unlock_building", building: "great_hall" }],
   },

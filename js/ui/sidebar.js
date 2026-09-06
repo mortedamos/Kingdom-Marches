@@ -591,7 +591,7 @@ window.UI = window.UI || {};
     wellspring_grove: ["allies in this city's radius heal 5%/turn (kingdom-wide)"],
     // Dwarf
     deep_forge: ["+1 attack for units built here"],
-    great_hall: ["+50% defense while Resting on any of your holdings (kingdom-wide)"],
+    great_hall: ["+10% defense per Great Hall built while Resting on any of your holdings (kingdom-wide)"],
     runewall: ["walls heal 5% of max HP per turn (kingdom-wide)"],
     deep_gate: ["Dwarf units may travel between Deep Gates (kingdom-wide)"],
     // Orc

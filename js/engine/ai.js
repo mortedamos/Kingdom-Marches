@@ -14218,7 +14218,8 @@ window.GameEngine = window.GameEngine || {};
    *  and Defend in one of its cities -- every wall-defense tier and the Mage
    *  College tower gain +25pp fire chance and +2 attack from it, Warden of
    *  the Trees needs a qualifying unit resting to fire at all, and Dwarf's
-   *  Great Hall grants +50% defense to the resting unit itself. Derived from
+   *  Great Hall grants +10% defense per Great Hall built to the resting
+   *  unit itself. Derived from
    *  WALL_DEFENSE_TIERS rather than a hand-kept second list, so adding a
    *  tier can't silently leave this behind (the mistake that removing
    *  "ramparts" would otherwise have caused -- see maybeRestAndDefend's

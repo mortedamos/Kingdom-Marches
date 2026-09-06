@@ -122,8 +122,9 @@ window.GameData.BUILDINGS = {
     coinCost: 25, maxHp: 28, requiresHillsAdjacent: true,
   },
   // No yield: "Meeting of the Clans" -- civ-wide, any Dwarf unit Resting and
-  // Defending on ANY of this civ's cities, buildings, or walls defends at
-  // +50% (see combat.js's effectiveDefense).
+  // Defending on ANY of this civ's cities, buildings, or walls gains +10%
+  // defense per Great Hall built, additive (see combat.js's
+  // effectiveDefense/civBuiltBuildingCount).
   great_hall: {
     id: "great_hall", label: "Great Hall", symbol: "⌂", raceOnly: "dwarf",
     coinCost: 25, maxHp: 28,

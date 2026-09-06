@@ -799,16 +799,20 @@ window.GameEngine = window.GameEngine || {};
     // while the unit is standing in a city or on a friendly structure tile.
     if (context.garrisoned && ov.garrisonDefenseBonus) def += ov.garrisonDefenseBonus;
 
-    // Dwarf Great Hall ("Meeting of the Clans"): +50% defense while actively
-    // Resting and Defending on any of this civ's cities, buildings, or walls
-    // -- context.garrisoned is exactly that "on one of our cities or
-    // structures" test (see ai.js's isGarrisoned; walls live in
-    // city.structures, so they're covered, while bridges live on civ.bridges
-    // and deliberately are not). Civ-wide off a single standing Great Hall,
-    // same revocable civHasBuiltBuilding shape as Marketcraft/hedge_walls.
-    if (context.garrisoned && unit.channeling === "restAndDefend"
-        && window.GameEngine.cities.civHasBuiltBuilding(civ, "great_hall")) {
-      def *= 1.5;
+    // Dwarf Great Hall ("Meeting of the Clans"): +10% defense per Great Hall
+    // built, additive (2026-09-06, user-directed: was a flat +50% off a
+    // single Great Hall; now 3 Great Halls means +30%, not a capped +50%),
+    // while actively Resting and Defending on any of this civ's cities,
+    // buildings, or walls -- context.garrisoned is exactly that "on one of
+    // our cities or structures" test (see ai.js's isGarrisoned; walls live
+    // in city.structures, so they're covered, while bridges live on
+    // civ.bridges and deliberately are not). civBuiltBuildingCount, not
+    // civHasBuiltBuilding, so this naturally revokes/rescales as Great Halls
+    // are built or destroyed, same "recompute live" shape as Halfellow's
+    // Historical Society radius stacking.
+    if (context.garrisoned && unit.channeling === "restAndDefend") {
+      const greatHallCount = window.GameEngine.cities.civBuiltBuildingCount(civ, "great_hall");
+      if (greatHallCount > 0) def *= 1 + 0.1 * greatHallCount;
     }
 
     if (context.isMelee && baseUnit.weakInMeleeDef) def *= baseUnit.weakInMeleeDef;
