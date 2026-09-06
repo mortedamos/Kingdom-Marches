@@ -989,10 +989,10 @@ window.GameData.TECHS = {
   // fewer L1/L2 terrain techs; only merged techs granting the SAME resource
   // type, per user's own rule -- this tech grants no resource at all, just
   // movement/tunneling, so pairing it with Hills coin doesn't mix resource
-  // types). Mountains' own coin/lore bonuses (Wealth of the Earth/Deep Lore)
-  // are left untouched -- those two grant DIFFERENT resource types from each
-  // other, so per the same rule they can't be merged together either. The
-  // "dwarf_quarry" id no longer exists -- nothing else referenced it by id.
+  // types). Mountains' own Deep Lore coin/lore bonus is left untouched -- it
+  // grants a different resource type, so per the same rule it can't be
+  // merged in either. The "dwarf_quarry" id no longer exists -- nothing else
+  // referenced it by id.
   dwarf_stonecunning: {
     id: "dwarf_stonecunning", label: "Stonecunning", category: "civic", layer: 1, cost: 14,
     prereqs: [], raceOnly: "dwarf",
@@ -1004,22 +1004,20 @@ window.GameData.TECHS = {
       { type: "unlock_tile_bonus", terrain: "hills", bonus: { coin: 0.5 } },
     ],
   },
-  dwarf_wealth_of_the_earth: {
-    id: "dwarf_wealth_of_the_earth", label: "Wealth of the Earth", category: "civic", layer: 1, cost: 16,
-    prereqs: [], raceOnly: "dwarf",
-    description: "+1 coin from Mountains.",
-    costBreakdown: { coin: 10, lore: 6 },
-    effects: [{ type: "unlock_tile_bonus", terrain: "mountains", bonus: { coin: 1 } }],
-  },
   dwarf_imported_goods: {
-    id: "dwarf_imported_goods", label: "Imported Goods", category: "civic", layer: 2, cost: 28,
+    id: "dwarf_imported_goods", label: "Imported Goods", category: "civic", layer: 1, cost: 28,
     prereqs: [], raceOnly: "dwarf",
     description: "+0.5 lore per road tile within a city's radius.",
     costBreakdown: { coin: 18, lore: 10 },
     effects: [{ type: "unlock_feature_bonus", feature: "road", bonus: { lore: 0.5 } }],
   },
+  // Label renamed from "Dwarven Mining" (2026-09-06, user-directed: removed
+  // the old dwarf_wealth_of_the_earth tech -- +1 coin from Mountains -- and
+  // reused its name here). Id/mechanic name left as-is; only the display
+  // label changed, so dwarf_prospectors_claim's prereq on this id still
+  // resolves correctly.
   dwarf_dwarven_mining: {
-    id: "dwarf_dwarven_mining", label: "Dwarven Mining", category: "civic", layer: 1, cost: 16,
+    id: "dwarf_dwarven_mining", label: "Wealth of the Earth", category: "civic", layer: 1, cost: 16,
     prereqs: [], raceOnly: "dwarf",
     description: "Any Dwarf unit, not just Pioneers and Trackers, can mine Gold Veins and Iron Veins.",
     costBreakdown: { coin: 10, lore: 6 },

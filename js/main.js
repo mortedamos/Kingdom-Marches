@@ -1308,7 +1308,15 @@
       // there's no re-render key to chase the way the sidebar's own "View
       // Tech Tree" does; the race picker is the only thing that can change
       // this page, and it re-renders explicitly on its own onchange below.
-      if (!knowledgeSelectedRaceId) knowledgeSelectedRaceId = window.GameData.RACE_LIST[0];
+      if (!knowledgeSelectedRaceId) {
+        // Default to the human player's own kingdom in single player (same
+        // "player's kingdom first" convention as Units/Structures above),
+        // falling back to the first race in spectator mode or if there's no
+        // live game yet.
+        const playerRaceId = (humanCivId && !spectatorMode && gameState?.civs[humanCivId])
+          ? gameState.civs[humanCivId].raceId : null;
+        knowledgeSelectedRaceId = playerRaceId || window.GameData.RACE_LIST[0];
+      }
       const refCiv = buildReferenceCiv(knowledgeSelectedRaceId);
       const raceOptionsHtml = window.GameData.RACE_LIST.map((r) =>
         `<option value="${r}"${r === knowledgeSelectedRaceId ? " selected" : ""}>${window.GameData.getRace(r).label}</option>`
