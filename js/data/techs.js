@@ -255,37 +255,37 @@ window.GameData.TECHS = {
     costBreakdown: { lore: 17, coin: 8 },
     effects: [{ type: "unlock_unit", unit: "archer" }],
   },
-  // Absorbed "Homestead" (2026-09-04, user-directed tech-tree consolidation
-  // -- fewer L1/L2 terrain techs; only merged techs granting the SAME
-  // resource type, per user's own rule): both halves paid out in Lore, just
-  // via different mechanisms (lore_per_influence_tile = every owned Plains
-  // tile civ-wide; unlock_tile_bonus = only a city's actually-worked Plains
-  // tiles), so this keeps both effects rather than collapsing them into one
-  // number. The "homestead" tech id no longer exists -- see trade_roads,
-  // whose prereq now points here instead.
+  // Absorbed "Homestead" (2026-09-04, user-directed tech-tree
+  // consolidation). Originally kept its own lore bonus and Homestead's as
+  // two separate effects, scoped differently (every owned Plains tile
+  // civ-wide vs. only a city's actually-worked Plains tiles) -- that
+  // "under influence" vs. "in a city's radius" distinction was removed
+  // (2026-09-04, user-directed: simplify every terrain-bonus tech in the
+  // game down to one scope, a city's radius) and the two lore values
+  // combined into one unlock_tile_bonus entry. The "homestead" tech id no
+  // longer exists -- see trade_roads, whose prereq now points here instead.
   spirit_of_exploration: {
     id: "spirit_of_exploration", label: "Spirit of Exploration", category: "civic", layer: 1, cost: 14,
     prereqs: [], raceOnly: "human",
-    description: "Movement over Plains costs 2/3 a movement point per tile. +0.5 lore per Plains tile under your influence, and +0.5 lore per worked Plains tile in a city's radius.",
+    description: "Movement over Plains costs 2/3 a movement point per tile. +1 lore per Plains tile within a city's radius.",
     costBreakdown: { lore: 14 },
     effects: [
       { type: "terrain_movement_override", terrain: "plains", value: 2 / 3 },
-      { type: "lore_per_influence_tile", terrain: "plains", value: 0.5 },
-      { type: "unlock_tile_bonus", terrain: "plains", bonus: { lore: 0.5 } },
+      { type: "unlock_tile_bonus", terrain: "plains", bonus: { lore: 1 } },
     ],
   },
   rivercraft: {
     id: "rivercraft", label: "Rivercraft", category: "civic", layer: 1, cost: 14,
     prereqs: [], raceOnly: "human",
-    description: "Movement over a river tile costs 1/2 a movement point per tile, regardless of terrain. +1 lore per River tile under your influence.",
+    description: "Movement over a river tile costs 1/2 a movement point per tile, regardless of terrain. +1 lore per river tile within a city's radius.",
     costBreakdown: { lore: 14 },
     // "river" is a pseudo-terrain key: rivers overlay any base terrain
     // (tile.hasRiver), so getMoveCost/landCostForTerrain check it separately
-    // -- see ai.js. Same pseudo-terrain key reused by the
-    // lore_per_influence_tile effect below -- see turns.js's beginCivTurn.
+    // -- see ai.js. Same pseudo-terrain key reused by unlock_feature_bonus
+    // below -- see cities.js's tileYieldContribution.
     effects: [
       { type: "terrain_movement_override", terrain: "river", value: 1 / 2 },
-      { type: "lore_per_influence_tile", terrain: "river", value: 1 },
+      { type: "unlock_feature_bonus", feature: "river", bonus: { lore: 1 } },
     ],
   },
   // --- Layer 2 ---
@@ -439,21 +439,21 @@ window.GameData.TECHS = {
   sea_charts: {
     id: "sea_charts", label: "Sea Charts", category: "civic", layer: 3, cost: 45,
     prereqs: ["make_way"], raceOnly: "human",
-    description: "All Ocean and Coast tiles anywhere on the map are always revealed -- no fog of war on those tiles at all. +0.5 lore per Ocean and Coast tile under your influence.",
+    description: "All Ocean and Coast tiles anywhere on the map are always revealed -- no fog of war on those tiles at all. +0.5 lore per Ocean and Coast tile within a city's radius.",
     costBreakdown: { lore: 27, coin: 18 },
     // Same "unlock_mechanic" + turns.js hand-check pattern as Elf's Wind
     // From Distant Treetops and Dwarf's Mountains on the Horizon -- see
     // turns.js's refreshVisibility, which is where "sea_charts" is actually
     // read (there is no dedicated reveal-by-terrain effect type; every
     // terrain-reveal tech in the game goes through this same generic flag).
-    // Two separate lore_per_influence_tile entries (not one effect with a
-    // terrain list) -- every other tech-effect in this file targets exactly
-    // one terrain per entry; see turns.js's beginCivTurn for where these are
-    // totaled up each turn.
+    // Two separate unlock_tile_bonus entries (not one effect with a terrain
+    // list) -- every other tech-effect in this file targets exactly one
+    // terrain per entry. Both terrains verified fillable/ownable within a
+    // city's radius (2026-09-04, live-tested), same as any land terrain.
     effects: [
       { type: "unlock_mechanic", mechanic: "sea_charts" },
-      { type: "lore_per_influence_tile", terrain: "ocean", value: 0.5 },
-      { type: "lore_per_influence_tile", terrain: "coast", value: 0.5 },
+      { type: "unlock_tile_bonus", terrain: "ocean", bonus: { lore: 0.5 } },
+      { type: "unlock_tile_bonus", terrain: "coast", bonus: { lore: 0.5 } },
     ],
   },
   flight: {

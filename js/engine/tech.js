@@ -115,6 +115,25 @@ window.GameEngine = window.GameEngine || {};
     return Math.max(1, Math.round(baseTurns * ratio * difficultyResearchMult(civ)));
   }
 
+  /** Single choke point for "this tech's effects take effect right now":
+   *  marks it completed and applies its effects, but ONLY if it wasn't
+   *  already completed. Guards against a natural research completion
+   *  landing on a tech that was ALSO granted directly (grantFreeTech)
+   *  sometime while it was still the civ's in-progress research --
+   *  grantFreeTech doesn't touch civ.currentResearch, so without this guard
+   *  a later tickResearch/reduceResearchTurns tick would re-apply every one
+   *  of that tech's effects a second time (2026-09-04, user-directed fix
+   *  for exactly this: a real, if narrow, silent economy-inflation bug).
+   *  Shared by tickResearch/reduceResearchTurns/grantFreeTech below so
+   *  there's exactly one place this invariant is enforced, not three copies
+   *  that could drift out of sync. Returns whether it actually applied. */
+  function completeTech(civ, tech) {
+    if (civ.completedTechs.has(tech.id)) return false;
+    civ.completedTechs.add(tech.id);
+    applyTechEffects(civ, tech);
+    return true;
+  }
+
   /** Counts down one turn on the civ's in-progress research. Research pays
    *  its full cost up front via chooseResearch below -- same one-time-
    *  purchase model as a unit or building queue -- so this is purely a
@@ -126,8 +145,7 @@ window.GameEngine = window.GameEngine || {};
     civ.researchTurnsRemaining = Math.max(0, (civ.researchTurnsRemaining || 0) - 1);
     if (civ.researchTurnsRemaining <= 0) {
       const tech = window.GameData.getTech(civ.currentResearch);
-      civ.completedTechs.add(tech.id);
-      applyTechEffects(civ, tech);
+      completeTech(civ, tech);
       const finishedId = civ.currentResearch;
       civ.currentResearch = null;
       civ.researchTotalTurns = 0;
@@ -155,8 +173,7 @@ window.GameEngine = window.GameEngine || {};
         techLabel: window.GameData.getTech(civ.currentResearch).label };
     }
     const tech = window.GameData.getTech(civ.currentResearch);
-    civ.completedTechs.add(tech.id);
-    applyTechEffects(civ, tech);
+    completeTech(civ, tech);
     civ.currentResearch = null;
     civ.researchTotalTurns = 0;
     return { amount, completed: true, techId: tech.id, techLabel: tech.label };
@@ -192,7 +209,6 @@ window.GameEngine = window.GameEngine || {};
     civ.universalRangeGrant = civ.universalRangeGrant || 0; // floor on every unit's effective Ranged (see combat.js effectiveRange)
     civ.buildingCountBonus = civ.buildingCountBonus || {}; // { harvest|coin|lore: perBuildingValue } -- see cities.js's per-building-count yield
     civ.fillRateMult = civ.fillRateMult || 1; // multiplies advanceCityFill's per-turn progress (e.g. Halfellow Community Fellowship)
-    civ.lorePerInfluenceTile = civ.lorePerInfluenceTile || {}; // { terrainId|"river": perOwnedTileValue } -- see turns.js's beginCivTurn
 
     for (const effect of tech.effects) {
       switch (effect.type) {
@@ -327,16 +343,6 @@ window.GameEngine = window.GameEngine || {};
           civ.unlockedTileBonuses[effect.terrain] = existing;
           break;
         }
-        case "lore_per_influence_tile":
-          // Flat lore per OWNED tile of a matching terrain -- every tile
-          // under this civ's influence/territory, not just tiles a city is
-          // actively working (contrast unlock_tile_bonus above). "river" is
-          // a pseudo-terrain key here too (tile.hasRiver, any direction),
-          // same convention terrain_movement_discount uses -- see turns.js's
-          // beginCivTurn for where this is actually totaled up each turn.
-          civ.lorePerInfluenceTile[effect.terrain] =
-            (civ.lorePerInfluenceTile[effect.terrain] || 0) + effect.value;
-          break;
         case "unlock_feature_bonus": {
           const existing = civ.unlockedFeatureBonuses[effect.feature] || {};
           for (const [k, v] of Object.entries(effect.bonus)) existing[k] = (existing[k] || 0) + v;
@@ -478,12 +484,23 @@ window.GameEngine = window.GameEngine || {};
 
   /** Grants `techId` for free -- bypasses meetsCityGate/prereqs/Lore cost
    *  entirely, the same one-time "force complete" pathway main.js's civ
-   *  creation already uses for every Level 0 tech. Caller's responsibility
-   *  to only pass a real, not-yet-completed tech id (see
-   *  firstCityTechChoices). */
+   *  creation already uses for every Level 0 tech. Routed through
+   *  completeTech so this can never double-apply effects onto a tech
+   *  already completed some other way. Also clears civ.currentResearch if
+   *  it happens to already be pointed at this exact tech -- otherwise a
+   *  later natural tickResearch/reduceResearchTurns completion would find
+   *  nothing left to apply (completeTech's own guard makes that harmless
+   *  now, but leaving a research slot "in progress" toward an already-
+   *  finished tech forever is still stale state worth clearing here rather
+   *  than relying on the guard to paper over it). Caller's responsibility
+   *  to only pass a real tech id (see firstCityTechChoices). */
   function grantFreeTech(civ, techId) {
-    civ.completedTechs.add(techId);
-    applyTechEffects(civ, window.GameData.getTech(techId));
+    completeTech(civ, window.GameData.getTech(techId));
+    if (civ.currentResearch === techId) {
+      civ.currentResearch = null;
+      civ.researchTotalTurns = 0;
+      civ.researchTurnsRemaining = 0;
+    }
   }
 
   /** AI's pick among firstCityTechChoices for the free first-city tech
