@@ -7711,6 +7711,7 @@ window.GameEngine = window.GameEngine || {};
       markCombatEngaged(defenderCiv);
       window.GameEngine.combat.revealHidden(target, currentTurnNumber);
       applyElfCombatMechanics(unit, civ, target, defenderCiv, result, gameState);
+      applyMushroomancerCounterPoison(unit, target, defenderCiv, result, gameState);
       hitCount++;
 
       if (target.hp <= 0) {
@@ -9276,6 +9277,9 @@ window.GameEngine = window.GameEngine || {};
         }
       }
     }
+
+    // Halfellow "Poisonous Puff": target's own successful counter against the monster.
+    applyMushroomancerCounterPoison(monster, target, targetCiv, result, gameState);
 
     if (target.hp <= 0) {
       otherCivRemoveDeadUnit(civs, target, monsterCiv.id);
@@ -13563,6 +13567,9 @@ window.GameEngine = window.GameEngine || {};
       // Elf "First Frost of Autumn": passive chance to Freeze on any landed hit.
       applyElfCombatMechanics(unit, civ, bestTarget, defenderCiv, result, gameState);
 
+      // Halfellow "Poisonous Puff": a Mushroomancer defender's own successful counter.
+      applyMushroomancerCounterPoison(unit, bestTarget, defenderCiv, result, gameState);
+
       if (bestTarget.hp <= 0) {
         // Undead "Zombie": tried BEFORE any of the usual "this unit really
         // died" bookkeeping below, since a successful zombie application
@@ -14692,6 +14699,25 @@ window.GameEngine = window.GameEngine || {};
     }
   }
 
+  // Halfellow "Poisonous Puff": a Mushroomancer that successfully
+  // counterattacks has a flat 60% chance to leave its attacker Poisoned.
+  // Unlike applyOrcCombatMechanics/applyElfCombatMechanics above, this reads
+  // off the DEFENDER's landed COUNTER, not the forward attacker's hit --
+  // `defenderUnit` here is the one doing the poisoning, `attackerUnit` the
+  // one who gets poisoned. `result.counterDamage > 0` is a complete "did the
+  // counter actually land" check on its own: resolveRound only ever sets it
+  // above 0 on the genuine hit path, and resets it back to 0 if a death-save/
+  // Unyielding roll retroactively negates it -- every other failure mode
+  // (denied, missed, out of range) never touches it at all, so it's never
+  // left nonzero without a real, un-negated counter behind it.
+  const MUSHROOMANCER_COUNTER_POISON_CHANCE = 0.60;
+  function applyMushroomancerCounterPoison(attackerUnit, defenderUnit, defenderCiv, result, gameState) {
+    if (defenderUnit.typeId !== "mushroomancer") return;
+    if (!defenderCiv.unlockedMechanics || !defenderCiv.unlockedMechanics.has("poisonous_puff")) return;
+    if (!(result.counterDamage > 0)) return;
+    if (Math.random() < MUSHROOMANCER_COUNTER_POISON_CHANCE) applyPoisoned(attackerUnit, gameState);
+  }
+
   /**
    * Anti-Titan learning: the first time a civ
    * loses a unit or structure TO a Runeforged Titan specifically (either
@@ -14741,11 +14767,14 @@ window.GameEngine = window.GameEngine || {};
     if (ZOMBIE_EXEMPT_TYPES.has(defeatedUnit.typeId)) return false;
     if (window.GameEngine.combat.hasCondition(defeatedUnit, "zombie")) return false; // no re-raising chains
     if (Math.random() > race.raiseDeadChance) return false;
-    // Orc "Honor the Dead": the defeated unit's own civ may resist being raised
-    // (flavor: their ancestral rites hold the body) -- any existing ability
-    // that raises dead instead resists application of this condition, per
-    // user's own framing. Independent roll on top of the victor's raise
-    // chance -- e.g. 50% resistance halves the effective rate.
+    // Halfellow "Resilient Spirit": the defeated unit's own civ may resist
+    // being raised (flavor: their ancestral rites hold the body) -- any
+    // existing ability that raises dead instead resists application of this
+    // condition, per user's own framing. Independent roll on top of the
+    // victor's raise chance -- e.g. 50% resistance halves the effective
+    // rate. Was also granted by Orc's Honor the Dead until that clause was
+    // removed from it (2026-09-03, user-directed); raiseDeadResistance
+    // itself is unchanged, just currently sourced from one tech instead of two.
     const defeatedCiv = civs[defeatedUnit.civId];
     if (defeatedCiv && defeatedCiv.raiseDeadResistance && Math.random() < defeatedCiv.raiseDeadResistance) return false;
 

@@ -1943,6 +1943,8 @@
     // silently muting everything.
     window.SfxSystem.setVisibilityCheck((x, y) =>
       viewState.is3D || window.UI.render.isTileOnScreen(x, y, $("map-canvas"), gameState, viewState));
+    window.MusicSystem.setVisibilityCheck((x, y) =>
+      viewState.is3D || window.UI.render.isTileOnScreen(x, y, $("map-canvas"), gameState, viewState));
 
     setupCanvas();
     centerViewOnStart();

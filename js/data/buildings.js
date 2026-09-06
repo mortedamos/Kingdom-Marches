@@ -224,7 +224,7 @@ window.GameData.BUILDINGS = {
     id: "historical_society", label: "Historical Society", symbol: "M", raceOnly: "halfellow",
     coinCost: 35, maxHp: 26,
   },
-  // No yield/yieldPct: Armory's bonus is a combat stat boost (+50%
+  // No yield/yieldPct: Armory's bonus is a combat stat boost (+25%
   // attack/defense) scoped to whichever city produced the
   // unit (unit.homeCityName) via cityHasStructure, not a per-city economic
   // effect and not civ-wide -- see combat.js hasArmoryBonus/

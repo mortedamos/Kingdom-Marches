@@ -64,6 +64,13 @@ window.MusicSystem = (function () {
   // playing forever. Still overridable by a manual track pin, same
   // precedence as everything else -- see resolveCurrent.
   let victoryRace = null;
+  // World-anchored ducking (see duckMusic below) needs the same "is this
+  // actually on-screen" gate sfx.js's playHalfellowParty already uses, so an
+  // AI-thrown party somewhere the player can't see doesn't yank the music
+  // out from under them for no visible reason. Wired up by main.js right
+  // alongside SfxSystem.setVisibilityCheck, same callback.
+  let visibilityCheck = null;
+  let duckTimeoutId = null;
   // Set once the human player loses -- see notifyGameOver. Same
   // one-way-until-a-fresh-game shape and reset point (setRace) as
   // victoryRace above; takes priority over it in resolveCurrent since a loss
@@ -618,6 +625,38 @@ window.MusicSystem = (function () {
   }
   function isFocusSuspended() { return focusSuspended; }
 
+  /** Public: registers the "is (x,y) actually on-screen right now" callback
+   *  duckMusic gates on -- same shape/purpose as sfx.js's
+   *  setVisibilityCheck, wired up alongside it in main.js with the exact
+   *  same callback. */
+  function setVisibilityCheck(fn) { visibilityCheck = fn || null; }
+
+  /** Public: Halfellow "Throw a Party" (2026-09-03, user-directed) -- stops
+   *  the currently playing track for `durationMs`, then resumes it right
+   *  where it left off (pause/play, not a fade -- the ask was "stop... then
+   *  start again", a harder cut than crossfade's usual few-seconds glide).
+   *  `x`/`y` gate this through the same visibility check playHalfellowParty's
+   *  sfx cue uses, so an AI-thrown party somewhere off-screen doesn't duck
+   *  music the player has no on-screen reason to see change. A second party
+   *  firing before the first's timer elapses just restarts the countdown
+   *  from now, rather than stacking two resumes (the later one always wins
+   *  regardless -- no reason to resume, immediately re-pause, then resume
+   *  again for a party that's already faded from view). Resumption re-checks
+   *  mute/focus state at fire time, same "never assume nothing changed"
+   *  caution setFocusSuspended's own resume branch follows. */
+  function duckMusic(x, y, durationMs) {
+    if (visibilityCheck && x !== undefined && y !== undefined && !visibilityCheck(x, y)) return;
+    if (duckTimeoutId) clearTimeout(duckTimeoutId);
+    if (currentAudio) currentAudio.pause();
+    duckTimeoutId = setTimeout(() => {
+      duckTimeoutId = null;
+      if (currentAudio && !focusSuspended) {
+        currentAudio.volume = effectiveVolume();
+        currentAudio.play().catch(() => {});
+      }
+    }, durationMs);
+  }
+
   /**
    * Public: pin playback to one specific track (by its "race_situation_n" or
    * "neutral_n" key, as returned by getAvailableTracks), looping it directly
@@ -680,6 +719,8 @@ window.MusicSystem = (function () {
     isMuted,
     setFocusSuspended,
     isFocusSuspended,
+    setVisibilityCheck,
+    duckMusic,
     setManualTrack,
     getManualTrack,
     getAvailableTracks,

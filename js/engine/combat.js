@@ -107,7 +107,7 @@ window.GameEngine = window.GameEngine || {};
     return fallback;
   }
 
-  /** Halfellow "Strategic Reserve": civ-wide combat buff (+50% atk/def) to
+  /** Halfellow "Strategic Reserve": civ-wide combat buff (+25% atk/def) to
    *  every Halfellow unit as long as the civ has at least one
    *  Armory actually built -- gated on construction, not just the tech.
    *  Scoped to the SPECIFIC city that produced the unit (unit.homeCityName,
@@ -216,6 +216,9 @@ window.GameEngine = window.GameEngine || {};
     if (unit.conditions?.crusadeAura) pct += unit.conditions.crusadeAura.siegePctBonus || 0;
     // Dwarf "Heavy Metal"/"Epic Metal": Troubadour's aura -- same shape as Crusade.
     if (unit.conditions?.heavyMetalAura) pct += unit.conditions.heavyMetalAura.siegePctBonus || 0;
+    // Halfellow "Bonfire's Blessing" (greatBonfireAura) -- same shape as
+    // Crusade/Heavy Metal above (2026-09-03, user-directed addition).
+    if (unit.conditions?.greatBonfireAura) pct += unit.conditions.greatBonfireAura.siegePctBonus || 0;
     // Veteran leveling -- see LEVELING section below.
     pct += unit.levelBonuses?.siegePct || 0;
     return pct;
@@ -683,7 +686,7 @@ window.GameEngine = window.GameEngine || {};
     if (context.openField && baseUnit.weakInOpenField) atk *= baseUnit.weakInOpenField;
     if (context.isMelee && baseUnit.weakInMelee) atk *= baseUnit.weakInMelee;
 
-    if (hasArmoryBonus(unit, civ)) atk *= 1.50;
+    if (hasArmoryBonus(unit, civ)) atk *= 1.25;
 
     // Human "Crusade": Paladin's holy aura grants +1 flat attack to itself
     // and every allied unit within 1 tile -- see turns.js's per-turn
@@ -757,7 +760,7 @@ window.GameEngine = window.GameEngine || {};
       def *= 1.20;
     }
 
-    if (hasArmoryBonus(unit, civ)) def *= 1.50;
+    if (hasArmoryBonus(unit, civ)) def *= 1.25;
 
     // Human "Crusade": Paladin's holy aura grants +1 flat defense to itself
     // and every allied unit within 1 tile -- see turns.js.

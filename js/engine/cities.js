@@ -87,6 +87,7 @@ window.GameEngine = window.GameEngine || {};
   // scattered spawnAreaEffect loop in applyThrowAParty below.
   const PARTY_CONFETTI_DURATION_MS = 6000;
   const PARTY_CONFETTI_INTERVAL_MS = 700; // roughly one new poof this often -- long enough each fades (AREA_EFFECT_ANIM_MS=700) before the next lands
+  const PARTY_MUSIC_DUCK_MS = 7000; // 2026-09-03, user-directed: cut the game music, then let it resume
 
   // city.influenceRadius is now the SINGLE radius governing both territory
   // influence (influence.js's computeInfluenceMap) and worked-tile yield
@@ -1058,6 +1059,7 @@ window.GameEngine = window.GameEngine || {};
       }, elapsed);
     }
     window.SfxSystem.playHalfellowParty(city.x, city.y);
+    window.MusicSystem.duckMusic(city.x, city.y, PARTY_MUSIC_DUCK_MS);
 
     return cost;
   }

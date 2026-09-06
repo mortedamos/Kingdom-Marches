@@ -1593,11 +1593,10 @@ window.GameData.TECHS = {
   orc_honor_the_dead: {
     id: "orc_honor_the_dead", label: "Honor the Dead", category: "mystic", layer: 1, cost: 55,
     prereqs: [], raceOnly: "orc",
-    description: "When an Orc unit dies, gain +30 lore. A fallen Orc unit also has a 50% chance to resist being reanimated by whatever enemy struck it down.",
+    description: "When an Orc unit dies, gain +30 lore.",
     costBreakdown: { lore: 45, harvest: 10 },
     effects: [
       { type: "death_lore_bonus", value: 30 },
-      { type: "raise_dead_resistance", value: 0.5 },
     ],
   },
   orc_dragon_den_rite: {
@@ -1816,7 +1815,7 @@ window.GameData.TECHS = {
   // board from turn one, not gated behind the ring mechanic it'll
   // eventually carry.
   halfellow_mushroomancer: {
-    id: "halfellow_mushroomancer", label: "Mushroomancer", category: "military", layer: 1, cost: 20,
+    id: "halfellow_mushroomancer", label: "Mushroomancer", category: "mystic", layer: 1, cost: 20,
     prereqs: [], raceOnly: "halfellow",
     description: "Unlocks the Mushroomancer, a squat forager who tends fungus rather than fighting.",
     costBreakdown: { harvest: 12, coin: 8 },
@@ -1927,6 +1926,24 @@ window.GameData.TECHS = {
       { type: "unlock_mechanic", mechanic: "fairy_ring" },
     ],
   },
+  // New (2026-09-03, user-directed): the Mushroomancer's counterattack
+  // deterrent -- unlike every other on-hit poison chance in this file
+  // (Elf's Poisonous Extracts, Orc's Afflictions of Anguish/Pyromania, the
+  // Marsh Adder's own venom), which all roll off the ATTACKER's forward
+  // hit, this rolls off the Mushroomancer's own successful COUNTER instead
+  // -- see ai.js's applyMushroomancerCounterPoison, called from every real
+  // unit-vs-unit combat resolution site (including a monster attacking the
+  // Mushroomancer). A flat 60% chance, gated by its own dedicated mechanic
+  // id rather than the generic poisonChancePct unit field every other
+  // poison-on-hit tech uses -- the roll direction here is the opposite of
+  // what that field means everywhere else it appears.
+  halfellow_poisonous_puff: {
+    id: "halfellow_poisonous_puff", label: "Poisonous Puff", category: "mystic", layer: 3, cost: 40,
+    prereqs: ["halfellow_mushroomancer"], raceOnly: "halfellow",
+    description: "The Mushroomancer gains a 60% chance to inflict Poisoned on whatever attacks it, whenever its own counterattack lands.",
+    costBreakdown: { lore: 22, harvest: 18 },
+    effects: [{ type: "unlock_mechanic", mechanic: "poisonous_puff" }],
+  },
   halfellow_boomerang: {
     id: "halfellow_boomerang", label: "Boomerang", category: "military", layer: 2, cost: 30,
     prereqs: [], raceOnly: "halfellow",
@@ -1969,7 +1986,7 @@ window.GameData.TECHS = {
   // maybeUnlockTheGatePlay). Riddle needs its own further tech (The Riddle
   // Game, below) -- unit unlocked first, each spell behind its own tech.
   halfellow_making_trouble: {
-    id: "halfellow_making_trouble", label: "Making Trouble", category: "mystic", layer: 2, cost: 45,
+    id: "halfellow_making_trouble", label: "Making Trouble", category: "civic", layer: 2, cost: 45,
     prereqs: ["halfellow_pub_crawl"], raceOnly: "halfellow",
     // Unlock the Gate's clause corrected (2026-09-02) to match its
     // 2026-08-27 rework -- see combat.js's isCityWallDefenseSuppressed doc
@@ -2095,7 +2112,7 @@ window.GameData.TECHS = {
   halfellow_strategic_reserve: {
     id: "halfellow_strategic_reserve", label: "Strategic Reserve", category: "building", layer: 4, cost: 95,
     prereqs: ["halfellow_historical_society"], raceOnly: "halfellow",
-    description: "Unlocks the Armory. A unit gains +50% attack and +50% defense only while its home city has an Armory built -- units trained elsewhere get nothing, even if another city of yours has one.",
+    description: "Unlocks the Armory. A unit gains +25% attack and +25% defense only while its home city has an Armory built -- units trained elsewhere get nothing, even if another city of yours has one.",
     costBreakdown: { coin: 35, lore: 35, harvest: 25 },
     effects: [
       { type: "unlock_building", building: "armory" },
@@ -2148,7 +2165,7 @@ window.GameData.TECHS = {
   // build either -- see units.js's cityBuildable: false, mirrors Orc's Bog
   // Spirit/Wisp pattern exactly.
   halfellow_set_the_trap: {
-    id: "halfellow_set_the_trap", label: "Set the Trap", category: "mystic", layer: 3, cost: 90,
+    id: "halfellow_set_the_trap", label: "Set the Trap", category: "mystic", layer: 4, cost: 90,
     prereqs: ["halfellow_nice_day_fishing"], raceOnly: "halfellow",
     description: "The Trouble Maker may set a hidden Frost or Fire Trap on an unoccupied tile within its own range. The first enemy to move adjacent springs it: 1-4 random damage plus Frozen (Frost) or Burning (Fire), then the trap is spent. The kingdom may field at most one trap, of either flavor, per living Trouble Maker.",
     costBreakdown: { harvest: 8, coin: 12, lore: 20 },

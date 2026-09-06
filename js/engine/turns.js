@@ -1263,8 +1263,9 @@ window.GameEngine = window.GameEngine || {};
     // including the Bonfire's own tile) heals 10% of max HP per turn
     // (minimum 1) regardless of resting, and gains a refreshed 1-turn
     // "greatBonfireAura" condition (+2 defense, +2 vision, +1 movement, +5%
-    // First Strike, +10% Double Strike -- read by combat.js's
-    // effectiveDefense/effectiveFirstStrikePct/effectiveDoubleStrikePct,
+    // First Strike, +10% Double Strike, +50% Siege (2026-09-03, user-
+    // directed addition) -- read by combat.js's effectiveDefense/
+    // effectiveFirstStrikePct/effectiveDoubleStrikePct/effectiveSiegePct,
     // this function's own visionRadius sum above, and ai.js's
     // computeMovementBudget), same refresh-every-turn convention as
     // Crusade/Heavy Metal above. Also cures AND grants immunity to Burning,
@@ -1292,7 +1293,7 @@ window.GameEngine = window.GameEngine || {};
           window.GameEngine.combat.setCondition(ally, "greatBonfireAura", {
             expiresAtTurn: (gameState.turnNumber || 0) + 1,
             defenseBonus: 2, visionBonus: 2, movementBonus: 1,
-            firstStrikePctBonus: 0.05, doubleStrikePctBonus: 0.10,
+            firstStrikePctBonus: 0.05, doubleStrikePctBonus: 0.10, siegePctBonus: 0.50,
           });
         }
       }
