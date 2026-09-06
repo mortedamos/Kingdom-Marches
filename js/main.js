@@ -3431,6 +3431,32 @@
       if (!gameState || !viewState || !humanCivId || anyOverlayOpen()) return;
 
       const key = e.key.toLowerCase();
+
+      // A: Attack... -- same two-stage "pick a target" flow as the ring
+      // menu's own Attack... pill (startAttackPlacement), driven by
+      // whichever targets attackTargets() currently reports for the
+      // selected unit. "a" doubles as WASD pan-left below, so this only
+      // claims the key when the selected unit actually has something to
+      // attack -- otherwise it falls through unclaimed to the panKey branch
+      // just below, unchanged. Checked first so a real attack takes
+      // priority over pan on that same keypress. e.repeat skipped so
+      // holding the key down doesn't re-open target selection (or start
+      // panning) every repeat tick.
+      if (key === "a") {
+        const unit = viewState.selectedUnit;
+        const hasAttack = unit && unit.civId === humanCivId
+          && window.GameEngine.orders.attackTargets(unit, gameState, humanCivId).length;
+        if (hasAttack) {
+          // Claim the key entirely (never fall through to pan-left) whenever
+          // there's something to attack, but only actually open target
+          // selection on the initial press -- a held key still repeat-fires
+          // keydown, and re-opening the same placement mode every tick
+          // would be pointless.
+          if (!e.repeat) startAttackPlacement(unit);
+          return;
+        }
+      }
+
       // Arrow keys pan the map exactly like WASD
       // -- mapped onto the SAME panKeys entries (ArrowUp -> "w", etc.) rather
       // than a parallel set, so startAnimationLoop's per-frame pan read
@@ -4390,6 +4416,14 @@
   // and to the post-hoc (already-happened) notice too -- see both call
   // sites below.
   const ATTACK_RESULT_PAUSE_MS = 1000;
+  // Enemy-action camera follow (2026-09-06, user-directed): whenever a
+  // visible (non-attack-on-human) enemy unit move lands the camera
+  // somewhere new, this is the pause held both before AND after recentering
+  // -- long enough to register as a deliberate "look here" beat without
+  // dragging out a big turn the way the attack-notice pauses above
+  // (dialog-driven, so already unhurried) would. See advanceTurn's
+  // processBatch for the actual follow logic.
+  const ENEMY_ACTION_FOLLOW_PAUSE_MS = 250;
 
   function offerAttackNotice(notice, onDone, { goToDelayMs = 0 } = {}) {
     viewState.dialog = {
@@ -4503,6 +4537,19 @@
   function advanceTurn() {
     defaultIdleCitiesToGatherResources();
     let announcedCivId = null;
+    // Enemy-action camera follow (2026-09-06, user-directed): snapshotted
+    // once per End Turn, not per step -- lets the loop below tell "this
+    // enemy unit actually moved this round" from "it's just sitting there
+    // garrisoning/resting again," since stepAIUnit (ai.js) returns EVERY
+    // unit in turn, whether or not it did anything. Keyed by unit object
+    // identity, so a unit built mid-round (absent here) is simply never
+    // flagged as having moved -- fine, its spawn already shows up on its
+    // own via the normal fog-of-war reveal, no follow needed.
+    const enemyUnitStartPos = new Map();
+    for (const civ of Object.values(gameState.civs)) {
+      if (civ.id === humanCivId) continue;
+      for (const unit of civ.units) enemyUnitStartPos.set(unit, { x: unit.x, y: unit.y });
+    }
     function processBatch() {
       let stepResult;
       do {
@@ -4518,6 +4565,13 @@
         stepResult = advanceOneStep();
         if (stepResult.roundComplete) {
           viewState.turnBanner = null;
+          // Back to the player: center on whatever unit they should look at
+          // next (2026-09-06, user-directed), same cycler the sidebar's own
+          // "Next Unit" button uses -- picks up right after whichever unit
+          // was selected when End Turn was pressed, or the first one
+          // waiting if nothing was selected. No-ops harmlessly if the human
+          // has no units left needing orders.
+          handleNextUnit();
           redraw();
           return;
         }
@@ -4577,6 +4631,34 @@
           redraw();
           offerAttackNotice(notice, () => setTimeout(processBatch, ATTACK_RESULT_PAUSE_MS));
           return;
+        }
+
+        // Enemy-action camera follow (2026-09-06, user-directed): a plain
+        // (non-attacking-the-human -- both checks above already returned if
+        // so) enemy unit move that lands somewhere the player can currently
+        // see. Pause, recenter (only if it isn't already on screen -- same
+        // "don't yank the camera for no reason" convention the attack
+        // notices above follow), pause again, then resume. Movement-only
+        // (enemyUnitStartPos comparison), not "did anything" -- otherwise
+        // every idle garrison unit stepAIUnit still returns each turn would
+        // also trigger this, turning every End Turn into a slog.
+        if (steppedUnit && steppedUnit.civId !== humanCivId) {
+          const start = enemyUnitStartPos.get(steppedUnit);
+          const moved = start && (start.x !== steppedUnit.x || start.y !== steppedUnit.y);
+          if (moved) {
+            const { map } = gameState;
+            const visible = gameState.visibility[humanCivId];
+            const idx = steppedUnit.y * map.width + steppedUnit.x;
+            if (visible && visible.has(idx)) {
+              const onScreen = window.UI.render.isTileOnScreen(steppedUnit.x, steppedUnit.y, $("map-canvas"), gameState, viewState);
+              setTimeout(() => {
+                if (!onScreen) centerViewOn(steppedUnit.x, steppedUnit.y);
+                redraw();
+                setTimeout(processBatch, ENEMY_ACTION_FOLLOW_PAUSE_MS);
+              }, ENEMY_ACTION_FOLLOW_PAUSE_MS);
+              return;
+            }
+          }
         }
       } while (!stepResult.steppedCivId || stepResult.steppedCivId === announcedCivId || stepResult.steppedCivId === humanCivId);
       announcedCivId = stepResult.steppedCivId;
