@@ -443,7 +443,36 @@ window.GameData.UNITS = {
   // casts also reveals fog of war that far.
   great_bonfire: {
     id: "great_bonfire", label: "The Great Bonfire", symbol: "🔥", category: "military", raceOnly: "halfellow",
-    attack: 0, defense: 0, movement: 0, visionRadius: 8, biggerPct: .5, 
+    attack: 0, defense: 0, movement: 0, visionRadius: 8, biggerPct: .5,
+    coinCost: 0, cityBuildable: false, noUpkeep: true, nameSpecial: true, // an object, not a person
+  },
+  // Halfellow "Fairy Ring" (2026-09-04): squat, mushroom-capped forager --
+  // deliberately unremarkable combat stats, same "the real value is the
+  // kit, not front-line stats" philosophy as Trouble Maker/Human Wizard (see
+  // ai.js's UTILITY_UNIT_MECHANICS doc). Low movement/attack, high defense
+  // for its tier reads as "short and squat, almost as wide as tall" per the
+  // character brief -- not built to chase or strike, built to plant its
+  // feet and not get knocked over. Its own special action (Create Mushroom,
+  // see ai.js's startMushroomancerCreateMushroom) is gated behind a separate
+  // follow-up tech (halfellow_fairy_ring), not this unit's own unlock --
+  // same staged shape Trouble Maker's roster slot uses (base kit at Making
+  // Trouble, its third trick behind The Riddle Game).
+  mushroomancer: {
+    id: "mushroomancer", label: "Mushroomancer", symbol: "🍄", category: "military", raceOnly: "halfellow",
+    attack: 1, defense: 4, movement: 1, visionRadius: 2,
+    coinCost: 15, attackChars: ["🍄", "👊"],
+  },
+  // Summoned by a Mushroomancer's full-turn "Create Mushroom" action (see
+  // ai.js's startMushroomancerCreateMushroom), never built by a city, free
+  // to summon -- same "an inert, trivially-killable object" shape as the
+  // traps/Great Bonfire above (attack:0/defense:0, so a Ranged unit can
+  // destroy it from range at zero counter-risk -- the intended counterplay
+  // against its aura). visionRadius matches its own aura radius (1, see
+  // turns.js's beginCivTurn) same convention as Great Bonfire's own
+  // visionRadius-matches-aura intent.
+  mushroom: {
+    id: "mushroom", label: "Mushroom", symbol: "🍄", category: "military", raceOnly: "halfellow",
+    attack: 0, defense: 0, movement: 0, visionRadius: 1,
     coinCost: 0, cityBuildable: false, noUpkeep: true, nameSpecial: true, // an object, not a person
   },
 

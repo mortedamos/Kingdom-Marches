@@ -1809,6 +1809,19 @@ window.GameData.TECHS = {
     costBreakdown: { coin: 12, harvest: 8 },
     effects: [{ type: "unlock_mechanic", mechanic: "throw_a_party" }],
   },
+  // New (2026-09-04, user-directed): base unit unlock only -- its Create
+  // Mushroom action is a separate follow-up tech (halfellow_fairy_ring,
+  // Layer 2), same staged shape Trouble Maker's own kit uses. Unlocking the
+  // unit itself this early is the point: another roster option/body on the
+  // board from turn one, not gated behind the ring mechanic it'll
+  // eventually carry.
+  halfellow_mushroomancer: {
+    id: "halfellow_mushroomancer", label: "Mushroomancer", category: "military", layer: 1, cost: 20,
+    prereqs: [], raceOnly: "halfellow",
+    description: "Unlocks the Mushroomancer, a squat forager who tends fungus rather than fighting.",
+    costBreakdown: { harvest: 12, coin: 8 },
+    effects: [{ type: "unlock_unit", unit: "mushroomancer" }],
+  },
 
   // --- Layer 2 ---
   halfellow_road_goes_ever_on: {
@@ -1891,6 +1904,29 @@ window.GameData.TECHS = {
   // implemented as a FLOOR (Math.max against a unit's own range), not an
   // additive bonus, so it can never make an already-ranged unit worse and
   // never stacks oddly with a future per-unit range override.
+  // New (2026-09-04, user-directed): the Mushroomancer's second tech, its
+  // Create Mushroom action -- see ai.js's startMushroomancerCreateMushroom/
+  // maybeCreateMushroomPlay and turns.js's beginCivTurn for the Mushroom's
+  // aura+poison block. A smaller, earlier cousin of Banish the Darkness's
+  // Great Bonfire (radius 1 vs. that one's 4, 4-turn burn vs. 5, gated here
+  // at Layer 2 instead of Layer 5) -- but unlike Bonfire, it also threatens
+  // trespassing enemies with Poison rather than only buffing allies, which
+  // is the deliberate asymmetry against Dwarf's own earliest aura tech
+  // (Heavy Metal/Power Metal, Layer 3, single-effect only): Fairy Ring
+  // trades "arrives a layer earlier" for "does only one thing well" on the
+  // ally side (a plain heal, no stat bonus stacked on top, capped at
+  // exactly Heavy Metal's own 5% rate) -- the enemy-poison half is the
+  // extra value that isn't free.
+  halfellow_fairy_ring: {
+    id: "halfellow_fairy_ring", label: "Fairy Ring", category: "mystic", layer: 2, cost: 42,
+    prereqs: ["halfellow_mushroomancer"], raceOnly: "halfellow",
+    description: "The Mushroomancer gains a full-turn action, Create Mushroom: summons a Mushroom onto an open adjacent tile (replacing this kingdom's own Mushroom if it already has one). For 4 turns, every allied unit within 1 tile heals 5% of its max HP per turn (minimum 1) and gains Toadstool Tranquility. Any enemy unit within that same 1 tile has a 50% chance each turn to become Poisoned.",
+    costBreakdown: { lore: 24, coin: 12, harvest: 6 },
+    effects: [
+      { type: "unlock_unit", unit: "mushroom" },
+      { type: "unlock_mechanic", mechanic: "fairy_ring" },
+    ],
+  },
   halfellow_boomerang: {
     id: "halfellow_boomerang", label: "Boomerang", category: "military", layer: 2, cost: 30,
     prereqs: [], raceOnly: "halfellow",

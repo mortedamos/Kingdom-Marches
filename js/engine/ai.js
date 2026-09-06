@@ -2489,9 +2489,11 @@ window.GameEngine = window.GameEngine || {};
     // trap is exactly the case that rule was never meant to touch), which
     // silently broke orders.js's isSpent -- see its "budget > 0" fallback --
     // and made an inert trap wrongly nag the player for orders every turn.
-    // Halfellow "Banish the Darkness": The Great Bonfire is an inert object,
-    // same "never moves, full stop" rule as the trap check just above.
-    if (unit.typeId === "trap_frost" || unit.typeId === "trap_fire" || unit.typeId === "great_bonfire") return 0;
+    // Halfellow "Banish the Darkness"/"Fairy Ring": The Great Bonfire and the
+    // Mushroom are both inert objects, same "never moves, full stop" rule as
+    // the trap check just above.
+    if (unit.typeId === "trap_frost" || unit.typeId === "trap_fire" || unit.typeId === "great_bonfire"
+        || unit.typeId === "mushroom") return 0;
     const baseUnit = window.GameData.getUnit(unit.typeId);
     // civ.unitOverrides movement delta (e.g. Orc's Swift Hunters: +1 Wolf Rider movement)
     const overrideMovement = unit._moveMods?.unitOverrides?.[unit.typeId]?.movement || 0;
@@ -5166,6 +5168,23 @@ window.GameEngine = window.GameEngine || {};
         continue;
       }
 
+      // Halfellow "Fairy Ring": same exclusive "no player-defined actions,
+      // checked before everything else" shape as Great Bonfire just above
+      // -- without this, a freshly-spawned Mushroom (which, like Bonfire,
+      // never gets usedThisTurn stamped on itself at creation -- only the
+      // Mushroomancer that made it does) would fall through into the
+      // generic cascade below on the very turn it's created, and could be
+      // walked away from its own tile by e.g. handleCorneredCombat's flee
+      // logic if an enemy happened to be nearby -- exactly the situation
+      // Create Mushroom is most likely to be used in. Its aura, heal, and
+      // 4-turn expiry are all handled centrally in turns.js's beginCivTurn.
+      if (unit.typeId === "mushroom") {
+        unit.resting = true;
+        unit.usedThisTurn = true;
+        unit.currentMission = "Growing quietly";
+        continue;
+      }
+
       // currentMission: a short, human-readable "what is this unit doing right
       // now" label, read by sidebar.js for spectator mode's unit inspection.
       // Reset to a generic default here so every branch below overwrites it
@@ -5359,6 +5378,11 @@ window.GameEngine = window.GameEngine || {};
       // outranks a pure economy action too, same reasoning as Riddle just
       // above. See maybeCreateGreatBonfirePlay's doc comment.
       if (unit.typeId === "wanderer" && maybeCreateGreatBonfirePlay(civ, unit, gameState, log)) continue;
+
+      // Halfellow "Fairy Ring" (Mushroomancer only): same "back up a fight
+      // or a hurting ally" priority as Banish the Darkness just above, for
+      // its own unit type. See maybeCreateMushroomPlay's doc comment.
+      if (unit.typeId === "mushroomancer" && maybeCreateMushroomPlay(civ, unit, gameState, log)) continue;
 
       // Elf "fight smarter, not harder": same idea as Halfellow's above, but
       // split by whether the unit is Ranged (the Ranger's hide-shoot-hide
@@ -8544,6 +8568,79 @@ window.GameEngine = window.GameEngine || {};
   function isValidGreatBonfirePlacementTile(gameState, civId, x, y, wanderer) {
     const { map, civs } = gameState;
     if (window.GameEngine.influence.chebyshev(x, y, wanderer.x, wanderer.y) > 1) return false;
+    const occupied = buildOccupancySet(civs, null);
+    return isOpenPlacementTile(x, y, map, civs, occupied, civId);
+  }
+
+  // Halfellow "Fairy Ring" -- a smaller, earlier cousin of Great Bonfire just
+  // above (see units.js's mushroom, techs.js's halfellow_fairy_ring). Every
+  // function below is a direct structural mirror of its Bonfire counterpart,
+  // just renamed and re-tuned (4-turn burn instead of 5) -- see this file's
+  // doc comment on halfellow_fairy_ring in techs.js for why the numbers
+  // differ, and turns.js's beginCivTurn for the Mushroom's own aura+poison
+  // block (which, unlike Bonfire's ally-only aura, also threatens enemies).
+  const MUSHROOM_DURATION = 4;
+
+  /** Removes this civ's own existing Mushroom from civ.units, if it has one
+   *  -- per-civ singleton, same shape as dismissExistingGreatBonfire.
+   *  `exceptUnit` (optional) is spared even if it's a Mushroom -- protects a
+   *  just-spawned replacement from its own dismissal pass. */
+  function dismissExistingMushroom(civ, exceptUnit = null) {
+    civ.units = civ.units.filter((u) => u.typeId !== "mushroom" || u === exceptUnit);
+  }
+
+  /** A Mushroomancer creates a Mushroom on an open adjacent tile IMMEDIATELY
+   *  -- same free, instant, per-civ-singleton shape as
+   *  startWandererBonfireSummon (see that function's doc comment for the
+   *  full reasoning, all of which applies here unchanged). Stamps
+   *  `mushroomExpiresAtTurn` -- see turns.js's beginCivTurn, which removes
+   *  the Mushroom once that turn is reached. `confirmed`/`targetXY` mirror
+   *  the same pendingIntent-staging and player-tile-pick conventions. */
+  function startMushroomancerCreateMushroom(civ, mushroomancer, gameState, log, confirmed = false, targetXY = null) {
+    if (mushroomancer.automated && !confirmed) {
+      mushroomancer.pendingIntent = { kind: "createMushroom", label: "Create Mushroom" };
+      mushroomancer.usedThisTurn = true;
+      mushroomancer.currentMission = "Proposing to create a Mushroom — awaiting confirmation";
+      log.push(`Mushroomancer proposing to create a Mushroom at (${mushroomancer.x},${mushroomancer.y}) — awaiting player confirmation`);
+      return true;
+    }
+    let spawned;
+    if (targetXY) {
+      spawned = { typeId: "mushroom", civId: civ.id, x: targetXY.x, y: targetXY.y };
+      window.GameEngine.combat.initUnitHP(spawned, civ);
+      civ.units.push(spawned);
+    } else {
+      spawned = spawnUnitAdjacentToUnit(civ, mushroomancer, "mushroom", gameState);
+    }
+    if (!spawned) return false; // no open adjacent tile -- nothing spent, turn not consumed
+    dismissExistingMushroom(civ, spawned);
+    spawned.mushroomExpiresAtTurn = (gameState.turnNumber || 0) + MUSHROOM_DURATION;
+    mushroomancer.usedThisTurn = true;
+    mushroomancer.currentMission = `Created a Mushroom at (${spawned.x},${spawned.y})`;
+    log.push(`Fairy Ring: ${civ.id}'s Mushroomancer creates a Mushroom at (${spawned.x},${spawned.y})`);
+    window.SfxSystem.playAction(civ.raceId, "mushroomancer", "create_mushroom", spawned.x, spawned.y);
+    window.GameEngine.combat.spawnAreaEffect(spawned.x, spawned.y, 0, "summon");
+    return true;
+  }
+
+  /** Direct player-invoked Mushroom summon -- mirrors
+   *  performPlayerWandererBonfireSummon exactly. */
+  function performPlayerMushroomancerCreateMushroom(civ, mushroomancer, gameState, x = null, y = null) {
+    currentTurnNumber = gameState.turnNumber || 0;
+    currentGameStateRef = gameState;
+    const log = [];
+    const targetXY = (x != null && y != null) ? { x, y } : null;
+    const ok = startMushroomancerCreateMushroom(civ, mushroomancer, gameState, log, true, targetXY);
+    if (log.length) appendAIActionLog(gameState, civ.id, log);
+    return ok;
+  }
+
+  /** Halfellow "Fairy Ring" placement target -- mirrors
+   *  isValidGreatBonfirePlacementTile exactly (see that function's doc
+   *  comment); lets main.js's tile-placement mode build a slot list. */
+  function isValidMushroomPlacementTile(gameState, civId, x, y, mushroomancer) {
+    const { map, civs } = gameState;
+    if (window.GameEngine.influence.chebyshev(x, y, mushroomancer.x, mushroomancer.y) > 1) return false;
     const occupied = buildOccupancySet(civs, null);
     return isOpenPlacementTile(x, y, map, civs, occupied, civId);
   }
@@ -12984,6 +13081,61 @@ window.GameEngine = window.GameEngine || {};
     return startWandererBonfireSummon(civ, unit, gameState, log);
   }
 
+  // Same "each module owns its own tuning constant" convention as
+  // GREAT_BONFIRE_AURA_RADIUS just above -- mirrors turns.js's own
+  // MUSHROOM_AURA_RADIUS. Trigger radius is wider than the aura's own
+  // radius (unlike Bonfire, where it's narrower) since a radius-1 aura is
+  // easy to walk straight past without ever noticing there was a reason to
+  // plant one nearby -- a slightly wider "worth reacting to" window
+  // compensates for the ring itself covering so little ground.
+  const MUSHROOM_AURA_RADIUS = 1;
+  const MUSHROOM_TRIGGER_RADIUS = 2;
+
+  /**
+   * Halfellow "Fairy Ring" (Mushroomancer only): situational, not automatic
+   * -- same "only bother when there's an actual reason to" shape as
+   * maybeCreateGreatBonfirePlay just above. Skips entirely if this civ's
+   * existing Mushroom (if any) already reaches this Mushroomancer's own
+   * position. Otherwise fires when EITHER an enemy unit, OR a hurt (<70%
+   * HP) allied military unit, is within MUSHROOM_TRIGGER_RADIUS. Checked in
+   * runUnitTurn near Banish the Darkness's own call site -- backing up a
+   * fight or a hurting ally outranks a pure economy action for this race in
+   * general, not just for the Wanderer's tools.
+   */
+  function maybeCreateMushroomPlay(civ, unit, gameState, log) {
+    if (civ.raceId !== "halfellow" || !civ.unlockedMechanics || !civ.unlockedMechanics.has("fairy_ring")) return false;
+    if (unit.typeId !== "mushroomancer" || unit.usedThisTurn) return false;
+
+    const existing = civ.units.find((u) => u.typeId === "mushroom");
+    if (existing && window.GameEngine.influence.chebyshev(existing.x, existing.y, unit.x, unit.y) <= MUSHROOM_AURA_RADIUS) {
+      return false;
+    }
+
+    const { civs } = gameState;
+    let reason = false;
+    outer: for (const otherCiv of Object.values(civs)) {
+      if (otherCiv.id === civ.id || otherCiv.eliminated) continue;
+      for (const enemy of otherCiv.units) {
+        if (window.GameEngine.influence.chebyshev(unit.x, unit.y, enemy.x, enemy.y) <= MUSHROOM_TRIGGER_RADIUS) {
+          reason = true; break outer;
+        }
+      }
+    }
+    if (!reason) {
+      for (const ally of civ.units) {
+        if (ally === unit || ally.carriedBy) continue;
+        if (window.GameData.getUnit(ally.typeId).category !== "military") continue;
+        if (ally.hp >= ally.maxHp * 0.7) continue;
+        if (window.GameEngine.influence.chebyshev(unit.x, unit.y, ally.x, ally.y) <= MUSHROOM_TRIGGER_RADIUS) {
+          reason = true; break;
+        }
+      }
+    }
+    if (!reason) return false;
+
+    return startMushroomancerCreateMushroom(civ, unit, gameState, log);
+  }
+
   function maybeHalfellowStealthPlay(civ, unit, gameState, weights, difficulty, log) {
     if (civ.raceId !== "halfellow") return false;
     if (!civ.unlockedMechanics || !civ.unlockedMechanics.has("sneaking_around")) return false;
@@ -14814,6 +14966,13 @@ window.GameEngine = window.GameEngine || {};
     trapCapReached,
     performPlayerWandererBonfireSummon,
     isValidGreatBonfirePlacementTile,
+    performPlayerMushroomancerCreateMushroom,
+    isValidMushroomPlacementTile,
+    // Exported (2026-09-04) so turns.js's Fairy Ring aura block can poison
+    // enemy units caught in a Mushroom's radius through the same helper
+    // Marsh Adder's venom already uses, rather than a second copy of the
+    // same one-line setCondition call.
+    applyPoisoned,
     countEnemiesInRadius,
     WHIRLWIND_STRIKE_RADIUS,
     BLADE_STORM_RADIUS,

@@ -203,6 +203,12 @@ window.GameData.UNIT_TYPE_PROPER_NAMES = {
     "Marshlight", "Foxfire", "The Drowned Flame", "Bogglow", "Willowisp",
     "The Peat Ember", "Mireflicker", "Fenspark", "The Sunken Candle",
   ],
+  // Halfellow "Fairy Ring" -- same cozy-folklore register as great_bonfire
+  // just above, toadstool-flavored instead of firelight-flavored.
+  mushroom: [
+    "Toadstool", "Old Spore", "The Fairy Ring", "Redcap", "Mossy Cap",
+    "The Ring-Keeper", "Puffball", "Dapplecap", "The Quiet Circle", "Speckle-Top",
+  ],
   // Wandering Monsters (see doc/world_encounters_design.md) -- required,
   // not decorative: getRandomUnitName below throws for any raceId with no
   // UNIT_FIRST_NAMES/UNIT_EPITHETS entry (the "monster" race has neither,

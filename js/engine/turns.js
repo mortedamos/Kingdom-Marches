@@ -1143,6 +1143,14 @@ window.GameEngine = window.GameEngine || {};
     civ.units = civ.units.filter((u) => !(u.typeId === "great_bonfire"
       && u.bonfireExpiresAtTurn != null && (gameState.turnNumber || 0) >= u.bonfireExpiresAtTurn));
 
+    // Halfellow "Fairy Ring": the Mushroom only lasts MUSHROOM_DURATION
+    // turns from the moment it's summoned (see ai.js's
+    // startMushroomancerCreateMushroom, which stamps mushroomExpiresAtTurn)
+    // -- same "checked before the aura loop further below" shape as Great
+    // Bonfire's own expiry just above.
+    civ.units = civ.units.filter((u) => !(u.typeId === "mushroom"
+      && u.mushroomExpiresAtTurn != null && (gameState.turnNumber || 0) >= u.mushroomExpiresAtTurn));
+
     // Human "Crusade": each Paladin's holy aura heals every allied unit within
     // 1 tile (Chebyshev, including the Paladin itself) 10% of max HP, and
     // grants a 1-turn "crusadeAura" condition (+2 attack, +1 defense, +25%
@@ -1286,6 +1294,46 @@ window.GameEngine = window.GameEngine || {};
             defenseBonus: 2, visionBonus: 2, movementBonus: 1,
             firstStrikePctBonus: 0.05, doubleStrikePctBonus: 0.10,
           });
+        }
+      }
+    }
+
+    // Halfellow "Fairy Ring": the Mushroom's aura -- a smaller, earlier, and
+    // two-sided cousin of Great Bonfire's just above (see techs.js's
+    // halfellow_fairy_ring for the full balance reasoning against Dwarf's
+    // Heavy Metal/Power Metal). Every allied unit within MUSHROOM_AURA_RADIUS
+    // tiles (Chebyshev, including the Mushroom's own tile) heals 5% of max
+    // HP per turn (minimum 1) and gets a refreshed 1-turn "toadstoolTranquility"
+    // condition -- unlike greatBonfireAura, this one carries NO stat bonus of
+    // its own; it exists purely as a visible marker (map badge, Knowledge
+    // Base entry) that the ally is currently covered, same "marker-only"
+    // shape as the "resting" condition. Meanwhile any OTHER civ's unit within
+    // that same radius has a MUSHROOM_POISON_CHANCE chance, rolled fresh
+    // every turn, to be Poisoned (see ai.js's applyPoisoned) -- re-rolled
+    // every turn it lingers, so staying put isn't safe just because an
+    // earlier roll missed. Per-civ singleton (at most one Mushroom per civ,
+    // see ai.js's startMushroomancerCreateMushroom), so no dedup Set is
+    // needed for the ally side, same reasoning as Great Bonfire's own.
+    if (civ.unlockedMechanics && civ.unlockedMechanics.has("fairy_ring")) {
+      const MUSHROOM_AURA_RADIUS = 1;
+      const MUSHROOM_POISON_CHANCE = 0.5;
+      const mushroom = civ.units.find((u) => u.typeId === "mushroom");
+      if (mushroom) {
+        for (const ally of civ.units) {
+          if (window.GameEngine.influence.chebyshev(mushroom.x, mushroom.y, ally.x, ally.y) > MUSHROOM_AURA_RADIUS) continue;
+          const mushroomBefore = ally.hp;
+          ally.hp = Math.min(ally.maxHp, ally.hp + Math.max(1, Math.round(ally.maxHp * 0.05)));
+          if (ally.hp > mushroomBefore) window.GameEngine.floatingText.spawnHealGain(ally, ally.hp - mushroomBefore);
+          window.GameEngine.combat.setCondition(ally, "toadstoolTranquility", {
+            expiresAtTurn: (gameState.turnNumber || 0) + 1,
+          });
+        }
+        for (const otherCiv of Object.values(gameState.civs)) {
+          if (otherCiv.id === civ.id || otherCiv.eliminated) continue;
+          for (const enemy of otherCiv.units) {
+            if (window.GameEngine.influence.chebyshev(mushroom.x, mushroom.y, enemy.x, enemy.y) > MUSHROOM_AURA_RADIUS) continue;
+            if (Math.random() < MUSHROOM_POISON_CHANCE) window.GameEngine.ai.applyPoisoned(enemy, gameState);
+          }
         }
       }
     }

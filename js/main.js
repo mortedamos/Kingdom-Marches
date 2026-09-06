@@ -4290,6 +4290,9 @@
         } else if (intent.kind === "createGreatBonfire") {
           window.GameEngine.ai.performPlayerWandererBonfireSummon(civ, unit, gameState);
           window.GameEngine.turns.refreshVisibility(gameState);
+        } else if (intent.kind === "createMushroom") {
+          window.GameEngine.ai.performPlayerMushroomancerCreateMushroom(civ, unit, gameState);
+          window.GameEngine.turns.refreshVisibility(gameState);
         }
         finish();
       },
@@ -6081,6 +6084,10 @@
           // (2026-08-24) -- the player picks which open adjacent tile the
           // Bonfire lands on, same shape as Set the Trap.
           startGreatBonfirePlacement(unit);
+        } else if (kind === "createMushroom") {
+          // Halfellow "Fairy Ring": same tile-placement shape as Create The
+          // Great Bonfire just above, for the Mushroomancer.
+          startMushroomPlacement(unit);
         } else if (kind === "whirlwindStrike" || kind === "bladeStorm") {
           // Elf "Whirlwind Strike"/"Blade Storm": single click, no
           // placement mode -- it's a self-centered radius sweep, not a
@@ -6463,6 +6470,37 @@
         viewState.placement = null;
         if (slot) {
           window.GameEngine.ai.performPlayerWandererBonfireSummon(civ, wanderer, gameState, slot.x, slot.y);
+          window.GameEngine.turns.refreshVisibility(gameState);
+        }
+        redraw();
+      },
+    };
+    redraw();
+  }
+
+  /** Halfellow "Fairy Ring": same tile-placement mechanism as Create The
+   *  Great Bonfire just above, for the Mushroomancer's Create Mushroom
+   *  instead -- see ai.js's isValidMushroomPlacementTile. */
+  function startMushroomPlacement(mushroomancer) {
+    if (!humanCivId) return;
+    const civ = gameState.civs[humanCivId];
+    if (!civ) return;
+    const slots = [];
+    for (let dy = -1; dy <= 1; dy++) {
+      for (let dx = -1; dx <= 1; dx++) {
+        if (dx === 0 && dy === 0) continue;
+        const x = mushroomancer.x + dx, y = mushroomancer.y + dy;
+        if (window.GameEngine.ai.isValidMushroomPlacementTile(gameState, civ.id, x, y, mushroomancer)) slots.push({ x, y });
+      }
+    }
+    viewState.placement = {
+      slots,
+      label: "Create Mushroom",
+      previewUnitId: "mushroom", previewRaceId: civ.raceId,
+      onPick: (slot) => {
+        viewState.placement = null;
+        if (slot) {
+          window.GameEngine.ai.performPlayerMushroomancerCreateMushroom(civ, mushroomancer, gameState, slot.x, slot.y);
           window.GameEngine.turns.refreshVisibility(gameState);
         }
         redraw();

@@ -54,6 +54,8 @@ window.GameData.SFX_SPECIAL_ACTIONS = {
   // riddle is shared with wanderer above (both can cast it), the other
   // three are Trouble Maker's own.
   trouble_maker: ["riddle", "resource_heist", "unlock_the_gate", "set_trap"],
+  // Halfellow "Fairy Ring" -- the Mushroomancer's only special action.
+  mushroomancer: ["create_mushroom"],
   // Elf "Nature's Fury": the Druid<->Dire Bear transform, both directions
   // (see ai.js's performDireBearTransform) -- distinct in-code mechanics,
   // same inclusion bar as druid's own summon/blink entries above.

@@ -94,6 +94,7 @@ window.UI = window.UI || {};
     greatBonfireAura: "Within The Great Bonfire's warmth (Halfellow's Banish the Darkness): heals 10% of max HP per turn (minimum 1) regardless of resting, +2 Defense, +2 Vision, +1 Movement, +5% First Strike, and +10% Double Strike -- also cures, and grants immunity to, Burning, Poisoned, Frozen, Curse, Befuddled, and Webbed. Refreshed every turn the aura still reaches it.",
     ancestralRage: "+25% Attack for 3 turns -- Orc's Ancestral Dolmen: when a unit whose home city holds a standing Dolmen falls anywhere on the map, every surviving friendly unit within 3 tiles of the death is roused to avenge it. The fallen are honored by being avenged, not resurrected.",
     partyBuff: "Still riding the high of a Halfellow city's party (Throw a Party): +1 Attack, +1 Defense, +2 Movement for 3 turns. Granted once, at the moment the party fires, to every Halfellow unit within 2 tiles of the city -- unlike an aura, it does NOT refresh if the unit stays nearby, it just counts down.",
+    toadstoolTranquility: "Within a Halfellow Mushroom's ring (Fairy Ring): heals 5% of max HP per turn (minimum 1), refreshed every turn the ring still reaches it. Carries no combat bonus of its own -- purely a marker that this unit is currently covered. Any enemy unit in the same ring has a 50% chance per turn to be Poisoned instead.",
   };
 
   // Every stat shown on a unit's profile, cross-linked to its own KMKB
@@ -987,6 +988,10 @@ window.UI = window.UI || {};
     {
       key: "createGreatBonfire", label: "Create The Great Bonfire", icon: "🔥", restriction: "Halfellow — Wanderer",
       description: "Summons The Great Bonfire on an open adjacent tile, replacing this kingdom's existing one if it already has one. For 5 turns, every allied unit within 4 tiles gets a strong per-turn buff -- see the Bonfire's Blessing condition page for the full effect -- refreshed as long as it stays in range.",
+    },
+    {
+      key: "createMushroom", label: "Create Mushroom", icon: "🍄", restriction: "Halfellow — Mushroomancer",
+      description: "Summons a Mushroom on an open adjacent tile, replacing this kingdom's existing one if it already has one. For 4 turns, every allied unit within 1 tile heals 5% of its max HP per turn (minimum 1) and gains Toadstool Tranquility, while any enemy unit in that same tile has a 50% chance per turn to become Poisoned. The Mushroom itself has no attack or defense -- any unit, including a Ranged one, can destroy it outright.",
     },
     {
       key: "whirlwindStrike", label: "Whirlwind Strike", icon: "🌪️", restriction: "Elf — Blade Dancer",

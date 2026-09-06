@@ -1357,6 +1357,14 @@ window.GameEngine = window.GameEngine || {};
         options.push({ kind: "createGreatBonfire", label: "Create The Great Bonfire" });
       }
 
+      // Halfellow "Fairy Ring": same tile-placement shape as Create The
+      // Great Bonfire just above, for the Mushroomancer instead of the
+      // Wanderer (see main.js's startMushroomPlacement).
+      if (unit.typeId === "mushroomancer" && !unit.usedThisTurn
+          && civ.unlockedMechanics?.has("fairy_ring")) {
+        options.push({ kind: "createMushroom", label: "Create Mushroom" });
+      }
+
       // Elf "Whirlwind Strike"/"Blade Storm": player-invoked version of the
       // AI's own maybeBladeDancerSweep (ai.js) -- same underlying
       // performBladeSweep, just without the AI's "only if it beats a normal

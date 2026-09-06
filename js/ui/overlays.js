@@ -81,7 +81,8 @@ window.UI = window.UI || {};
     poisoned: "🤢",
     greatBonfireAura: "♨️",
     ancestralRage: "🗿",
-    partyBuff: "🎉"
+    partyBuff: "🎉",
+    toadstoolTranquility: "🧚"
   };
   const CARRYING_ICON = "🫴";
 
