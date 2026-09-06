@@ -344,7 +344,7 @@ window.GameData.UNITS = {
   awakened_oak: {
     id: "awakened_oak", label: "Awakened Oak", symbol: "♣", category: "military", raceOnly: "elf",
     attack: 10, defense: 9, movement: 2, visionRadius: 3, siegePct: 1.5,
-    coinCost: 65, biggerPct: 1.0, attackChars: ["🌳", "𖣂", "🌿", "🫚"],
+    coinCost: 65, biggerPct: 1.0, attackChars: ["🌳", "🌿", "🫚"],
     rare: true, neverExplores: true,
     nameSpecial: true, // a living tree, not a person -- see unit-names.js
   },
@@ -458,8 +458,8 @@ window.GameData.UNITS = {
   // same staged shape Trouble Maker's roster slot uses (base kit at Making
   // Trouble, its third trick behind The Riddle Game).
   mushroomancer: {
-    id: "mushroomancer", label: "Mushroomancer", symbol: "🍄", category: "military", raceOnly: "halfellow",
-    attack: 1, defense: 4, movement: 1, visionRadius: 2,
+    id: "mushroomancer", label: "Mycomancer", symbol: "🍄", category: "military", raceOnly: "halfellow",
+    attack: 1, defense: 3, movement: 1, visionRadius: 2, poisonChancePct: 0.25,
     coinCost: 15, attackChars: ["🍄", "👊"],
   },
   // Summoned by a Mushroomancer's full-turn "Create Mushroom" action (see

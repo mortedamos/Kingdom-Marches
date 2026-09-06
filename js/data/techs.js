@@ -255,20 +255,29 @@ window.GameData.TECHS = {
     costBreakdown: { lore: 17, coin: 8 },
     effects: [{ type: "unlock_unit", unit: "archer" }],
   },
+  // Absorbed "Homestead" (2026-09-04, user-directed tech-tree consolidation
+  // -- fewer L1/L2 terrain techs; only merged techs granting the SAME
+  // resource type, per user's own rule): both halves paid out in Lore, just
+  // via different mechanisms (lore_per_influence_tile = every owned Plains
+  // tile civ-wide; unlock_tile_bonus = only a city's actually-worked Plains
+  // tiles), so this keeps both effects rather than collapsing them into one
+  // number. The "homestead" tech id no longer exists -- see trade_roads,
+  // whose prereq now points here instead.
   spirit_of_exploration: {
     id: "spirit_of_exploration", label: "Spirit of Exploration", category: "civic", layer: 1, cost: 14,
     prereqs: [], raceOnly: "human",
-    description: "Movement over Plains costs 2/3 a movement point per tile. +0.5 lore per Plains tile under your influence.",
+    description: "Movement over Plains costs 2/3 a movement point per tile. +0.5 lore per Plains tile under your influence, and +0.5 lore per worked Plains tile in a city's radius.",
     costBreakdown: { lore: 14 },
     effects: [
       { type: "terrain_movement_override", terrain: "plains", value: 2 / 3 },
       { type: "lore_per_influence_tile", terrain: "plains", value: 0.5 },
+      { type: "unlock_tile_bonus", terrain: "plains", bonus: { lore: 0.5 } },
     ],
   },
   rivercraft: {
     id: "rivercraft", label: "Rivercraft", category: "civic", layer: 1, cost: 14,
     prereqs: [], raceOnly: "human",
-    description: "Movement over a river tile costs 1/2 a movement point per tile, regardless of terrain. +0.2 lore per River tile under your influence.",
+    description: "Movement over a river tile costs 1/2 a movement point per tile, regardless of terrain. +1 lore per River tile under your influence.",
     costBreakdown: { lore: 14 },
     // "river" is a pseudo-terrain key: rivers overlay any base terrain
     // (tile.hasRiver), so getMoveCost/landCostForTerrain check it separately
@@ -276,15 +285,8 @@ window.GameData.TECHS = {
     // lore_per_influence_tile effect below -- see turns.js's beginCivTurn.
     effects: [
       { type: "terrain_movement_override", terrain: "river", value: 1 / 2 },
-      { type: "lore_per_influence_tile", terrain: "river", value: 0.2 },
+      { type: "lore_per_influence_tile", terrain: "river", value: 1 },
     ],
-  },
-  homestead: {
-    id: "homestead", label: "Homestead", category: "civic", layer: 1, cost: 20,
-    prereqs: [], raceOnly: "human",
-    description: "+0.5 lore from Plains.",
-    costBreakdown: { lore: 14, coin: 6 },
-    effects: [{ type: "unlock_tile_bonus", terrain: "plains", bonus: { lore: 0.5 } }],
   },
   // --- Layer 2 ---
   marketcraft: {
@@ -332,7 +334,7 @@ window.GameData.TECHS = {
   },
   trade_roads: {
     id: "trade_roads", label: "Trade Roads", category: "civic", layer: 2, cost: 40,
-    prereqs: ["homestead"], raceOnly: "human",
+    prereqs: ["spirit_of_exploration"], raceOnly: "human",
     description: "+0.5 coin, +0.5 lore per road tile within a city's radius.",
     costBreakdown: { coin: 40 },
     effects: [{ type: "unlock_feature_bonus", feature: "road", bonus: { coin: 0.5, lore: 0.5 } }],
@@ -437,7 +439,7 @@ window.GameData.TECHS = {
   sea_charts: {
     id: "sea_charts", label: "Sea Charts", category: "civic", layer: 3, cost: 45,
     prereqs: ["make_way"], raceOnly: "human",
-    description: "All Ocean and Coast tiles anywhere on the map are always revealed -- no fog of war on those tiles at all. +0.1 lore per Ocean and Coast tile under your influence.",
+    description: "All Ocean and Coast tiles anywhere on the map are always revealed -- no fog of war on those tiles at all. +0.5 lore per Ocean and Coast tile under your influence.",
     costBreakdown: { lore: 27, coin: 18 },
     // Same "unlock_mechanic" + turns.js hand-check pattern as Elf's Wind
     // From Distant Treetops and Dwarf's Mountains on the Horizon -- see
@@ -450,8 +452,8 @@ window.GameData.TECHS = {
     // totaled up each turn.
     effects: [
       { type: "unlock_mechanic", mechanic: "sea_charts" },
-      { type: "lore_per_influence_tile", terrain: "ocean", value: 0.1 },
-      { type: "lore_per_influence_tile", terrain: "coast", value: 0.1 },
+      { type: "lore_per_influence_tile", terrain: "ocean", value: 0.5 },
+      { type: "lore_per_influence_tile", terrain: "coast", value: 0.5 },
     ],
   },
   flight: {
@@ -609,26 +611,30 @@ window.GameData.TECHS = {
   // =========================================================================
 
   // --- Civic ---
+  // Absorbed "Nature Provides" (2026-09-04, user-directed tech-tree
+  // consolidation -- fewer L1/L2 terrain techs; only merged techs granting
+  // the SAME resource type, per user's own rule -- this tech grants no
+  // resource at all, just movement, so pairing it with harvest doesn't mix
+  // resource types). The Forest lore bonus (Murmuring of Leaves) is a
+  // DIFFERENT resource type and stays its own separate tech untouched. The
+  // "elf_nature_provides" id no longer exists -- see elf_natures_grace,
+  // whose prereq now points here instead.
   elf_home_in_the_trees: {
     id: "elf_home_in_the_trees", label: "Home in the Trees", category: "civic", layer: 1, cost: 12,
     prereqs: [], raceOnly: "elf",
-    description: "Movement over Forest costs 2/3 a movement point per tile.",
+    description: "Movement over Forest costs 2/3 a movement point per tile. +0.5 lore from Forest.",
     costBreakdown: { lore: 12 },
-    effects: [{ type: "terrain_movement_override", terrain: "forest", value: 2 / 3 }],
-  },
-  elf_nature_provides: {
-    id: "elf_nature_provides", label: "Nature Provides", category: "civic", layer: 1, cost: 18,
-    prereqs: [], raceOnly: "elf",
-    description: "+0.25 harvest from Forest.",
-    costBreakdown: { lore: 12, coin: 6 },
-    effects: [{ type: "unlock_tile_bonus", terrain: "forest", bonus: { harvest: 0.25 } }],
+    effects: [
+      { type: "terrain_movement_override", terrain: "forest", value: 2 / 3 },
+      { type: "unlock_tile_bonus", terrain: "forest", bonus: { lore: 0.5 } },
+    ],
   },
   elf_murmuring_of_leaves: {
     id: "elf_murmuring_of_leaves", label: "The Murmuring of Leaves", category: "civic", layer: 1, cost: 16,
     prereqs: [], raceOnly: "elf",
-    description: "+0.3 lore from Forest.",
+    description: "+0.5 lore from Forest.",
     costBreakdown: { lore: 16 },
-    effects: [{ type: "unlock_tile_bonus", terrain: "forest", bonus: { lore: 0.3 } }],
+    effects: [{ type: "unlock_tile_bonus", terrain: "forest", bonus: { lore: 0.5 } }],
   },
   // Halves the flat RESOURCE_EXHAUSTION_CHANCE (5%->2%) for this civ's
   // Ruin/Gold Vein/Iron Vein/Fish Shoal/Game/Fertile Soil channels -- see
@@ -643,9 +649,9 @@ window.GameData.TECHS = {
   elf_whispering_waters: {
     id: "elf_whispering_waters", label: "Whispering Waters", category: "civic", layer: 2, cost: 20,
     prereqs: [], raceOnly: "elf",
-    description: "+0.3 lore from river.",
+    description: "+0.5 lore from river.",
     costBreakdown: { lore: 14, coin: 6 },
-    effects: [{ type: "unlock_feature_bonus", feature: "river", bonus: { lore: 0.3 } }],
+    effects: [{ type: "unlock_feature_bonus", feature: "river", bonus: { lore: 0.5 } }],
   },
   elf_longstrider: {
     id: "elf_longstrider", label: "Longstrider", category: "civic", layer: 2, cost: 20,
@@ -657,9 +663,9 @@ window.GameData.TECHS = {
   elf_gems_of_starlight: {
     id: "elf_gems_of_starlight", label: "Gems of Starlight", category: "civic", layer: 3, cost: 30,
     prereqs: ["elf_silverleaf_atelier"], raceOnly: "elf",
-    description: "+0.25 coin from Mountains.",
+    description: "+1 coin from Mountains.",
     costBreakdown: { coin: 20, lore: 10 },
-    effects: [{ type: "unlock_tile_bonus", terrain: "mountains", bonus: { coin: 0.25 } }],
+    effects: [{ type: "unlock_tile_bonus", terrain: "mountains", bonus: { coin: 1 } }],
   },
   elf_wind_from_distant_treetops: {
     id: "elf_wind_from_distant_treetops", label: "Wind From Distant Treetops", category: "civic", layer: 4, cost: 50,
@@ -859,7 +865,7 @@ window.GameData.TECHS = {
   },
   elf_natures_grace: {
     id: "elf_natures_grace", label: "Nature's Grace", category: "mystic", layer: 3, cost: 36,
-    prereqs: ["elf_druidism", "elf_nature_provides"], raceOnly: "elf",
+    prereqs: ["elf_druidism", "elf_home_in_the_trees"], raceOnly: "elf",
     description: "The Druid may use this action (costs its whole turn, no exhaustion afterward) to restore between 30% and 60% (random) health to an ally unit within its own range (not just adjacent).",
     costBreakdown: { lore: 24, harvest: 12 },
     effects: [{ type: "unlock_mechanic", mechanic: "natures_grace" }],
@@ -979,29 +985,38 @@ window.GameData.TECHS = {
   // =========================================================================
 
   // --- Civic ---
+  // Absorbed "Quarry" (2026-09-04, user-directed tech-tree consolidation --
+  // fewer L1/L2 terrain techs; only merged techs granting the SAME resource
+  // type, per user's own rule -- this tech grants no resource at all, just
+  // movement/tunneling, so pairing it with Hills coin doesn't mix resource
+  // types). Mountains' own coin/lore bonuses (Wealth of the Earth/Deep Lore)
+  // are left untouched -- those two grant DIFFERENT resource types from each
+  // other, so per the same rule they can't be merged together either. The
+  // "dwarf_quarry" id no longer exists -- nothing else referenced it by id.
   dwarf_stonecunning: {
     id: "dwarf_stonecunning", label: "Stonecunning", category: "civic", layer: 1, cost: 14,
     prereqs: [], raceOnly: "dwarf",
-    description: "Dwarves read stone like a map: may move through Mountains at a rate of 1 per tile, and movement over Hills costs 2/3 a movement point per tile. Dwarves still cannot build cities, buildings, or walls on Mountains.",
+    description: "Dwarves read stone like a map: may move through Mountains at a rate of 1 per tile, and movement over Hills costs 2/3 a movement point per tile. Dwarves still cannot build cities, buildings, or walls on Mountains. +0.5 coin from Hills.",
     costBreakdown: { coin: 9, lore: 5 },
     effects: [
       { type: "terrain_movement_override", terrain: "hills", value: 2 / 3 },
       { type: "unlock_mountain_tunneling" },
+      { type: "unlock_tile_bonus", terrain: "hills", bonus: { coin: 0.5 } },
     ],
   },
   dwarf_wealth_of_the_earth: {
     id: "dwarf_wealth_of_the_earth", label: "Wealth of the Earth", category: "civic", layer: 1, cost: 16,
     prereqs: [], raceOnly: "dwarf",
-    description: "+0.25 coin from Mountains.",
+    description: "+1 coin from Mountains.",
     costBreakdown: { coin: 10, lore: 6 },
-    effects: [{ type: "unlock_tile_bonus", terrain: "mountains", bonus: { coin: 0.25 } }],
+    effects: [{ type: "unlock_tile_bonus", terrain: "mountains", bonus: { coin: 1 } }],
   },
   dwarf_imported_goods: {
     id: "dwarf_imported_goods", label: "Imported Goods", category: "civic", layer: 2, cost: 28,
     prereqs: [], raceOnly: "dwarf",
-    description: "+0.5 harvest, +0.25 lore per road tile within a city's radius.",
+    description: "+0.5 lore per road tile within a city's radius.",
     costBreakdown: { coin: 18, lore: 10 },
-    effects: [{ type: "unlock_feature_bonus", feature: "road", bonus: { harvest: 0.5, lore: 0.25 } }],
+    effects: [{ type: "unlock_feature_bonus", feature: "road", bonus: { lore: 0.5 } }],
   },
   dwarf_dwarven_mining: {
     id: "dwarf_dwarven_mining", label: "Dwarven Mining", category: "civic", layer: 1, cost: 16,
@@ -1010,19 +1025,12 @@ window.GameData.TECHS = {
     costBreakdown: { coin: 10, lore: 6 },
     effects: [{ type: "unlock_mechanic", mechanic: "dwarven_mining" }],
   },
-  dwarf_quarry: {
-    id: "dwarf_quarry", label: "Quarry", category: "civic", layer: 1, cost: 20,
-    prereqs: ["dwarf_stonecunning"], raceOnly: "dwarf",
-    description: "+0.25 coin from Hills.",
-    costBreakdown: { coin: 13, lore: 7 },
-    effects: [{ type: "unlock_tile_bonus", terrain: "hills", bonus: { coin: 0.25 } }],
-  },
   dwarf_deep_lore: {
     id: "dwarf_deep_lore", label: "Deep Lore", category: "mystic", layer: 1, cost: 20,
     prereqs: ["dwarf_stonecunning"], raceOnly: "dwarf",
-    description: "+0.3 lore from Mountains.",
+    description: "+0.5 lore from Mountains.",
     costBreakdown: { lore: 12, coin: 8 },
-    effects: [{ type: "unlock_tile_bonus", terrain: "mountains", bonus: { lore: 0.3 } }],
+    effects: [{ type: "unlock_tile_bonus", terrain: "mountains", bonus: { lore: 0.5 } }],
   },
   dwarf_mountains_on_the_horizon: {
     id: "dwarf_mountains_on_the_horizon", label: "Mountains on the Horizon", category: "civic", layer: 2, cost: 20,
@@ -1245,12 +1253,22 @@ window.GameData.TECHS = {
   // =========================================================================
 
   // --- Layer 1 ---
+  // Absorbed "Bog Iron" (2026-09-04, user-directed tech-tree consolidation
+  // -- fewer L1/L2 terrain techs; only merged techs granting the SAME
+  // resource type, per user's own rule -- this tech grants no resource at
+  // all, just movement, so pairing it with coin doesn't mix resource
+  // types). The Swamp lore bonus (The Old Ways) is a DIFFERENT resource
+  // type and stays its own separate tech untouched. The "orc_bog_harvest"
+  // id no longer exists -- nothing else referenced it by id.
   orc_marsh_paths: {
     id: "orc_marsh_paths", label: "Marsh Paths", category: "civic", layer: 1, cost: 12,
     prereqs: [], raceOnly: "orc",
-    description: "Movement over Swamp costs 2/3 a movement point per tile.",
+    description: "Movement over Swamp costs 2/3 a movement point per tile. +0.75 coin from Swamp.",
     costBreakdown: { lore: 12 },
-    effects: [{ type: "terrain_movement_override", terrain: "swamp", value: 2 / 3 }],
+    effects: [
+      { type: "terrain_movement_override", terrain: "swamp", value: 2 / 3 },
+      { type: "unlock_tile_bonus", terrain: "swamp", bonus: { coin: 0.75 } },
+    ],
   },
   orc_forced_march: {
     id: "orc_forced_march", label: "Forced March", category: "civic", layer: 2, cost: 14,
@@ -1314,26 +1332,6 @@ window.GameData.TECHS = {
       { type: "unlock_unit", unit: "wolf_rider" },
       { type: "unit_terrain_movement_override", terrain: "forest", value: 2 / 3, units: ["wolf_rider"] },
     ],
-  },
-  orc_bog_harvest: {
-    // Label/effect reworked 2026-09-01, user-directed (id kept stable for
-    // save compatibility -- an existing save's completedTechs still
-    // resolves to this same tech slot, just with its new effect): was
-    // "Wetland Harvest", +0.25 Harvest from Swamp. Now grants Coin instead,
-    // same +0.25 magnitude and civic/layer-1/cost-20 shape as the other
-    // race's coin-from-terrain techs (Elf's Gems of Starlight, Dwarf's
-    // Wealth of the Earth/Quarry) -- bog iron is a real historical
-    // practice (iron ore that naturally forms in wetlands), which is what
-    // justifies Coin, not Harvest, coming out of a Swamp tile. Bonus
-    // replaced with a flat +0.5 coin (2026-09-01, user-directed) -- was
-    // briefly +0.25 coin/+0.5 lore; the lore half was dropped, not kept
-    // alongside this, so Bog Iron is coin-only again. Raised 0.5->0.75 coin
-    // (2026-09-02, user-directed).
-    id: "orc_bog_harvest", label: "Bog Iron", category: "civic", layer: 1, cost: 20,
-    prereqs: [], raceOnly: "orc",
-    description: "+0.75 coin from Swamp.",
-    costBreakdown: { lore: 14, coin: 6 },
-    effects: [{ type: "unlock_tile_bonus", terrain: "swamp", bonus: { coin: 0.75 } }],
   },
   orc_warcraft: {
     id: "orc_warcraft", label: "War Camp", category: "building", layer: 1, cost: 22,
@@ -1755,12 +1753,23 @@ window.GameData.TECHS = {
     costBreakdown: { lore: 12 },
     effects: [{ type: "terrain_movement_override", terrain: "hills", value: 2 / 3 }],
   },
+  // Absorbed "Riverboat Trade" (2026-09-04, user-directed tech-tree
+  // consolidation -- fewer L1/L2 terrain techs; only merged techs granting
+  // the SAME resource type, per user's own rule -- this tech grants no
+  // resource at all, just movement, so pairing it with coin doesn't mix
+  // resource types), pulling that bonus down from L2 to L1 in the process.
+  // A Nice Day for Fishing's river LORE bonus is a DIFFERENT resource type
+  // and stays its own separate tech untouched. The "halfellow_riverboat_
+  // trade" id no longer exists -- nothing else referenced it by id.
   halfellow_riverfolk: {
     id: "halfellow_riverfolk", label: "Riverfolk", category: "civic", layer: 1, cost: 12,
     prereqs: [], raceOnly: "halfellow",
-    description: "Movement over a river tile costs 1/2 a movement point per tile, regardless of terrain. (Does not stack with Singing Hills on a hill-with-river tile -- only the cheaper of the two applies, which is currently this one's.)",
+    description: "Movement over a river tile costs 1/2 a movement point per tile, regardless of terrain. (Does not stack with Singing Hills on a hill-with-river tile -- only the cheaper of the two applies, which is currently this one's.) +0.5 coin per river tile within a city's radius.",
     costBreakdown: { lore: 12 },
-    effects: [{ type: "terrain_movement_override", terrain: "river", value: 1 / 2 }],
+    effects: [
+      { type: "terrain_movement_override", terrain: "river", value: 1 / 2 },
+      { type: "unlock_feature_bonus", feature: "river", bonus: { coin: 0.5 } },
+    ],
   },
   // Moved from L2 (2026-07-12): Halfellow's stealth kit was coming online
   // too late to matter during the exact early-rush window that was
@@ -1826,9 +1835,9 @@ window.GameData.TECHS = {
   halfellow_road_goes_ever_on: {
     id: "halfellow_road_goes_ever_on", label: "The Road Goes Ever On", category: "civic", layer: 1, cost: 22,
     prereqs: [], raceOnly: "halfellow",
-    description: "+0.5 lore per road tile within a city's radius.",
+    description: "+1 lore per road tile within a city's radius.",
     costBreakdown: { lore: 14, harvest: 8 },
-    effects: [{ type: "unlock_feature_bonus", feature: "road", bonus: { lore: 0.5 } }],
+    effects: [{ type: "unlock_feature_bonus", feature: "road", bonus: { lore: 1 } }],
   },
   // New (2026-08-29, user-directed): a foraging tech -- gathering channels
   // (Farm Soil/Hunt Game/Fishing) heal the unit while it works, a flat 2 HP
@@ -1952,20 +1961,12 @@ window.GameData.TECHS = {
     effects: [{ type: "universal_range_grant", value: 2 }],
   },
 
-  // --- Layer 3 ---
-  halfellow_riverboat_trade: {
-    id: "halfellow_riverboat_trade", label: "Riverboat Trade", category: "civic", layer: 2, cost: 38,
-    prereqs: ["halfellow_riverfolk"], raceOnly: "halfellow",
-    description: "+0.5 coin per river tile within a city's radius.",
-    costBreakdown: { coin: 22, harvest: 16 },
-    effects: [{ type: "unlock_feature_bonus", feature: "river", bonus: { coin: 0.5 } }],
-  },
   halfellow_nice_day_fishing: {
     id: "halfellow_nice_day_fishing", label: "A Nice Day for Fishing", category: "civic", layer: 1, cost: 38,
     prereqs: ["halfellow_riverfolk"], raceOnly: "halfellow",
-    description: "+0.5 lore per river tile within a city's radius.",
+    description: "+1 lore per river tile within a city's radius.",
     costBreakdown: { lore: 22, coin: 16 },
-    effects: [{ type: "unlock_feature_bonus", feature: "river", bonus: { lore: 0.5 } }],
+    effects: [{ type: "unlock_feature_bonus", feature: "river", bonus: { lore: 1 } }],
   },
   halfellow_neighborhood_pub: {
     id: "halfellow_neighborhood_pub", label: "Neighborhood Pub", category: "building", layer: 2, cost: 35,
