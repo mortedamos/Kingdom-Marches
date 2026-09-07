@@ -4422,8 +4422,35 @@
   // -- long enough to register as a deliberate "look here" beat without
   // dragging out a big turn the way the attack-notice pauses above
   // (dialog-driven, so already unhurried) would. See advanceTurn's
-  // processBatch for the actual follow logic.
-  const ENEMY_ACTION_FOLLOW_PAUSE_MS = 250;
+  // processBatch for the actual follow logic. Raised from 250ms to 750ms
+  // (2026-09-06, user-directed) -- 250ms wasn't enough time to actually read
+  // the floating action label before the batch moved on.
+  const ENEMY_ACTION_FOLLOW_PAUSE_MS = 750;
+
+  // Simplified, motivation-free label for the enemy-action camera follow's
+  // floating text (2026-09-06, user-directed: the raw unit.currentMission
+  // text -- e.g. "Sneaking up on ORC's Wanderer to steal its claim" --
+  // revealed too much of the AI's own reasoning). Exactly four buckets,
+  // checked in this priority order: an active gathering channel wins over
+  // everything else (a unit that's also standing still while mining should
+  // read as "Gathering", not "Waiting"); a small set of stable
+  // currentMission prefixes catches every combat outcome (unit vs unit,
+  // city siege/capture/raze, structure raid/destroy) without needing a
+  // dedicated "did this step attack" signal from the engine; actual
+  // movement (already known from the caller's enemyUnitStartPos comparison)
+  // catches everything else that changed tile, including special-ability
+  // repositioning (teleports, cave/gate hops) this doesn't try to
+  // separately name; anything left -- resting, holding position, mid-
+  // ritual, defending -- reads as "Waiting".
+  const GATHERING_CHANNELS = new Set(["mining", "fishing", "delving", "hunting", "farming"]);
+  const ATTACK_MISSION_PREFIXES = ["Attacking", "Besieging", "Raiding", "Destroyed", "Captured", "Razed", "Fallen in battle"];
+  function describeEnemyActionKind(unit, moved) {
+    if (GATHERING_CHANNELS.has(unit.channeling)) return "Gathering";
+    const mission = unit.currentMission || "";
+    if (ATTACK_MISSION_PREFIXES.some((p) => mission.startsWith(p))) return "Attacking";
+    if (moved) return "Moving";
+    return "Waiting";
+  }
 
   function offerAttackNotice(notice, onDone, { goToDelayMs = 0 } = {}) {
     viewState.dialog = {
@@ -4653,19 +4680,15 @@
               const onScreen = window.UI.render.isTileOnScreen(steppedUnit.x, steppedUnit.y, $("map-canvas"), gameState, viewState);
               setTimeout(() => {
                 if (!onScreen) centerViewOn(steppedUnit.x, steppedUnit.y);
-                // "What it's doing" (2026-09-06, user-directed): ai.js
-                // stamps a fresh, human-readable currentMission on every
-                // unit at the end of its own step (the same text the
-                // sidebar's own "Mission" row shows for an AI unit) --
-                // reused as-is here rather than re-deriving a separate
-                // "attacking/mining/moving" classification from scratch.
+                // "What it's doing" (2026-09-06, user-directed), kept
+                // deliberately simple -- see describeEnemyActionKind's own
+                // doc comment for why this isn't just unit.currentMission.
                 // Flash the tile too, same brief attention-ring
                 // handleNextUnit uses for the player's own jumps, so the
                 // followed unit doesn't just silently sit there once the
                 // camera lands.
-                if (steppedUnit.currentMission) {
-                  window.GameEngine.floatingText.spawnFloatingText(steppedUnit, steppedUnit.currentMission, "action");
-                }
+                window.GameEngine.floatingText.spawnFloatingText(
+                  steppedUnit, describeEnemyActionKind(steppedUnit, moved), "action");
                 viewState.flashTile = { x: steppedUnit.x, y: steppedUnit.y, startTime: performance.now() };
                 redraw();
                 setTimeout(processBatch, ENEMY_ACTION_FOLLOW_PAUSE_MS);
