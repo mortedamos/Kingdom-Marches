@@ -769,9 +769,9 @@ window.GameEngine = window.GameEngine || {};
    *  structure precedence at a shared tile), but the structure shouldn't
    *  have been listed as if it were independently reachable there). No
    *  building-type filter -- attackTargetAt offers ANY enemy structure, not
-   *  just walls, so this matches. noOrdinaryAttack (Dwarf Bombard) is
-   *  excluded, same gate the remote-tile branch below applies -- its only
-   *  offense is the standalone Bombardment pill, not this one. */
+   *  just walls, so this matches. A unit flagged noOrdinaryAttack (none
+   *  currently -- see units.js) would be excluded here, same gate the
+   *  remote-tile branch below applies. */
   function attackTargets(unit, gameState, humanCivId) {
     const civ = gameState.civs[unit.civId];
     if (!civ || unit.usedThisTurn) return [];
@@ -1264,11 +1264,11 @@ window.GameEngine = window.GameEngine || {};
       }
 
       // Dwarf "Bombardment": same standalone tile-placement shape as
-      // Fireball! just above -- Bombard's ONLY offensive option (see
-      // units.js's noOrdinaryAttack), so this is unconditional on the
-      // mechanic being unlocked at all rather than gated behind a second
-      // tech the way Fireball is behind Battle Mage -- owning a Bombard
-      // already implies dwarf_bombardment is researched.
+      // Fireball! just above, offered alongside Bombard's ordinary attack
+      // (see units.js's bombard comment) rather than instead of it. This is
+      // unconditional on the mechanic being unlocked at all rather than
+      // gated behind a second tech the way Fireball is behind Battle Mage --
+      // owning a Bombard already implies dwarf_bombardment is researched.
       if (unit.typeId === "bombard" && !unit.usedThisTurn) {
         options.push({ kind: "bombardment", label: "Bombardment" });
       }
@@ -1477,10 +1477,10 @@ window.GameEngine = window.GameEngine || {};
     // This Tile" against an occupied tile paths to the closest reachable
     // approach (see pathfinding.js), which reads correctly as "advance on
     // it" rather than opening nothing at all.
-    // Dwarf "Bombardment": Bombard has no ordinary attack at all (see
-    // units.js's noOrdinaryAttack) -- skip this branch entirely so a click
-    // on an in-range enemy never offers a normal "Attack" pill; its only
-    // offense is the Bombardment pill below.
+    // A unit flagged noOrdinaryAttack (none currently -- see units.js; used
+    // to be Dwarf Bombard) skips this branch entirely, so a click on an
+    // in-range enemy never offers a normal "Attack" pill for it -- only
+    // whatever standalone targeted action(s) it has instead.
     const target = baseUnit.noOrdinaryAttack ? null : attackTargetAt(unit, gameState, x, y, humanCivId);
     if (target) {
       const preview = previewOrder(unit, gameState, x, y, humanCivId);

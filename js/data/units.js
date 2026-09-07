@@ -522,19 +522,21 @@ window.GameData.UNITS = {
     nameSpecial: true, // a construct, not a person -- see unit-names.js
   },
   // dwarf_bombardment: a squat, mortar-shaped bombard (think Mons Meg/Tsar
-  // Cannon, not a long field cannon) -- deliberately has NO ordinary attack
-  // action at all (`noOrdinaryAttack: true`, checked by orders.js's
-  // contextMenuOptions and ai.js's turn dispatch/considerAttackOrGarrison).
-  // Its only offense is "Bombardment," a standalone targeted 2x2-area blast
-  // -- see ai.js's performDwarfBombardment/combat.js's applyBombardBlast,
-  // same "own action, not a ride-on-attack passive" shape as Human's
-  // Fireball!. `attack` still feeds that blast's damage math even though
-  // the unit never throws a normal punch with it.
+  // Cannon, not a long field cannon). Has an ordinary single-target attack
+  // like any other military unit (2026-09-06, user-directed -- previously
+  // `noOrdinaryAttack: true` restricted it to ONLY "Bombardment"), plus its
+  // own standalone "Bombardment" action, a targeted 2x2-area blast -- see
+  // ai.js's performDwarfBombardment/combat.js's applyBombardBlast, same
+  // "own action, not a ride-on-attack passive" shape as Human's Fireball!.
+  // `attack` feeds both: its normal attacks AND the blast's damage math.
+  // ai.js's dispatch tries Bombardment first each turn and only falls
+  // through to the ordinary attack (via considerAttackOrGarrison) when
+  // nothing was worth bombarding.
   bombard: {
     id: "bombard", label: "Bombard", symbol: "⛰", category: "military", raceOnly: "dwarf", range: 3,
-    attack: 8, defense: 4, movement: 2, visionRadius: 3, siegePct: 1.5, siegeAtRange: true,
+    attack: 7, defense: 4, movement: 2, visionRadius: 3, siegePct: 1.25, siegeAtRange: true,
     attackChars: ["⚫️", "💥"], biggerPct: .6, burnChancePct: 0.5,
-    noOrdinaryAttack: true, neverExplores: true, muzzleSmoke: true,
+    neverExplores: true, muzzleSmoke: true,
     nameSpecial: true, // a machine, not a person -- see unit-names.js
   },
 

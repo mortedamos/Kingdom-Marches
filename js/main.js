@@ -6449,8 +6449,9 @@
   }
 
   /** Dwarf "Bombardment": same tile-placement shape as Fireball! just
-   *  above -- Bombard's ONLY offense (see units.js's noOrdinaryAttack), so
-   *  this is unconditional rather than gated behind a second tech. The
+   *  above, offered alongside Bombard's ordinary attack (see units.js's
+   *  bombard comment) -- unconditional rather than gated behind a second
+   *  tech. The
    *  picked tile becomes one CORNER of the 2x2 blast (see combat.js's
    *  bombardBlastOffsets/applyBombardBlast), not a center -- which corner
    *  depends on which side of the Bombard the hovered tile is on, so the

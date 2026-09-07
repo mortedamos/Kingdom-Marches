@@ -5318,13 +5318,12 @@ window.GameEngine = window.GameEngine || {};
       // only ever fires when it's actually a good trade -- exploring is
       // still the default, just no longer at the cost of an easy kill.
       // Dwarf "Bombardment": tried before the ordinary combat dispatch --
-      // Bombard has no other offense (noOrdinaryAttack, see units.js and
-      // considerAttackOrGarrison's own guard). Deliberately does NOT
-      // `continue` on failure the way Scout's branch does just below --
-      // with nothing worth bombarding this turn, the unit should still be
-      // free to reposition via whatever generic movement logic the rest
-      // of this dispatch cascade falls through to (it just never reaches
-      // an "attack" step, since that's guarded off above).
+      // preferred over Bombard's ordinary attack (see units.js) when there's
+      // a worthwhile 2x2 area to hit. Deliberately does NOT `continue` on
+      // failure the way Scout's branch does just below -- with nothing
+      // worth bombarding this turn, the unit falls through to the generic
+      // cascade below, where the "always try to attack first" call picks up
+      // its ordinary attack instead (2026-09-06: no longer gated off here).
       if (unit.typeId === "bombard" && maybeBombardStrike(civ, unit, gameState, log)) continue;
 
       if (unit.typeId === "scout") {
@@ -6226,9 +6225,8 @@ window.GameEngine = window.GameEngine || {};
   const BOMBARDMENT_RANGE = 3;
 
   /**
-   * Dwarf "Bombardment": Bombard's ONLY offensive action -- it has no
-   * ordinary attack at all (`noOrdinaryAttack` on the unit, see units.js
-   * and this file's turn-dispatch/considerAttackOrGarrison guards). Same
+   * Dwarf "Bombardment": Bombard's own standalone targeted-blast action,
+   * on top of its ordinary attack (see units.js's bombard comment). Same
    * standalone-targeted-blast shape as performWizardFireball, but the
    * blast is combat.js's applyBombardBlast (2x2, target = top-left
    * corner) instead of Fireball's 3x3, and burnChancePct is read as
@@ -6359,9 +6357,9 @@ window.GameEngine = window.GameEngine || {};
   /**
    * Dwarf "Bombardment" AI: scans every currently-visible top-left anchor
    * within BOMBARDMENT_RANGE for the 2x2 block that nets the best score,
-   * and fires if it clears BOMBARDMENT_MIN_TARGETS. This is the Bombard's
-   * ONLY offensive option (see noOrdinaryAttack) -- called unconditionally
-   * for every Bombard's turn, not gated behind a mechanic check the way
+   * and fires if it clears BOMBARDMENT_MIN_TARGETS. Tried before the
+   * Bombard's ordinary attack every turn (see the dispatch cascade above),
+   * called unconditionally, not gated behind a mechanic check the way
    * Fireball is behind "fireball_splash", since Bombardment is simply what
    * researching dwarf_bombardment (which is required to ever own a Bombard
    * at all) grants. Returns true if it consumed the turn.

@@ -347,11 +347,11 @@ window.UI = window.UI || {};
    *  plain, unlinked chip. */
   function availableActionsFor(unit) {
     const actions = [];
-    // Dwarf "Bombardment": Bombard has no ordinary attack at all (see
-    // units.js's noOrdinaryAttack/ai.js's considerAttackOrGarrison guard)
-    // -- its only offense is the standalone Bombardment blast.
-    if (unit.noOrdinaryAttack) actions.push({ label: "Bombardment", actionKey: "bombardment" });
-    else if (unit.attack > 0) actions.push({ label: "Attack", actionKey: "attack" });
+    // Dwarf "Bombardment": Bombard's own standalone targeted-blast action,
+    // on top of (not instead of, since 2026-09-06 -- see units.js's bombard
+    // comment) its ordinary attack below.
+    if (unit.typeId === "bombard") actions.push({ label: "Bombardment", actionKey: "bombardment" });
+    if (unit.attack > 0 && !unit.noOrdinaryAttack) actions.push({ label: "Attack", actionKey: "attack" });
     if (unit.movement > 0) actions.push({ label: "Move", actionKey: "moveTo" });
     if (unit.canFoundCity) actions.push({ label: "Found a City", actionKey: "foundCity" });
     if (unit.canBuildRoad) actions.push({ label: "Build Roads", actionKey: "buildRoad" });

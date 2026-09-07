@@ -65,9 +65,9 @@ window.GameConfig = {
     /** Local date this build was cut, YYYY-MM-DD. */
     date: "2026-09-06",
     /** Local time this build was cut, 24-hour HH:MM. */
-    time: "22:10",
+    time: "23:12",
     /** Monotonic build counter -- increment it, don't recompute it. */
-    number: 268,
+    number: 269,
   },
 
   // =========================================================================
@@ -831,22 +831,26 @@ window.GameConfig = {
     xpPerGatheringRound: 1,
 
     /** Per-level bonus for each of the seven upgrade paths a leveling unit
-     *  can pick. Attack/Defense are flat +1 (meaningful on this game's small
-     *  integer stat scale). Siege/First Strike/Double Strike are
-     *  percentage-point bonuses, kept deliberately smaller per level:
-     *  siegePct only applies against structures, firstStrikePct compounds
-     *  every round of a fight, and doubleStrikePct is worth roughly a whole
-     *  extra attack's chance to land. visionRadius/movement are the
+     *  can pick. Attack/Defense are flat +0.5 (2026-09-06, user-directed;
+     *  was +1 -- halved for a gentler per-level curve on this game's small
+     *  stat scale; sidebar.js's levelUpChoicesHtml already formats a
+     *  non-integer value to one decimal, so this needed no display changes).
+     *  Siege/First Strike are percentage-point bonuses, kept deliberately
+     *  smaller per level: siegePct only applies against structures and
+     *  firstStrikePct compounds every round of a fight. Double Strike is
+     *  +20%/level (2026-09-06, user-directed; was +7.5%) -- worth roughly a
+     *  whole extra attack's chance to land, so this now climbs much faster
+     *  than Siege/First Strike by design. visionRadius/movement are the
      *  same flat-add convention as Attack/Defense, on this game's
      *  already-small vision/movement scales -- see turns.js's visibility
      *  radius sum and ai.js's computeMovementBudget for where each reads
      *  unit.levelBonuses. */
     bonusValues: {
-      attack: 1,
-      defense: 1,
+      attack: 0.5,
+      defense: 0.5,
       siegePct: 0.10,
       firstStrikePct: 0.05,
-      doubleStrikePct: 0.075,
+      doubleStrikePct: 0.20,
       visionRadius: 1,
       movement: 0.5,
     },

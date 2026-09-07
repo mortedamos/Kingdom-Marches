@@ -303,16 +303,16 @@ window.GameEngine = window.GameEngine || {};
   // Attack/Defense/visionRadius/movement are flat adds (see turns.js's
   // visibility sum and ai.js's computeMovementBudget for where visionRadius/
   // movement are actually read) matching every other flat stat bonus in
-  // the game (ov.attack, crusadeAura.attackBonus, etc). Siege/First Strike/
-  // Double Strike are percentage-point bonuses (all already stored as 0-1
-  // fractions everywhere else in the codebase) kept deliberately smaller
-  // per-level than Attack/Defense's proportional impact: siegePct only ever
-  // applies against structures, firstStrikePct compounds every round of a
+  // the game (ov.attack, crusadeAura.attackBonus, etc) -- Attack/Defense are
+  // +0.5/level (2026-09-06, user-directed; was +1). Siege/First Strike are
+  // percentage-point bonuses (stored as 0-1 fractions everywhere else in the
+  // codebase) kept deliberately small per-level: siegePct only ever applies
+  // against structures, and firstStrikePct compounds every round of a
   // fight, so a Paladin's base 6% would nearly triple by level 5 at
-  // +2%/level -- this is capped at +1%/level instead -- and doubleStrikePct
-  // is a whole extra swing's worth of value per point, so 7%/level was
-  // picked to land in the same rough per-level weight class as the other
-  // two, not scaled to Attack/Defense's flat-point convention.
+  // +2%/level -- this is capped at +1%/level instead. Double Strike is
+  // +20%/level (2026-09-06, user-directed; was +7.5%) -- deliberately the
+  // fastest-climbing of the three percentage paths now, not scaled to match
+  // Siege/First Strike's per-level weight the way it originally was.
   const LEVEL_BONUS_VALUES = LVL_CFG.bonusValues;
   const LEVEL_UP_STATS = Object.keys(LEVEL_BONUS_VALUES);
 
