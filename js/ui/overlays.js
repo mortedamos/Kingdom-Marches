@@ -528,6 +528,12 @@ window.UI = window.UI || {};
     // Strike) -- deliberately not `warning`, which reads as something bad
     // happening to the unit the text is anchored to.
     strike: { color: "#ffab40", bold: true, sizeFrac: 0.26 },
+    // AI-turn camera follow (2026-09-06, user-directed): unit.currentMission
+    // text shown above a followed enemy unit -- neutral/informational
+    // rather than good (heal/xp) or bad (warning), and a touch smaller
+    // since these can run longer ("Sneaking up on ..." etc.) than the
+    // other short popups here.
+    action: { color: "#b0bec5", bold: false, sizeFrac: 0.17 },
     default: { color: "#ffffff", bold: false, sizeFrac: 0.22 },
   };
 

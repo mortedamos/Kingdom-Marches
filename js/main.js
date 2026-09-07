@@ -4653,6 +4653,20 @@
               const onScreen = window.UI.render.isTileOnScreen(steppedUnit.x, steppedUnit.y, $("map-canvas"), gameState, viewState);
               setTimeout(() => {
                 if (!onScreen) centerViewOn(steppedUnit.x, steppedUnit.y);
+                // "What it's doing" (2026-09-06, user-directed): ai.js
+                // stamps a fresh, human-readable currentMission on every
+                // unit at the end of its own step (the same text the
+                // sidebar's own "Mission" row shows for an AI unit) --
+                // reused as-is here rather than re-deriving a separate
+                // "attacking/mining/moving" classification from scratch.
+                // Flash the tile too, same brief attention-ring
+                // handleNextUnit uses for the player's own jumps, so the
+                // followed unit doesn't just silently sit there once the
+                // camera lands.
+                if (steppedUnit.currentMission) {
+                  window.GameEngine.floatingText.spawnFloatingText(steppedUnit, steppedUnit.currentMission, "action");
+                }
+                viewState.flashTile = { x: steppedUnit.x, y: steppedUnit.y, startTime: performance.now() };
                 redraw();
                 setTimeout(processBatch, ENEMY_ACTION_FOLLOW_PAUSE_MS);
               }, ENEMY_ACTION_FOLLOW_PAUSE_MS);
