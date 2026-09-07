@@ -4678,8 +4678,15 @@
             const idx = steppedUnit.y * map.width + steppedUnit.x;
             if (visible && visible.has(idx)) {
               const onScreen = window.UI.render.isTileOnScreen(steppedUnit.x, steppedUnit.y, $("map-canvas"), gameState, viewState);
+              // Camera lands FIRST, immediately -- the pause below then
+              // holds on that quiet arrival BEFORE the flash/floating-text
+              // "reveal" (2026-09-06, user-directed fix: these used to fire
+              // in the SAME instant as the recenter, so the pause was really
+              // just sitting on the OLD view rather than giving the player a
+              // beat to find the unit before its action is called out).
+              if (!onScreen) centerViewOn(steppedUnit.x, steppedUnit.y);
+              redraw();
               setTimeout(() => {
-                if (!onScreen) centerViewOn(steppedUnit.x, steppedUnit.y);
                 // "What it's doing" (2026-09-06, user-directed), kept
                 // deliberately simple -- see describeEnemyActionKind's own
                 // doc comment for why this isn't just unit.currentMission.
