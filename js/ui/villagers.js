@@ -166,8 +166,16 @@ window.UI = window.UI || {};
    *  instead of city/structure tiles -- see territoryPointsFor. `map` is
    *  only needed for that roll (to confirm a filled-in tile is still
    *  actually owned right now); passed through from render.js's own
-   *  gameState.map. */
-  function tick(visibleCities, map) {
+   *  gameState.map.
+   *
+   *  `spawnFactor` (0-1, default 1) scales both spawn chances -- the
+   *  day/night cycle drives it down through twilight and to zero at night,
+   *  so nobody new comes out after dark. Deliberately scales SPAWNING only,
+   *  never the figure-advance loop below: anyone already out keeps walking,
+   *  finishes their route, pauses and fades through the states they already
+   *  have, so the streets DRAIN as dusk falls instead of snapping empty at
+   *  a turn boundary. */
+  function tick(visibleCities, map, spawnFactor = 1) {
     const now = performance.now();
     // Reduced motion freezes every figure in place (dt forced to 0, same
     // technique as clouds.js's render()) rather than hiding them -- a
@@ -185,12 +193,12 @@ window.UI = window.UI || {};
       }
       if (elapsed >= nextRollAt.get(city)) {
         nextRollAt.set(city, elapsed + SPAWN_CHECK_INTERVAL_SECONDS);
-        if (countFor(city) < MAX_PER_CITY) {
+        if (countFor(city) < MAX_PER_CITY && spawnFactor > 0) {
           for (const s of city.structures) {
             if (countFor(city) >= MAX_PER_CITY) break;
-            if (Math.random() < SPAWN_CHANCE_PER_STRUCTURE) spawnFor(city, civ, waypointsFor(city));
+            if (Math.random() < SPAWN_CHANCE_PER_STRUCTURE * spawnFactor) spawnFor(city, civ, waypointsFor(city));
           }
-          if (countFor(city) < MAX_PER_CITY && Math.random() < TERRITORY_SPAWN_CHANCE) {
+          if (countFor(city) < MAX_PER_CITY && Math.random() < TERRITORY_SPAWN_CHANCE * spawnFactor) {
             spawnFor(city, civ, territoryPointsFor(city, civ, map));
           }
         }

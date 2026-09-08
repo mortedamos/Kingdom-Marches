@@ -850,6 +850,7 @@
   function showSetupScreen() {
     if (detectMobile()) document.body.classList.add("mobile");
     window.UI.motion.init();
+    window.UI.daynight.init();
     applyMuteUrlSwitch();
     $("title-build-stamp").textContent = renderBuildStamp();
     $("launch-options-content").innerHTML = renderLaunchOptions();
@@ -1095,6 +1096,60 @@
       sel.addEventListener("change", () => window.UI.motion.setMode(sel.value));
     }
     window.UI.motion.onChange(sync);
+  }
+
+  /** Interface > Day/Night Cycle, plus its tuning panel.
+   *
+   *  The on/off is persisted by the module itself (roi_daynight_settings),
+   *  exactly as motion.js persists its own -- this only mirrors the stored
+   *  value onto the checkbox, since a reload or a loaded save can otherwise
+   *  leave the DOM's checked state stale.
+   *
+   *  The sliders are session-only and deliberately NOT persisted: they're a
+   *  dev affordance for dialling in the look, not a player setting. Scrub at
+   *  -1 means "follow the real turn"; 0-11 pins the sky (and the clock) to
+   *  that slot so all twelve can be inspected without ending twelve turns. */
+  function setupDayNightControls() {
+    const dn = window.UI.daynight;
+    const toggle = $("daynight-toggle");
+    if (toggle) {
+      toggle.checked = dn.isEnabled();
+      toggle.addEventListener("change", () => dn.setEnabled(toggle.checked));
+    }
+
+    const scrub = $("daynight-scrub"), scrubLabel = $("daynight-scrub-label");
+    if (scrub) {
+      const apply = () => {
+        const v = Number(scrub.value);
+        dn.setTuning({ scrubSlot: v < 0 ? null : v });
+        if (v < 0) {
+          scrubLabel.textContent = "Scrub: live";
+        } else {
+          const info = dn.phaseInfoForSlot(v);
+          scrubLabel.textContent = `Scrub: ${info.label} ${info.phaseTurn}/${info.phaseLength}`;
+        }
+      };
+      scrub.addEventListener("input", apply);
+      apply();
+    }
+
+    const slider = (id, labelId, key, name) => {
+      const el = $(id), label = $(labelId);
+      if (!el) return;
+      const apply = () => {
+        const v = Number(el.value);
+        dn.setTuning({ [key]: v });
+        label.textContent = `${name} ${v.toFixed(2)}`;
+      };
+      el.addEventListener("input", apply);
+      apply();
+    };
+    slider("daynight-dark", "daynight-dark-label", "darknessMul", "Darkness");
+    slider("daynight-glow", "daynight-glow-label", "glowMul", "Glow");
+    slider("daynight-radius", "daynight-radius-label", "radiusMul", "Light radius");
+
+    const replay = $("daynight-replay-btn");
+    if (replay) replay.addEventListener("click", () => dn.replayRipple());
   }
 
   /** Open/close wiring for the title screen's own menu bar -- same
@@ -1984,6 +2039,7 @@
     endTurnRemindersToggle.addEventListener("change", () => {
       viewState.endTurnRemindersEnabled = endTurnRemindersToggle.checked;
     });
+    setupDayNightControls();
     $("report-influence-btn").addEventListener("click", () => {
       viewState.reportView = "influence";
       redraw();
@@ -7198,6 +7254,11 @@
           // -- the 3D path has no equivalent sky layer, and its canvas is a
           // different element entirely.
           window.UI.clouds.render($("map-clouds"), viewState);
+          // The astronomical clock rides the same loop rather than redraw():
+          // the sun/moon glides along its arc for a second and a half after
+          // every End Turn, which a redraw-on-change repaint would render as
+          // a single jump.
+          window.UI.daynightClock.render();
         }
       }
       animFrameId = requestAnimationFrame(frame);

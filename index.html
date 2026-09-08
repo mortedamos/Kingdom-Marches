@@ -291,6 +291,40 @@
               <option value="reduced">Reduced</option>
             </select>
           </label>
+          <!-- Day/night cycle. Its own switch rather than something Motion
+               implies: the night tint is a STATE, not an animation, and a
+               player who turns motion down hasn't asked for permanent
+               daylight. Motion still pins the lamp flicker and shortens the
+               turn-change fade -- see js/ui/daynight.js. Persisted under
+               roi_daynight_settings, modelled on js/ui/motion.js. -->
+          <label class="audio-panel-row">
+            <span>Day / Night Cycle</span>
+            <input type="checkbox" id="daynight-toggle" checked>
+          </label>
+          <!-- Tuning. "Darker and bluer, but units still readable" is close
+               to impossible to land by editing numbers and reloading, and
+               reaching a given hour otherwise means ending that many turns.
+               Scrub jumps the sky (and the clock) to any slot instantly. -->
+          <div id="daynight-tuning-panel" class="fow-panel">
+            <div class="fow-panel-label">Day / Night Tuning</div>
+            <label class="audio-panel-row">
+              <span id="daynight-scrub-label">Scrub: live</span>
+              <input type="range" id="daynight-scrub" min="-1" max="11" step="1" value="-1">
+            </label>
+            <label class="audio-panel-row">
+              <span id="daynight-dark-label">Darkness 1.00</span>
+              <input type="range" id="daynight-dark" min="0" max="2" step="0.05" value="1">
+            </label>
+            <label class="audio-panel-row">
+              <span id="daynight-glow-label">Glow 1.00</span>
+              <input type="range" id="daynight-glow" min="0" max="3" step="0.05" value="1">
+            </label>
+            <label class="audio-panel-row">
+              <span id="daynight-radius-label">Light radius 1.00</span>
+              <input type="range" id="daynight-radius" min="0.2" max="2.5" step="0.05" value="1">
+            </label>
+            <button id="daynight-replay-btn" class="menu-dropdown-btn">Replay lamp ripple</button>
+          </div>
           <div id="fog-of-war-panel" class="fow-panel" style="display:none;">
             <div class="fow-panel-label">Fog of War</div>
             <label class="audio-panel-row"><span>Off</span><input type="radio" name="fow-mode" id="fow-mode-off" value="off" checked></label>
@@ -592,6 +626,9 @@
   <script src="js/data/riddles.js"></script>
   <script src="js/data/techs.js"></script>
   <script src="js/data/buildings.js"></script>
+  <!-- Hand-authored lamp positions for the day/night cycle. Data only; must
+       load before js/ui/daynight.js reads it. -->
+  <script src="js/data/window-lights.js"></script>
 
   <!-- Engine files (must load before main.js) -->
   <script src="js/engine/worldgen.js"></script>
@@ -617,9 +654,12 @@
   <script src="js/ui/motion.js"></script>
   <script src="js/ui/sprites.js"></script>
   <script src="js/ui/overlays.js"></script>
+  <!-- Day/night world lighting. Before render.js, which calls into it. -->
+  <script src="js/ui/daynight.js"></script>
   <script src="js/ui/render.js"></script>
   <script src="js/ui/clouds.js"></script>
   <script src="js/ui/villagers.js"></script>
+  <script src="js/ui/daynight-clock.js"></script>
   <script src="js/ui/render3d.js"></script>
   <script src="js/ui/sidebar.js"></script>
   <script src="js/ui/techtree.js"></script>

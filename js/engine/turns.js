@@ -25,6 +25,68 @@ window.GameEngine = window.GameEngine || {};
   const victoryTileTarget = () => window.GameConfig.victory.tileTarget;
   const victorySustainTurns = () => window.GameConfig.victory.sustainTurns;
 
+  /**
+   * DAY / NIGHT PHASE -- where in the 12-turn cycle a given turn falls.
+   *
+   * Pure and stateless: the phase is DERIVED from the turn number, never
+   * stored. That's what lets every save written before the cycle existed
+   * load with a correct phase, which matters because there is no save
+   * migration mechanism to hook into (savegame.js writes a `version` field
+   * that nothing ever reads).
+   *
+   * Lives in the engine rather than in js/ui/daynight.js even though today
+   * nothing but the renderer calls it. The cycle is currently PURELY
+   * COSMETIC -- vision radii, combat and AI are identical at midnight and
+   * at noon -- but "night reduces vision" or "night favours stealth" is the
+   * obvious next thing to want, and when that happens the engine and the
+   * renderer must not be able to disagree about what turn it is. One
+   * function, one answer.
+   *
+   * Returns:
+   *   slot         0-11, the position in the cycle (turnNumber % 12)
+   *   phase        "day" | "twilight" | "night" | "dawn"
+   *   label        display form of the above
+   *   phaseTurn    1-based turn within the phase ("Night 2 of 4")
+   *   phaseLength  how many turns that phase runs
+   *   cycleIndex   which full cycle we're in -- seeds per-night variation
+   *   darkness     0-1 normalized, purely for display/tuning readouts
+   *   lightsActive whether UNIT-carried light burns this slot. Building
+   *                windows are NOT covered by this -- they schedule
+   *                themselves per window and start a turn earlier; see the
+   *                slot table's own note in config.js.
+   */
+  function phaseForTurn(turnNumber) {
+    const cfg = window.GameConfig.view.dayNight;
+    const phases = cfg.phases;
+    const cycleLength = phases.reduce((sum, p) => sum + p.turns, 0);
+    const n = Math.max(0, Math.floor(turnNumber || 0));
+    const slot = n % cycleLength;
+
+    let cursor = 0;
+    let phase = phases[phases.length - 1];
+    for (const p of phases) {
+      if (slot < cursor + p.turns) { phase = p; break; }
+      cursor += p.turns;
+    }
+
+    const slotCfg = cfg.slots[slot] || { alpha: 0, lights: false };
+    // Normalized against the deepest alpha actually configured, so the
+    // readout stays meaningful if the slot table is retuned.
+    const peak = cfg.slots.reduce((m, s) => Math.max(m, s.alpha || 0), 0) || 1;
+
+    return {
+      slot,
+      phase: phase.id,
+      label: phase.label,
+      phaseTurn: slot - cursor + 1,
+      phaseLength: phase.turns,
+      cycleIndex: Math.floor(n / cycleLength),
+      cycleLength,
+      darkness: (slotCfg.alpha || 0) / peak,
+      lightsActive: !!slotCfg.unitLights,
+    };
+  }
+
   /** Computes each civ's currently-visible tile set (own territory + vision radius around units/cities) */
   function refreshVisibility(gameState) {
     const { map, civs } = gameState;
@@ -2053,6 +2115,7 @@ window.GameEngine = window.GameEngine || {};
   }
 
   window.GameEngine.turns = {
+    phaseForTurn,
     refreshVisibility,
     beginRound,
     beginCivTurn,

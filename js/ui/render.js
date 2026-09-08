@@ -340,6 +340,11 @@ window.UI = window.UI || {};
     const ts = Math.round(TILE_SIZE * (viewState.zoomLevel || 1));
     const now = performance.now();
     overlays.tick(now);
+    // Advance the eased day/night sky and clear last frame's light list
+    // before any pass can push into it. Must run before the Cities pass,
+    // which is the first thing to add a light.
+    window.UI.daynight.tick(now, gameState.turnNumber || 0);
+    window.UI.daynight.beginFrame();
 
     // Clamp scroll so we never go out of bounds
     const clamped = clampOffset(viewState.scrollX || 0, viewState.scrollY || 0, canvas, map, ts);
@@ -780,6 +785,10 @@ window.UI = window.UI || {};
             const drawHeight = ts * (img.naturalHeight / img.naturalWidth);
             const drawY = screenY + ts - drawHeight;
             ctx.drawImage(img, 0, 0, img.naturalWidth, img.naturalHeight, screenX, drawY, ts, drawHeight);
+            // Lamplight, from the rect we just drew into rather than from a
+            // second copy of this bottom-anchor formula -- see daynight.js's
+            // note on why light collection lives at the draw sites.
+            window.UI.daynight.addCityLight(civ, city, screenX, drawY, ts, drawHeight, ts, pop);
           } else {
             // Sprite frame = population tier (frame 0 = pop 1, frame 1 = pop 2, etc.)
             const tierAnim = citySprite.manifest.animations[`tier${pop}`] || citySprite.manifest.animations.idle;
@@ -930,6 +939,12 @@ window.UI = window.UI || {};
             const drawHeight = ts * (img.naturalHeight / img.naturalWidth);
             const drawY = screenY + ts - drawHeight;
             ctx.drawImage(img, 0, 0, img.naturalWidth, img.naturalHeight, screenX, drawY, ts, drawHeight);
+            // Lamplight -- but not for walls or bridges. Nobody keeps a lamp
+            // burning in a wall segment, and a lit run of them would draw the
+            // eye to the least interesting thing on the map.
+            if (!building.isWall && !building.isBridge) {
+              window.UI.daynight.addStructureLight(civ, s, screenX, drawY, ts, drawHeight, ts);
+            }
           } else {
             const pad = ts * 0.2;
             // Body: civ-colored rounded square
@@ -944,6 +959,13 @@ window.UI = window.UI || {};
             ctx.textAlign = "center";
             ctx.textBaseline = "middle";
             ctx.fillText(building.symbol || "▪", screenX + ts / 2, screenY + ts / 2 - ts * 0.03);
+            // The four Undead buildings ship no art and land here. They still
+            // get their glow (witchlight green, from the race lamp colours) --
+            // there's just no sprite to hang individual windows on, which is
+            // exactly the fallback daynight.js's specFor is built for.
+            if (!building.isWall && !building.isBridge) {
+              window.UI.daynight.addStructureLight(civ, s, screenX + pad, screenY + pad, ts - pad * 2, ts - pad * 2, ts);
+            }
           }
           // Burning (2026-08-19, user-requested): same flame-tongue effect
           // as burning units (see overlays.js's drawFlameEffect) -- s.burning
@@ -1209,6 +1231,10 @@ window.UI = window.UI || {};
       overlays.drawConditionVisualEffects(ctx, unit, unitSprite, boxX, boxY, boxSize, now);
       if (unit.conditions?.burning) overlays.drawFlameEffect(ctx, unit, boxX, boxY, boxSize, now);
       overlays.drawAmbientUnitEffects(ctx, unit, boxX, boxY, boxSize, now);
+      // Torch-, staff- and fire-bearers light their own patch of night.
+      // Anchored to the sprite BOX rather than the tile so the light walks
+      // with the unit's interpolated position mid-move.
+      window.UI.daynight.addUnitLight(unit, boxX, boxY, boxSize, ts);
 
       // HP bar
       if (unit.hp != null && unit.maxHp && unit.hp < unit.maxHp) {
@@ -1234,8 +1260,20 @@ window.UI = window.UI || {};
     // Ambient villager figures -- drawn after Cities/Structures/Units so
     // they're never hidden behind a building or wall they're walking past.
     // See villagers.js's own doc comment.
-    window.UI.villagers.tick(villagerCities, map);
+    // Spawn rate falls off through twilight and reaches zero at night, so
+    // the streets visibly drain as it gets dark instead of snapping empty --
+    // figures already out finish their route and fade on their own.
+    window.UI.villagers.tick(villagerCities, map, window.UI.daynight.villagerActivity());
     window.UI.villagers.draw(ctx, offsetX, offsetY, ts, villagerCities);
+
+    // NIGHTFALL. Everything above this line is the world and gets darkened;
+    // everything below it is player-facing feedback (routes, reticles,
+    // combat effects, floating text, the selection marker) and stays at full
+    // brightness. Dimming feedback would cost information the player needs
+    // regardless of the hour -- the same line motion.js draws when it
+    // declines to gate combat effects on reduced motion.
+    window.UI.daynight.drawWorldLighting(
+      ctx, canvas, gameState, viewState, offsetX, offsetY, ts, visible, now);
 
     // Where the player's self-directing units are headed -- above units,
     // below the hover preview, same reasoning as the path preview: a route

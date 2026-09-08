@@ -63,11 +63,11 @@ window.GameConfig = {
   // stamp, and the only cost of forgetting is being told the wrong thing.
   build: {
     /** Local date this build was cut, YYYY-MM-DD. */
-    date: "2026-09-06",
+    date: "2026-09-07",
     /** Local time this build was cut, 24-hour HH:MM. */
-    time: "23:12",
+    time: "21:44",
     /** Monotonic build counter -- increment it, don't recompute it. */
-    number: 269,
+    number: 270,
   },
 
   // =========================================================================
@@ -1082,6 +1082,292 @@ window.GameConfig = {
        *  merging into one soft mass. */
       puffsPerCloud: [10, 15],
       puffRadius: [38, 78],
+    },
+
+    /**
+     * DAY / NIGHT CYCLE -- purely cosmetic atmosphere (see js/ui/daynight.js).
+     *
+     * A 12-turn cycle derived from gameState.turnNumber and nothing else:
+     * 4 turns of day, 2 of twilight, 4 of night, 2 of dawn. Deliberately
+     * DERIVED rather than stored, so every save made before this existed
+     * loads with a correct phase and needs no migration (there is no
+     * migration mechanism -- savegame.js's `version` field is written and
+     * never read).
+     *
+     * Nothing in here touches gameplay. Vision radii, combat and AI are
+     * identical at midnight and at noon; the single engine-side entry point,
+     * turns.js's phaseForTurn, exists so that if that ever CHANGES there's
+     * one obvious place it hangs off.
+     */
+    dayNight: {
+      /** Master default for the Interface menu's toggle. A player's own
+       *  choice is persisted separately (roi_daynight_settings) and wins;
+       *  this is only what a first-time player gets. */
+      enabledByDefault: true,
+
+      /** Phase table, in cycle order. Lengths must sum to 12 -- daynight.js
+       *  asserts this at load rather than silently producing a lopsided
+       *  cycle if someone edits one number. */
+      phases: [
+        { id: "day", label: "Day", turns: 4 },
+        { id: "twilight", label: "Twilight", turns: 2 },
+        { id: "night", label: "Night", turns: 4 },
+        { id: "dawn", label: "Dawn", turns: 2 },
+      ],
+
+      /**
+       * Per-slot sky, indexed by `turnNumber % 12`. `tint` is the colour
+       * washed over the world and `alpha` its strength.
+       *
+       * `unitLights` is whether UNIT-carried light burns during that slot --
+       * torches, staves, wisps, burning units. Slots 5-10 is exactly what
+       * was asked for (last turn of twilight, all four of night, first turn
+       * of dawn) and also exactly the half of the cycle the moon is up, so
+       * the clock widget and the world agree by construction.
+       *
+       * BUILDING windows are deliberately NOT governed by this flag -- they
+       * schedule themselves per window (see `windows` below) and start
+       * lighting a turn earlier, at first twilight, because a settlement
+       * lighting its lamps is what tells you dusk has arrived. A torch is
+       * lit when you can no longer see; a lamp is lit when you'd rather not
+       * have to.
+       *
+       * Alpha ceiling is deliberately well under the fog scrim's own 0.55
+       * (render.js's drawRememberedTile): night has to stay comfortably
+       * readable, and fogged tiles must still look MORE obscured than a lit
+       * field at midnight or the fog stops reading as fog.
+       *
+       * EVERY NON-DAY TINT IS A DARK COLOUR, including the warm ones. These
+       * are composited source-over, so the wash's own brightness is added to
+       * the scene -- a literal sunset amber (#c2571f, luma ~112) made dusk
+       * measurably BRIGHTER than noon, which is backwards. Keeping each tint
+       * below roughly luma 45 means every slot darkens no matter what it's
+       * drawn over, while the hue still does the work of saying which time of
+       * day it is. Check that with the luma probe if you retune these.
+       */
+      slots: [
+        { tint: "#000000", alpha: 0.00, cool: "#1a3a8a", unitLights: false }, //  0  Day 1
+        { tint: "#000000", alpha: 0.00, cool: "#1a3a8a", unitLights: false }, //  1  Day 2
+        { tint: "#000000", alpha: 0.00, cool: "#1a3a8a", unitLights: false }, //  2  Day 3
+        { tint: "#000000", alpha: 0.00, cool: "#1a3a8a", unitLights: false }, //  3  Day 4
+        { tint: "#4a1f08", alpha: 0.26, cool: "#8a5520", unitLights: false }, //  4  Twilight 1 -- burnt orange
+        { tint: "#2e1430", alpha: 0.34, cool: "#553a72", unitLights: true }, //  5  Twilight 2 -- dusk violet
+        { tint: "#0e1b38", alpha: 0.42, cool: "#22407e", unitLights: true }, //  6  Night 1
+        { tint: "#0b1730", alpha: 0.46, cool: "#1d3a75", unitLights: true }, //  7  Night 2
+        { tint: "#0a1530", alpha: 0.48, cool: "#1b3773", unitLights: true }, //  8  Night 3 -- the small hours
+        { tint: "#0d1a36", alpha: 0.44, cool: "#213f7d", unitLights: true }, //  9  Night 4
+        { tint: "#141d3d", alpha: 0.32, cool: "#2a4788", unitLights: true }, // 10  Dawn 1 -- cold indigo
+        { tint: "#2e2618", alpha: 0.16, cool: "#8a7038", unitLights: false }, // 11  Dawn 2 -- first warm light
+      ],
+
+      /**
+       * How hard to push the world's HUE toward each slot's `cool` colour,
+       * scaled by how dark that slot is. This is the "day for night" trick,
+       * and it is doing more work than the darkening is.
+       *
+       * A plain source-over wash CANNOT make a warm scene read as cool: it
+       * averages toward the tint, so orange sand under a dark blue at 48%
+       * comes out muddy olive-grey with red still the dominant channel, and
+       * you'd have to go past 75% alpha -- unreadably dark -- before blue
+       * actually won. Measured: the wash alone moved the scene from strongly
+       * warm to merely neutral, never to blue.
+       *
+       * The "color" composite mode takes hue and saturation from the source
+       * and LUMINOSITY from what's underneath, so it recolours without
+       * flattening any of the art's shading. Applied through the same light
+       * cutouts as the darkness, so torchlit ground stays warm while
+       * everything around it goes blue. Set to 0 to disable the effect and
+       * fall back to the wash alone.
+       */
+      colorizeScale: 0.38,
+
+      /** Cross-fade when the turn advances. The sky HOLDS for the whole of a
+       *  turn and only moves on End Turn, so the screen never changes while
+       *  the player is thinking. Reduced motion shortens rather than removes
+       *  it -- an instant full-screen brightness step 12x per cycle is
+       *  exactly what the project's no-flashing rule is guarding against. */
+      easeMs: 1500,
+      easeMsReduced: 300,
+
+      /** The darkness and broad-falloff layers render to an offscreen buffer
+       *  at this fraction of viewport size and are upscaled on blit. Soft
+       *  radial gradients survive it invisibly and it quarters the fill
+       *  cost. Per-window dots bypass this and draw at full resolution --
+       *  they're ~3px at default zoom and would smear. 1 disables it. */
+      scratchScale: 0.5,
+
+      lights: {
+        /** Multiplies every light radius below. The tuning panel drives this. */
+        radiusScale: 1.0,
+        /** How much warm light is ADDED on top (the "lighter" pass), versus
+         *  how much darkness each light merely removes. 0 gives a pure
+         *  cutout -- ground at true daylight colour, no glow.
+         *
+         *  Kept LOW. The cutout pass has already brightened everything near a
+         *  light by removing the night from it; the additive pass is only
+         *  meant to put a warm cast on top of that. At 0.55 the two together
+         *  made deepest night come out warmer and brighter than noon. */
+        glowStrength: 0.20,
+        /** Ceiling on how much of the night a single light may remove at its
+         *  own centre. Below 1 so even a bonfire's core keeps a trace of
+         *  darkness instead of reading as a hole punched through to the
+         *  daytime map. */
+        maxCutout: 0.82,
+        /** Peak-to-trough of a light's flicker, as a fraction of its own
+         *  alpha. Pinned to 0 under reduced motion. Kept low and slow: this
+         *  is a candle guttering, not a strobe. */
+        flickerAmount: 0.12,
+
+        /**
+         * Units that carry their own light. Radii are in TILES.
+         *
+         * great_bonfire's 8 matches its visionRadius (units.js: "so the
+         * light it casts also reveals fog of war that far") and the aura
+         * overlay overlays.js already draws at 8 -- NOT the gameplay aura's
+         * radius of 4 (turns.js's GREAT_BONFIRE_AURA_RADIUS). That mismatch
+         * predates this feature; 8 is the one that matches the fiction and
+         * what the player already sees drawn.
+         */
+        units: {
+          great_bonfire: { radius: 8, color: "#ff7043", intensity: 0.85, flicker: 1.0 },
+          wisp: { radius: 3, color: "#7fe6c4", intensity: 0.50, flicker: 1.6 },
+          wizard: { radius: 2, color: "#cfd8ff", intensity: 0.40, flicker: 0.4 },
+          militia: { radius: 2, color: "#ffb15e", intensity: 0.45, flicker: 1.2 },
+        },
+        /** Any unit with conditions.burning, regardless of type. */
+        burning: { radius: 3, color: "#ff8a3d", intensity: 0.60, flicker: 1.8 },
+
+        /** Off by default -- these read as fire but lighting all of them at
+         *  once crowds the map. Flip to true to include. */
+        optionalUnits: {
+          trap_fire: false,
+          dragon: false,
+          mushroom: false,
+        },
+
+        /** Lamp colour by race, for cities and buildings. Warm hearth light
+         *  for the living, cold witchlight for the Undead. Deliberately
+         *  hand-picked rather than taken from RACES[id].color -- those are
+         *  UI border colours chosen for contrast against the sidebar, and
+         *  several of them are far too saturated to read as lamplight. */
+        raceColors: {
+          human: "#ffb765",
+          halfellow: "#ffc078",
+          dwarf: "#ff9a4d",
+          elf: "#bfe8c8",
+          orc: "#ff6b4a",
+          undead: "#8fe0a8",
+        },
+        /** Fallback for a race with no entry above (and for the Monsters
+         *  pseudo-civ, which owns no cities but can hold structures). */
+        defaultRaceColor: "#ffb765",
+
+        /** Broad glow radius in tiles for a whole settlement, before the
+         *  population-tier scale below. Buildings get the smaller one. */
+        cityRadius: 2.6,
+        buildingRadius: 1.6,
+        /** City glow multiplier by population tier 1-6, so a capital burns
+         *  visibly brighter than a hamlet. Index 0 is tier 1. */
+        cityTierScale: [0.70, 0.80, 0.90, 1.00, 1.12, 1.25],
+      },
+
+      windows: {
+        /** Which slots a window may light on, and which it may go dark on.
+         *  Lighting spans twilight into the first night turn; going dark is
+         *  confined to the last three night turns, so the city empties
+         *  toward morning. Each window picks one of each, deterministically
+         *  per building instance per cycle -- see daynight.js's
+         *  windowSchedule. */
+        onSlots: [4, 5, 6],
+        offSlots: [7, 8, 9],
+        /** Wall-clock spread, in ms, AFTER the chosen turn begins. This is
+         *  the whole point of the feature: people do not all reach for the
+         *  lamp at the same instant, so a settlement has to ripple to life
+         *  over several seconds rather than switching on as one object. */
+        onStaggerMs: 5000,
+        offStaggerMs: 5000,
+        /** Each window fades at its own rate too. */
+        fadeMsRange: [800, 2000],
+        /** Baseline chance a window ignores offSlots and burns until dawn.
+         *  window-lights.js can raise this per sprite -- a pub keeps more
+         *  lamps lit through the night than a barracks does. */
+        alwaysLitChance: 0.12,
+        /** Dot radius in px at zoom 1.0, scaled with zoom. */
+        dotRadiusPx: 2.6,
+        /** Below this zoom a building is too few pixels for individual
+         *  windows to resolve, so the dots are dropped and only the broad
+         *  glow remains. */
+        minZoom: 0.55,
+      },
+
+      /** Villager spawn rate by slot -- js/ui/villagers.js scales its own
+       *  spawn rolls by this. 0 at night means no NEW wanderers; figures
+       *  already out finish their route and fade through the states they
+       *  already have, so the streets visibly drain at dusk instead of
+       *  snapping empty. */
+      villagerActivity: [1, 1, 1, 1, 0.6, 0.25, 0, 0, 0, 0, 0.25, 0.6],
+
+      /** How far the cloud layer's own colour is dragged toward the night
+       *  tint. Clouds live on a canvas ABOVE the map, so the night pass
+       *  cannot reach them -- left alone they'd glow white over a dark
+       *  world. 1 would fully replace their colour. */
+      cloudNightBlend: 0.75,
+
+      /** The astronomical clock hanging from the top of the map (see
+       *  js/ui/daynight-clock.js) -- the lower half of a circle read as a
+       *  180-degree gauge: left is rise, bottom centre is zenith, right is
+       *  set. Sun and moon each ride an overlapping arc -- see
+       *  daynight-clock.js's targetsForSlot for exactly which slots -- so
+       *  at the handoff moments (last twilight turn, first dawn turn) both
+       *  bodies sit on the dial at once, each cut in half by the horizon
+       *  chord: one finishing its set on one side, the other just risen
+       *  on the other. */
+      clock: {
+        /** The DIAL circle's own diameter in CSS px -- not the rendered
+         *  canvas box, which is a little larger on every side (see
+         *  daynight-clock.js's HORN_MARGIN_FRAC) to leave room for the
+         *  gilded rim's corner flourishes to curl outward into. Height of
+         *  the dial itself is always half this width, since the shape is
+         *  exactly the lower half of a circle. */
+        desktopWidth: 135,
+        mobileWidth: 92,
+        /** Daytime sky. Every other slot's sky is this colour mixed toward
+         *  that slot's own world tint by `skyMix` x its alpha -- so the dial
+         *  is derived from the same numbers the map uses and the two cannot
+         *  drift apart when the slot table is retuned. */
+        daySky: "#7fb6e0",
+        skyMix: 2.0,
+        /** Sun/moon diameter in CSS px at desktop width, scaled with the
+         *  widget. Deliberately large relative to the dial -- big enough
+         *  to be the focal point rather than a small icon riding a big
+         *  empty arc, since the phase name is no longer written on the
+         *  dial itself (see showCaption below) and the body is now the
+         *  primary read. */
+        bodySize: 40,
+        /** Radius of the track the body rides, as a fraction of the dial's
+         *  own radius. Under 1 so the body sits inside the rim rather than
+         *  half-clipped by it, and low enough that the body clears the
+         *  caption when it passes through zenith at the bottom of the dial. */
+        trackRadius: 0.58,
+        /** Show the phase name (e.g. "Night") ONLY on hover -- no turn count
+         *  (that's what the HUD's own turn counter is for), and no longer
+         *  drawn at rest either: a dial with sky, sun/moon and a gilded
+         *  frame reads its own phase well enough at a glance that a
+         *  permanent caption competed with it rather than clarifying it.
+         *  Hover detection is done in script (a mousemove listener testing
+         *  distance from dial centre), NOT by making the element
+         *  pointer-events:auto -- that would swallow clicks meant for the
+         *  map underneath. Set false to disable the tooltip entirely. */
+        showCaption: true,
+        /** Clouds (day) and stars (night) painted inside the dial's
+         *  own sky, faded by the same darkness value driving the world
+         *  tint -- so the two can never show, say, a starry dial over a
+         *  sunlit map. cloudPower/starPower shape the crossfade curve;
+         *  1 is linear, higher pulls the transition later into twilight
+         *  so neither layer lingers faintly through the whole phase. */
+        cloudPower: 1.3,
+        starPower: 1.6,
+      },
     },
   },
 };

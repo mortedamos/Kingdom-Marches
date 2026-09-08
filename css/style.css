@@ -297,6 +297,31 @@ html, body {
   height: 100%;
   pointer-events: none;
 }
+/* ASTRONOMICAL CLOCK (js/ui/daynight-clock.js) -- the lower half of a circle
+   hanging from the top edge of the map, showing where the 12-turn day/night
+   cycle currently is. Lives inside .map-area (position:relative) so it hangs
+   from the top of the MAP rather than the top of the window, which would put
+   it behind the menu bar. pointer-events:none for the same reason #map-clouds
+   has it: this reports state, it is never a hit target, and every click must
+   fall straight through to the canvas underneath. */
+.daynight-clock {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  pointer-events: none;
+  /* Above both map canvases, below the ring menu (z-index 500) and every
+     modal -- it must never sit over a dialog the player is reading. */
+  z-index: 6;
+  /* The canvas paints its own rim; this is the drop shadow that lifts the
+     whole dial off the map. Clipped to the half-disc so no square edge
+     shows. */
+  filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.45));
+}
+.daynight-clock canvas {
+  display: block;
+}
+
 #map-canvas-3d {
   position: absolute;
   inset: 0;

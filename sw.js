@@ -39,7 +39,7 @@
 // thing that invalidates the precache -- unrelated to the game's own
 // GameConfig.build stamp, which exists for a human to read, not for cache
 // invalidation.
-const VERSION = "2026-08-26-1";
+const VERSION = "2026-09-07-1";
 const SHELL_CACHE = `km-shell-${VERSION}`;
 
 // Exactly the <script src> list index.html loads, plus the handful of
@@ -69,6 +69,7 @@ const SHELL_FILES = [
   "/js/data/riddles.js",
   "/js/data/techs.js",
   "/js/data/buildings.js",
+  "/js/data/window-lights.js",
   "/js/engine/worldgen.js",
   "/js/engine/influence.js",
   "/js/engine/pathfinding.js",
@@ -89,6 +90,8 @@ const SHELL_FILES = [
   "/js/ui/sprites.js",
   "/js/ui/overlays.js",
   "/js/ui/render.js",
+  "/js/ui/daynight.js",
+  "/js/ui/daynight-clock.js",
   "/js/ui/clouds.js",
   "/js/ui/villagers.js",
   "/js/ui/render3d.js",

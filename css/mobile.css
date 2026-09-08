@@ -479,6 +479,19 @@ body.mobile .m-topbar {
   gap: .5rem;
 }
 
+/* Astronomical clock, pushed below #m-topbar rather than competing with it
+   for the top-centre slot. The topbar is a 44px-tall fixed row at
+   safe-area + .6rem, so this clears it by that plus the row height plus a
+   small gap. .map-area is inset:0 under body.mobile, so `top` here is
+   measured from the top of the screen exactly as the topbar's own is.
+
+   The research pill in the middle of that row is `hidden` whenever nothing
+   is being researched, but the row's height doesn't change either way -- so
+   this offset is stable and doesn't need to react to it. */
+body.mobile .daynight-clock {
+  top: calc(env(safe-area-inset-top, 0px) + .6rem + 44px + .45rem);
+}
+
 body.mobile .m-menu-btn,
 body.mobile .m-status,
 body.mobile .m-research,

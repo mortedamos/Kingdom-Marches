@@ -372,6 +372,25 @@ window.UI = window.UI || {};
     }
     ctx.globalAlpha = 1;
 
+    // --- nightfall -----------------------------------------------------
+    // This canvas sits ABOVE the map, so the day/night pass (which draws
+    // inside render.js, on #map-canvas) cannot reach it. Left alone the
+    // clouds would keep their daylight paleness and glow over a dark world.
+    // source-atop tints only pixels already painted here -- i.e. the clouds
+    // themselves, not the transparent sky between them. Same technique as
+    // overlays.js's tintDrawnArea.
+    const dn = window.UI.daynight;
+    if (dn && dn.isActive()) {
+      const sky = dn.current();
+      const blend = window.GameConfig.view.dayNight.cloudNightBlend;
+      ctx.globalCompositeOperation = "source-atop";
+      ctx.globalAlpha = Math.max(0, Math.min(1, sky.alpha * blend));
+      ctx.fillStyle = sky.tint;
+      ctx.fillRect(0, 0, w, h);
+      ctx.globalCompositeOperation = "source-over";
+      ctx.globalAlpha = 1;
+    }
+
     // --- confine to the outer band -------------------------------------
     // destination-out erases what's already painted -- clouds only, since
     // this canvas holds nothing else. The cached mask is 0 (no erase) at
