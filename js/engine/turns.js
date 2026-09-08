@@ -70,9 +70,12 @@ window.GameEngine = window.GameEngine || {};
     }
 
     const slotCfg = cfg.slots[slot] || { alpha: 0, lights: false };
-    // Normalized against the deepest alpha actually configured, so the
-    // readout stays meaningful if the slot table is retuned.
-    const peak = cfg.slots.reduce((m, s) => Math.max(m, s.alpha || 0), 0) || 1;
+    // Normalized against a FIXED reference (darknessReferencePeak), not the
+    // live max of the table -- see that constant's own comment. Retuning
+    // one slot's alpha must not silently rescale every other slot's
+    // darkness ratio along with it.
+    const peak = cfg.darknessReferencePeak
+      || cfg.slots.reduce((m, s) => Math.max(m, s.alpha || 0), 0) || 1;
 
     return {
       slot,

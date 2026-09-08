@@ -939,11 +939,12 @@ window.UI = window.UI || {};
             const drawHeight = ts * (img.naturalHeight / img.naturalWidth);
             const drawY = screenY + ts - drawHeight;
             ctx.drawImage(img, 0, 0, img.naturalWidth, img.naturalHeight, screenX, drawY, ts, drawHeight);
-            // Lamplight -- but not for walls or bridges. Nobody keeps a lamp
-            // burning in a wall segment, and a lit run of them would draw the
-            // eye to the least interesting thing on the map.
-            if (!building.isWall && !building.isBridge) {
-              window.UI.daynight.addStructureLight(civ, s, screenX, drawY, ts, drawHeight, ts);
+            // Lamplight -- not for bridges (nobody keeps a lamp burning on a
+            // bridge deck), but walls DO get one: a torch/brazier along the
+            // rampart, dimmer and smaller than a building's (see
+            // addStructureLight's own isWall handling).
+            if (!building.isBridge) {
+              window.UI.daynight.addStructureLight(civ, s, screenX, drawY, ts, drawHeight, ts, building.isWall);
             }
           } else {
             const pad = ts * 0.2;
@@ -959,12 +960,13 @@ window.UI = window.UI || {};
             ctx.textAlign = "center";
             ctx.textBaseline = "middle";
             ctx.fillText(building.symbol || "▪", screenX + ts / 2, screenY + ts / 2 - ts * 0.03);
-            // The four Undead buildings ship no art and land here. They still
-            // get their glow (witchlight green, from the race lamp colours) --
-            // there's just no sprite to hang individual windows on, which is
+            // The four Undead buildings (and an Undead wall segment, which
+            // also has no shipped art) land here. They still get their glow
+            // (witchlight green, from the race lamp colours) -- there's
+            // just no sprite to hang individual windows on, which is
             // exactly the fallback daynight.js's specFor is built for.
-            if (!building.isWall && !building.isBridge) {
-              window.UI.daynight.addStructureLight(civ, s, screenX + pad, screenY + pad, ts - pad * 2, ts - pad * 2, ts);
+            if (!building.isBridge) {
+              window.UI.daynight.addStructureLight(civ, s, screenX + pad, screenY + pad, ts - pad * 2, ts - pad * 2, ts, building.isWall);
             }
           }
           // Burning (2026-08-19, user-requested): same flame-tongue effect

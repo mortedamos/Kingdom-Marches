@@ -65,9 +65,9 @@ window.GameConfig = {
     /** Local date this build was cut, YYYY-MM-DD. */
     date: "2026-09-07",
     /** Local time this build was cut, 24-hour HH:MM. */
-    time: "21:44",
+    time: "22:36",
     /** Monotonic build counter -- increment it, don't recompute it. */
-    number: 270,
+    number: 271,
   },
 
   // =========================================================================
@@ -1150,15 +1150,36 @@ window.GameConfig = {
         { tint: "#000000", alpha: 0.00, cool: "#1a3a8a", unitLights: false }, //  1  Day 2
         { tint: "#000000", alpha: 0.00, cool: "#1a3a8a", unitLights: false }, //  2  Day 3
         { tint: "#000000", alpha: 0.00, cool: "#1a3a8a", unitLights: false }, //  3  Day 4
-        { tint: "#4a1f08", alpha: 0.26, cool: "#8a5520", unitLights: false }, //  4  Twilight 1 -- burnt orange
+        { tint: "#3a2410", alpha: 0.15, cool: "#6e5230", unitLights: false }, //  4  Twilight 1 -- first hint of dusk, muted amber-brown (user-reported 2026-09-07: an earlier, more saturated orange here read as "too orange" for just the first turn of dusk)
         { tint: "#2e1430", alpha: 0.34, cool: "#553a72", unitLights: true }, //  5  Twilight 2 -- dusk violet
-        { tint: "#0e1b38", alpha: 0.42, cool: "#22407e", unitLights: true }, //  6  Night 1
-        { tint: "#0b1730", alpha: 0.46, cool: "#1d3a75", unitLights: true }, //  7  Night 2
-        { tint: "#0a1530", alpha: 0.48, cool: "#1b3773", unitLights: true }, //  8  Night 3 -- the small hours
-        { tint: "#0d1a36", alpha: 0.44, cool: "#213f7d", unitLights: true }, //  9  Night 4
+        { tint: "#0e1b38", alpha: 0.33, cool: "#22407e", unitLights: true }, //  6  Night 1
+        { tint: "#0b1730", alpha: 0.36, cool: "#1d3a75", unitLights: true }, //  7  Night 2
+        { tint: "#0a1530", alpha: 0.38, cool: "#1b3773", unitLights: true }, //  8  Night 3 -- the small hours
+        { tint: "#0d1a36", alpha: 0.35, cool: "#213f7d", unitLights: true }, //  9  Night 4
         { tint: "#141d3d", alpha: 0.32, cool: "#2a4788", unitLights: true }, // 10  Dawn 1 -- cold indigo
         { tint: "#2e2618", alpha: 0.16, cool: "#8a7038", unitLights: false }, // 11  Dawn 2 -- first warm light
       ],
+
+      /**
+       * Fixed denominator for the 0-1 `darkness` value derived from the
+       * slot table above (peak alpha in the ORIGINAL tuning pass, kept
+       * stable on purpose -- see the note below). `darkness` isn't just a
+       * display number: it scales the colorize pass's strength (below),
+       * the clock dial's cloud/star crossfade, and window-dot brightness.
+       *
+       * Both turns.js's phaseForTurn and this module's own peakAlpha()
+       * read THIS instead of recomputing `max(slot.alpha)` live, and that
+       * distinction matters: night's alpha was lowered from a 0.48 peak to
+       * 0.38 (2026-09-07, user-reported "night is a little too dark")
+       * without touching this constant. Deriving the denominator live
+       * would have silently RAISED every other slot's darkness ratio to
+       * compensate (twilight 2's 0.34/0.48=0.71 would have jumped to
+       * 0.34/0.38=0.89), amplifying its colorize push well past what was
+       * ever tuned or asked for. Change this only when deliberately
+       * rescaling the whole normalized curve, not as a side effect of
+       * retuning one slot's alpha.
+       */
+      darknessReferencePeak: 0.48,
 
       /**
        * How hard to push the world's HUE toward each slot's `cool` colour,
@@ -1266,6 +1287,16 @@ window.GameConfig = {
          *  population-tier scale below. Buildings get the smaller one. */
         cityRadius: 2.6,
         buildingRadius: 1.6,
+        /** Walls get their own, smaller radius and lower intensity (see
+         *  wallIntensity below) -- a torch or brazier mounted along a
+         *  rampart, not a whole building's hearth. Falls back to the same
+         *  synthetic single-window schedule a building with no authored
+         *  window-lights.js entry gets (no wall segment has one, and
+         *  authoring per-tile positions for every wall segment in every
+         *  city would be impractical) -- so each segment still switches on
+         *  and off independently, seeded by its own tile coordinates. */
+        wallRadius: 1.0,
+        wallIntensity: 0.24,
         /** City glow multiplier by population tier 1-6, so a capital burns
          *  visibly brighter than a hamlet. Index 0 is tier 1. */
         cityTierScale: [0.70, 0.80, 0.90, 1.00, 1.12, 1.25],

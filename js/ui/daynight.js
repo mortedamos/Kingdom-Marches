@@ -178,9 +178,12 @@
     return c.slots[slot] || { tint: "#000000", alpha: 0, unitLights: false };
   }
 
+  // Fixed reference, not the live max of the slot table -- see config's
+  // darknessReferencePeak for why: retuning one slot's alpha must not
+  // silently rescale every other slot's normalized darkness along with it.
   function peakAlpha() {
     const c = cfg();
-    return c.slots.reduce((m, s) => Math.max(m, s.alpha || 0), 0) || 1;
+    return c.darknessReferencePeak || c.slots.reduce((m, s) => Math.max(m, s.alpha || 0), 0) || 1;
   }
 
   /** "#rrggbb" -> [r,g,b]. Tolerates the 3-digit form. */
@@ -569,9 +572,15 @@
     if (spec.windows.length) windowSources.push({ source, spec });
   }
 
-  /** A building. Walls and bridges are deliberately excluded by render.js --
-   *  nobody keeps a lamp burning in a wall segment. */
-  function addStructureLight(civ, s, drawX, drawY, drawW, drawH, ts) {
+  /** A building or wall segment. Bridges are still excluded by render.js --
+   *  nobody keeps a lamp burning on a bridge deck. Walls get a smaller,
+   *  dimmer light than a building (a torch/brazier on the rampart, not a
+   *  whole hearth) via `isWall`; they have no authored window-lights.js
+   *  entry (impractical to hand-place a window per wall tile across every
+   *  city), so they fall back to the same single synthetic on/off schedule
+   *  a windowless building gets, seeded per-tile so a run of wall segments
+   *  doesn't light in lockstep. */
+  function addStructureLight(civ, s, drawX, drawY, drawW, drawH, ts, isWall) {
     if (!isActive()) return;
     const c = cfg().lights;
     const raceId = civ && civ.raceId;
@@ -594,9 +603,9 @@
     lights.push({
       x: drawX + drawW / 2,
       y: drawY + drawH * 0.70,
-      r: c.buildingRadius * ts * (c.radiusScale || 1) * tuning.radiusMul,
+      r: (isWall ? c.wallRadius : c.buildingRadius) * ts * (c.radiusScale || 1) * tuning.radiusMul,
       color: source.color,
-      intensity: 0.38 * lit,
+      intensity: (isWall ? c.wallIntensity : 0.38) * lit,
       flicker: 0.2,
       phase: hashInts(s.x, s.y) % 1000,
     });
