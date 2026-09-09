@@ -65,9 +65,9 @@ window.GameConfig = {
     /** Local date this build was cut, YYYY-MM-DD. */
     date: "2026-09-09",
     /** Local time this build was cut, 24-hour HH:MM. */
-    time: "09:49",
+    time: "09:59",
     /** Monotonic build counter -- increment it, don't recompute it. */
-    number: 273,
+    number: 274,
   },
 
   // =========================================================================
@@ -1387,6 +1387,14 @@ window.GameConfig = {
          *  dial itself (see showCaption below) and the body is now the
          *  primary read. */
         bodySize: 40,
+        /** The moon draws at this fraction of bodySize (2026-09-09,
+         *  user-directed: "reduce the size of the moon graphic by 15%").
+         *  A deliberate art-balance choice, not a correction: the two PNGs
+         *  are already cropped to matching content bounds so they'd render
+         *  the same size, but the moon's full lapis disc fills its frame
+         *  edge to edge where the sun is mostly gaps between rays, so at
+         *  equal size the moon reads as the heavier of the two. */
+        moonSizeScale: 0.85,
         /** Radius of the track the body rides, as a fraction of the dial's
          *  own radius. Under 1 so the body sits inside the rim rather than
          *  half-clipped by it, and low enough that the body clears the

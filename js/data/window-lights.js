@@ -18,8 +18,21 @@
  * pixels wide. Every brightness heuristic misfires on at least one of those.
  *
  * KEYS
- *   "building/<buildingId>"   e.g. "building/palace"
- *   "city/<raceId>/<tier>"    e.g. "city/human/4"   (tier is 1-6)
+ *   "building/<buildingId>"        e.g. "building/palace"
+ *   "city/<raceId>/<tier>"         e.g. "city/human/4"   (tier is 1-6)
+ *   "wall/<raceId>/<orientation>"  e.g. "wall/human/vertical"
+ *                                  orientation: horizontal | vertical | node
+ *   "bridge/<raceId>/<orientation>" e.g. "bridge/elf/diagonal"
+ *                                  orientation: vertical | diagonal | node
+ *
+ * Walls and bridges are keyed by race AND orientation because that is how
+ * their art actually varies -- a lamp authored on a vertical run would sit
+ * wrong on a corner node. Note the asset orientations are the three that
+ * exist as PNGs, not the five the map can produce: an east-west bridge is
+ * the "vertical" asset rotated 90 degrees at draw time, and both diagonals
+ * share the one "diagonal" image. Lamps on a bridge ride the same canvas
+ * transform its sprite was drawn under, so positions authored here land on
+ * the band whichever way the span happens to run.
  * A sprite with no entry still lights and dims on a believable schedule -- it
  * just gets the broad glow and no individual dots. That's the intended
  * fallback for the four Undead buildings, which ship no art at all.
@@ -39,6 +52,108 @@
 window.GameData = window.GameData || {};
 
 window.GameData.WINDOW_LIGHTS = {
+
+  // ---- bridge ----
+  "bridge/dwarf/diagonal": {
+    windows: [
+      [0.700, 0.485],
+      [0.492, 0.689],
+    ],
+  },
+  "bridge/dwarf/node": {
+    windows: [
+      [0.814, 0.186],
+      [0.181, 0.185],
+      [0.189, 0.808],
+      [0.808, 0.803],
+    ],
+  },
+  "bridge/dwarf/vertical": {
+    windows: [
+      [0.708, 0.508],
+      [0.287, 0.502],
+    ],
+  },
+  "bridge/elf/diagonal": {
+    windows: [
+      [0.609, 0.435],
+      [0.426, 0.597],
+    ],
+  },
+  "bridge/elf/node": {
+    windows: [
+      [0.825, 0.175],
+      [0.187, 0.188],
+      [0.201, 0.793],
+      [0.805, 0.793],
+    ],
+  },
+  "bridge/elf/vertical": {
+    windows: [
+      [0.653, 0.497],
+      [0.345, 0.497],
+    ],
+  },
+  "bridge/halfellow/diagonal": {
+    windows: [
+      [0.573, 0.410],
+      [0.411, 0.572],
+    ],
+  },
+  "bridge/halfellow/node": {
+    windows: [
+      [0.808, 0.197],
+      [0.194, 0.199],
+      [0.195, 0.807],
+      [0.806, 0.808],
+    ],
+  },
+  "bridge/halfellow/vertical": {
+    windows: [
+      [0.694, 0.507],
+      [0.314, 0.507],
+    ],
+  },
+  "bridge/human/diagonal": {
+    windows: [
+      [0.644, 0.371],
+      [0.370, 0.635],
+    ],
+  },
+  "bridge/human/node": {
+    windows: [
+      [0.811, 0.185],
+      [0.184, 0.185],
+      [0.175, 0.824],
+      [0.823, 0.822],
+    ],
+  },
+  "bridge/human/vertical": {
+    windows: [
+      [0.709, 0.503],
+      [0.297, 0.499],
+    ],
+  },
+  "bridge/orc/diagonal": {
+    windows: [
+      [0.612, 0.318],
+      [0.344, 0.607],
+    ],
+  },
+  "bridge/orc/node": {
+    windows: [
+      [0.790, 0.175],
+      [0.220, 0.175],
+      [0.184, 0.819],
+      [0.833, 0.796],
+    ],
+  },
+  "bridge/orc/vertical": {
+    windows: [
+      [0.786, 0.380],
+      [0.223, 0.372],
+    ],
+  },
 
   // ---- building ----
   "building/altar_of_ages": {
@@ -615,6 +730,91 @@ window.GameData.WINDOW_LIGHTS = {
       [0.744, 0.647, 0.90],
       [0.270, 0.613, 0.80],
       [0.612, 0.681, 0.80],
+    ],
+  },
+
+  // ---- wall ----
+  "wall/dwarf/horizontal": {
+    windows: [
+      [0.525, 0.274],
+      [0.523, 0.739],
+    ],
+  },
+  "wall/dwarf/node": {
+    windows: [
+      [0.931, 0.060],
+      [0.070, 0.060],
+      [0.069, 0.933],
+      [0.930, 0.932],
+      [0.506, 0.344],
+      [0.656, 0.494],
+      [0.347, 0.496],
+      [0.501, 0.649],
+    ],
+  },
+  "wall/dwarf/vertical": {
+    windows: [
+      [0.755, 0.496],
+      [0.240, 0.500],
+    ],
+  },
+  "wall/elf/horizontal": {
+    windows: [
+      [0.506, 0.732],
+    ],
+  },
+  "wall/elf/node": {
+    windows: [
+      [0.853, 0.178],
+      [0.190, 0.141],
+      [0.222, 0.874],
+      [0.831, 0.853],
+    ],
+  },
+  "wall/elf/vertical": {
+    windows: [
+      [0.592, 0.150],
+      [0.398, 0.843],
+    ],
+  },
+  "wall/human/horizontal": {
+    windows: [
+      [0.503, 0.314],
+      [0.503, 0.685],
+    ],
+  },
+  "wall/human/node": {
+    windows: [
+      [0.778, 0.218],
+      [0.220, 0.218],
+      [0.223, 0.782],
+      [0.778, 0.778],
+    ],
+  },
+  "wall/human/vertical": {
+    windows: [
+      [0.725, 0.444],
+      [0.297, 0.444],
+    ],
+  },
+  "wall/orc/horizontal": {
+    windows: [
+      [0.500, 0.339],
+      [0.506, 0.652],
+    ],
+  },
+  "wall/orc/node": {
+    windows: [
+      [0.594, 0.211],
+      [0.330, 0.353],
+      [0.684, 0.457],
+      [0.459, 0.383],
+    ],
+  },
+  "wall/orc/vertical": {
+    windows: [
+      [0.717, 0.477],
+      [0.275, 0.478],
     ],
   },
 };

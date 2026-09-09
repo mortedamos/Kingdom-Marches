@@ -641,7 +641,9 @@
     for (const key of BODY_KEYS) {
       const a = anim[key];
       if (!a.visible || a.angle == null) continue;
-      drawBody(ctx, key, ccx + Math.cos(a.angle) * trackR, ccy + Math.sin(a.angle) * trackR, bodySize);
+      // The moon draws a little smaller than the sun -- see moonSizeScale.
+      const size = bodySize * (key === "moon" ? (clockCfg().moonSizeScale || 1) : 1);
+      drawBody(ctx, key, ccx + Math.cos(a.angle) * trackR, ccy + Math.sin(a.angle) * trackR, size);
     }
 
     // Caption -- phase name only ("Night"), shown only while hovering (see
