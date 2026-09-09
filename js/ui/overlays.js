@@ -1136,6 +1136,35 @@ window.UI = window.UI || {};
     return burstT < 0.3 ? burstT / 0.3 : Math.max(0, 1 - (burstT - 0.3) / 0.7);
   }
 
+  /**
+   * How much a chest/ore glint is damped by nightfall (2026-09-09,
+   * user-directed: "treasure chests and iron and copper ore should glint
+   * less at night"). A glint is a catch of DIRECT light -- sun off varnish
+   * or a metal face -- so there's far less for it to work with after dusk.
+   *
+   * Damped, never removed: the glint is also what makes these tiles
+   * findable on a busy map, and a chest that vanishes at night is a chest
+   * the player walks straight past. GLINT_NIGHT_FLOOR is what's left at the
+   * deepest point of night.
+   *
+   * Scales on the same `darkness` the world tint uses, and only while the
+   * cycle is switched on -- turning day/night off in the Interface menu
+   * leaves these glinting exactly as they always did, rather than leaving
+   * them mysteriously dimmed by a clock the player can no longer see.
+   *
+   * Deliberately applied here and not inside drawSparkleMark: that helper
+   * is shared with drawLevelUpSparkles, which is gameplay feedback ("this
+   * unit can level up") rather than scenery, and has no business getting
+   * quieter just because it's night.
+   */
+  const GLINT_NIGHT_FLOOR = 0.3;
+  function glintNightScale() {
+    const dn = window.UI.daynight;
+    if (!dn || !dn.isEnabled()) return 1;
+    const darkness = Math.max(0, Math.min(1, dn.current().darkness || 0));
+    return 1 - (1 - GLINT_NIGHT_FLOOR) * darkness;
+  }
+
   /** Two-point sparkle burst -- a primary glint plus a smaller, dimmer
    *  companion catching the light a beat later, so a chest/deposit reads
    *  as an actual cluster of sparkle rather than one lonely point of light
@@ -1144,20 +1173,26 @@ window.UI = window.UI || {};
    *  doesn't glint in unison), full brightness at each peak (no more 0.8
    *  alpha cap) for a punchier catch of light. Shared by drawChestSparkle/
    *  drawResourceGlint below -- `color` optional, defaults to
-   *  drawSparkleMark's own warm gold. */
+   *  drawSparkleMark's own warm gold.
+   *
+   *  Night damping scales the ALPHA only, not the size fed to
+   *  drawSparkleMark: a fainter glint of the same shape reads as a weaker
+   *  catch of light, where shrinking it too would just turn it into a
+   *  speck. */
   function drawSparkleBurstPair(ctx, tile, boxX, boxY, sz, now, cycleMs, burstMs, color) {
     const phase = tileEffectPhase(tile);
     const t = (now + phase * 1000) % cycleMs;
     if (t > burstMs) return;
     const burstT = t / burstMs;
+    const night = glintNightScale();
     const alpha = sparkleEnvelope(burstT);
-    drawSparkleMark(ctx, boxX + sz * 0.78, boxY + sz * 0.22, sz * 0.26 * alpha, alpha, color);
+    drawSparkleMark(ctx, boxX + sz * 0.78, boxY + sz * 0.22, sz * 0.26 * alpha, alpha * night, color);
     // Companion: smaller, dimmer, peaks a beat after the primary -- same
     // envelope shape, delayed (not shifted earlier) within the burst
     // window, at a distinct spot on the icon so the two never overlap
     // into one blob.
     const alpha2 = sparkleEnvelope(Math.max(0, burstT - 0.22)) * 0.6;
-    drawSparkleMark(ctx, boxX + sz * 0.32, boxY + sz * 0.58, sz * 0.15 * alpha2, alpha2, color);
+    drawSparkleMark(ctx, boxX + sz * 0.32, boxY + sz * 0.58, sz * 0.15 * alpha2, alpha2 * night, color);
   }
 
   /** Treasure Chest: an occasional, subtle glint rather than a constant
@@ -1175,8 +1210,9 @@ window.UI = window.UI || {};
     // your-eye burst cycle -- still marks the chest as glinting, just not
     // by flashing on and off.
     if (window.UI.motion && window.UI.motion.isReduced()) {
-      drawSparkleMark(ctx, boxX + sz * 0.78, boxY + sz * 0.22, sz * 0.24 * 0.5, 0.5);
-      drawSparkleMark(ctx, boxX + sz * 0.32, boxY + sz * 0.58, sz * 0.14 * 0.4, 0.4);
+      const night = glintNightScale();
+      drawSparkleMark(ctx, boxX + sz * 0.78, boxY + sz * 0.22, sz * 0.24 * 0.5, 0.5 * night);
+      drawSparkleMark(ctx, boxX + sz * 0.32, boxY + sz * 0.58, sz * 0.14 * 0.4, 0.4 * night);
       return;
     }
     drawSparkleBurstPair(ctx, tile, boxX, boxY, sz, now, CHEST_SPARKLE_CYCLE_MS, CHEST_SPARKLE_BURST_MS);
@@ -1206,8 +1242,9 @@ window.UI = window.UI || {};
     const color = RESOURCE_GLINT_COLORS[resourceId];
     if (!color) return;
     if (window.UI.motion && window.UI.motion.isReduced()) {
-      drawSparkleMark(ctx, boxX + sz * 0.78, boxY + sz * 0.22, sz * 0.24 * 0.5, 0.5, color);
-      drawSparkleMark(ctx, boxX + sz * 0.32, boxY + sz * 0.58, sz * 0.14 * 0.4, 0.4, color);
+      const night = glintNightScale();
+      drawSparkleMark(ctx, boxX + sz * 0.78, boxY + sz * 0.22, sz * 0.24 * 0.5, 0.5 * night, color);
+      drawSparkleMark(ctx, boxX + sz * 0.32, boxY + sz * 0.58, sz * 0.14 * 0.4, 0.4 * night, color);
       return;
     }
     drawSparkleBurstPair(ctx, tile, boxX, boxY, sz, now, RESOURCE_GLINT_CYCLE_MS, RESOURCE_GLINT_BURST_MS, color);

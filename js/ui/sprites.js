@@ -44,7 +44,15 @@
 window.UI = window.UI || {};
 
 (function () {
-  // key -> { variants: [{ image, manifest }, ...] }
+  // key -> { variants: [{ image, manifest, variantNumber, key }, ...] }
+  //
+  // Each variant carries its own `key` and `variantNumber` so a caller that
+  // went through one of the fallback-chain pickers (pickUnit, pickBuilding,
+  // pickWall) can tell WHICH art it actually got back -- the shared
+  // "unit/scout" or the race-qualified "unit/scout/human" -- without redoing
+  // the fallback itself. daynight.js needs that to look up the right authored
+  // lamp positions for the sprite on screen. variantNumber is the file's _N
+  // suffix, or null for a single un-numbered file.
   const registry = {};
   // key -> WeakMap<seedObject, chosenVariantIndex>  (separate cache per asset
   // key so the same tile object can be used as the seed for terrain, resource,
@@ -188,7 +196,7 @@ window.UI = window.UI || {};
 
     const variants = await Promise.all(loaded.map(async ({ image, base, variantNumber }) => {
       const jsonManifest = fileExists(`${base}.json`) ? await loadManifestJson(`${base}.json`) : null;
-      return { image, manifest: jsonManifest || resolveManifest(key, image), variantNumber };
+      return { image, manifest: jsonManifest || resolveManifest(key, image), variantNumber, key };
     }));
     registry[key] = { variants };
   }
@@ -213,7 +221,7 @@ window.UI = window.UI || {};
       return;
     }
     const jsonManifest = fileExists(`${basePath}.json`) ? await loadManifestJson(`${basePath}.json`) : null;
-    registry[key] = { variants: [{ image, manifest: jsonManifest || resolveManifest(key, image), variantNumber: null }] };
+    registry[key] = { variants: [{ image, manifest: jsonManifest || resolveManifest(key, image), variantNumber: null, key }] };
   }
 
   // Cities may also ship as separate, fully-rendered per-population-tier

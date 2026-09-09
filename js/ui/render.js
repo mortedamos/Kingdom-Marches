@@ -707,6 +707,21 @@ window.UI = window.UI || {};
             if (influenceSprite) {
               const f = window.UI.sprites.currentFrame(influenceSprite.manifest, "idle", tile);
               deferredIcons.push(() => ctx.drawImage(influenceSprite.image, f.sx, f.sy, f.sw, f.sh, screenX, screenY, ts, ts));
+              // A lit window in the farmstead / a candle on the grave slab.
+              // Keyed by race AND variant because that's how the art varies:
+              // a lamp authored on Human's cottage would sit in mid-air on
+              // Human's haystack. Water variants are a separate one-per-race
+              // pool and key separately. Only the variants with an authored
+              // entry light at all -- see daynight.js's addStructureLight,
+              // which does not give this kind the synthetic fallback glow.
+              const vn = influenceSprite.variantNumber;
+              const lightKey = window.GameData.TERRAIN[tile.terrain].isWater
+                ? `influence-water/${ownerCiv.raceId}`
+                : `influence/${ownerCiv.raceId}/${vn == null ? 1 : vn}`;
+              window.UI.daynight.addStructureLight(
+                ownerCiv, { x, y }, screenX, screenY, ts, ts, ts,
+                { kind: "influence", spriteKey: lightKey }
+              );
             }
           }
         }
@@ -1230,8 +1245,17 @@ window.UI = window.UI || {};
       overlays.drawLevelUpGlowBehind(ctx, unit, boxX, boxY, boxSize, now);
       ctx.save();
       ctx.globalAlpha = spriteAlpha;
+      // Which frame of the idle cycle the sprite actually drew, captured here
+      // and handed to addUnitLight below so a torch/staff lamp lands on the
+      // flame in THIS frame. Resolved once: currentFrame advances a per-unit
+      // animation state machine, so asking it a second time is not free of
+      // consequences. Null when the unit fell back to the symbol renderer.
+      let unitFrameIndex = null;
       if (unitSprite) {
         const f = window.UI.sprites.currentFrame(unitSprite.manifest, "idle", unit);
+        unitFrameIndex = unitSprite.manifest.layout === "vertical"
+          ? Math.round(f.sy / f.sh)
+          : Math.round(f.sx / f.sw);
         drawUnitShadow(ctx, screenX, screenY, ts, race.color, scale);
         ctx.drawImage(unitSprite.image, f.sx, f.sy, f.sw, f.sh, boxX, boxY, boxSize, boxSize);
       } else {
@@ -1254,7 +1278,17 @@ window.UI = window.UI || {};
       // Torch-, staff- and fire-bearers light their own patch of night.
       // Anchored to the sprite BOX rather than the tile so the light walks
       // with the unit's interpolated position mid-move.
-      window.UI.daynight.addUnitLight(unit, boxX, boxY, boxSize, ts);
+      //
+      // The sprite key carries whichever art actually resolved -- the shared
+      // "unit/wizard" or a race-qualified "unit/scout/human" -- plus the
+      // variant number, since the three Militia sheets are three different
+      // group scenes with the torch in three different places. Together with
+      // the frame index that's enough for daynight.js to find the authored
+      // lamp point for exactly the image on screen.
+      window.UI.daynight.addUnitLight(unit, boxX, boxY, boxSize, ts, unitSprite && {
+        spriteKey: `${unitSprite.key}/${unitSprite.variantNumber == null ? 1 : unitSprite.variantNumber}`,
+        frameIndex: unitFrameIndex,
+      });
 
       // HP bar
       if (unit.hp != null && unit.maxHp && unit.hp < unit.maxHp) {

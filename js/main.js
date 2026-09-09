@@ -4838,11 +4838,13 @@
     // every redraw same as .onclick always was, because sidebar.js rebuilds
     // this element's innerHTML (a fresh node) each time, taking any
     // previously-attached listeners with it.
+    // No "Next Unit"/"Next Idle City" buttons to wire any more (2026-09-09,
+    // user-directed): the End Turn button relabels itself to "Next" while
+    // anything still needs attention and a plain click on it runs
+    // handleNextAttentionItem -> goToNextIdleCityOrNextUnit, i.e. the exact
+    // same two cyclers those buttons called. handleNextUnit/handleNextIdleCity
+    // themselves are still very much live -- that's what "Next" calls.
     wireLongPress($("end-turn-btn"), handleEndTurnButtonClick, handleEndTurnClick);
-    const nextUnitBtn = $("next-unit-btn");
-    if (nextUnitBtn) nextUnitBtn.onclick = handleNextUnit;
-    const nextIdleCityBtn = $("next-idle-city-btn");
-    if (nextIdleCityBtn) nextIdleCityBtn.onclick = handleNextIdleCity;
     const openResearchBtn = $("open-research-btn");
     if (openResearchBtn) openResearchBtn.onclick = () => { viewState.techTreeCivId = humanCivId; redraw(); };
 

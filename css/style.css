@@ -32,6 +32,7 @@
 }
 
 :root {
+  --sidebar-width: 280px;
   --bg-dark: #14171c;
   --bg-panel: #1d2128;
   --bg-panel-raised: #262b34;
@@ -267,6 +268,10 @@ html, body {
   flex: 1;
   display: flex;
   min-height: 0;
+  /* Containing block for .daynight-clock-docked, which hangs over the
+     sidebar's top border from out here rather than from inside the
+     sidebar's own (clipping) scroll box. */
+  position: relative;
 }
 .map-area {
   flex: 1;
@@ -298,25 +303,59 @@ html, body {
   pointer-events: none;
 }
 /* ASTRONOMICAL CLOCK (js/ui/daynight-clock.js) -- the lower half of a circle
-   hanging from the top edge of the map, showing where the 12-turn day/night
-   cycle currently is. Lives inside .map-area (position:relative) so it hangs
-   from the top of the MAP rather than the top of the window, which would put
-   it behind the menu bar. pointer-events:none for the same reason #map-clouds
-   has it: this reports state, it is never a hit target, and every click must
-   fall straight through to the canvas underneath. */
+   showing where the 12-turn day/night cycle currently is.
+
+   Two homes (2026-09-09, user-directed "move the clock to the top of the
+   toolbar"). On desktop it sits in the sidebar footer's own
+   #daynight-clock-slot, above End Turn, as a plain block in that column's
+   flow -- so the rest of the toolbar simply falls beneath it. On mobile
+   that footer lives inside the collapsible bottom sheet, which would hide
+   the clock whenever the sheet is shut, so there it keeps floating over
+   .map-area instead and picks up .daynight-clock-floating below.
+
+   pointer-events:none in both, for the same reason #map-clouds has it: this
+   reports state, it is never a hit target, and a click over the map must
+   fall straight through to the canvas underneath. (Hover for the phase name
+   is done by script against cursor coordinates -- see the module's own doc
+   comment -- precisely so this can stay non-interactive.) */
 .daynight-clock {
+  pointer-events: none;
+  /* The canvas paints its own rim; this is the drop shadow that lifts the
+     whole dial off whatever it sits on. Clipped to the half-disc so no
+     square edge shows. */
+  filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.45));
+}
+/* DESKTOP: docked over the sidebar's own top edge, deliberately overlapping
+   the gilded border-image so the dial reads as mounted on the frame rather
+   than floating inside the panel. The rest of the sidebar's content is
+   pushed clear of it by .sidebar's padding-top below.
+
+   Parented to .game-body, NOT to .sidebar, and that is load-bearing: the
+   sidebar is overflow-y:auto, which clips at its padding box, so a child of
+   it could never draw onto the 16px border at all -- it would just be cut
+   off at the inner edge. Anchoring to the sidebar's own centre line from
+   outside sidesteps that entirely.
+
+   The right/transform pair centres the dial on the sidebar column without
+   this rule needing to know how wide the dial is: put its right edge on the
+   column's centre line, then shove it back by half its own width. */
+.daynight-clock-docked {
+  position: absolute;
+  top: 0;
+  right: calc(var(--sidebar-width) / 2);
+  transform: translateX(50%);
+  /* Over the sidebar's border art, still under the ring menu (500) and
+     every modal -- it must never sit over a dialog the player is reading. */
+  z-index: 7;
+}
+/* MOBILE (and any other over-the-map placement): a free-floating overlay.
+   See css/mobile.css for where it actually lands. */
+.daynight-clock-floating {
   position: absolute;
   top: 0;
   left: 50%;
   transform: translateX(-50%);
-  pointer-events: none;
-  /* Above both map canvases, below the ring menu (z-index 500) and every
-     modal -- it must never sit over a dialog the player is reading. */
   z-index: 6;
-  /* The canvas paints its own rim; this is the drop shadow that lifts the
-     whole dial off the map. Clipped to the half-disc so no square edge
-     shows. */
-  filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.45));
 }
 .daynight-clock canvas {
   display: block;
@@ -572,7 +611,10 @@ html, body {
 
 /* --- Sidebar --- */
 .sidebar {
-  width: 280px;
+  /* Shared with .daynight-clock-docked, which centres itself over this
+     column from OUTSIDE it -- see that rule. One variable so the two can't
+     drift apart if the sidebar is ever resized. */
+  width: var(--sidebar-width);
   background: var(--bg-panel);
   /* Gilded frame (2026-08-18, user-directed): one border-image per kingdom
      (see assets/img/sidebar-gilding-<race>.svg), swapped via a `race-*`
@@ -592,6 +634,13 @@ html, body {
   flex-direction: column;
   overflow-y: auto;
   padding: 14px;
+  /* Headroom for the astronomical clock docked over this panel's top edge
+     (.daynight-clock-docked). The dial is half of a 135px circle, so ~68px
+     tall, of which the top 16px sits on the border itself -- leaving ~52px
+     reaching into the panel, plus a little breathing room before the first
+     control. Overridden back to normal on mobile, where the clock isn't
+     docked here at all (see mobile.css). */
+  padding-top: 62px;
 }
 .sidebar.race-human, .game-dialog-victory.race-human         { border-image-source: url("../assets/img/sidebar-gilding-human.svg"); }
 .sidebar.race-elf, .game-dialog-victory.race-elf             { border-image-source: url("../assets/img/sidebar-gilding-elf.svg"); }

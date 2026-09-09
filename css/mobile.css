@@ -479,17 +479,34 @@ body.mobile .m-topbar {
   gap: .5rem;
 }
 
-/* Astronomical clock, pushed below #m-topbar rather than competing with it
-   for the top-centre slot. The topbar is a 44px-tall fixed row at
-   safe-area + .6rem, so this clears it by that plus the row height plus a
-   small gap. .map-area is inset:0 under body.mobile, so `top` here is
-   measured from the top of the screen exactly as the topbar's own is.
+/* Astronomical clock, sitting directly on top of the End Turn FAB
+   (2026-09-09, user-directed "move the clock to the top of the toolbar /
+   FAB"). The desktop build puts it in the sidebar footer above End Turn;
+   on mobile that footer is inside the collapsible bottom sheet, which would
+   hide the clock entirely whenever the sheet is shut, so it stays a
+   floating overlay and is anchored to the FAB -- mobile's equivalent of
+   that same End Turn control -- instead.
 
-   The research pill in the middle of that row is `hidden` whenever nothing
-   is being researched, but the row's height doesn't change either way -- so
-   this offset is stable and doesn't need to react to it. */
+   Shares the FAB's own right edge (the same `.85rem` inset) rather than
+   being centred on it: the dial's box is ~120px wide against the FAB's
+   66px, so centring the two would hang the dial off the side of the
+   screen. Aligning one edge instead reads as a deliberate stack and stays
+   fully on screen. Both offsets are written in terms of the FAB's own
+   values -- including --m-fab-bottom and its 66px height -- so the pair
+   stay glued together if either is ever moved. */
 body.mobile .daynight-clock {
-  top: calc(env(safe-area-inset-top, 0px) + .6rem + 44px + .45rem);
+  top: auto;
+  left: auto;
+  transform: none;
+  right: calc(env(safe-area-inset-right, 0px) + .85rem);
+  bottom: calc(var(--m-fab-bottom, 5.6rem) + env(safe-area-inset-bottom, 0px) + 66px + .4rem);
+}
+/* The desktop build reserves ~62px at the top of the sidebar for the clock
+   docked over its border. On mobile the sidebar is the bottom sheet and the
+   clock isn't there at all, so that headroom would just be dead space at
+   the top of every sheet. */
+body.mobile #sidebar {
+  padding-top: 14px;
 }
 
 body.mobile .m-menu-btn,

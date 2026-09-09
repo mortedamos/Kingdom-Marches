@@ -85,10 +85,15 @@ window.UI = window.UI || {};
     // it's never more than one click away.
     let researchHtml = "";
     if (viewState.humanCivId) {
+      // The "Next Unit (N)" button that used to live here is gone
+      // (2026-09-09, user-directed): the End Turn button below relabels
+      // itself to "Next" whenever anything still needs attention, and
+      // clicking it runs the same cycler this one did, so the pair were
+      // doing one job twice. The positive "all done" line stays -- it's the
+      // only place that state is stated in words rather than implied by the
+      // End Turn button turning green.
       const waiting = window.GameEngine.orders.unitsNeedingOrders(gameState, viewState.humanCivId);
-      cyclerHtml = waiting.length
-        ? `<button id="next-unit-btn" class="next-unit-btn">Next Unit (${waiting.length})</button>`
-        : `<div class="all-units-moved">All units have orders</div>`;
+      cyclerHtml = waiting.length ? "" : `<div class="all-units-moved">All units have orders</div>`;
 
       const civ = civs[viewState.humanCivId];
       const allTechsResearched = civ && civ.completedTechs.size >= window.GameData.techsForRace(civ.raceId).length;
@@ -116,20 +121,13 @@ window.UI = window.UI || {};
       }
     }
 
-    // "Next Idle City" -- same shared predicate
-    // (cities.js's isCityIdle) already backing the per-city Idle tag in
-    // renderKingdomPanel's own city list, the map's idle badge, and the End
-    // Turn nag. Only rendered when there's actually one to jump to, same
-    // "hide the control rather than show it disabled" convention the unit
-    // cycler above uses.
-    let idleCityHtml = "";
-    if (viewState.humanCivId) {
-      const civ = civs[viewState.humanCivId];
-      const idleCount = civ ? civ.cities.filter((c) => window.GameEngine.cities.isCityIdle(civ, c, gameState)).length : 0;
-      if (idleCount > 0) {
-        idleCityHtml = `<button id="next-idle-city-btn" class="next-unit-btn">Next Idle City (${idleCount})</button>`;
-      }
-    }
+    // The "Next Idle City (N)" button that used to sit here is gone for the
+    // same reason as the unit cycler above (2026-09-09, user-directed): End
+    // Turn reads "Next" and jumps to the next idle city first, ahead of
+    // units, via goToNextIdleCityOrNextUnit. cities.js's isCityIdle still
+    // backs the per-city Idle tag, the map's idle badge and the End Turn
+    // nag, so the state is in no way hidden -- only the duplicate button
+    // for acting on it is gone.
 
     // Territorial-victory progress: the win
     // condition is a share of the map's claimable land (turns.js's
@@ -209,9 +207,16 @@ window.UI = window.UI || {};
     const endTurnLabel = waiting ? "Wait" : hasUnresolvedWork ? "Next" : "End Turn";
 
     // Turn counter moved below End Turn.
+    //
+    // The astronomical clock is NOT rendered here even though it sits at the
+    // top of this panel visually: it docks over the sidebar's own top edge,
+    // overlapping the gilded border, and this element has overflow-y:auto --
+    // which clips at the padding box, so anything drawn into that border
+    // from inside would simply be cut off. daynight-clock.js parents it to
+    // .game-body instead and positions it over this column. That also keeps
+    // its canvas clear of the innerHTML rebuild happening on this very line.
     html += `<div class="sidebar-footer">
       ${researchHtml}
-      ${idleCityHtml}
       ${cyclerHtml}
       ${territoryHtml}
       <button id="end-turn-btn" class="${endTurnClass}"${waiting ? " disabled" : ""}>${endTurnLabel}</button>
@@ -1058,6 +1063,22 @@ window.UI = window.UI || {};
         ${economyHtml}
         <h3>Research</h3>
         <div class="stat-row">${isOwn ? researchHtml : UNKNOWN}</div>
+        ${/* The "View Tech Tree" button at the end of this block is now
+              SPECTATOR-ONLY (2026-09-09, user-asked "do we need both?").
+              In a normal game it was a strict duplicate of the footer's
+              "Choose Research": this whole block is gated on isOwn, and
+              with a human civ set isOwn can only be true for that same
+              civ -- so both buttons ran techTreeCivId = humanCivId and
+              opened the identical overlay. The footer one is the better
+              of the two to keep: it's visible whatever is selected (this
+              panel vanishes the moment you click a unit) and its label
+              carries live state, "Researching: Masonry (40%)".
+
+              It has to stay for spectator mode though, where isOwn is
+              true for EVERY civ (there's no human civ to compare against)
+              and the footer button isn't rendered at all -- there it's the
+              only way into any civ's tech tree, and data-civ-id is doing
+              real work picking which. */ ''}
         ${isOwn ? `<h3>Cities</h3>
         ${civ.cities.map((c) => {
           // Idle tag: same shared predicate the
@@ -1068,7 +1089,7 @@ window.UI = window.UI || {};
           const idleTag = idle ? `<span class="idle-tag" title="Not producing anything">Idle</span> ` : '';
           return `<div class="stat-row">${tileLink(c.x, c.y, c.name, "city")}<span>${idleTag}pop ${c.population.toFixed(0)}</span></div>`;
         }).join("")}
-        ${civ.id !== window.GameConfig.worldEncounters.monsters.civId
+        ${!viewState.humanCivId && civ.id !== window.GameConfig.worldEncounters.monsters.civId
           ? `<button class="action-btn view-tech-tree-btn" data-civ-id="${escapeHtml(civ.id)}">View Tech Tree</button>` : ''}` : ''}
       </div>`;
   }

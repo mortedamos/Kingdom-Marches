@@ -421,9 +421,86 @@
    *  still light and dim on a believable schedule -- they just don't get
    *  individual dots. */
   const SYNTHETIC = { windows: [], synthetic: true };
+  const NO_WINDOWS = Object.freeze([]);
   function specFor(spriteKey) {
     const data = (window.GameData && window.GameData.WINDOW_LIGHTS) || {};
-    return data[spriteKey] || SYNTHETIC;
+    const spec = data[spriteKey];
+    if (!spec) return SYNTHETIC;
+    // An entry may legitimately carry only an ambient value and no points at
+    // all -- the Wisp and the Great Bonfire are lights with nothing to put a
+    // dot on. Normalize once, in place, so every consumer can read
+    // spec.windows.length without guarding. The alternative was making the
+    // exporter always write an empty `windows: []`, which puts the invariant
+    // in the wrong file and leaves it one hand-edit away from a crash.
+    if (!spec.windows) spec.windows = NO_WINDOWS;
+    return spec;
+  }
+
+  /**
+   * How much broad ambient pool this particular sprite throws, as multipliers
+   * on whatever its kind (or its unit type) is configured for.
+   *
+   * Authored per sprite in window-lights.js rather than only per kind,
+   * because "does this thing glow, and how much" is a property of the ART,
+   * not of the category it belongs to: a Halfellow pub and a barracks are
+   * both "building", a lit farmstead and a haystack are both "influence", and
+   * a Wisp is a floating ball of light while a Militia is three people around
+   * one small torch. Absent means 1 -- the configured amount, i.e. exactly
+   * what everything did before this existed.
+   *
+   *   ambient: 0    no broad pool at all; the authored dots alone
+   *   ambient: 1    the configured amount for this kind
+   *   ambient: 2    twice it
+   *   ambientRadius likewise, on the radius
+   */
+  function ambientFor(spec) {
+    const mul = spec.ambient != null ? Math.max(0, spec.ambient) : 1;
+    const radiusMul = spec.ambientRadius != null ? Math.max(0, spec.ambientRadius) : 1;
+    return { mul, radiusMul };
+  }
+
+  /** Whether an influence-tile overlay emits anything at all. Unlike every
+   *  other kind it is opt-IN (see addStructureLight): it needs either an
+   *  authored lamp point or an explicitly authored ambient glow. */
+  function influenceEmits(spriteKey) {
+    const data = (window.GameData && window.GameData.WINDOW_LIGHTS) || {};
+    const spec = data[spriteKey];
+    if (!spec) return false;
+    return !!(spec.windows && spec.windows.length) || ambientFor(spec).mul > 0;
+  }
+
+  /**
+   * Lamp points for one FRAME of an animated sprite.
+   *
+   * Units are the only light sources in the game whose lamp moves: every unit
+   * sheet is four 128x128 idle frames, and while most of them barely stir --
+   * the Great Bonfire's flame core travels 2px across the whole cycle, a
+   * Militia torch about 4px -- the Wizard flatly does not. Wizard variant 1
+   * holds the staff in the LEFT hand on frame 0 and the right on frames 1-3,
+   * moving the crystal 66px, better than half the sprite's width. A single
+   * authored point would be wrong for three frames out of four on that unit,
+   * so the data is authored per frame.
+   *
+   * An entry's `frames` is an array of point-lists, indexed by the frame the
+   * sprite ACTUALLY drew (render.js passes the index it already resolved,
+   * rather than asking sprites.js again -- currentFrame advances a state
+   * machine, and it must be consulted exactly once per sprite per frame).
+   * Shorter arrays wrap, so a lamp that genuinely doesn't move can be
+   * authored once as a single-element `frames` and applies to all four.
+   *
+   * Position snaps with the frame rather than easing between frames, on
+   * purpose. The light source itself teleports -- the staff is in the other
+   * hand now -- so a pool that glided across the wizard's chest to catch up
+   * would read as detached from the thing making it. It is a position
+   * change, not a brightness change, so it stays clear of the no-flashing
+   * rule; and under reduced motion currentFrame pins every sprite to frame 0,
+   * which pins the lamp with it for free.
+   */
+  function frameSpecFor(spriteKey, frameIndex) {
+    const spec = specFor(spriteKey);
+    if (!spec.frames || !spec.frames.length) return spec;
+    const pts = spec.frames[((frameIndex | 0) % spec.frames.length + spec.frames.length) % spec.frames.length];
+    return { windows: pts || [], color: spec.color };
   }
 
   /** Average lit fraction across a source's windows -- drives its broad
@@ -517,8 +594,16 @@
    * render.js already computed, so the light sits on the unit's visual
    * position (mid-walk included) rather than on its logical tile.
    */
-  function addUnitLight(unit, boxX, boxY, boxSize, ts) {
+  function addUnitLight(unit, boxX, boxY, boxSize, ts, opts) {
     if (!isActive() || state.unitLightsAlpha <= 0.01) return;
+    // A hiding unit does not carry a lit torch (2026-09-09, user-directed).
+    // This is a correctness point, not just a mood one: `hidden` makes a unit
+    // untargetable and invisible to enemy AI (see ai.js), while the light
+    // pass draws through fog of war onto ground the viewer can see -- so a
+    // glowing hidden unit would broadcast the exact position of something the
+    // game has promised is concealed. Beats `burning` deliberately: if the
+    // rules say you can't be seen, nothing here gets to contradict them.
+    if (unit.conditions && unit.conditions.hidden) return;
     const c = cfg().lights;
     let spec = c.units[unit.typeId];
     if (!spec && c.optionalUnits && c.optionalUnits[unit.typeId]) {
@@ -526,21 +611,73 @@
     }
     // A burning unit is a moving light regardless of what it is. If it also
     // has its own lamp, the bigger of the two wins rather than stacking.
+    let ablaze = false;
     if (unit.conditions && unit.conditions.burning) {
       const b = c.burning;
-      if (!spec || b.radius > spec.radius) spec = b;
+      if (!spec || b.radius > spec.radius) { spec = b; ablaze = true; }
     }
     if (!spec) return;
 
-    lights.push({
-      x: boxX + boxSize / 2,
-      y: boxY + boxSize * 0.62, // a little below centre -- light is carried, not haloed
-      r: spec.radius * ts * (c.radiusScale || 1) * tuning.radiusMul,
-      color: spec.color,
-      intensity: spec.intensity * state.unitLightsAlpha,
-      flicker: spec.flicker || 0,
-      phase: hashInts(unit.x, unit.y, strHash(unit.typeId)) % 1000,
-    });
+    // Where on the sprite the light actually comes from. Authored per frame
+    // in window-lights.js (see frameSpecFor); a unit with no entry keeps the
+    // old behaviour -- one pool at the sprite's default carry position,
+    // a little below centre, since a carried light is not a halo.
+    const o = opts || {};
+    const authored = o.spriteKey ? specFor(o.spriteKey) : SYNTHETIC;
+    const lamps = o.spriteKey ? frameSpecFor(o.spriteKey, o.frameIndex || 0) : null;
+    // Once the fire has taken over, the authored lamp data stops applying.
+    // Those points and that ambient value describe the unit's OWN light --
+    // where a militia holds its torch, whether a wizard's staff washes the
+    // ground. A unit that is ablaze is lit all over by something that is not
+    // its lamp, so the pool goes to the sprite's centre and the dots are
+    // dropped. Crucially this also means a sprite authored `ambient: 0` (dots
+    // only, no pool) still lights the ground when it catches fire, rather
+    // than burning invisibly.
+    const pts = !ablaze && lamps && lamps.windows.length ? lamps.windows : null;
+    // Same per-sprite ambient control the structures have. A Wisp is a
+    // floating ball of glow and wants more pool than its dots suggest; a unit
+    // authored at 0 keeps only the dots.
+    const amb = ablaze ? { mul: 1, radiusMul: 1 } : ambientFor(authored);
+
+    let cx = boxX + boxSize / 2;
+    let cy = boxY + boxSize * 0.62;
+    if (pts) {
+      // The broad pool sits at the average of this frame's lamp points, so a
+      // wizard's staff drags the whole pool with it rather than glowing from
+      // the chest while the dot sits out on the crystal.
+      let sx = 0, sy = 0;
+      for (const p of pts) { sx += p[0]; sy += p[1]; }
+      cx = boxX + (sx / pts.length) * boxSize;
+      cy = boxY + (sy / pts.length) * boxSize;
+    }
+
+    if (amb.mul > 0 && amb.radiusMul > 0) {
+      lights.push({
+        x: cx,
+        y: cy,
+        r: spec.radius * ts * (c.radiusScale || 1) * tuning.radiusMul * amb.radiusMul,
+        color: spec.color,
+        intensity: spec.intensity * state.unitLightsAlpha * amb.mul,
+        flicker: spec.flicker || 0,
+        phase: hashInts(unit.x, unit.y, strHash(unit.typeId)) % 1000,
+      });
+    }
+
+    // Crisp per-point dots on top, drawn in the same full-resolution pass the
+    // building windows use. `alwaysOn` skips the window on/off schedule
+    // outright: a carried torch burns for as long as its bearer is out in the
+    // dark, it does not have a bedtime.
+    if (pts) {
+      windowSources.push({
+        source: {
+          spriteKey: o.spriteKey,
+          x: boxX, y: boxY, w: boxSize, h: boxSize,
+          color: spec.color,
+          alwaysOn: state.unitLightsAlpha,
+        },
+        spec: { windows: pts, color: spec.color },
+      });
+    }
   }
 
   /** A city. `tier` scales the pool so a capital burns brighter than a hamlet. */
@@ -567,15 +704,18 @@
     if (lit <= 0.01) return;
 
     const tierScale = (c.cityTierScale || [])[t - 1] || 1;
-    lights.push({
-      x: drawX + drawW / 2,
-      y: drawY + drawH * 0.72,
-      r: c.cityRadius * ts * tierScale * (c.radiusScale || 1) * tuning.radiusMul,
-      color: source.color,
-      intensity: 0.50 * lit * tierScale,
-      flicker: 0.25,
-      phase: hashInts(city.x, city.y) % 1000,
-    });
+    const amb = ambientFor(spec);
+    if (amb.mul > 0 && amb.radiusMul > 0) {
+      lights.push({
+        x: drawX + drawW / 2,
+        y: drawY + drawH * 0.72,
+        r: c.cityRadius * ts * tierScale * (c.radiusScale || 1) * tuning.radiusMul * amb.radiusMul,
+        color: source.color,
+        intensity: (c.cityIntensity != null ? c.cityIntensity : 0.5) * lit * tierScale * amb.mul,
+        flicker: 0.25,
+        phase: hashInts(city.x, city.y) % 1000,
+      });
+    }
     if (spec.windows.length) windowSources.push({ source, spec });
   }
 
@@ -583,10 +723,14 @@
    * A building, wall segment or bridge segment.
    *
    * `opts` carries what differs between them:
-   *   kind      "building" (default) | "wall" | "bridge" -- picks the radius
-   *             and intensity pair from config. Walls and bridges get a
-   *             smaller, dimmer light than a building: a torch on a rampart
-   *             or a lantern at a crossing, not a whole hearth.
+   *   kind      "building" (default) | "wall" | "bridge" | "influence" --
+   *             picks the radius and intensity pair from config. Walls and
+   *             bridges get a smaller, dimmer light than a building: a torch
+   *             on a rampart or a lantern at a crossing, not a whole hearth.
+   *             "influence" is the civ-influence tile overlay art (a
+   *             farmstead, a pig pen, a grave slab) and is smaller still --
+   *             and, unlike every other kind, emits nothing at all unless
+   *             its variant has an authored entry. See the note below.
    *   spriteKey overrides the window-lights.js lookup key. Walls and bridges
    *             need this because their art varies by RACE and ORIENTATION
    *             (a horizontal run, a vertical run and a corner node are three
@@ -605,6 +749,19 @@
    * schedule -- it just gets the broad glow and no dots, via the same single
    * synthetic on/off schedule a windowless building gets, seeded per-tile so
    * a run of wall segments never lights in lockstep.
+   *
+   * The ONE exception is kind "influence". Buildings, walls and bridges are
+   * all things that plausibly hold a light even when the artist didn't draw
+   * a window, so the synthetic fallback flatters them. Influence overlays
+   * are not: a haystack, a stack of cut stone, a rune waymarker and a pile
+   * of ale barrels have nothing to light, and lighting them by default would
+   * put a glow on most owned tiles on the map. So an influence variant with
+   * no authored entry is silently skipped; authoring either a lamp point or
+   * an ambient value on it in tools/window-lights.html is what turns it into
+   * a light source.
+   *
+   * Every kind additionally honours a per-sprite `ambient` / `ambientRadius`
+   * multiplier on the broad pool -- see ambientFor.
    */
   function addStructureLight(civ, s, drawX, drawY, drawW, drawH, ts, opts) {
     if (!isActive()) return;
@@ -616,6 +773,8 @@
     // the plain building id, which is what render.js resolves the sprite from
     // in the common case. Walls/bridges pass their own race+orientation key.
     const spriteKey = o.spriteKey || `building/${s.id}`;
+    // Opt-in, not opt-out -- see the note above.
+    if (kind === "influence" && !influenceEmits(spriteKey)) return;
     const rect = o.rect || { x: drawX, y: drawY, w: drawW, h: drawH };
     const source = {
       spriteKey,
@@ -632,10 +791,22 @@
 
     const radius = kind === "wall" ? c.wallRadius
       : kind === "bridge" ? c.bridgeRadius
-        : c.buildingRadius;
+        : kind === "influence" ? c.influenceRadius
+          : c.buildingRadius;
     const intensity = kind === "wall" ? c.wallIntensity
       : kind === "bridge" ? c.bridgeIntensity
-        : 0.38;
+        : kind === "influence" ? c.influenceIntensity
+          : c.buildingIntensity;
+
+    // Per-sprite ambient override. A sprite authored with ambient 0 keeps its
+    // window dots and drops the broad pool entirely -- the right answer for
+    // art with a couple of lit slits and no reason to wash the ground around
+    // it. The dots are pushed below regardless.
+    const amb = ambientFor(spec);
+    if (amb.mul <= 0 || amb.radiusMul <= 0) {
+      if (spec.windows.length) windowSources.push({ source, spec });
+      return;
+    }
 
     lights.push({
       // The broad pool always sits at the tile's own centre in SCREEN space,
@@ -644,9 +815,9 @@
       // rotation a bridge happened to be drawn with.
       x: drawX + drawW / 2,
       y: drawY + drawH * 0.70,
-      r: radius * ts * (c.radiusScale || 1) * tuning.radiusMul,
+      r: radius * ts * (c.radiusScale || 1) * tuning.radiusMul * amb.radiusMul,
       color: source.color,
-      intensity: intensity * lit,
+      intensity: intensity * lit * amb.mul,
       flicker: 0.2,
       phase: hashInts(s.x, s.y) % 1000,
     });
@@ -698,7 +869,8 @@
     for (const L of lights) {
       const r = L.r * scale * flickerMul(L, now);
       if (r <= 0) continue;
-      m.globalAlpha = Math.max(0, Math.min(maxCut, L.intensity * maxCut));
+      const i = L.intensity * flickerIntensityMul(L, now);
+      m.globalAlpha = Math.max(0, Math.min(maxCut, i * maxCut));
       m.drawImage(stamp, L.x * scale - r, L.y * scale - r, r * 2, r * 2);
     }
     m.globalAlpha = 1;
@@ -727,15 +899,47 @@
     return colorBlendOk;
   }
 
-  function flickerMul(light, now) {
-    if (!light.flicker || reduced()) return 1;
-    const amt = (cfg().lights.flickerAmount || 0) * light.flicker;
-    // Two incommensurable periods so it never settles into a visible pulse,
-    // and a small amplitude so it reads as a flame breathing rather than
-    // anything strobing.
+  /**
+   * The shared -1..1 flicker wave. Two incommensurable periods (about 3.9s
+   * and 1.7s) so it never settles into a visible repeating pulse.
+   *
+   * Both are far slower than 3Hz, which matters: this project's standing rule
+   * is that nothing may flash or strobe (photosensitivity). At 0.26Hz and
+   * 0.57Hz this is a flame breathing, and it is nowhere near the 3-60Hz band
+   * that provokes photosensitive responses.
+   *
+   * Returns 0 under reduced motion, so every consumer collapses to 1x.
+   */
+  function flickerWave(light, now) {
+    if (!light.flicker || reduced()) return 0;
     const a = Math.sin(now / 620 + light.phase);
     const b = Math.sin(now / 277 + light.phase * 1.7);
-    return 1 + amt * (a * 0.65 + b * 0.35);
+    return a * 0.65 + b * 0.35;
+  }
+
+  /** Flicker on the light's REACH. */
+  function flickerMul(light, now) {
+    return 1 + (cfg().lights.flickerAmount || 0) * light.flicker * flickerWave(light, now);
+  }
+
+  /**
+   * Flicker on the light's BRIGHTNESS (2026-09-09, user-directed: "if a unit
+   * has the burning condition, it should have ambient light that flickers").
+   *
+   * Wobbling only the radius, which is all this used to do, turned out to be
+   * nearly invisible: measured on a burning unit, the pool's core varied by
+   * 0.6% and its outer fringe by 2.6% over a full cycle. That is because the
+   * cutout is capped at maxCutout in the middle of a light, so growing and
+   * shrinking a soft falloff barely moves the core at all -- and the core is
+   * where the eye is. A fire has to get brighter and dimmer, not just wider
+   * and narrower.
+   *
+   * Driven by the SAME wave as the radius, so a flare-up is bigger and
+   * brighter together rather than the two fighting each other.
+   */
+  function flickerIntensityMul(light, now) {
+    const amt = (cfg().lights.flickerIntensityAmount || 0) * light.flicker;
+    return Math.max(0, 1 + amt * flickerWave(light, now));
   }
 
   /**
@@ -868,7 +1072,7 @@
       for (const L of lights) {
         const r = L.r * scale * flickerMul(L, now);
         if (r <= 0) continue;
-        sctx.globalAlpha = Math.max(0, Math.min(1, L.intensity));
+        sctx.globalAlpha = Math.max(0, Math.min(1, L.intensity * flickerIntensityMul(L, now)));
         sctx.drawImage(getGlowStamp(L.color), L.x * scale - r, L.y * scale - r, r * 2, r * 2);
       }
       sctx.globalAlpha = 1;
@@ -921,7 +1125,12 @@
       if (source.matrix) ctx.setTransform(source.matrix); else ctx.setTransform(baseMatrix);
       for (let i = 0; i < spec.windows.length; i++) {
         const win = spec.windows[i];
-        const lit = windowLitAmount(windowSchedule(source, spec, i), state.slot, sinceTurn);
+        // Unit lamps opt out of the whole go-to-bed schedule (see
+        // addUnitLight) and simply track the unit-light ramp; everything
+        // built into the ground runs its per-window on/off schedule.
+        const lit = source.alwaysOn != null
+          ? source.alwaysOn
+          : windowLitAmount(windowSchedule(source, spec, i), state.slot, sinceTurn);
         if (lit <= 0.02) continue;
 
         const px = source.x + win[0] * source.w;

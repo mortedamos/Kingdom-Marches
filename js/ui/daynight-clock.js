@@ -419,12 +419,35 @@
     g.restore();
   }
 
-  function ensureDom() {
-    if (root && document.body.contains(root)) return true;
+  /**
+   * Where the dial should currently live, and which positioning rule it
+   * gets there.
+   *
+   * Desktop: parented to .game-body and docked over the SIDEBAR's top edge,
+   * overlapping its gilded border-image, with the rest of the sidebar's
+   * content pushed below by that panel's own padding-top. It deliberately
+   * does NOT live inside .sidebar: that element is overflow-y:auto and so
+   * clips at its padding box, which would shear off exactly the part of the
+   * dial meant to sit on the border.
+   *
+   * Mobile: the sidebar is a collapsible bottom sheet, so docking there
+   * would hide the clock whenever the sheet is shut. It stays an overlay on
+   * .map-area instead, anchored just above the End Turn FAB.
+   */
+  function currentHost() {
+    const mobile = document.body.classList.contains("mobile");
+    if (!mobile) {
+      const gameBody = document.querySelector(".game-body");
+      if (gameBody) return { el: gameBody, cls: "daynight-clock-docked" };
+    }
     const mapArea = document.querySelector(".map-area");
-    if (!mapArea) return false;
+    return mapArea ? { el: mapArea, cls: "daynight-clock-floating" } : null;
+  }
 
-    root = document.getElementById("daynight-clock");
+  function ensureDom() {
+    const host = currentHost();
+    if (!host) return false;
+
     if (!root) {
       root = document.createElement("div");
       root.id = "daynight-clock";
@@ -432,10 +455,13 @@
       root.setAttribute("aria-hidden", "true"); // decorative; the turn counter is the accessible readout
       canvas = document.createElement("canvas");
       root.appendChild(canvas);
-      mapArea.appendChild(root);
-    } else {
-      canvas = root.querySelector("canvas");
     }
+    // Re-parent rather than rebuild, so a desktop/mobile switch moves the
+    // one existing canvas instead of throwing away its loaded sun/moon art
+    // and its sized backing store.
+    if (root.parentNode !== host.el) host.el.appendChild(root);
+    root.classList.toggle("daynight-clock-docked", host.cls === "daynight-clock-docked");
+    root.classList.toggle("daynight-clock-floating", host.cls === "daynight-clock-floating");
     ctx = canvas.getContext("2d");
 
     // Optional art. Absent files simply leave the drawn fallback in place --
