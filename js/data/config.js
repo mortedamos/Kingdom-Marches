@@ -65,9 +65,9 @@ window.GameConfig = {
     /** Local date this build was cut, YYYY-MM-DD. */
     date: "2026-09-09",
     /** Local time this build was cut, 24-hour HH:MM. */
-    time: "08:34",
+    time: "09:49",
     /** Monotonic build counter -- increment it, don't recompute it. */
-    number: 272,
+    number: 273,
   },
 
   // =========================================================================
@@ -1146,61 +1146,67 @@ window.GameConfig = {
        * day it is. Check that with the luma probe if you retune these.
        */
       slots: [
-        { tint: "#000000", alpha: 0.00, cool: "#1a3a8a", unitLights: false }, //  0  Day 1
-        { tint: "#000000", alpha: 0.00, cool: "#1a3a8a", unitLights: false }, //  1  Day 2
-        { tint: "#000000", alpha: 0.00, cool: "#1a3a8a", unitLights: false }, //  2  Day 3
-        { tint: "#000000", alpha: 0.00, cool: "#1a3a8a", unitLights: false }, //  3  Day 4
-        { tint: "#3a2410", alpha: 0.15, cool: "#6e5230", unitLights: false }, //  4  Twilight 1 -- first hint of dusk, muted amber-brown (user-reported 2026-09-07: an earlier, more saturated orange here read as "too orange" for just the first turn of dusk)
-        { tint: "#2e1430", alpha: 0.34, cool: "#553a72", unitLights: true }, //  5  Twilight 2 -- dusk violet
-        { tint: "#0e1b38", alpha: 0.33, cool: "#22407e", unitLights: true }, //  6  Night 1
-        { tint: "#0b1730", alpha: 0.36, cool: "#1d3a75", unitLights: true }, //  7  Night 2
-        { tint: "#0a1530", alpha: 0.38, cool: "#1b3773", unitLights: true }, //  8  Night 3 -- the small hours
-        { tint: "#0d1a36", alpha: 0.35, cool: "#213f7d", unitLights: true }, //  9  Night 4
-        { tint: "#141d3d", alpha: 0.32, cool: "#2a4788", unitLights: true }, // 10  Dawn 1 -- cold indigo
-        { tint: "#2e2618", alpha: 0.16, cool: "#8a7038", unitLights: false }, // 11  Dawn 2 -- first warm light
+        { tint: "#000000", alpha: 0.00, cool: "#1a3a8a", colorize: 0.00, unitLights: false }, //  0  Day 1
+        { tint: "#000000", alpha: 0.00, cool: "#1a3a8a", colorize: 0.00, unitLights: false }, //  1  Day 2
+        { tint: "#000000", alpha: 0.00, cool: "#1a3a8a", colorize: 0.00, unitLights: false }, //  2  Day 3
+        { tint: "#000000", alpha: 0.00, cool: "#1a3a8a", colorize: 0.00, unitLights: false }, //  3  Day 4
+        { tint: "#3a2410", alpha: 0.15, cool: "#6e5230", colorize: 0.14, unitLights: false }, //  4  Twilight 1 -- first hint of dusk, muted amber-brown (user-reported 2026-09-07: an earlier, more saturated orange here read as "too orange" for just the first turn of dusk)
+        { tint: "#2e1430", alpha: 0.22, cool: "#553a72", colorize: 0.34, unitLights: true }, //  5  Twilight 2 -- dusk violet
+        { tint: "#0e1b38", alpha: 0.24, cool: "#1c46c4", colorize: 0.50, unitLights: true }, //  6  Night 1
+        { tint: "#0b1730", alpha: 0.26, cool: "#1a42c0", colorize: 0.54, unitLights: true }, //  7  Night 2
+        { tint: "#0a1530", alpha: 0.28, cool: "#183fbc", colorize: 0.58, unitLights: true }, //  8  Night 3 -- the small hours
+        { tint: "#0d1a36", alpha: 0.25, cool: "#1d47c6", colorize: 0.52, unitLights: true }, //  9  Night 4
+        { tint: "#141d3d", alpha: 0.22, cool: "#2a53c8", colorize: 0.42, unitLights: true }, // 10  Dawn 1 -- cold indigo
+        { tint: "#2e2618", alpha: 0.14, cool: "#8a7038", colorize: 0.16, unitLights: false }, // 11  Dawn 2 -- first warm light
       ],
 
       /**
-       * Fixed denominator for the 0-1 `darkness` value derived from the
-       * slot table above (peak alpha in the ORIGINAL tuning pass, kept
-       * stable on purpose -- see the note below). `darkness` isn't just a
-       * display number: it scales the colorize pass's strength (below),
-       * the clock dial's cloud/star crossfade, and window-dot brightness.
+       * Denominator for the 0-1 `darkness` value derived from the slot
+       * table above. `darkness` no longer drives the world's colorize pass
+       * (each slot authors that directly now -- see `colorize` above), but
+       * it still scales the clock dial's cloud/star crossfade and the
+       * window-dot brightness, so it wants to reach a full 1.0 at the
+       * deepest slot: stars should be out and lamps at full strength at
+       * the small hours, whatever absolute alpha "darkest" happens to be
+       * tuned to that week.
        *
-       * Both turns.js's phaseForTurn and this module's own peakAlpha()
-       * read THIS instead of recomputing `max(slot.alpha)` live, and that
-       * distinction matters: night's alpha was lowered from a 0.48 peak to
-       * 0.38 (2026-09-07, user-reported "night is a little too dark")
-       * without touching this constant. Deriving the denominator live
-       * would have silently RAISED every other slot's darkness ratio to
-       * compensate (twilight 2's 0.34/0.48=0.71 would have jumped to
-       * 0.34/0.38=0.89), amplifying its colorize push well past what was
-       * ever tuned or asked for. Change this only when deliberately
-       * rescaling the whole normalized curve, not as a side effect of
-       * retuning one slot's alpha.
+       * Kept as an explicit constant rather than `max(slot.alpha)` computed
+       * live so that retuning ONE slot can't silently rescale every other
+       * slot's derived values. Update it deliberately, together with the
+       * table, whenever the whole curve is rescaled -- as on 2026-09-09,
+       * when night's peak came down 0.38 -> 0.28 (user-reported "night is
+       * still too dark... we still need the human viewer to be able to see
+       * what is going on") and this came down with it to match.
        */
-      darknessReferencePeak: 0.48,
+      darknessReferencePeak: 0.28,
 
       /**
-       * How hard to push the world's HUE toward each slot's `cool` colour,
-       * scaled by how dark that slot is. This is the "day for night" trick,
-       * and it is doing more work than the darkening is.
+       * Global multiplier on each slot's own `colorize` strength -- one dial
+       * to push the whole "day for night" hue shift up or down without
+       * re-authoring twelve numbers. 1.0 means "use the table as written".
        *
-       * A plain source-over wash CANNOT make a warm scene read as cool: it
-       * averages toward the tint, so orange sand under a dark blue at 48%
-       * comes out muddy olive-grey with red still the dominant channel, and
-       * you'd have to go past 75% alpha -- unreadably dark -- before blue
-       * actually won. Measured: the wash alone moved the scene from strongly
-       * warm to merely neutral, never to blue.
+       * The colorize pass is doing MORE work than the darkening is, and
+       * deliberately so. A plain source-over wash CANNOT make a warm scene
+       * read as cool: it averages toward the tint, so orange sand under a
+       * dark blue at 48% comes out muddy olive-grey with red still the
+       * dominant channel, and you'd have to go past 75% alpha -- unreadably
+       * dark -- before blue actually won. Measured: the wash alone moved the
+       * scene from strongly warm to merely neutral, never to blue.
        *
        * The "color" composite mode takes hue and saturation from the source
        * and LUMINOSITY from what's underneath, so it recolours without
        * flattening any of the art's shading. Applied through the same light
        * cutouts as the darkness, so torchlit ground stays warm while
-       * everything around it goes blue. Set to 0 to disable the effect and
-       * fall back to the wash alone.
+       * everything around it goes blue.
+       *
+       * Per-slot `colorize` used to be DERIVED as darkness * this, which
+       * coupled the two knobs backwards: making night lighter also made it
+       * less blue, exactly the opposite of what "lighter but more clearly
+       * night" needs. Splitting them (2026-09-09) is what let night's wash
+       * drop ~26% while its blue push nearly doubled. Set to 0 to disable
+       * the hue shift entirely and fall back to the wash alone.
        */
-      colorizeScale: 0.38,
+      colorizeScale: 1.0,
 
       /** Cross-fade when the turn advances. The sky HOLDS for the whole of a
        *  turn and only moves on End Turn, so the screen never changes while
@@ -1297,6 +1303,12 @@ window.GameConfig = {
          *  and off independently, seeded by its own tile coordinates. */
         wallRadius: 1.0,
         wallIntensity: 0.24,
+        /** Bridges get the same treatment as walls -- a lantern at the
+         *  crossing, not a hearth. Slightly dimmer still: a bridge is a
+         *  thin band of art with a lot of dark water around it, so the same
+         *  intensity reads brighter there than it does on a wall. */
+        bridgeRadius: 0.9,
+        bridgeIntensity: 0.20,
         /** City glow multiplier by population tier 1-6, so a capital burns
          *  visibly brighter than a hamlet. Index 0 is tier 1. */
         cityTierScale: [0.70, 0.80, 0.90, 1.00, 1.12, 1.25],

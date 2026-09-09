@@ -2062,10 +2062,44 @@ window.UI = window.UI || {};
   // just not every tile, so density drops without any single sighting
   // reading as sparser than it should.
   const FIREFLY_SLOTS = [5, 6]; // Twilight 2, Night 1 -- "late twilight and early night"
-  const FIREFLY_SKIP_CHANCE = 0.55;
-  const FIREFLY_COUNT = 3;
-  const FIREFLY_COLOR_RGB = "217,255,138"; // pale yellow-green bioluminescence
-  const FIREFLY_DRIFT_PERIOD_MS = 5200;
+  // Thinned hard (2026-09-09, user-directed: "about 75% less fireflies
+  // overall") by raising the per-tile SKIP chance from 0.45 to 0.86 --
+  // 55% of eligible tiles participating down to 14%, a quarter as many --
+  // rather than by cutting FIREFLY_COUNT. Same reasoning drawGrassClutter
+  // documents for its own thinning: a tile that DOES have fireflies still
+  // gets the full little swarm winking around it, so the effect keeps its
+  // character and simply becomes something you come across here and there
+  // instead of a carpet over every field.
+  const FIREFLY_SKIP_CHANCE = 0.86;
+  const FIREFLY_COUNT = 4;
+  const FIREFLY_COLOR_RGB = "206,255,104"; // yellow-green bioluminescence
+
+  // WINK, don't pulse (2026-09-09, user-reported: "right now they read as
+  // stars"). The first version oscillated alpha between 0.30 and 0.65 and
+  // never actually went out, which is precisely what a star looks like: a
+  // fixed point of light that merely twinkles. A firefly is DARK most of
+  // the time and lit for a moment, somewhere slightly different each time.
+  // So each one is off for the bulk of its own cycle, lit for ON_MS inside
+  // it, at its own stable-random cycle length and phase so a field of them
+  // never blinks in unison.
+  //
+  // Still not a strobe: the lit window ramps up and back down on a sine
+  // over ~1.2s rather than stepping on, each mote is a few pixels of low-
+  // alpha additive glow, and no two share a phase -- so there's no
+  // synchronized full-screen brightness step anywhere in it. Same
+  // no-flashing discipline the rest of this file follows.
+  const FIREFLY_BLINK_CYCLE_MS = [2600, 5400]; // per-firefly, stable-random within
+  const FIREFLY_BLINK_ON_MS = 1200;
+
+  // DRIFT far enough to actually read as movement. The first version moved
+  // each mote by +/-0.07 of a tile -- under 4px at default zoom, which the
+  // eye reads as a stationary point. This wanders over a much wider patch,
+  // and critically it keeps drifting WHILE DARK, so every wink reappears
+  // somewhere new rather than re-lighting the same fixed dot. Two
+  // deliberately non-harmonic periods per axis keep the path from settling
+  // into a visible loop.
+  const FIREFLY_DRIFT_RADIUS = 0.20; // fraction of a tile, per axis
+  const FIREFLY_DRIFT_MS = { x1: 7000, x2: 3100, y1: 6100, y2: 2700 };
 
   function fireflyWindowActive() {
     const dn = window.UI.daynight;
@@ -2073,13 +2107,15 @@ window.UI = window.UI || {};
   }
 
   /** Ambient fireflies over plains, swamp and forest at the twilight/night
-   *  hinge (see FIREFLY_SLOTS). Each is a small soft additive glow that
-   *  drifts in a slow loop and pulses gently -- never a hard on/off flash,
-   *  same no-flashing discipline every other ambient effect here follows.
-   *  Reduced motion: shown as still, steady glows at their base position
-   *  rather than hidden -- a small steady light is still a meaningful,
-   *  calm rendering of "fireflies are out tonight," the same reasoning
-   *  drawSwampSnake/drawForestBird use for their own still fallback. */
+   *  hinge (see FIREFLY_SLOTS). Each is a small additive glow that wanders
+   *  continuously and winks on for about a second at a time -- see the
+   *  WINK and DRIFT notes above for why both of those matter more than the
+   *  glow itself for reading as a firefly rather than a star.
+   *  Reduced motion: shown as still, steady glows at their base position,
+   *  neither drifting nor winking -- a small steady light is still a
+   *  meaningful, calm rendering of "fireflies are out tonight," the same
+   *  reasoning drawSwampSnake/drawForestBird use for their own still
+   *  fallback. */
   function drawFireflies(ctx, tile, screenX, screenY, ts, now) {
     if (!fireflyWindowActive()) return;
     const seed = tileClutterSeed(tile);
@@ -2088,13 +2124,30 @@ window.UI = window.UI || {};
     ctx.save();
     ctx.globalCompositeOperation = "lighter";
     for (let i = 0; i < FIREFLY_COUNT; i++) {
-      const s0 = seed[i % 5], s1 = seed[(i + 2) % 5];
-      const baseX = 0.2 + s0 * 0.6;
-      const baseY = 0.22 + s1 * 0.56;
+      const s0 = seed[i % 5], s1 = seed[(i + 2) % 5], s2 = seed[(i + 3) % 5];
       const phase = s0 * Math.PI * 2 + i * 2.1;
-      const driftX = reduced ? 0 : Math.sin(now / FIREFLY_DRIFT_PERIOD_MS + phase) * ts * 0.07;
-      const driftY = reduced ? 0 : Math.cos(now / (FIREFLY_DRIFT_PERIOD_MS * 0.8) + phase * 1.3) * ts * 0.06;
-      const glow = reduced ? 0.5 : 0.30 + 0.35 * (0.5 + 0.5 * Math.sin(now / 950 + phase * 1.6));
+
+      let glow;
+      if (reduced) {
+        glow = 0.5;
+      } else {
+        const cycle = FIREFLY_BLINK_CYCLE_MS[0]
+          + s0 * (FIREFLY_BLINK_CYCLE_MS[1] - FIREFLY_BLINK_CYCLE_MS[0]);
+        const t = (now + s1 * cycle) % cycle;
+        if (t > FIREFLY_BLINK_ON_MS) continue; // dark for most of its cycle
+        // Smooth ramp up and back down across the lit window, never a step.
+        glow = Math.sin((t / FIREFLY_BLINK_ON_MS) * Math.PI) * (0.55 + s2 * 0.35);
+      }
+
+      // Base spot, plus a wander that runs whether or not it's currently lit.
+      const baseX = 0.22 + s0 * 0.56;
+      const baseY = 0.24 + s1 * 0.52;
+      const D = FIREFLY_DRIFT_MS;
+      const driftX = reduced ? 0 : (Math.sin(now / D.x1 + phase) * 0.6
+        + Math.sin(now / D.x2 + phase * 2.3) * 0.4) * ts * FIREFLY_DRIFT_RADIUS;
+      const driftY = reduced ? 0 : (Math.cos(now / D.y1 + phase * 1.4) * 0.6
+        + Math.cos(now / D.y2 + phase * 0.7) * 0.4) * ts * FIREFLY_DRIFT_RADIUS;
+
       const cx = screenX + baseX * ts + driftX;
       const cy = screenY + baseY * ts + driftY;
       const r = ts * 0.07;

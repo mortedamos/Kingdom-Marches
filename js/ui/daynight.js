@@ -151,6 +151,9 @@
     tint: "#000000",
     /** Hue the world is pushed toward -- see config's colorizeScale. */
     cool: "#1a3a8a",
+    /** How hard to push toward `cool`, 0-1, eased from the slot table's own
+     *  authored value (NOT derived from darkness -- see config). */
+    colorize: 0,
     alpha: 0,
     /** 0-1: how deep this slot is relative to the deepest configured slot.
      *  Window and lamp brightness scale by this so lamps read as a subtle
@@ -268,6 +271,10 @@
     state.tint = mixHex(from.tint, to.tint, t);
     state.cool = mixHex(from.cool || to.cool, to.cool || from.cool, t);
     state.darkness = rawAlpha / peakAlpha();
+    // Authored per slot rather than derived from darkness -- see config's
+    // colorizeScale note for why those two had to be split apart.
+    const fromCol = from.colorize || 0, toCol = to.colorize || 0;
+    state.colorize = fromCol + (toCol - fromCol) * t;
 
     const fromLights = from.unitLights ? 1 : 0;
     const toLights = to.unitLights ? 1 : 0;
@@ -572,27 +579,50 @@
     if (spec.windows.length) windowSources.push({ source, spec });
   }
 
-  /** A building or wall segment. Bridges are still excluded by render.js --
-   *  nobody keeps a lamp burning on a bridge deck. Walls get a smaller,
-   *  dimmer light than a building (a torch/brazier on the rampart, not a
-   *  whole hearth) via `isWall`; they have no authored window-lights.js
-   *  entry (impractical to hand-place a window per wall tile across every
-   *  city), so they fall back to the same single synthetic on/off schedule
-   *  a windowless building gets, seeded per-tile so a run of wall segments
-   *  doesn't light in lockstep. */
-  function addStructureLight(civ, s, drawX, drawY, drawW, drawH, ts, isWall) {
+  /**
+   * A building, wall segment or bridge segment.
+   *
+   * `opts` carries what differs between them:
+   *   kind      "building" (default) | "wall" | "bridge" -- picks the radius
+   *             and intensity pair from config. Walls and bridges get a
+   *             smaller, dimmer light than a building: a torch on a rampart
+   *             or a lantern at a crossing, not a whole hearth.
+   *   spriteKey overrides the window-lights.js lookup key. Walls and bridges
+   *             need this because their art varies by RACE and ORIENTATION
+   *             (a horizontal run, a vertical run and a corner node are three
+   *             different PNGs), so one key per building id would put a
+   *             lamp authored on a vertical wall onto a corner piece.
+   *   matrix    the canvas transform that was active when the sprite was
+   *             drawn, or null when it was drawn straight. Bridges rotate
+   *             (and mirror, and stretch) their art -- see render.js's
+   *             bridge pass -- so their lamps have to ride the same
+   *             transform or they'd sit beside the band instead of on it.
+   *             Captured rather than recomputed so the two can never drift.
+   *   rect      the rect the sprite was drawn into IN THAT MATRIX'S space.
+   *             Defaults to the screen-space rect passed in.
+   *
+   * A sprite with no authored entry still lights and dims on a believable
+   * schedule -- it just gets the broad glow and no dots, via the same single
+   * synthetic on/off schedule a windowless building gets, seeded per-tile so
+   * a run of wall segments never lights in lockstep.
+   */
+  function addStructureLight(civ, s, drawX, drawY, drawW, drawH, ts, opts) {
     if (!isActive()) return;
+    const o = opts || {};
+    const kind = o.kind || "building";
     const c = cfg().lights;
     const raceId = civ && civ.raceId;
     // Race-specific building art exists for some ids; the light data keys off
     // the plain building id, which is what render.js resolves the sprite from
-    // in the common case.
-    const spriteKey = `building/${s.id}`;
+    // in the common case. Walls/bridges pass their own race+orientation key.
+    const spriteKey = o.spriteKey || `building/${s.id}`;
+    const rect = o.rect || { x: drawX, y: drawY, w: drawW, h: drawH };
     const source = {
       spriteKey,
       seedA: hashInts(s.x, s.y),
-      seedB: strHash(s.id),
-      x: drawX, y: drawY, w: drawW, h: drawH,
+      seedB: strHash(spriteKey),
+      x: rect.x, y: rect.y, w: rect.w, h: rect.h,
+      matrix: o.matrix || null,
       color: raceColorFor(raceId),
     };
     const spec = specFor(spriteKey);
@@ -600,12 +630,23 @@
     const lit = sourceLitAmount(source, spec, sinceTurn);
     if (lit <= 0.01) return;
 
+    const radius = kind === "wall" ? c.wallRadius
+      : kind === "bridge" ? c.bridgeRadius
+        : c.buildingRadius;
+    const intensity = kind === "wall" ? c.wallIntensity
+      : kind === "bridge" ? c.bridgeIntensity
+        : 0.38;
+
     lights.push({
+      // The broad pool always sits at the tile's own centre in SCREEN space,
+      // never under the sprite's transform -- it's composited into the
+      // half-resolution scratch buffer, which knows nothing about whatever
+      // rotation a bridge happened to be drawn with.
       x: drawX + drawW / 2,
       y: drawY + drawH * 0.70,
-      r: (isWall ? c.wallRadius : c.buildingRadius) * ts * (c.radiusScale || 1) * tuning.radiusMul,
+      r: radius * ts * (c.radiusScale || 1) * tuning.radiusMul,
       color: source.color,
-      intensity: (isWall ? c.wallIntensity : 0.38) * lit,
+      intensity: intensity * lit,
       flicker: 0.2,
       phase: hashInts(s.x, s.y) % 1000,
     });
@@ -788,7 +829,10 @@
     // colorizeScale for why. Masked by the same light stamps, so ground
     // inside a torch's pool keeps its warm daylight hue while everything
     // around it turns blue.
-    const coolStrength = state.darkness * (c.colorizeScale || 0) * tuning.darknessMul;
+    // Deliberately NOT multiplied by tuning.darknessMul: that dev slider
+    // controls how dark the wash is, and the whole point of authoring
+    // colorize per slot is that "how blue" and "how dark" move separately.
+    const coolStrength = state.colorize * (c.colorizeScale != null ? c.colorizeScale : 1);
     if (coolStrength > 0.01 && supportsColorBlend(ctx)) {
       sctx.setTransform(1, 0, 0, 1, 0, 0);
       sctx.globalCompositeOperation = "source-over";
@@ -867,8 +911,14 @@
     if (brightness <= 0.01) return;
 
     ctx.save();
+    const baseMatrix = ctx.getTransform();
     ctx.globalCompositeOperation = "lighter";
     for (const { source, spec } of windowSources) {
+      // A source drawn under a transform (a rotated/mirrored bridge span)
+      // replays that exact matrix, so its lamps land on the band wherever
+      // the art was actually put. Everything else draws in plain screen
+      // space under the canvas's own base (device-pixel-ratio) matrix.
+      if (source.matrix) ctx.setTransform(source.matrix); else ctx.setTransform(baseMatrix);
       for (let i = 0; i < spec.windows.length; i++) {
         const win = spec.windows[i];
         const lit = windowLitAmount(windowSchedule(source, spec, i), state.slot, sinceTurn);
@@ -884,6 +934,7 @@
         ctx.drawImage(getGlowStamp(color), px - r * 2.2, py - r * 2.2, r * 4.4, r * 4.4);
       }
     }
+    ctx.setTransform(baseMatrix);
     ctx.restore();
   }
 

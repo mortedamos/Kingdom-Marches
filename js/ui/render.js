@@ -938,20 +938,26 @@ window.UI = window.UI || {};
           // art itself to stay shorter than any city tier, not by code here.
           // Walls additionally vary by orientation (see wallOrientation()
           // above) so a run of segments connects visually.
+          // A wall's light data is keyed by race AND orientation, because
+          // that's how its art varies -- a lamp authored on a vertical run
+          // would sit wrong on a corner node. Resolved once here and shared
+          // by both the sprite pick and the light below.
+          const wallOrient = building.isWall ? wallOrientation(map, civ.id, s.x, s.y) : null;
+          const lightOpts = building.isWall
+            ? { kind: "wall", spriteKey: `wall/${civ.raceId}/${wallOrient}` }
+            : { kind: "building" };
           const sprite = building.isWall
-            ? window.UI.sprites.pickWallSegment(s.id, civ.raceId, wallOrientation(map, civ.id, s.x, s.y), s)
+            ? window.UI.sprites.pickWallSegment(s.id, civ.raceId, wallOrient, s)
             : window.UI.sprites.pickBuilding(s.id, civ.raceId, s);
           if (sprite) {
             const img = sprite.image;
             const drawHeight = ts * (img.naturalHeight / img.naturalWidth);
             const drawY = screenY + ts - drawHeight;
             ctx.drawImage(img, 0, 0, img.naturalWidth, img.naturalHeight, screenX, drawY, ts, drawHeight);
-            // Lamplight -- not for bridges (nobody keeps a lamp burning on a
-            // bridge deck), but walls DO get one: a torch/brazier along the
-            // rampart, dimmer and smaller than a building's (see
-            // addStructureLight's own isWall handling).
+            // Lamplight. Bridges are lit by their own pass below (their art
+            // is rotated, so their lamps need the transform along with it).
             if (!building.isBridge) {
-              window.UI.daynight.addStructureLight(civ, s, screenX, drawY, ts, drawHeight, ts, building.isWall);
+              window.UI.daynight.addStructureLight(civ, s, screenX, drawY, ts, drawHeight, ts, lightOpts);
             }
           } else {
             const pad = ts * 0.2;
@@ -973,7 +979,7 @@ window.UI = window.UI || {};
             // just no sprite to hang individual windows on, which is
             // exactly the fallback daynight.js's specFor is built for.
             if (!building.isBridge) {
-              window.UI.daynight.addStructureLight(civ, s, screenX + pad, screenY + pad, ts - pad * 2, ts - pad * 2, ts, building.isWall);
+              window.UI.daynight.addStructureLight(civ, s, screenX + pad, screenY + pad, ts - pad * 2, ts - pad * 2, ts, lightOpts);
             }
           }
           // Burning (2026-08-19, user-requested): same flame-tongue effect
@@ -1086,6 +1092,7 @@ window.UI = window.UI || {};
             ctx.scale(DIAGONAL_LENGTH_SCALE, DIAGONAL_WIDTH_SCALE);
             ctx.rotate(-Math.PI / 4);
             ctx.drawImage(img, 0, 0, img.naturalWidth, img.naturalHeight, -ts / 2, -drawHeight / 2, ts, drawHeight);
+            addBridgeLight(civ, s, screenX, screenY, ts, drawHeight, orientation, ctx.getTransform());
             ctx.restore();
           } else if (orientation === "horizontal") {
             // Rotate the single authored vertical (north-south) asset 90°
@@ -1097,9 +1104,13 @@ window.UI = window.UI || {};
             ctx.translate(screenX + ts / 2, drawY + drawHeight / 2);
             ctx.rotate(Math.PI / 2);
             ctx.drawImage(img, 0, 0, img.naturalWidth, img.naturalHeight, -ts / 2, -drawHeight / 2, ts, drawHeight);
+            addBridgeLight(civ, s, screenX, screenY, ts, drawHeight, orientation, ctx.getTransform());
             ctx.restore();
           } else {
             ctx.drawImage(img, 0, 0, img.naturalWidth, img.naturalHeight, screenX, drawY, ts, drawHeight);
+            // Drawn straight, so no transform to carry -- the lamps can sit
+            // in plain screen space like a building's do.
+            addBridgeLight(civ, s, screenX, screenY, ts, drawHeight, orientation, null, drawY);
           }
         } else {
           const pad = ts * 0.15;
@@ -2069,6 +2080,36 @@ window.UI = window.UI || {};
     if (nwse && !nesw && !horiz && !vert) return "diagonal_nwse";
     if (nesw && !nwse && !horiz && !vert) return "diagonal_nesw";
     return "node";
+  }
+
+  /**
+   * Registers a bridge span's lamps with the day/night system.
+   *
+   * Bridges are the one structure whose art is drawn under a canvas
+   * TRANSFORM -- an east-west span is the vertical asset rotated 90°, and a
+   * diagonal is rotated, sometimes mirrored, and stretched along its own
+   * axis (see the Bridges draw pass for why). Their lamps have to ride that
+   * same transform or they'd float beside the band instead of sitting on
+   * it, so the live matrix is captured at the draw site and handed over
+   * rather than reconstructed here -- there's no way for the two to drift
+   * apart that way. `drawY` is only needed for the untransformed case,
+   * where the lamps sit in plain screen space.
+   *
+   * The light data is keyed by race and by the ASSET orientation
+   * (bridgeSpriteKey's 3, not bridgeOrientation's 5), because that's the
+   * granularity the art actually has -- both diagonals share one image, so
+   * they share one set of authored lamp positions too, and the mirror in
+   * the transform takes care of the rest.
+   */
+  function addBridgeLight(civ, s, screenX, screenY, ts, drawHeight, orientation, matrix, drawY) {
+    const spriteKey = `bridge/${civ.raceId}/${bridgeSpriteKey(orientation)}`;
+    const rect = matrix
+      ? { x: -ts / 2, y: -drawHeight / 2, w: ts, h: drawHeight }
+      : { x: screenX, y: drawY, w: ts, h: drawHeight };
+    window.UI.daynight.addStructureLight(
+      civ, s, screenX, screenY, ts, ts, ts,
+      { kind: "bridge", spriteKey, matrix, rect }
+    );
   }
 
   /** Collapses bridgeOrientation's 5 possible strings down to the 3 actual
