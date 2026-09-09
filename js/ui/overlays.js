@@ -1842,6 +1842,19 @@ window.UI = window.UI || {};
   // shorter active window within it, offset per-tile by tileClutterSeed so
   // a whole swamp/forest doesn't populate in unison. Live tiles only (see
   // render.js's caller, same reasoning as ground clutter/chest sparkle).
+  //
+  // Hidden at night entirely (2026-09-07, user-requested): a snake or bird
+  // sighting is a daylight/dusk thing, not a 3am one. Gated on
+  // window.UI.daynight's own phase rather than a private clock, and on
+  // isEnabled() specifically so that turning the whole day/night feature
+  // OFF via the Interface menu doesn't leave wildlife invisibly disabled
+  // by a turn-phase clock the player can no longer see any evidence of --
+  // daynight.js's tick() keeps state.phase current every frame regardless
+  // of that toggle, so the toggle has to be checked explicitly here.
+  function nocturnalWildlifeHidden() {
+    const dn = window.UI.daynight;
+    return !!(dn && dn.isEnabled() && dn.current().phase === "night");
+  }
 
   // Cycle/active timing (2026-08-19, user-directed: "way too many frogs and
   // birds" -- the original 10-11s cycle with a ~36-38% active window meant
@@ -1852,8 +1865,11 @@ window.UI = window.UI || {};
   // user-directed: "reduce number of swamp overlay effects by about 1/3")
   // -- ACTIVE_MS held fixed so an individual sighting still looks/lasts
   // exactly the same, just happens 1/3 less often (duty cycle
-  // 6000/32000=18.75% -> 6000/48000=12.5%, a 2/3 ratio).
-  const SNAKE_CYCLE_MS = 48000;
+  // 6000/32000=18.75% -> 6000/48000=12.5%, a 2/3 ratio). Doubled again
+  // 2026-09-07 (48000 -> 96000, user-directed: "reduce number of snakes in
+  // swamps by 50%") -- same technique, ACTIVE_MS still fixed, duty cycle
+  // 12.5% -> 6.25%, exactly half as many visible at any moment.
+  const SNAKE_CYCLE_MS = 96000;
   const SNAKE_ACTIVE_MS = 6000;
   const SNAKE_LEG_COUNT = 2;
   const SNAKE_COLOR = "#4a6b3a";
@@ -1910,6 +1926,7 @@ window.UI = window.UI || {};
    *  is a meaningful static rendering the way a still grass tuft is (unlike
    *  the wind wisp above, which is pure motion with no static equivalent). */
   function drawSwampSnake(ctx, tile, screenX, screenY, ts, now) {
+    if (nocturnalWildlifeHidden()) return;
     const seed = tileClutterSeed(tile);
     const t = (now + seed[3] * SNAKE_CYCLE_MS) % SNAKE_CYCLE_MS;
     if (t > SNAKE_ACTIVE_MS) return;
@@ -1984,6 +2001,7 @@ window.UI = window.UI || {};
    *  same "still is a meaningful static rendering" reasoning as
    *  drawSwampSnake above. */
   function drawForestBird(ctx, tile, screenX, screenY, ts, now) {
+    if (nocturnalWildlifeHidden()) return;
     const seed = tileClutterSeed(tile);
     const t = (now + seed[2] * BIRD_CYCLE_MS) % BIRD_CYCLE_MS;
     if (t > BIRD_ACTIVE_MS) return;
@@ -2028,6 +2046,69 @@ window.UI = window.UI || {};
     ctx.restore();
   }
 
+  // --- Fireflies (2026-09-07, user-requested) ---------------------------
+  // A brief, magical window right at the day/night cycle's dusk-to-night
+  // hinge: small glowing motes over plains, swamp and forest, gone again
+  // once night is properly underway. Gated on window.UI.daynight's own
+  // slot (never a private clock), so this can't disagree with the world
+  // tint or the astronomical clock about when "late twilight" is.
+  //
+  // Unlike the snake/bird SIGHTINGS above (rare at all hours), fireflies
+  // are a reliable seasonal event confined to a narrow two-turn window --
+  // so there's no separate duty-cycle timer layered on top of the phase
+  // gate. Instead a per-tile skip chance (FIREFLY_SKIP_CHANCE) keeps them
+  // off most tiles at once, the same technique drawGrassClutter uses for
+  // the same reason: a tile that DOES show them gets the full look, it's
+  // just not every tile, so density drops without any single sighting
+  // reading as sparser than it should.
+  const FIREFLY_SLOTS = [5, 6]; // Twilight 2, Night 1 -- "late twilight and early night"
+  const FIREFLY_SKIP_CHANCE = 0.55;
+  const FIREFLY_COUNT = 3;
+  const FIREFLY_COLOR_RGB = "217,255,138"; // pale yellow-green bioluminescence
+  const FIREFLY_DRIFT_PERIOD_MS = 5200;
+
+  function fireflyWindowActive() {
+    const dn = window.UI.daynight;
+    return !!(dn && dn.isEnabled() && FIREFLY_SLOTS.indexOf(dn.current().slot) !== -1);
+  }
+
+  /** Ambient fireflies over plains, swamp and forest at the twilight/night
+   *  hinge (see FIREFLY_SLOTS). Each is a small soft additive glow that
+   *  drifts in a slow loop and pulses gently -- never a hard on/off flash,
+   *  same no-flashing discipline every other ambient effect here follows.
+   *  Reduced motion: shown as still, steady glows at their base position
+   *  rather than hidden -- a small steady light is still a meaningful,
+   *  calm rendering of "fireflies are out tonight," the same reasoning
+   *  drawSwampSnake/drawForestBird use for their own still fallback. */
+  function drawFireflies(ctx, tile, screenX, screenY, ts, now) {
+    if (!fireflyWindowActive()) return;
+    const seed = tileClutterSeed(tile);
+    if (seed[4] < FIREFLY_SKIP_CHANCE) return;
+    const reduced = window.UI.motion && window.UI.motion.isReduced();
+    ctx.save();
+    ctx.globalCompositeOperation = "lighter";
+    for (let i = 0; i < FIREFLY_COUNT; i++) {
+      const s0 = seed[i % 5], s1 = seed[(i + 2) % 5];
+      const baseX = 0.2 + s0 * 0.6;
+      const baseY = 0.22 + s1 * 0.56;
+      const phase = s0 * Math.PI * 2 + i * 2.1;
+      const driftX = reduced ? 0 : Math.sin(now / FIREFLY_DRIFT_PERIOD_MS + phase) * ts * 0.07;
+      const driftY = reduced ? 0 : Math.cos(now / (FIREFLY_DRIFT_PERIOD_MS * 0.8) + phase * 1.3) * ts * 0.06;
+      const glow = reduced ? 0.5 : 0.30 + 0.35 * (0.5 + 0.5 * Math.sin(now / 950 + phase * 1.6));
+      const cx = screenX + baseX * ts + driftX;
+      const cy = screenY + baseY * ts + driftY;
+      const r = ts * 0.07;
+      const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, r);
+      g.addColorStop(0, `rgba(${FIREFLY_COLOR_RGB},${glow})`);
+      g.addColorStop(1, `rgba(${FIREFLY_COLOR_RGB},0)`);
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      ctx.arc(cx, cy, r, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+
   window.UI.overlays = {
     tick,
     updateCombatAnims, updateAreaEffects, updateQuipBubbles, updateFloatingTexts, updateDeathEffects,
@@ -2040,7 +2121,7 @@ window.UI = window.UI || {};
     getUnitShakeOffset, drawConditionVisualEffects, drawConditionBadges, drawChannelStashLabel, drawIdleCityBadge, drawWallCrossableBadge,
     drawLevelUpGlowBehind, drawLevelUpSparkles, drawFlameEffect, drawChestSparkle, drawResourceGlint,
     drawAmbientUnitEffects,
-    drawGrassClutter, drawWindWisp, drawSwampSnake, drawForestBird,
+    drawGrassClutter, drawWindWisp, drawSwampSnake, drawForestBird, drawFireflies,
     hexToRgba, drawHatch, drawConstructionSite, auraInfoForUnit, drawTileScoreOverlay,
     ATTACK_ANIM_MS, SLASH_ANIM_MS, AREA_EFFECT_ANIM_MS, AREA_EFFECT_COLORS, DEATH_EFFECT_ANIM_MS,
     // Exported so the Knowledge Base's Conditions page can read the same

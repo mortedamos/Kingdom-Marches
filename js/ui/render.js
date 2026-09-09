@@ -557,6 +557,13 @@ window.UI = window.UI || {};
         } else if (tile.terrain === "forest") {
           overlays.drawForestBird(ctx, tile, screenX, screenY, ts, now);
         }
+        // Fireflies layer on TOP of the above rather than replacing it (a
+        // plains tile can show both grass clutter and fireflies at once) --
+        // see drawFireflies' own doc comment for the plains/swamp/forest +
+        // late-twilight/early-night gating.
+        if (tile.terrain === "plains" || tile.terrain === "swamp" || tile.terrain === "forest") {
+          overlays.drawFireflies(ctx, tile, screenX, screenY, ts, now);
+        }
 
         // River — composited stub overlay, drawn UNDER roads (see
         // drawRiverOverlay) so a road crossing a river reads as on top of it.
