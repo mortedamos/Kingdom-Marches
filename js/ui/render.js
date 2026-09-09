@@ -435,6 +435,24 @@ window.UI = window.UI || {};
       }
     }
 
+    // Water lookup for the river overlay's mouth handling (drawRiverOverlay
+    // stops a band flush on the shoreline rather than overshooting onto the
+    // sea). Hoisted out of the tile loop rather than rebuilt per tile like
+    // shoreConnections' closure below: terrain never changes mid-game, and
+    // this one is consulted for every river tile on screen, every frame.
+    const liveWaterAt = (tx, ty) =>
+      tx >= 0 && tx < map.width && ty >= 0 && ty < map.height &&
+      window.GameData.TERRAIN[map.tiles[ty * map.width + tx].terrain].isWater;
+    // Fog counterpart. An unexplored neighbor reads as not-water, the same
+    // call the shoreline overlay's own lookup makes a few lines down -- we
+    // don't know its terrain, and the alternative (assuming sea) would put a
+    // river mouth on the map wherever the player simply hasn't looked yet.
+    const memoryWaterAt = (tx, ty) => {
+      if (tx < 0 || tx >= map.width || ty < 0 || ty >= map.height) return false;
+      const snap = memory[ty * map.width + tx];
+      return !!snap && window.GameData.TERRAIN[snap.terrain].isWater;
+    };
+
     for (let y = 0; y < map.height; y++) {
       for (let x = 0; x < map.width; x++) {
         const idx = y * map.width + x;
@@ -483,7 +501,7 @@ window.UI = window.UI || {};
                   memory[idx], x, y
                 )
               : null;
-            drawRememberedTile(ctx, screenX, screenY, ts, memory[idx], roadConn, shoreConn, blendCandidates, x, y, showGrid, deferredIcons, gameState.seed);
+            drawRememberedTile(ctx, screenX, screenY, ts, memory[idx], roadConn, shoreConn, blendCandidates, memoryWaterAt, x, y, showGrid, deferredIcons, gameState.seed);
             if (tileScoreMemory) overlays.drawTileScoreOverlay(ctx, screenX, screenY, ts, tileScoreMemory[idx]?.cityScore);
           } else {
             ctx.fillStyle = "#1a1a1a";
@@ -565,9 +583,44 @@ window.UI = window.UI || {};
           overlays.drawFireflies(ctx, tile, screenX, screenY, ts, now);
         }
 
-        // River — composited stub overlay, drawn UNDER roads (see
-        // drawRiverOverlay) so a road crossing a river reads as on top of it.
-        drawRiverOverlay(ctx, screenX, screenY, ts, tile.hasRiver);
+        // River — procedural curve, drawn UNDER roads (see drawRiverOverlay)
+        // so a road crossing a river reads as on top of it. `now` is what
+        // enables the flow glints; the remembered-tile path deliberately
+        // passes none, same live-tiles-only rule the ground clutter above
+        // follows.
+        drawRiverOverlay(ctx, screenX, screenY, ts, tile.hasRiver, x, y,
+          liveWaterAt, now, tile.riverFlowTo);
+
+        // Moonlight on water. Reflected, not emitted -- see config's
+        // moonlight block. Collected here in the live per-tile loop, which
+        // only runs for tiles the viewer can see, so fog is respected at the
+        // source; a wash never reaches past its own tile, so unlike a lamp it
+        // needs no second fog pass. Ocean and coast are separate strengths
+        // (open water is a broader flat mirror than broken shallows), and a
+        // river is a thin ribbon crossing an otherwise dry tile, so it takes
+        // the least. A water tile can't also carry a river, so these are
+        // exclusive rather than stacked.
+        const moonTerrain = window.GameData.TERRAIN[tile.terrain];
+        if (moonTerrain.isWater) {
+          window.UI.daynight.addMoonlitSurface(
+            screenX, screenY, ts, moonTerrain.isDeepWater ? "ocean" : "coast");
+        } else if (tile.hasRiver
+            && (tile.hasRiver.n || tile.hasRiver.s || tile.hasRiver.e || tile.hasRiver.w)) {
+          window.UI.daynight.addMoonlitSurface(screenX, screenY, ts, "river");
+        }
+
+        // ...and on the things that catch it. Ore and a chest's fittings
+        // take a cold light best, wet ruin stone less, a cave mouth least.
+        // A tile is never both isRuin and isCave (worldgen skips ruins when
+        // placing caves), and neither carries a resource, so at most one of
+        // these fires per tile.
+        const moonFeature = tile.isRuin ? "ruin"
+          : tile.isCave ? "cave"
+            : (tile.resource === "chest" || tile.resource === "iron" || tile.resource === "gold")
+              ? tile.resource : null;
+        if (moonFeature) {
+          window.UI.daynight.addMoonlitFeature(x, y, screenX, screenY, ts, moonFeature);
+        }
 
         // Road — composited stub overlay drawn on top of rivers, before enhancements
         if (tile.hasRoad) {
@@ -2161,33 +2214,507 @@ window.UI = window.UI || {};
     return orientation.startsWith("diagonal") ? "diagonal" : orientation;
   }
 
-  // --- River overlay: same draw-time compositing technique as roads, one
-  // asset short. Rivers never flow diagonally (js/engine/worldgen.js
-  // generateRivers only ever stamps hasRiver.n/s/e/w), so there's no
-  // river/diagonal stub, and a river tile's own hasRiver flags already
-  // fully describe which edges it connects to -- both banks of a shared
-  // border are stamped symmetrically at generation time, so unlike roads
-  // no neighbor lookup is needed here at all. Rendered UNDER roads (drawn
-  // first, right after terrain) so a road crossing a river reads as
-  // passing over it. See tools/make-river-stubs.ps1.
-  function drawRiverOverlay(ctx, screenX, screenY, ts, hasRiver) {
-    if (!hasRiver || !(hasRiver.n || hasRiver.s || hasRiver.e || hasRiver.w)) return;
-    const cardinal = window.UI.sprites.pick("river/cardinal");
-    const hub = window.UI.sprites.pick("river/hub");
-    if (!cardinal || !hub) {
-      ctx.strokeStyle = "#3a8fc9";
-      ctx.lineWidth = Math.max(1, ts * 0.07);
-      ctx.beginPath();
-      if (hasRiver.n) { ctx.moveTo(screenX, screenY); ctx.lineTo(screenX + ts, screenY); }
-      if (hasRiver.s) { ctx.moveTo(screenX, screenY + ts); ctx.lineTo(screenX + ts, screenY + ts); }
-      if (hasRiver.e) { ctx.moveTo(screenX + ts, screenY); ctx.lineTo(screenX + ts, screenY + ts); }
-      if (hasRiver.w) { ctx.moveTo(screenX, screenY); ctx.lineTo(screenX, screenY + ts); }
-      ctx.stroke();
-      return;
+  // --- River overlay: procedural curves ---------------------------------
+  //
+  // Unlike roads and the shoreline, rivers do NOT use the rotate-a-stub
+  // compositing technique any more (2026-09-09, user-directed: "rivers are
+  // very square... they turn at 90 degree angles"). That technique cannot
+  // draw anything but right angles here: it stamped a hub at the exact tile
+  // center plus one center->edge-midpoint band per connected edge, so a
+  // turning tile was two perpendicular axis-aligned bands meeting in a
+  // literal elbow. The stub art's own hand-authored wobble couldn't help --
+  // per doc/art_style_guide.md S10 it tapers to zero at the center and at
+  // the edge crossing, which is exactly where the turn happens.
+  //
+  // What replaces it: one quadratic Bezier per tile, through a waypoint
+  // jittered off the tile's center. Two properties make it work.
+  //
+  //  1. Every point is hashed from TILE COORDINATES, never from the tile
+  //     object -- drawRememberedTile is handed a fog snapshot rather than
+  //     the live tile, and both paths have to produce the identical curve.
+  //     The hash and the +-0.15-tile jitter are lifted from render3d.js's
+  //     riverHash/riverWaypoint (salts 11 and 13 included) so the 2D and 3D
+  //     views finally agree on where a river actually runs.
+  //
+  //  2. A direction's endpoint is not the edge MIDPOINT but the point where
+  //     the segment waypoint(self)->waypoint(neighbor) crosses the shared
+  //     boundary. That is what makes the curves join cleanly: the quadratic's
+  //     tangent at that endpoint is along (endpoint - waypoint(self)), and
+  //     since the endpoint lies ON that segment, the tangent is collinear
+  //     with waypoint(self)->waypoint(neighbor) -- which is the same line the
+  //     neighbor tile's own curve leaves along. No kink at the seam, and no
+  //     degenerate case to guard: for an east neighbor the two waypoints'
+  //     x-coordinates are >=0.7 tile apart and straddle the boundary, so the
+  //     crossing always exists and always lands within +-0.15 tile of the
+  //     edge's midpoint, well inside the edge.
+  //
+  // Still rendered UNDER roads (drawn first, right after terrain) so a road
+  // crossing a river reads as passing over it.
+
+  /** +-jitter of a waypoint off its tile center, in tile units. Matches
+   *  render3d.js's RIVER_WAYPOINT_JITTER exactly -- bounded well inside
+   *  TILE/2 so a waypoint can never wander into a neighbor's footprint. */
+  const RIVER_WAYPOINT_JITTER = 0.15;
+  /** Band width, in tile units. Measured across the retired
+   *  river_cardinal.png, whose wavy band ran 7-12px of 64 (0.11-0.19 tile)
+   *  and averaged 9 -- so the river keeps the weight it always had. */
+  const RIVER_BAND_WIDTH = 0.14;
+  /** Sampled from the retired art, which in turn sampled assets/terrain/
+   *  coast_1.png -- a river's blue must match the coast it empties into, or
+   *  the mouth reads as two different substances meeting. See art guide S10.
+   *  (#2c7694 was 91 of that PNG's 254 opaque pixels; the flecks below are
+   *  its next most common tone.) */
+  const RIVER_BASE_COLOR = "#2c7694";
+  /**
+   * BANKS (2026-09-09, user-directed: the first pass "read more like hard
+   * blue lines drawn over the terrain").
+   *
+   * A plain canvas stroke has a hard edge, so the band met the ground in a
+   * single-pixel blue-to-green cut -- something laid ON the map rather than
+   * part of it. The old PNG never had this problem: its band was painted with
+   * soft, uneven edges and a partly transparent fringe.
+   *
+   * Two wider, low-alpha strokes UNDER the band rebuild that fringe. Because
+   * they're translucent, they blend with whatever terrain is actually under
+   * them -- the same wash reads blue-green crossing plains and blue-tan
+   * crossing desert, without the renderer needing to know or sample the
+   * terrain color at all. That is the whole reason this is an alpha wash and
+   * not a third opaque color.
+   *
+   * This is NOT the rim the art guide's S10 constraint 1 rules out. That
+   * bans a DARKER outline drawn at full strength, which shows as a hard seam
+   * wherever two pieces meet. These are lighter than the band, soft, and
+   * butt-capped so two tiles' fringes abut exactly rather than overlapping
+   * into a darker bead (see the compositing note in drawRiverOverlay).
+   */
+  /** Pale sand/foam, sampled from assets/terrain/shore_cardinal.png (its
+   *  dominant tone, #e2dcc1). Reused deliberately: that stub is how this game
+   *  already draws water meeting land at every coastline, so a river reading
+   *  in the same language looks like part of the map rather than like a
+   *  second, unrelated water treatment. */
+  const RIVER_BANK_SAND = "#e2dcc1";
+  /** Shallow water between that dry bank and the channel proper. */
+  const RIVER_BANK_SHALLOW = "#4d86a0";
+  /** The ramp, widest first: dry sand, wet sand, shallows, shallows. Four
+   *  stops at low alpha rather than one or two strong ones -- each only adds
+   *  where a narrower stop doesn't cover it, so they accumulate into a
+   *  gradient instead of reading as two concentric outlines. Canvas has no
+   *  cheap blur, and a per-tile gradient object would mean an allocation per
+   *  tile per frame, so this is the ramp. */
+  const RIVER_BANK_STOPS = [
+    { scale: 2.90, color: RIVER_BANK_SAND, alpha: 0.09 },
+    { scale: 2.30, color: RIVER_BANK_SAND, alpha: 0.13 },
+    { scale: 1.75, color: RIVER_BANK_SHALLOW, alpha: 0.16 },
+    { scale: 1.35, color: RIVER_BANK_SHALLOW, alpha: 0.28 },
+  ];
+  /** Zoomed out past RIVER_WIDTH_MIN_TS the band is only a couple of pixels
+   *  wide and the intermediate stops land on the same pixels, so it drops to
+   *  one stop of each tone at roughly doubled alpha -- the same read for half
+   *  the strokes. That matters here specifically: minimum zoom is where the
+   *  whole map is on screen and every river tile on it is drawn at once. */
+  const RIVER_BANK_STOPS_FAR = [
+    { scale: 2.60, color: RIVER_BANK_SAND, alpha: 0.18 },
+    { scale: 1.45, color: RIVER_BANK_SHALLOW, alpha: 0.34 },
+  ];
+  /** Peak +-swing of the band's width, as a fraction of it. 0.28 puts the
+   *  channel between 0.10 and 0.18 tile, which is very close to the 0.11-0.19
+   *  range the retired hand-painted art actually spanned. */
+  const RIVER_WIDTH_VARIATION = 0.28;
+  /** Pieces per channel. The width is constant within a piece, so this sets
+   *  how finely the swell is followed; at 6 the step between adjacent pieces
+   *  is well under a pixel at every zoom, including across a tile boundary. */
+  const RIVER_WIDTH_STEPS = 6;
+  /** Same, for the four bank passes -- coarser because they are soft and
+   *  translucent, and because they are the passes that repeat. */
+  const RIVER_BANK_WIDTH_STEPS = 3;
+  /** Below this rendered tile size the variation is sub-pixel, so the river
+   *  is stroked once per channel at a flat width instead -- which is also
+   *  where the most river tiles are on screen at once. */
+  const RIVER_WIDTH_MIN_TS = 20;
+  /** Lighter flecks along the band. NOT an outline either, same reasoning. */
+  const RIVER_TEXTURE_COLOR = "#3e85a1";
+  const RIVER_TEXTURE_WIDTH = 0.055;
+  const RIVER_TEXTURE_ALPHA = 0.5;
+  /** Below this rendered tile size the flecks are sub-pixel and just muddy
+   *  the band's color, so the river is drawn flat instead. */
+  const RIVER_TEXTURE_MIN_TS = 18;
+  /** How far past a crossing point a band runs, in tile units. Art guide S10
+   *  constraint 3: a flat butt join between two rimless fills still leaves a
+   *  faint seam, which is why the old stubs overshot the tile center. Same
+   *  fix, moved to the tile boundary. */
+  const RIVER_OVERSHOOT = 0.045;
+  /** Radius of the pool at a spring/mouth's waypoint, in tile units. The old
+   *  river_hub.png was 12px of 64 across, i.e. this doubled. */
+  const RIVER_POOL_RADIUS = 0.09;
+
+  const RIVER_DX = { n: 0, s: 0, e: 1, w: -1 };
+  const RIVER_DY = { n: -1, s: 1, e: 0, w: 0 };
+
+  /** Integer hash -> 0..1. Same constants as render3d.js's riverHash, so
+   *  both renderers place a given tile's waypoint identically. */
+  function riverHash(tx, ty, salt) {
+    let h = (tx * 374761393 + ty * 668265263 + salt * 2246822519) | 0;
+    h = (h ^ (h >>> 13)) * 1274126177 | 0;
+    h = h ^ (h >>> 16);
+    return ((h >>> 0) % 100000) / 100000;
+  }
+
+  /** Tile (tx,ty)'s river waypoint, in tile units relative to tile
+   *  (ox,oy)'s top-left corner. A water tile uses its exact center rather
+   *  than a jittered point -- it carries no river of its own, it is just the
+   *  thing a mouth aims at (same rule as render3d.js's buildRiverNetwork). */
+  function riverWaypoint(tx, ty, ox, oy, isWater) {
+    const jx = isWater ? 0 : (riverHash(tx, ty, 11) - 0.5) * 2 * RIVER_WAYPOINT_JITTER;
+    const jy = isWater ? 0 : (riverHash(tx, ty, 13) - 0.5) * 2 * RIVER_WAYPOINT_JITTER;
+    return { x: (tx - ox) + 0.5 + jx, y: (ty - oy) + 0.5 + jy };
+  }
+
+  /** Where segment S->N crosses the tile boundary in direction `dir`. See
+   *  this section's header for why the denominators can't be zero. */
+  function riverCrossing(S, N, dir) {
+    if (dir === "e" || dir === "w") {
+      const bx = dir === "e" ? 1 : 0;
+      const t = (bx - S.x) / (N.x - S.x);
+      return { x: bx, y: S.y + t * (N.y - S.y) };
     }
-    drawOverlayStub(ctx, hub.image, screenX, screenY, ts, 0);
-    for (const d of ["e", "s", "w", "n"])
-      if (hasRiver[d]) drawOverlayStub(ctx, cardinal.image, screenX, screenY, ts, ROAD_CARDINAL_ANGLE[d]);
+    const by = dir === "s" ? 1 : 0;
+    const t = (by - S.y) / (N.y - S.y);
+    return { x: S.x + t * (N.x - S.x), y: by };
+  }
+
+  /**
+   * Builds a river tile's geometry: the waypoint plus one quadratic Bezier
+   * per channel, each already oriented so t=0..1 runs DOWNSTREAM (which is
+   * what lets drawRiverGlint just march t forward without caring about
+   * layout). Pure geometry, no drawing -- returned in tile units relative to
+   * the tile's own top-left corner.
+   *
+   * `isWaterAt(tx,ty)` must answer from whichever source the caller is
+   * rendering (live tiles vs. fog snapshots), same convention as
+   * roadConnections/shoreConnections.
+   */
+  function riverGeometry(hasRiver, x, y, isWaterAt, flowTo) {
+    const dirs = [];
+    for (const d of ["n", "e", "s", "w"]) if (hasRiver[d]) dirs.push(d);
+    if (!dirs.length) return null;
+
+    const S = riverWaypoint(x, y, x, y, false);
+    const ends = {};
+    for (const d of dirs) {
+      const nx = x + RIVER_DX[d], ny = y + RIVER_DY[d];
+      const water = isWaterAt ? !!isWaterAt(nx, ny) : false;
+      const N = riverWaypoint(nx, ny, x, y, water);
+      const C = riverCrossing(S, N, d);
+      let end = C;
+      if (!water) {
+        // Overshoot into the neighbor so the two bands merge. In raster
+        // order the neighbor's own terrain fill erases this overshoot and
+        // then lays down its own back the other way, so both sides of the
+        // boundary end up covered either way. A MOUTH gets no overshoot:
+        // the water tile draws no band to merge with, and painting river
+        // onto water is exactly what art guide S10 rules out.
+        const vx = N.x - S.x, vy = N.y - S.y;
+        const len = Math.hypot(vx, vy) || 1;
+        end = { x: C.x + (vx / len) * RIVER_OVERSHOOT, y: C.y + (vy / len) * RIVER_OVERSHOOT };
+      }
+      ends[d] = end;
+    }
+
+    // Downstream edge, from worldgen. Absent on two kinds of tile, and the
+    // difference matters:
+    //  - an endorheic TERMINUS, a tile a river flows into and never out of.
+    //    Genuinely has no outflow; water arrives and stops. Correct as null.
+    //  - any tile on a map generated before riverFlowTo existed. Here null
+    //    means "unknown", and there is no sound way to guess it. A local
+    //    rule that reads only one tile's own flags cannot be coherent: a
+    //    river running east then turning north gives the corner {w,n} and
+    //    the tile above it {s,e}, and any fixed direction precedence makes
+    //    one of those pairs point at each other. Rather than ship water
+    //    flowing two ways at one seam, `flowKnown` is false on those maps
+    //    and the glint pass sits it out -- an old save gets the new curves,
+    //    just not the current. New maps always have it.
+    const out = (flowTo && hasRiver[flowTo]) ? flowTo : null;
+    const channels = [];
+    let flowKnown = !!out;
+
+    if (dirs.length === 1) {
+      const d = dirs[0];
+      // Outward for a spring or a mouth (the one connection IS the outflow),
+      // inward for an endorheic terminus, which has no outflow at all. A
+      // terminus is indistinguishable from an old-save tile here -- both
+      // have a null `out` -- so both end up with flowKnown false and no
+      // glint. That's the right outcome either way: these are one-stub
+      // tiles, and a highlight on a stub reads as noise, not as current.
+      channels.push(out === d
+        ? [S, mid(S, ends[d]), ends[d]]
+        : [ends[d], mid(S, ends[d]), S]);
+    } else {
+      // The main channel is the most-opposed pair of directions, so a
+      // through-flow curves and any extra branch hangs off it rather than
+      // the curve being picked arbitrarily. For the overwhelmingly common
+      // two-connection tile this is just those two.
+      let a = dirs[0], b = dirs[1], bestDot = Infinity;
+      for (let i = 0; i < dirs.length; i++) {
+        for (let j = i + 1; j < dirs.length; j++) {
+          const u = norm(ends[dirs[i]], S), v = norm(ends[dirs[j]], S);
+          const dot = u.x * v.x + u.y * v.y;
+          if (dot < bestDot) { bestDot = dot; a = dirs[i]; b = dirs[j]; }
+        }
+      }
+      // Orient downstream: whichever of the pair is the outflow ends the
+      // curve. When the outflow is a tributary spoke rather than one of the
+      // main pair (possible at a junction), the main channel's own direction
+      // isn't determined by it, so treat flow as unknown rather than guess.
+      if (out && out !== a && out !== b) flowKnown = false;
+      channels.push(out === a ? [ends[b], S, ends[a]] : [ends[a], S, ends[b]]);
+      for (const d of dirs) {
+        if (d === a || d === b) continue;
+        // A tributary spoke, drawn into the waypoint the main channel
+        // already passes through, so the junction reads as a confluence.
+        // Always inward: a spoke that isn't the outflow is by definition an
+        // inflow, and if the spoke IS the outflow we've already given up on
+        // knowing the direction just above.
+        channels.push([ends[d], mid(S, ends[d]), S]);
+      }
+    }
+    return { S, channels, isolated: dirs.length === 1, flowKnown };
+  }
+
+  function mid(p, q) { return { x: (p.x + q.x) / 2, y: (p.y + q.y) / 2 }; }
+  function norm(p, o) {
+    const dx = p.x - o.x, dy = p.y - o.y;
+    const len = Math.hypot(dx, dy) || 1;
+    return { x: dx / len, y: dy / len };
+  }
+
+  /** Quadratic Bezier point at t, for glint placement. */
+  function quadAt(P0, P1, P2, t) {
+    const u = 1 - t;
+    return {
+      x: u * u * P0.x + 2 * u * t * P1.x + t * t * P2.x,
+      y: u * u * P0.y + 2 * u * t * P1.y + t * t * P2.y,
+    };
+  }
+
+  /** The exact sub-arc of a quadratic between u0 and u1, as its own
+   *  quadratic. This is the blossom (polar form) of the curve: f(p,q)
+   *  evaluated at (u0,u0), (u0,u1), (u1,u1) gives the sub-arc's three
+   *  control points directly. Exact, not a resampling -- so splitting a
+   *  channel into pieces to vary its width doesn't change the shape at all. */
+  function quadSub(P0, P1, P2, u0, u1) {
+    const f = (p, q) => ({
+      x: (1 - p) * (1 - q) * P0.x + ((1 - p) * q + p * (1 - q)) * P1.x + p * q * P2.x,
+      y: (1 - p) * (1 - q) * P0.y + ((1 - p) * q + p * (1 - q)) * P1.y + p * q * P2.y,
+    });
+    return [f(u0, u0), f(u0, u1), f(u1, u1)];
+  }
+
+  /**
+   * Width multiplier at a point, as a fraction of the base band width
+   * (2026-09-09, user-directed: "vary the width of the river from time to
+   * time"). A real river narrows and widens along its length, and the retired
+   * PNG had that built into its art -- its band ran anywhere from 7 to 12px
+   * of 64. A single-width stroke reads as pipe, which is half of why the
+   * first pass looked drawn-on.
+   *
+   * Two non-harmonic sines over MAP position, ~7 and ~17 tiles, so the width
+   * swells and narrows over several tiles rather than flickering tile to tile.
+   *
+   * Taking map position (not tile position, and not a per-tile hash) is the
+   * load-bearing part: the width at a shared crossing point has to come out
+   * the same from both tiles, or every tile boundary shows a step in the
+   * river's silhouette -- which would put the grid right back on screen.
+   */
+  function riverWidthAt(mx, my) {
+    return 1 + RIVER_WIDTH_VARIATION * (
+      0.62 * Math.sin(mx * 0.90 + my * 0.50)
+      + 0.38 * Math.sin(mx * 0.37 - my * 0.83 + 1.7)
+    );
+  }
+
+  /** Strokes every channel of `geo`, split into RIVER_WIDTH_STEPS pieces so
+   *  the width can follow riverWidthAt along the course. Sub-arcs butt rather
+   *  than overlap: at alpha < 1 an overlap would double-composite into a
+   *  visible band at each seam. They meet on the same curve with the same
+   *  tangent, and adjacent widths differ by well under a pixel, so butting
+   *  costs nothing. */
+  function strokeRiverChannels(ctx, geo, x, y, px, py, ts, baseWidth, steps) {
+    const K = ts >= RIVER_WIDTH_MIN_TS ? (steps || RIVER_WIDTH_STEPS) : 1;
+    for (const [P0, P1, P2] of geo.channels) {
+      for (let k = 0; k < K; k++) {
+        const u0 = k / K, u1 = (k + 1) / K;
+        const [Q0, Q1, Q2] = quadSub(P0, P1, P2, u0, u1);
+        const m = quadAt(P0, P1, P2, (u0 + u1) / 2);
+        ctx.lineWidth = K === 1 ? baseWidth : baseWidth * riverWidthAt(x + m.x, y + m.y);
+        ctx.beginPath();
+        ctx.moveTo(px(Q0), py(Q0));
+        ctx.quadraticCurveTo(px(Q1), py(Q1), px(Q2), py(Q2));
+        ctx.stroke();
+      }
+    }
+  }
+
+  function drawRiverOverlay(ctx, screenX, screenY, ts, hasRiver, x, y, isWaterAt, now, flowTo) {
+    if (!hasRiver || !(hasRiver.n || hasRiver.s || hasRiver.e || hasRiver.w)) return;
+    const geo = riverGeometry(hasRiver, x, y, isWaterAt, flowTo);
+    if (!geo) return;
+    const px = (p) => screenX + p.x * ts;
+    const py = (p) => screenY + p.y * ts;
+
+    ctx.save();
+    ctx.lineJoin = "round";
+    const path = () => {
+      ctx.beginPath();
+      for (const [P0, P1, P2] of geo.channels) {
+        ctx.moveTo(px(P0), py(P0));
+        ctx.quadraticCurveTo(px(P1), py(P1), px(P2), py(P2));
+      }
+    };
+
+    // Passes 1-2 -- the soft banks, widest and faintest first, so the river
+    // fades into the ground instead of being cut out of it. See
+    // RIVER_BANK_STOPS. Butt caps, per the alpha rule below.
+    const bandW = Math.max(2, ts * RIVER_BAND_WIDTH);
+    ctx.lineCap = "butt";
+    const near = ts >= RIVER_WIDTH_MIN_TS;
+    // Coarser subdivision than the channel: these are soft and translucent,
+    // so following the width swell finely buys nothing visible, and this is
+    // the pass that repeats.
+    for (const stop of (near ? RIVER_BANK_STOPS : RIVER_BANK_STOPS_FAR)) {
+      ctx.strokeStyle = stop.color;
+      ctx.globalAlpha = stop.alpha;
+      strokeRiverChannels(ctx, geo, x, y, px, py, ts, bandW * stop.scale, RIVER_BANK_WIDTH_STEPS);
+    }
+    ctx.globalAlpha = 1;
+
+    // Pass 3 -- the channel itself. Flat, opaque, round caps. Opaque and
+    // round is what lets it overshoot into the neighbor harmlessly: two
+    // tiles' bands overlap in the same color, which is the seam insurance
+    // the old stubs got from starting a few px past the tile center. It is
+    // also what hides the joins between the width-varied pieces.
+    ctx.lineCap = "round";
+    ctx.strokeStyle = RIVER_BASE_COLOR;
+    strokeRiverChannels(ctx, geo, x, y, px, py, ts, bandW);
+
+    // Pass 4 -- broken lighter flecks along the band, standing in for the
+    // scattered texture dabs the retired PNG was painted with. Deliberately
+    // DASHED rather than a continuous centre stripe: a solid lighter line
+    // running the length of the band makes the river read as a length of
+    // pipe, which is exactly how the first version of this looked. The dash
+    // phase is hashed per tile so the flecks don't line up into a repeating
+    // pattern across a long course.
+    //
+    // Butt caps here, and this is a rule rather than a detail: a pass drawn
+    // at alpha < 1 must not use round caps, because two tiles' overshooting
+    // caps would then double-composite into a visibly darker bead sitting
+    // exactly on the tile boundary -- reintroducing the grid this whole
+    // change exists to hide. At alpha 1 (pass 1) the same overlap is
+    // invisible and useful; below 1 it has to butt.
+    if (ts >= RIVER_TEXTURE_MIN_TS) {
+      ctx.lineCap = "butt";
+      ctx.globalAlpha = RIVER_TEXTURE_ALPHA;
+      ctx.strokeStyle = RIVER_TEXTURE_COLOR;
+      ctx.lineWidth = Math.max(1, ts * RIVER_TEXTURE_WIDTH);
+      ctx.setLineDash([ts * 0.16, ts * 0.26]);
+      ctx.lineDashOffset = riverHash(x, y, 29) * ts * 0.42;
+      path();
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.globalAlpha = 1;
+    }
+
+    // A spring, a mouth or a terminus gets a small pool at its waypoint --
+    // the old art did this with river_hub.png, which was stamped on every
+    // river tile. Only the isolated case needs it now: everywhere else the
+    // curve already runs through the waypoint continuously.
+    if (geo.isolated) {
+      // Banked with the same ramp as the channel, so a spring pool has the
+      // soft edge the rest of the course does rather than being a hard dot.
+      for (const stop of (near ? RIVER_BANK_STOPS : RIVER_BANK_STOPS_FAR)) {
+        ctx.globalAlpha = stop.alpha;
+        ctx.fillStyle = stop.color;
+        ctx.beginPath();
+        ctx.arc(px(geo.S), py(geo.S), ts * RIVER_POOL_RADIUS * stop.scale, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = RIVER_BASE_COLOR;
+      ctx.beginPath();
+      ctx.arc(px(geo.S), py(geo.S), ts * RIVER_POOL_RADIUS, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
+
+    if (now !== null && now !== undefined) drawRiverGlints(ctx, geo, screenX, screenY, ts, x, y, now);
+  }
+
+  // --- Flowing water --------------------------------------------------
+  // Rivers were, before this, the only water on the map that didn't move at
+  // all: ocean and coast tiles have animated since they were authored (see
+  // sprite-manifests.js's terrain/ocean and terrain/coast idle frames). A
+  // faint highlight slides downstream along each tile's own curve.
+  //
+  // On the project's no-flashing rule (photosensitivity), the same reasoning
+  // daynight.js's flickerWave sets out applies here:
+  //  - 0.36Hz, two orders of magnitude below the 3-60Hz band that provokes
+  //    photosensitive responses, and slow enough to read as a current rather
+  //    than a blink;
+  //  - a sin() envelope over the glint's whole travel, so it ramps in and
+  //    back out instead of ever switching on;
+  //  - a second, non-harmonic period on the amplitude so the cycle never
+  //    settles into a visible loop;
+  //  - phase hashed per tile, so there is no synchronized brightness change
+  //    anywhere on screen;
+  //  - low amplitude, on a ribbon a sixth of a tile wide.
+  //
+  // The sin() envelope also happens to solve the seam problem for free. Each
+  // tile strokes its own path, so a scrolling dash pattern (setLineDash +
+  // lineDashOffset) could never line its phase up across a tile boundary and
+  // would show a discontinuity at every one. A glint that has already faded
+  // to nothing before it reaches the boundary needs no alignment at all.
+  /** ms for one glint to travel one tile: 0.36Hz. */
+  const RIVER_GLINT_PERIOD_MS = 2800;
+  /** Second, deliberately non-harmonic period modulating amplitude. */
+  const RIVER_GLINT_BREATH_MS = 3700;
+  const RIVER_GLINT_ALPHA = 0.20;
+  const RIVER_GLINT_COLOR = "#a8d2e6";
+  /** Half-length of a glint in Bezier t, i.e. about a seventh of a tile. */
+  const RIVER_GLINT_HALF_T = 0.07;
+  const RIVER_GLINT_WIDTH = 0.05;
+  /** Below this rendered tile size the whole band is only a few px wide and
+   *  a highlight inside it is sub-pixel -- it stops reading as a current and
+   *  starts reading as shimmer on a line. Zoomed that far out there are also
+   *  the most river tiles on screen at once, so this is where skipping is
+   *  cheapest as well as most correct. */
+  const RIVER_GLINT_MIN_TS = 24;
+
+  function drawRiverGlints(ctx, geo, screenX, screenY, ts, x, y, now) {
+    if (!geo.flowKnown) return; // see riverGeometry's note on `out`
+    if (ts < RIVER_GLINT_MIN_TS) return;
+    if (window.UI.motion && window.UI.motion.isReduced()) return;
+    const px = (p) => screenX + p.x * ts;
+    const py = (p) => screenY + p.y * ts;
+    const phase = riverHash(x, y, 29);
+    ctx.save();
+    ctx.strokeStyle = RIVER_GLINT_COLOR;
+    ctx.lineWidth = Math.max(1, ts * RIVER_GLINT_WIDTH);
+    ctx.lineCap = "round";
+    for (let i = 0; i < geo.channels.length; i++) {
+      const [P0, P1, P2] = geo.channels[i];
+      // Channels of a junction are offset from each other as well as from
+      // other tiles, so a confluence doesn't glint in unison.
+      const ph = (phase + i * 0.37) % 1;
+      const t = ((now / RIVER_GLINT_PERIOD_MS) + ph) % 1;
+      const breath = 0.8 + 0.2 * Math.sin(now / RIVER_GLINT_BREATH_MS + ph * Math.PI * 2);
+      ctx.globalAlpha = Math.sin(Math.PI * t) * RIVER_GLINT_ALPHA * breath;
+      const a = quadAt(P0, P1, P2, Math.max(0, t - RIVER_GLINT_HALF_T));
+      const b = quadAt(P0, P1, P2, Math.min(1, t + RIVER_GLINT_HALF_T));
+      ctx.beginPath();
+      ctx.moveTo(px(a), py(a));
+      ctx.lineTo(px(b), py(b));
+      ctx.stroke();
+    }
+    ctx.restore();
   }
 
   // --- Shoreline overlay: same layer/rotate-at-draw-time technique as
@@ -2778,7 +3305,7 @@ window.UI = window.UI || {};
    * visible). Finished with a dark scrim so it reads as visibly "remembered,
    * possibly stale" rather than currently seen.
    */
-  function drawRememberedTile(ctx, screenX, screenY, ts, snapshot, roadConn, shoreConn, blendCandidates, x, y, showGrid, deferredIcons, mapSeed) {
+  function drawRememberedTile(ctx, screenX, screenY, ts, snapshot, roadConn, shoreConn, blendCandidates, isWaterAt, x, y, showGrid, deferredIcons, mapSeed) {
     if (!snapshot) {
       // Explored should always have a matching memory entry, but fall back
       // to plain fog rather than throw if the two ever disagree.
@@ -2823,8 +3350,13 @@ window.UI = window.UI || {};
     // render loop.
     if (blendCandidates) drawTerrainBlend(ctx, blendCandidates, screenX, screenY, ts, snapshot);
 
-    // River drawn UNDER road, same reasoning as the live render loop.
-    drawRiverOverlay(ctx, screenX, screenY, ts, snapshot.hasRiver);
+    // River drawn UNDER road, same reasoning as the live render loop. No
+    // `now`: a remembered tile shows the river's shape but not its motion,
+    // the same live-tiles-only rule ground clutter and the chest sparkle
+    // follow. The curve itself is a pure function of tile coordinates, so it
+    // lines up exactly with a live neighbor across the fog boundary.
+    drawRiverOverlay(ctx, screenX, screenY, ts, snapshot.hasRiver, x, y,
+      isWaterAt, null, snapshot.riverFlowTo);
 
     if (snapshot.hasRoad) {
       drawRoadOverlay(ctx, screenX, screenY, ts, roadConn || {});
@@ -2995,8 +3527,21 @@ window.UI = window.UI || {};
     };
   }
 
+  /** Draws a standalone river swatch for the Knowledge Base's River entry,
+   *  which used to preview `river/cardinal` as a flat PNG. There is no PNG
+   *  any more, and pointing the encyclopedia at a retired asset would show
+   *  the player a straight blue bar next to text describing a river -- so it
+   *  runs the real draw path instead, and stays correct for free whenever
+   *  the band styling changes. An east-west through-river: it spans the
+   *  swatch edge to edge the way the old art did, while showing the gentle
+   *  bow the jittered waypoint now gives even a "straight" tile. */
+  function drawRiverPreview(ctx, size) {
+    drawRiverOverlay(ctx, 0, 0, size, { e: true, w: true }, 0, 0, null, null, "e");
+  }
+
   window.UI.render = {
     render, screenToTile, isTileOnScreen, tileCenterOnMap, fullVisibilitySet, getVisualPos,
+    drawRiverPreview,
     get TILE_SIZE() { return TILE_SIZE; },
     MIN_ZOOM, MAX_ZOOM,
   };

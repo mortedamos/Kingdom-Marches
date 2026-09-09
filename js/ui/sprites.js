@@ -692,11 +692,10 @@ window.UI = window.UI || {};
     // these four, rather than pre-baking one image per combination.
     for (const part of ["cardinal", "diagonal", "hub"])
       critical.push(() => loadVariants(`road/${part}`, `assets/roads/road_${part}`));
-    // River overlay stubs -- same technique, cardinal-only (rivers never
-    // flow diagonally, see worldgen.js generateRivers) -- see render.js
-    // drawRiverOverlay.
-    for (const part of ["cardinal", "hub"])
-      critical.push(() => loadVariants(`river/${part}`, `assets/rivers/river_${part}`));
+    // No river stubs: rivers are drawn procedurally now (curves through a
+    // jittered per-tile waypoint, see render.js drawRiverOverlay), so there
+    // is no river art to preload at all -- including for the Knowledge Base,
+    // whose River entry runs the real draw path via overlayDraw.
     // Shoreline overlay stubs -- same layer/rotate-at-draw-time technique,
     // drawn on a WATER tile toward each LAND neighbor rather than
     // connecting same-feature tiles to each other (see render.js's
@@ -760,7 +759,6 @@ window.UI = window.UI || {};
     jobs.push(loadVariants("enhancement/ruin", "assets/enhancements/ruin"));
     jobs.push(loadVariants("enhancement/cave", "assets/enhancements/cave"));
     jobs.push(loadVariants("road/hub", "assets/roads/road_hub"));
-    jobs.push(loadVariants("river/cardinal", "assets/rivers/river_cardinal"));
     await Promise.allSettled(jobs);
   }
 

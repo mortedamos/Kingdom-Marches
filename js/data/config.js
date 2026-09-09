@@ -65,9 +65,9 @@ window.GameConfig = {
     /** Local date this build was cut, YYYY-MM-DD. */
     date: "2026-09-09",
     /** Local time this build was cut, 24-hour HH:MM. */
-    time: "12:41",
+    time: "14:49",
     /** Monotonic build counter -- increment it, don't recompute it. */
-    number: 275,
+    number: 276,
   },
 
   // =========================================================================
@@ -904,6 +904,91 @@ window.GameConfig = {
      *  base rate above (2026-08-24) to preserve the tech's original ~60%
      *  relative reduction rather than letting it passively double in value. */
     resourceExhaustionChanceTendingToTheEarth: 0.04,
+
+    /**
+     * RIVER COURSES (2026-09-09, user-directed: "rivers are very square")
+     * ------------------------------------------------------------------
+     * Tuning for worldgen.js's generateRivers. The old walk was greedy
+     * steepest-descent over elevationRank(), a six-value lookup keyed off
+     * TERRAIN TYPE -- plains/forest/desert/tundra all scored 3, so across a
+     * continent's flat interior every candidate tied, and the tie-break
+     * (`<=` against the running best, with dirs ordered n,s,e,w) handed the
+     * win to WEST every single time. That is where the dead-straight runs
+     * and hard right angles came from: not from the renderer, from a walk
+     * with no gradient and a compass-biased tie-break.
+     *
+     * The replacement scores each candidate as
+     *
+     *     drop  +  inertia*(continues heading)  +  meander*noise
+     *
+     * and picks among them with a softmax rather than an arg-max. All four
+     * weights below live in the same units as `drop`, i.e. raw elevation
+     * difference between two adjacent tiles of the elevArr noise field.
+     * That field runs 0..1 at elevationScale 0.07 (~14-tile wavelength), so
+     * a typical adjacent-tile drop is a couple of hundredths -- which is
+     * the magnitude every constant here is sized against.
+     */
+    rivers: {
+      /** HOW MUCH river a map gets is NOT set here -- it is
+       *  WORLD_TYPE_CONFIG's per-type `riverTileShare` in worldgen.js, since
+       *  the four world types were each tuned to a different density. Every
+       *  constant in this block shapes the COURSE a river takes; none of
+       *  them changes how much river ends up on the map, which is the whole
+       *  point of targeting a tile share rather than a river count. */
+      /** Hard cap on a single course's length in tiles. Well above the old
+       *  40 because a meandering course covers less straight-line distance
+       *  per step, so the old cap would strand inland rivers that used to
+       *  reach the sea. Rarely the binding constraint in practice -- courses
+       *  end at the sea or in a basin long before this. */
+      maxSteps: 120,
+      /** Shortest course worth stamping, for a walk that never reached the
+       *  sea. Sampling makes the walk box itself in more often than the old
+       *  greedy one did, and a four-tile fragment sitting in the middle of a
+       *  plain reads as a bug rather than as a spring. A course that DID
+       *  reach the sea is always kept however short -- that one is a real,
+       *  if stubby, river. */
+      minLength: 5,
+      /** Bonus for continuing the previous heading. This is what keeps a
+       *  course from degenerating into a zigzag: without it, three candidates
+       *  scoring within noise of each other produce a new direction almost
+       *  every step. Half a typical adjacent-tile drop, so real terrain
+       *  comfortably beats habit but a coin-flip does not. Raising it
+       *  straightens rivers out again -- at 0.018 the longest dead-straight
+       *  run went back up from 8 tiles to 13. */
+      inertia: 0.010,
+      /** Frequency of the meander noise field, in the same units as
+       *  elevationScale. Deliberately LOWER than elevation's own 0.07 (~20-
+       *  tile lobes vs ~14): the wander has to be longer-wavelength than the
+       *  terrain it wanders across, or it reads as jitter rather than as a
+       *  river taking the long way around. */
+      meanderScale: 0.05,
+      /** Weight on that field. Comparable to `inertia` -- together they are
+       *  what let a river leave the locally-steepest path for a few tiles. */
+      meanderWeight: 0.015,
+      /** Softmax temperature for the weighted pick. At 0.010, a candidate one
+       *  typical drop better than another is taken ~6x as often -- decisive
+       *  where the terrain is decisive, near-random where it is flat. Set
+       *  this very small to approach the old greedy behaviour. */
+      temperature: 0.010,
+      /** Total ELEVATION a river may climb over its whole course, to get out
+       *  of the local minima a smooth noise field is full of. Without a
+       *  budget, raising maxSteps buys nothing: the walk dead-ends at the
+       *  first dimple, which measured as rivers averaging 22 tiles instead
+       *  of the ~75 they need to reach the sea. In elevArr units, so this is
+       *  a fraction of the map's whole elevation range -- small enough that
+       *  a river still runs downhill overall by a wide margin. */
+      uphillBudget: 0.50,
+      /** ...and how much it may climb in any ONE of those steps, which is
+       *  the guard that actually stops a river walking up a mountainside:
+       *  the total budget alone would happily spend itself on a few big
+       *  climbs. This is the single most sensitive constant in the block for
+       *  course length -- at 0.04 rivers averaged 32 tiles, at 0.08 they
+       *  averaged 56, because most saddles between two noise basins sit in
+       *  that gap. Above ~0.08 it stops mattering (nothing is left to
+       *  unblock), so this is the top of the useful range, not a limit
+       *  chosen for its own sake. */
+      maxStepRise: 0.08,
+    },
   },
 
   // =========================================================================
@@ -1099,6 +1184,129 @@ window.GameConfig = {
      * turns.js's phaseForTurn, exists so that if that ever CHANGES there's
      * one obvious place it hangs off.
      */
+    /**
+     * WEATHER -- rain, and sometimes a thunderstorm.
+     *
+     * DERIVED, NEVER STORED. Like the day/night cycle, the weather on a given
+     * turn is a pure function of (mapSeed, turnNumber) -- see turns.js's
+     * weatherForTurn. That is not a stylistic choice: this codebase has no
+     * save-migration mechanism, so anything persisted is a compatibility
+     * problem forever. Deriving it means every save written before weather
+     * existed loads correctly, a reload shows the same storm instead of
+     * rolling a new one, and nothing has to be serialized.
+     *
+     * COSMETIC TODAY, with the accessor deliberately in the engine so a later
+     * rules pass has one source of truth. See weatherForTurn's own comment
+     * for the intended hook points.
+     */
+    weather: {
+      enabled: true,
+      /** One "day" is one full day/night cycle. Kept as its own number rather
+       *  than read from dayNight.phases so the two can be retuned apart. */
+      cycleLength: 12,
+      /** Chance a new system begins on any given day. */
+      rainChancePerDay: 0.10,
+      /** Chance a system turns thundery somewhere in its middle. The storm is
+       *  always a window INSIDE the rain, so it builds out of rain and dies
+       *  back into it rather than starting or ending the system. */
+      stormChance: 0.30,
+      /** How long a system runs, in turns. Three turns is "a squall passed
+       *  through"; thirty-six is three solid days of weather. */
+      minTurns: 3,
+      maxTurns: 36,
+      /** Clear turns required between one system ending and the next being
+       *  allowed to begin. Without a gap, systems overlap and run together
+       *  into stretches of rain far longer than maxTurns -- see
+       *  weatherSystemForDay. Also what stops rain resuming the turn after it
+       *  stops, which reads as a bug rather than as weather. */
+      minGapTurns: 2,
+
+      /** Rain fall. Angle is in degrees from vertical -- rain is wind-driven,
+       *  and perfectly vertical rain reads as static. */
+      rain: {
+        /** Drops on screen at full rain, scaled by viewport area so a large
+         *  window isn't sparser than a small one. Per million square px. */
+        densityPerMpx: 900,
+        stormDensityMul: 2.1,
+        angleDeg: 14,
+        stormAngleDeg: 24,
+        speedPxPerSec: 900,
+        stormSpeedMul: 1.35,
+        lengthPx: [11, 22],
+        widthPx: [0.8, 1.5],
+        color: "#b9cfe8",
+        alpha: [0.18, 0.42],
+        /** Overcast wash laid under the drops. A storm is darker and greyer
+         *  than plain rain, which is most of what tells the two apart at a
+         *  glance. */
+        overcast: "#2b3444",
+        overcastAlpha: 0.10,
+        stormOvercastAlpha: 0.22,
+      },
+
+      /**
+       * LIGHTNING -- and the photosensitivity constraint it has to live
+       * inside.
+       *
+       * This project's standing rule is that nothing may flash or strobe.
+       * Real lightning is exactly a strobe, so what ships here is not real
+       * lightning: it is a soft bloom confined to the TOP of the viewport
+       * (2026-09-09, user-directed "sky layer only"), tapering to nothing
+       * well before the play field. The ground the player is actually
+       * looking at does not change brightness.
+       *
+       * Every number below is a safety parameter, not a taste parameter:
+       *   riseMs/fallMs  no fast edges. The rise is the dangerous direction,
+       *                  so it is the one kept slowest relative to its size.
+       *   peakAlpha      bounded. This is a glow, never a white-out.
+       *   skyFraction    how far down the screen the bloom reaches at all.
+       *   minGapMs       hard floor between flashes, so a storm can never
+       *                  produce a rapid train of them however the random
+       *                  numbers fall. This is the single most important
+       *                  value here: isolated slow brightenings are safe,
+       *                  repeated ones are not.
+       * Pinned entirely off under reduced motion.
+       */
+      lightning: {
+        enabled: true,
+        color: "#cfe0ff",
+        peakAlpha: 0.30,
+        // 180, not 110: measured, a 110ms rise put 26.8 luma of change into a
+        // single frame at the top of the screen. Stretching the rise spreads the
+        // same brightening over more frames and roughly halves that, which is
+        // the number that matters -- the rise is the direction that provokes a
+        // photosensitive response, so it is the one bought slowest.
+        riseMs: 180,
+        fallMs: 460,
+        skyFraction: 0.42,
+        /** Expected seconds between strikes at full storm, and the hard
+         *  floor no amount of bad luck may go under. */
+        meanGapMs: 7000,
+        minGapMs: 3200,
+        /** Thunder follows the flash by this much, as distant weather does.
+         *  Randomized per strike within the range. */
+        thunderDelayMs: [400, 2600],
+      },
+
+      /**
+       * Audio. NONE OF THESE FILES EXIST YET (2026-09-09) -- the system is
+       * built to expect them and stays silent until they are dropped in, so
+       * nothing breaks in the meantime. Rain is a continuous loop, which is
+       * a channel the audio layer did not previously have (sfx.js plays
+       * one-shots; music.js loops but resolves by race and situation).
+       */
+      audio: {
+        rainLoop: "weather_rain_loop",
+        stormLoop: "weather_storm_loop",
+        thunder: ["weather_thunder_1", "weather_thunder_2", "weather_thunder_3"],
+        rainVolume: 0.35,
+        stormVolume: 0.5,
+        thunderVolume: 0.7,
+        /** Crossfade when rain starts, stops, or escalates into a storm. */
+        fadeMs: 2500,
+      },
+    },
+
     dayNight: {
       /** Master default for the Interface menu's toggle. A player's own
        *  choice is persisted separately (roi_daynight_settings) and wins;
@@ -1367,9 +1575,134 @@ window.GameConfig = {
          */
         influenceRadius: 1.1,
         influenceIntensity: 0.28,
+
+        /**
+         * Flicker RATE per structure kind -- how restless each one's light is,
+         * before flickerAmount / flickerIntensityAmount scale it into an
+         * actual wobble. Same units as the per-unit `flicker` values in the
+         * units table below (0 = dead steady, ~1 = a candle, 1.8 = a unit on
+         * fire), and overridable per sprite in window-lights.js.
+         *
+         * City and building used to be magic numbers in daynight.js
+         * (2026-09-09) while everything else about a light was config, which
+         * made "settle these lamps down a bit" a two-file hunt -- the same
+         * problem the intensity pair had before it moved here.
+         *
+         * Graded by how EXPOSED the light is rather than by how big it is: a
+         * hearth behind a city's walls barely moves, a brazier on a rampart
+         * and a lantern hung over a river are out in the weather, and a
+         * farmstead lamp sits somewhere between the two.
+         */
+        cityFlicker: 0.25,
+        buildingFlicker: 0.20,
+        wallFlicker: 0.35,
+        bridgeFlicker: 0.40,
+        influenceFlicker: 0.30,
         /** City glow multiplier by population tier 1-6, so a capital burns
          *  visibly brighter than a hamlet. Index 0 is tier 1. */
         cityTierScale: [0.70, 0.80, 0.90, 1.00, 1.12, 1.25],
+      },
+
+      /**
+       * MOONLIGHT -- reflected, not emitted.
+       *
+       * Everything else in this feature is a light SOURCE: a hearth, a torch,
+       * a unit on fire. This is the opposite -- surfaces and features that
+       * merely catch the moon and give a little of it back. Three things
+       * follow from that, and they are why this doesn't just reuse the lamp
+       * machinery:
+       *
+       *  1. It is COLD. Every lamp colour in this file is warm; moonlight is
+       *     a pale blue-silver, and mixing the two is most of what sells it.
+       *  2. It tracks the MOON, not the darkness. Strength rides
+       *     state.unitLightsAlpha -- the same ramp that decides when carried
+       *     torches burn, true for slots 5-10 -- so it fades in as the moon
+       *     rises at second twilight and out as it sets at first dawn. No
+       *     moon, no reflection, and the map agrees with the clock face by
+       *     construction rather than by coincidence.
+       *  3. It has no schedule and no flicker. Water does not go to bed.
+       *
+       * SURFACES vs FEATURES. Water is drawn as flat per-tile washes and
+       * point features as small soft pools, because that is what they are --
+       * but it is also a performance requirement. At minimum zoom a large map
+       * puts several thousand water tiles on screen at once, and pushing that
+       * many radial stamps through the light mask would cost more than the
+       * whole rest of the feature. The wash is a handful of path fills no
+       * matter how much ocean is in view. Ruins, chests and caves are rare
+       * enough to go through the ordinary light path.
+       */
+      moonlight: {
+        enabled: true,
+        /** Pale blue-silver. Deliberately not white -- against the night's
+         *  own blue wash a white highlight reads as a lamp someone left on,
+         *  where a cool one reads as the moon. */
+        color: "#b9d4ff",
+        /**
+         * Water. `cutout` is how much night the surface removes (before
+         * maxCutout caps it), `glow` how much cool light it adds back.
+         * Both are small on purpose: this should register as "the water is
+         * catching the light" on a second look, not as lit water.
+         *
+         * Graded by how well each actually reflects -- open ocean is a broad
+         * flat mirror, coast is broken by shallows and shore, and a river is
+         * a thin ribbon crossing a land tile, so most of that tile is not
+         * water at all.
+         */
+        surfaces: {
+          ocean: { cutout: 0.20, glow: 0.13 },
+          coast: { cutout: 0.15, glow: 0.10 },
+          river: { cutout: 0.10, glow: 0.07 },
+        },
+        /**
+         * Shimmer -- moonlight on water moves.
+         *
+         * `shimmerAmount` is how far a patch of water breathes either side of
+         * its steady value. Small: this is a slow swell catching the light,
+         * not glitter.
+         *
+         * Water is drawn as a few batched paths rather than a fill per tile
+         * (see the note above), so the shimmer is bucketed: each tile lands
+         * in one of `shimmerBuckets` phase groups by a hash of its own
+         * coordinates, and each group is filled once. That buys an uneven
+         * shimmer across a bay -- rather than the whole sea brightening at
+         * once, which would read as the water being switched on -- while the
+         * cost stays a fixed handful of fills however much ocean is in view.
+         * The hash is of TILE coordinates, so a stretch of water keeps its
+         * phase permanently and the shimmer doesn't crawl when panning.
+         *
+         * Two slow sines at ~0.24Hz and ~0.38Hz, nowhere near the band the
+         * no-flashing rule guards; pinned flat under reduced motion.
+         */
+        shimmerAmount: 0.22,
+        shimmerPeriodMs: 4200,
+        shimmerBuckets: 6,
+        /**
+         * Point features, in tiles / 0-1 as everywhere else in this block.
+         *
+         * Graded by how well the material actually takes a low, cold light.
+         * Exposed metal takes it best, which is why the two ore deposits sit
+         * at the top with the chest's varnish and fittings -- gold a little
+         * over iron, since iron reads as a dull grey where gold keeps some
+         * brightness even by moonlight. Wet ruin stone gives back less, and
+         * a cave mouth least of anything: it is a hole, and all it has to
+         * offer is the damp rock around its lip.
+         *
+         * These share their tiles with the chest/ore GLINT in overlays.js,
+         * which is a different effect doing a different job -- the glint is
+         * an occasional catch of light that makes the tile findable, this is
+         * a steady pool on the ground around it. They are meant to stack.
+         */
+        features: {
+          gold: { radius: 0.8, intensity: 0.22 },
+          chest: { radius: 0.8, intensity: 0.22 },
+          // 0.20 rather than 0.18: at 0.18 iron measured a hair BELOW the
+          // ruin below it at the tile centre, because a ruin's wider pool
+          // makes up for its lower intensity. Radius and intensity both feed
+          // the peak, so the ordering here isn't the ordering on screen.
+          iron: { radius: 0.8, intensity: 0.20 },
+          ruin: { radius: 1.0, intensity: 0.16 },
+          cave: { radius: 0.8, intensity: 0.12 },
+        },
       },
 
       windows: {

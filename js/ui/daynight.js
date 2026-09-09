@@ -459,6 +459,25 @@
     return { mul, radiusMul };
   }
 
+  /**
+   * How restless this sprite's light is. Unlike `ambient`, which multiplies
+   * its kind's configured intensity, this is an absolute RATE that replaces
+   * the default outright -- because that is how flicker is already expressed
+   * everywhere else in this codebase (config's units table reads
+   * `burning: 1.8`, `wisp: 1.6`, `wizard: 0.4`), and a rate of "0.4" says
+   * something on its own where "0.4x of whatever a building is" does not.
+   * The global scale is flickerAmount / flickerIntensityAmount; this is only
+   * how hard THIS light rides it.
+   *
+   *   0     dead steady -- a warded lamp, a rune light, anything unmoving
+   *   ~0.2  a hearth indoors
+   *   ~1    an open candle or torch
+   *   ~1.8  a unit on fire
+   */
+  function flickerFor(spec, fallback) {
+    return spec.flicker != null ? Math.max(0, spec.flicker) : fallback;
+  }
+
   /** Whether an influence-tile overlay emits anything at all. Unlike every
    *  other kind it is opt-IN (see addStructureLight): it needs either an
    *  authored lamp point or an explicitly authored ambient glow. */
@@ -582,7 +601,128 @@
   let lights = [];        // broad radial pools
   let windowSources = []; // sprites with authored window positions
 
-  function beginFrame() { lights.length = 0; windowSources.length = 0; }
+  function beginFrame() { lights.length = 0; windowSources.length = 0; moonSurfaces.length = 0; }
+
+  // ---------------------------------------------------------------------
+  // Moonlight -- reflected, not emitted. See config's moonlight block for
+  // the whole rationale; the short version is that it is COLD, it tracks the
+  // moon rather than the darkness, and water is washed per tile while point
+  // features get ordinary soft pools.
+  // ---------------------------------------------------------------------
+
+  /** Screen-space rects of water on show this frame, grouped by kind. Kept
+   *  as raw rects rather than a Path2D because the scratch buffer's scale
+   *  isn't known until draw time. */
+  const moonSurfaces = [];
+
+  /** How much moon there is, 0-1. Rides the same ramp carried torches do
+   *  (true for slots 5-10), so moonlight rises and sets with the moon on the
+   *  clock face instead of merely with the dark. */
+  function moonAlpha() {
+    const m = cfg().moonlight;
+    if (!m || m.enabled === false) return 0;
+    return state.unitLightsAlpha;
+  }
+
+  /**
+   * One tile of water catching the moon. `kind` is ocean | coast | river and
+   * selects the strength pair from config.
+   *
+   * Called from render.js's per-tile loop, which only runs for tiles the
+   * viewer can actually see -- so fog is respected at the source. Unlike a
+   * lamp this has no falloff reaching past its own tile, so it needs none of
+   * the extra fog re-darkening the radial lights do.
+   *
+   * Deliberately does NOT take the tile's x/y, even though the shimmer needs
+   * them: moonSurfacePaths recovers them from screen space using the offset
+   * drawWorldLighting is already given. That keeps the shimmer entirely
+   * inside this file rather than requiring a signature change at the call
+   * site, which sits in the middle of render.js's per-tile loop where other
+   * work is in flight.
+   */
+  function addMoonlitSurface(screenX, screenY, ts, kind) {
+    if (!isActive() || moonAlpha() <= 0.01) return;
+    const s = (cfg().moonlight.surfaces || {})[kind];
+    if (!s) return;
+    moonSurfaces.push({ x: screenX, y: screenY, w: ts, h: ts, kind });
+  }
+
+  /**
+   * This frame's water, batched into Path2Ds in scratch-canvas coordinates.
+   * The +1 closes the seam bilinear filtering would otherwise leave between
+   * adjacent tiles at half resolution.
+   *
+   * SHIMMER, AND WHY IT IS BUCKETED. Moonlight on water moves, and a bay
+   * whose every tile brightened in unison would read as the whole sea being
+   * switched on rather than as light on moving water -- the same problem the
+   * window stagger exists to solve. But a per-tile phase means a fill per
+   * tile, and the entire reason this is a batched path is that minimum zoom
+   * puts thousands of water tiles on screen.
+   *
+   * So tiles are sorted into a handful of phase buckets and each bucket is
+   * filled once: the shimmer is uneven across the water, and the cost stays
+   * a fixed handful of fills however much ocean is in view.
+   *
+   * The bucket comes from a hash of the TILE's own coordinates, recovered
+   * from screen space using the offset the caller already passed. That keeps
+   * a given stretch of water on the same phase permanently, so the shimmer
+   * doesn't crawl across the sea as the player pans. (Recovering the coords
+   * here rather than taking them as arguments also keeps this change out of
+   * render.js entirely -- see the note in addMoonlitSurface.)
+   */
+  function moonSurfacePaths(scale, offsetX, offsetY, ts, now) {
+    const m = cfg().moonlight;
+    const buckets = Math.max(1, (m.shimmerBuckets || 1) | 0);
+    const amt = reduced() ? 0 : (m.shimmerAmount || 0);
+    const period = m.shimmerPeriodMs || 4200;
+    const groups = new Map();
+    for (const s of moonSurfaces) {
+      const tx = Math.round((s.x - offsetX) / ts);
+      const ty = Math.round((s.y - offsetY) / ts);
+      const b = amt > 0 ? hashInts(tx, ty) % buckets : 0;
+      const key = s.kind + "|" + b;
+      let g = groups.get(key);
+      if (!g) {
+        // Two slow sines again, incommensurable so the water never settles
+        // into a pulse, and offset per bucket. Periods are ~4s and ~2.6s at
+        // the default -- 0.24Hz and 0.38Hz, far below anything the
+        // no-flashing rule is concerned with, and pinned flat under reduced
+        // motion via `amt`.
+        const phase = (b / buckets) * Math.PI * 2;
+        const wave = Math.sin(now / period + phase) * 0.6
+                   + Math.sin(now / (period * 0.62) + phase * 1.7) * 0.4;
+        g = { kind: s.kind, path: new Path2D(), mul: 1 + amt * wave };
+        groups.set(key, g);
+      }
+      g.path.rect(s.x * scale, s.y * scale, s.w * scale + 1, s.h * scale + 1);
+    }
+    return groups;
+  }
+
+  /**
+   * A ruin, cave mouth, treasure chest or ore deposit picking up the moon --
+   * a small cold pool, through the ordinary light path since these are rare
+   * enough for the cost not to matter and a soft edge suits them where a
+   * hard-edged tile wash would not.
+   */
+  function addMoonlitFeature(tx, ty, screenX, screenY, ts, kind) {
+    if (!isActive()) return;
+    const m = cfg().moonlight;
+    const alpha = moonAlpha();
+    if (alpha <= 0.01) return;
+    const f = (m.features || {})[kind];
+    if (!f) return;
+    lights.push({
+      x: screenX + ts / 2,
+      y: screenY + ts * 0.55,
+      r: f.radius * ts * (cfg().lights.radiusScale || 1) * tuning.radiusMul,
+      color: m.color,
+      intensity: f.intensity * alpha,
+      // Steady. A reflection does not gutter, and a wet stone is not a flame.
+      flicker: 0,
+      phase: 0,
+    });
+  }
 
   function raceColorFor(raceId) {
     const c = cfg().lights;
@@ -658,7 +798,10 @@
         r: spec.radius * ts * (c.radiusScale || 1) * tuning.radiusMul * amb.radiusMul,
         color: spec.color,
         intensity: spec.intensity * state.unitLightsAlpha * amb.mul,
-        flicker: spec.flicker || 0,
+        // A sprite may set its own rate, but not while it is ablaze: the fire
+        // is not the unit's lamp, and a rune-steady staff does not make a
+        // burning wizard burn steadily.
+        flicker: ablaze ? (spec.flicker || 0) : flickerFor(authored, spec.flicker || 0),
         phase: hashInts(unit.x, unit.y, strHash(unit.typeId)) % 1000,
       });
     }
@@ -674,6 +817,8 @@
           x: boxX, y: boxY, w: boxSize, h: boxSize,
           color: spec.color,
           alwaysOn: state.unitLightsAlpha,
+          flicker: ablaze ? (spec.flicker || 0) : flickerFor(authored, spec.flicker || 0),
+          phase: hashInts(unit.x, unit.y, strHash(unit.typeId)) % 1000,
         },
         spec: { windows: pts, color: spec.color },
       });
@@ -697,6 +842,10 @@
       seedB: strHash(raceId || "?"),
       x: drawX, y: drawY, w: drawW, h: drawH,
       color: raceColorFor(raceId),
+      // Carried through to the window-dot pass so the dots gutter on the same
+      // wave, and at the same phase, as this source's own broad pool.
+      flicker: flickerFor(specFor(spriteKey), c.cityFlicker != null ? c.cityFlicker : 0.25),
+      phase: hashInts(city.x, city.y) % 1000,
     };
     const spec = specFor(spriteKey);
     const sinceTurn = performance.now() - state.turnStartedAt;
@@ -712,7 +861,7 @@
         r: c.cityRadius * ts * tierScale * (c.radiusScale || 1) * tuning.radiusMul * amb.radiusMul,
         color: source.color,
         intensity: (c.cityIntensity != null ? c.cityIntensity : 0.5) * lit * tierScale * amb.mul,
-        flicker: 0.25,
+        flicker: flickerFor(spec, c.cityFlicker != null ? c.cityFlicker : 0.25),
         phase: hashInts(city.x, city.y) % 1000,
       });
     }
@@ -783,6 +932,10 @@
       x: rect.x, y: rect.y, w: rect.w, h: rect.h,
       matrix: o.matrix || null,
       color: raceColorFor(raceId),
+      // See addCityLight -- the dot pass reads these to gutter in step with
+      // the broad pool. Set below, once the kind's default rate is resolved.
+      flicker: 0,
+      phase: hashInts(s.x, s.y) % 1000,
     };
     const spec = specFor(spriteKey);
     const sinceTurn = performance.now() - state.turnStartedAt;
@@ -797,6 +950,11 @@
       : kind === "bridge" ? c.bridgeIntensity
         : kind === "influence" ? c.influenceIntensity
           : c.buildingIntensity;
+    const kindFlicker = kind === "wall" ? c.wallFlicker
+      : kind === "bridge" ? c.bridgeFlicker
+        : kind === "influence" ? c.influenceFlicker
+          : c.buildingFlicker;
+    source.flicker = flickerFor(spec, kindFlicker);
 
     // Per-sprite ambient override. A sprite authored with ambient 0 keeps its
     // window dots and drops the broad pool entirely -- the right answer for
@@ -818,7 +976,7 @@
       r: radius * ts * (c.radiusScale || 1) * tuning.radiusMul * amb.radiusMul,
       color: source.color,
       intensity: intensity * lit * amb.mul,
-      flicker: 0.2,
+      flicker: flickerFor(spec, kindFlicker),
       phase: hashInts(s.x, s.y) % 1000,
     });
     if (spec.windows.length) windowSources.push({ source, spec });
@@ -1018,6 +1176,33 @@
       sctx.globalCompositeOperation = "source-over";
     }
 
+    // Moonlit water lightens the darkness sheet -- and ONLY this sheet. It
+    // deliberately does NOT punch the colorize pass below, which is the one
+    // difference between a reflection and a lamp and the whole reason it
+    // can't just ride the light mask above.
+    //
+    // A torch cuts the blue because it is a warm light overpowering the
+    // moon: ground inside its pool should show its true daylight colour.
+    // Moonlight IS the blue. Cutting the colorize where the moon lands made
+    // lit water measurably LESS blue than the dry ground beside it (-7 on a
+    // blue-minus-red metric where it should be positive), which read as a
+    // patch of daylight rather than as a reflection. So: brighter here,
+    // fully blue there.
+    if (moonSurfaces.length) {
+      const mAlpha = moonAlpha();
+      const surf = c.moonlight.surfaces || {};
+      sctx.globalCompositeOperation = "destination-out";
+      sctx.fillStyle = "#fff";
+      for (const g of moonSurfacePaths(scale, offsetX, offsetY, ts, now).values()) {
+        const cut = (surf[g.kind] && surf[g.kind].cutout) || 0;
+        if (cut <= 0) continue;
+        sctx.globalAlpha = Math.max(0, Math.min(maxCut, cut * mAlpha * g.mul * maxCut));
+        sctx.fill(g.path);
+      }
+      sctx.globalAlpha = 1;
+      sctx.globalCompositeOperation = "source-over";
+    }
+
     // Fogged tiles go back to full darkness, so a light's falloff can never
     // brighten a tile the player isn't supposed to be able to see into.
     if (fogPath) { sctx.fillStyle = state.tint; sctx.fill(fogPath); }
@@ -1064,11 +1249,26 @@
 
     // ---- Pass B: the warm light itself ----
     const glow = (c.lights.glowStrength || 0) * tuning.glowMul;
-    if (glow > 0 && lights.length) {
+    if (glow > 0 && (lights.length || moonSurfaces.length)) {
       sctx.setTransform(1, 0, 0, 1, 0, 0);
       sctx.globalCompositeOperation = "source-over";
       sctx.globalAlpha = 1;
       sctx.clearRect(0, 0, sw, sh);
+      // Water's cold cast, laid down before the warm lamps so a harbour
+      // lantern reads as sitting on top of the moonlit water rather than
+      // being tinted by it. Same batched paths as the mask above.
+      if (moonSurfaces.length) {
+        const mAlpha = moonAlpha();
+        const surf = c.moonlight.surfaces || {};
+        sctx.fillStyle = c.moonlight.color;
+        for (const grp of moonSurfacePaths(scale, offsetX, offsetY, ts, now).values()) {
+          const g = (surf[grp.kind] && surf[grp.kind].glow) || 0;
+          if (g <= 0) continue;
+          sctx.globalAlpha = Math.max(0, Math.min(1, g * mAlpha * grp.mul));
+          sctx.fill(grp.path);
+        }
+        sctx.globalAlpha = 1;
+      }
       for (const L of lights) {
         const r = L.r * scale * flickerMul(L, now);
         if (r <= 0) continue;
@@ -1139,7 +1339,15 @@
         const r = radius * scale;
         const color = win[3] || spec.color || source.color;
 
-        ctx.globalAlpha = Math.max(0, Math.min(1, lit * brightness * 0.9));
+        // Each dot gutters on the same wave its broad pool does, so raising a
+        // sprite's flicker rate moves the whole light and not just its halo.
+        // Its own phase offset per window index keeps a row of windows from
+        // breathing in lockstep -- the same reason their on/off schedule is
+        // staggered. Collapses to 1x under reduced motion, via flickerWave.
+        const gutter = flickerIntensityMul(
+          { flicker: source.flicker || 0, phase: (source.phase || 0) + i * 137 }, now);
+
+        ctx.globalAlpha = Math.max(0, Math.min(1, lit * brightness * 0.9 * gutter));
         ctx.drawImage(getGlowStamp(color), px - r * 2.2, py - r * 2.2, r * 4.4, r * 4.4);
       }
     }
@@ -1154,6 +1362,7 @@
     tick, current, isActive, villagerActivity,
     phaseInfoForSlot,
     beginFrame, addUnitLight, addCityLight, addStructureLight,
+    addMoonlitSurface, addMoonlitFeature,
     drawWorldLighting,
     // Exposed for the clock widget and clouds.js, which need the same colours
     // the world is using so the two can never disagree.

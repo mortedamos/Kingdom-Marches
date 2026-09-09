@@ -1117,6 +1117,15 @@
       toggle.addEventListener("change", () => dn.setEnabled(toggle.checked));
     }
 
+    // Weather rides this same setup pass -- it's the same shape of control
+    // (own persisted flag, own module) and shares the panel.
+    const wx = window.UI.weather;
+    const wxToggle = $("weather-toggle");
+    if (wxToggle && wx) {
+      wxToggle.checked = wx.isEnabled();
+      wxToggle.addEventListener("change", () => wx.setEnabled(wxToggle.checked));
+    }
+
     const scrub = $("daynight-scrub"), scrubLabel = $("daynight-scrub-label");
     if (scrub) {
       const apply = () => {
@@ -2015,6 +2024,11 @@
     // the canvas so the initial scatter covers the real viewport. Purely
     // cosmetic; see js/ui/clouds.js.
     window.UI.clouds.init($("map-canvas").width, $("map-canvas").height);
+    // Weather. Reaching this point required clicking through the setup
+    // screen, so the browser's autoplay gate is already satisfied and the
+    // rain loop is allowed to start on its own when the weather turns.
+    window.UI.weather.init();
+    window.UI.weather.unlockAudio();
     window.UI.input.attach($("map-canvas"), gameState, viewState, redraw);
     // 3D click-to-select needs to trigger the exact same post-selection
     // refresh a 2D click does -- not just re-rendering the sidebar's HTML,
@@ -2483,8 +2497,10 @@
     const h = Math.max(1, Math.floor(rect.height * dpr));
 
     const cloudCanvas = $("map-clouds");
+    const weatherCanvas = $("map-weather");
     const unchanged = canvas.width === w && canvas.height === h
-      && (!cloudCanvas || (cloudCanvas.width === w && cloudCanvas.height === h));
+      && (!cloudCanvas || (cloudCanvas.width === w && cloudCanvas.height === h))
+      && (!weatherCanvas || (weatherCanvas.width === w && weatherCanvas.height === h));
     if (unchanged) return;
 
     canvas.width = w;
@@ -2503,6 +2519,17 @@
       cloudCanvas.getContext("2d").setTransform(dpr, 0, 0, dpr, 0, 0);
       cloudCanvas.__cssW = rect.width;
       cloudCanvas.__cssH = rect.height;
+    }
+    if (weatherCanvas) {
+      weatherCanvas.width = w;
+      weatherCanvas.height = h;
+      weatherCanvas.getContext("2d").setTransform(dpr, 0, 0, dpr, 0, 0);
+      weatherCanvas.__cssW = rect.width;
+      weatherCanvas.__cssH = rect.height;
+      // weather.js clears its own buffer each frame in DEVICE pixels and then
+      // re-applies this transform, so it needs the ratio kept alongside the
+      // logical size the other two canvases publish.
+      weatherCanvas.__dpr = dpr;
     }
     redraw();
   }
@@ -7256,6 +7283,14 @@
           // -- the 3D path has no equivalent sky layer, and its canvas is a
           // different element entirely.
           window.UI.clouds.render($("map-clouds"), viewState);
+          // Weather sits above the clouds -- rain is between the viewer and
+          // everything, sky included. tick() reads the turn's weather from
+          // the engine and eases toward it; render() draws whatever that
+          // currently is. Same loop as the clouds and for the same reason:
+          // rain falls continuously, so a redraw-on-change repaint would
+          // freeze it between player actions.
+          window.UI.weather.tick(gameState);
+          window.UI.weather.render($("map-weather"), viewState);
           // The astronomical clock rides the same loop rather than redraw():
           // the sun/moon glides along its arc for a second and a half after
           // every End Turn, which a redraw-on-change repaint would render as

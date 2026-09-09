@@ -82,16 +82,30 @@ window.GameEngine = window.GameEngine || {};
    *  scale 0.07) -- every other entry is defined relative to it so a design
    *  tweak to continent's own numbers propagates sensibly rather than
    *  silently decoupling the four types. */
+  //
+  // riverTileShare: fraction of a landmass's tiles that generateRivers aims
+  // to leave carrying a river. Per-type rather than one global number
+  // because the four types historically ended up with quite different river
+  // densities, and those values are what the game's yields and AI
+  // settle-scoring were tuned against -- every one here is the measured
+  // output of the pre-2026-09-09 generator on that world type (12 seeds
+  // each), so replacing its river-COUNT target with a share target holds
+  // each type exactly where it was. See generateRivers for why a count
+  // target stopped working once courses started meandering. islands' near-
+  // zero value is not a design statement so much as a preserved artifact:
+  // its landmasses are small enough that the old floor(tiles / 150) count
+  // was almost always 0, and deliberately giving islands rivers is a design
+  // question for another day, not something to change by accident here.
   const WORLD_TYPE_CONFIG = {
     // waterMode "reduce": same empirical-percentile technique as the
     // original code -- shrink THIS map's own old-cutoff water count by a
     // fraction, rather than targeting an absolute tile count, so it stays
     // robust to a given seed's actual noise distribution.
-    continent: { elevationScale: 0.07, elevationOctaves: 4, waterMode: "reduce", waterReduction: 0.3 },
+    continent: { elevationScale: 0.07, elevationOctaves: 4, waterMode: "reduce", waterReduction: 0.3, riverTileShare: 0.125 },
     // "+15% water tiles from current" (2026-08-19, user-directed): current
     // == continent's own resulting water count (oldWaterCount * 0.7), so
     // the equivalent single reduction fraction is 1 - 0.7*1.15.
-    normal: { elevationScale: 0.07, elevationOctaves: 4, waterMode: "reduce", waterReduction: 1 - 0.7 * 1.15 },
+    normal: { elevationScale: 0.07, elevationOctaves: 4, waterMode: "reduce", waterReduction: 1 - 0.7 * 1.15, riverTileShare: 0.111 },
     // Islands need BOTH more water AND smaller, more numerous landmasses --
     // reduce alone would just shrink the same few continents, not fragment
     // them. waterMode "fraction" targets an absolute share of the whole
@@ -109,13 +123,13 @@ window.GameEngine = window.GameEngine || {};
     // enforceMinimumLandmassSize's existing 13-tile floor (one city plus a
     // spare open tile) then does the rest of the "1-2 cities each" sizing
     // for free.
-    islands: { elevationScale: 0.30, elevationOctaves: 2, waterMode: "fraction", waterFraction: 0.72 },
+    islands: { elevationScale: 0.30, elevationOctaves: 2, waterMode: "fraction", waterFraction: 0.72, riverTileShare: 0.002 },
     // waterMode "none": every tile skips the ocean/coast branch entirely
     // (see LAND_CUT/OCEAN_CUT below) and falls through to the ordinary
     // land classification, so this reuses the whole Tundra/Mountains/Hills/
     // climate pipeline as-is rather than needing a separate "convert water
     // to land" pass after the fact.
-    noWater: { elevationScale: 0.07, elevationOctaves: 4, waterMode: "none" },
+    noWater: { elevationScale: 0.07, elevationOctaves: 4, waterMode: "none", riverTileShare: 0.191 },
   };
 
   /**
@@ -294,6 +308,11 @@ window.GameEngine = window.GameEngine || {};
         tiles[idx] = {
           x, y, terrain: terrainId,
           resource: null, hasRoad: false, hasRiver: { n: false, s: false, e: false, w: false },
+          /** Downstream cardinal edge, set by generateRivers on river tiles
+           *  only -- drives the 2D flow animation. Null on every dry tile,
+           *  and absent entirely from saves made before 2026-09-09 (see
+           *  render.js riverFlowDir for the fallback). */
+          riverFlowTo: null,
           isRuin: false, landmassId: -1,
           isCave: false, caveLinkX: -1, caveLinkY: -1,
           ownerCivId: null, status: "neutral", contestedTurns: 0,
@@ -343,7 +362,8 @@ window.GameEngine = window.GameEngine || {};
     placeResources(tiles, width, height, rng, landmasses);
 
     // --- Step 7: rivers ---
-    generateRivers(tiles, width, height, rng, landmasses);
+    generateRivers(tiles, width, height, rng, landmasses, elevArr, seed,
+      typeConfig.riverTileShare ?? WORLD_TYPE_CONFIG.continent.riverTileShare);
 
     // --- Ruins (guaranteed minimum per landmass, land-only, never on water) ---
     placeRuins(tiles, width, height, rng, landmasses);
@@ -609,64 +629,232 @@ window.GameEngine = window.GameEngine || {};
     }
   }
 
-  function generateRivers(tiles, width, height, rng, landmasses) {
-    // Simplified downhill-flow river generation: pick high-elevation tiles
-    // (Hills/Mountains) as sources, flow toward the nearest lower-or-equal
-    // neighbor until reaching water or running out of downhill options.
-    const RIVER_DENSITY = 150; // ~1 river per 150 land tiles, per design doc
+  /** The four cardinal steps a river may take, as
+   *  [dx, dy, edgeOnThisTile, edgeOnTheNeighbor]. Rivers never flow
+   *  diagonally -- `hasRiver` has no diagonal slots, and neither renderer
+   *  knows how to draw one. */
+  const RIVER_DIRS = [
+    [0, -1, "n", "s"], [0, 1, "s", "n"],
+    [1, 0, "e", "w"], [-1, 0, "w", "e"],
+  ];
+
+  /** Weighted pick over scored candidates, softmax at `temperature`.
+   *  Deliberately not an arg-max: the old walk took the best-scoring
+   *  neighbor outright, and since its scores were a six-value terrain
+   *  lookup that tied across every flat tile on the map, "best" collapsed
+   *  into "last one tested" -- a fixed compass direction. Sampling instead
+   *  of maximizing is what removes that bias even where the terrain really
+   *  is flat. Scores are shifted by their own max before exponentiating,
+   *  the standard guard against exp() overflowing on a small temperature. */
+  function softmaxPick(candidates, rng, temperature) {
+    let maxScore = -Infinity;
+    for (const c of candidates) if (c.score > maxScore) maxScore = c.score;
+    let total = 0;
+    for (const c of candidates) {
+      c.weight = Math.exp((c.score - maxScore) / temperature);
+      total += c.weight;
+    }
+    let r = rng() * total;
+    for (const c of candidates) {
+      r -= c.weight;
+      if (r <= 0) return c;
+    }
+    return candidates[candidates.length - 1]; // float drift only
+  }
+
+  /**
+   * Downhill-flow river generation. Picks high ground (Hills/Mountains) as
+   * sources and walks to the sea, scoring each candidate step by
+   *
+   *     real elevation drop  +  inertia (continues heading)  +  meander noise
+   *
+   * and sampling among them (softmaxPick) rather than taking the best.
+   *
+   * What this replaced, and why (2026-09-09, user-directed: "rivers are very
+   * square... turn at 90 degree angles, do not appear to meander"): the
+   * original walk scored neighbors with elevationRank(), a six-value lookup
+   * keyed off TERRAIN TYPE, in which plains/forest/desert/tundra all
+   * returned 3. Across a continent's flat interior every candidate therefore
+   * tied, and the tie-break -- `<=` against the running best, with the
+   * direction list ordered n,s,e,w -- handed every tie to WEST. `rng` was
+   * used only to choose the source tile; the walk itself had no randomness
+   * at all. So rivers ran dead west until they hit something, turned hard,
+   * and ran dead in the new direction. The renderer's right-angle stubs got
+   * the blame, but half the squareness was here.
+   *
+   * The fix is mostly just using the height field that already existed:
+   * `elevArr` is continuous noise the rest of generateMap computes anyway,
+   * it simply was never passed in. Steepest descent on a smooth field
+   * curves on its own; inertia stops the remaining ties from zigzagging,
+   * and the meander term lets a course wander off the locally-steepest line
+   * the way a real one does.
+   */
+  /**
+   * Walks one river from `start`, returning the ordered list of steps it
+   * would take -- but stamping nothing. Separating the walk from the stamp
+   * is what lets the caller reject a course before it reaches the map: a
+   * sampled, meandering walk strands itself in a local basin far more often
+   * than the old straight one did, and an eight-tile stub that stops in the
+   * middle of a plain reads as a mistake rather than as a river.
+   */
+  function walkRiver(start, tiles, width, height, rng, elevArr, meanderNoise, CFG) {
+    const path = [];
+    const visited = new Set();
+    let cur = start;
+    // Heading of the previous step, for the inertia term. (0,0) matches no
+    // direction, so a spring picks its first heading on terrain alone.
+    let prevDx = 0, prevDy = 0;
+    let uphillLeft = CFG.uphillBudget;
+    let reachedSea = false;
+    for (let steps = 0; steps < CFG.maxSteps; steps++) {
+      visited.add(cur);
+      const cx = cur % width, cy = Math.floor(cur / width);
+      if (TERRAIN[tiles[cur].terrain].isWater) { reachedSea = true; break; }
+      const elevHere = elevArr[cur];
+
+      const candidates = [];
+      for (const [dx, dy, edgeHere, edgeThere] of RIVER_DIRS) {
+        const nx = cx + dx, ny = cy + dy;
+        if (nx < 0 || nx >= width || ny < 0 || ny >= height) continue;
+        const nIdx = ny * width + nx;
+        if (visited.has(nIdx)) continue;
+        // Drop is measured against THIS tile, which the original never did
+        // -- it only ever compared candidates to each other, so a "downhill"
+        // river would happily climb into mountains whenever that was the
+        // least-bad option available.
+        const drop = elevHere - elevArr[nIdx];
+        // Two separate uphill guards, because a step count alone cannot tell
+        // escaping a shallow noise dimple from walking up a hillside --
+        // maxStepRise caps how steep any one climb may be, uphillBudget how
+        // much total climbing a whole course may do.
+        if (drop < -CFG.maxStepRise) continue;
+        if (drop < 0 && -drop > uphillLeft) continue;
+        const score = drop
+          + (dx === prevDx && dy === prevDy ? CFG.inertia : 0)
+          + CFG.meanderWeight * meanderNoise(nx, ny, CFG.meanderScale, 2, 0.55);
+        candidates.push({ idx: nIdx, edgeHere, edgeThere, dx, dy, drop, score });
+      }
+      if (!candidates.length) break; // local basin, course ends here
+
+      const best = softmaxPick(candidates, rng, CFG.temperature);
+      if (best.drop < 0) uphillLeft += best.drop;
+      path.push({ from: cur, to: best.idx, edgeHere: best.edgeHere, edgeThere: best.edgeThere });
+      prevDx = best.dx;
+      prevDy = best.dy;
+      cur = best.idx;
+    }
+    return { path, reachedSea };
+  }
+
+  /** Stamps a walked course onto the tiles, returning how many tiles it
+   *  NEWLY flagged -- tiles an earlier river already flagged do not count,
+   *  which is what keeps the caller's tile-share target honest where two
+   *  courses meet. */
+  function stampRiver(path, tiles) {
+    let added = 0;
+    const dry = (t) => !(t.hasRiver.n || t.hasRiver.s || t.hasRiver.e || t.hasRiver.w);
+    for (const step of path) {
+      const t = tiles[step.from];
+      if (dry(t)) added++;
+      t.hasRiver[step.edgeHere] = true;
+      // Downstream heading, for the 2D renderer's flow animation (see
+      // render.js's riverGeometry). One field per tile is enough: a tile has
+      // exactly one outflow, whatever else drains into it.
+      t.riverFlowTo = step.edgeHere;
+      // Stamp the edge on the tile the river is flowing INTO -- unless that
+      // tile is already water (coast/ocean). Water tiles are already
+      // rendered as water; painting a river-mouth overlay onto one would be
+      // redundant clutter on top of already-blue tiles. The land tile just
+      // above still gets its own edge marked (from the lines above), so the
+      // river visually still runs right up to the coastline, it just does
+      // not paint anything on the water side.
+      const nt = tiles[step.to];
+      if (!TERRAIN[nt.terrain].isWater) {
+        if (dry(nt)) added++;
+        nt.hasRiver[step.edgeThere] = true;
+      }
+    }
+    return added;
+  }
+
+  /**
+   * Downhill-flow river generation. Picks high ground (Hills/Mountains) as
+   * sources and walks to the sea, scoring each candidate step by
+   *
+   *     real elevation drop  +  inertia (continues heading)  +  meander noise
+   *
+   * and sampling among them (softmaxPick) rather than taking the best.
+   *
+   * What this replaced, and why (2026-09-09, user-directed: "rivers are very
+   * square... turn at 90 degree angles, do not appear to meander"): the
+   * original walk scored neighbors with elevationRank(), a six-value lookup
+   * keyed off TERRAIN TYPE, in which plains/forest/desert/tundra all
+   * returned 3. Across a continent's flat interior every candidate therefore
+   * tied, and the tie-break -- `<=` against the running best, with the
+   * direction list ordered n,s,e,w -- handed every tie to WEST. `rng` was
+   * used only to choose the source tile; the walk itself had no randomness
+   * in it at all. Measured on the old code across ten seeds, the longest
+   * dead-straight east-west run averaged 21.7 tiles and peaked at 38 on a
+   * 56-wide map: rivers crossing two thirds of the world in a ruler line and
+   * then turning a hard corner. The renderer's right-angle stubs took the
+   * blame for "square rivers", but half of it was here. The same measurement
+   * after this change is 6.0 average, 8 peak.
+   *
+   * The fix is mostly just using the height field that already existed.
+   * `elevArr` is continuous noise the rest of generateMap computes anyway,
+   * it simply was never passed in; steepest descent on a smooth field curves
+   * on its own. Inertia then stops the remaining ties from zigzagging, and
+   * the meander term lets a course wander off the locally-steepest line the
+   * way a real one does.
+   */
+  function generateRivers(tiles, width, height, rng, landmasses, elevArr, seed, tileShare) {
+    const CFG = window.GameConfig.world.rivers;
+    // Meander field on its own RNG stream, NOT the shared `rng`. Two reasons,
+    // both about not disturbing anything else: makeValueNoise burns 65536
+    // rng() calls building its gradient grid, and placeRuins/placeCaves draw
+    // from the shared stream after this function returns -- so sourcing those
+    // calls from `rng` would shift every existing seed's ruins and caves for
+    // a change that has nothing to do with either. Terrain is already safe
+    // (it is generated before this point), but an isolated sub-stream keeps
+    // ruins and caves identical per seed too, leaving rivers as the only
+    // thing this work changes about any given map.
+    const meanderNoise = makeValueNoise(makeRng((seed ^ 0x9e3779b9) >>> 0));
+
     for (const group of landmasses) {
-      const numRivers = Math.max(0, Math.floor(group.length / RIVER_DENSITY));
+      // Target a SHARE OF LAND TILES, not a river count. The original
+      // targeted a count (floor(landTiles / 150)) and capped each course at
+      // 40 steps, which held the amount of river on a map roughly steady --
+      // but only because every course ran dead straight and so had about the
+      // same length. Meandering courses vary in length by world type, and on
+      // noWater there is no sea to end them at all, so a count dial now lets
+      // the total drift with it: measured, a count target tuned to hold
+      // continent steady pushed noWater up 49% and normal up 29%. River
+      // tiles pay RIVER_YIELD_BONUS and AI settle-scoring rewards them, so
+      // that drift is a balance change rather than a cosmetic one. Targeting
+      // the share directly makes course length and total river independent
+      // knobs, and holds every world type at its historical value by
+      // construction. See WORLD_TYPE_CONFIG's riverTileShare.
+      const target = Math.round(group.length * tileShare);
+      if (target <= 0) continue;
       const sources = group.filter((idx) => {
         const t = tiles[idx];
         return t.terrain === "hills" || t.terrain === "mountains";
       });
-      for (let i = 0; i < numRivers && sources.length > 0; i++) {
-        let cur = sources[Math.floor(rng() * sources.length)];
-        const visited = new Set();
-        let steps = 0;
-        while (steps < 40) {
-          steps++;
-          visited.add(cur);
-          const cx = cur % width, cy = Math.floor(cur / width);
-          const t = tiles[cur];
-          if (TERRAIN[t.terrain].isWater) break; // reached the sea
-
-          // Find a lower-or-equal unvisited neighbor (downhill flow)
-          const dirs = [
-            [0, -1, "n", "s"], [0, 1, "s", "n"],
-            [1, 0, "e", "w"], [-1, 0, "w", "e"],
-          ];
-          let best = null;
-          for (const [dx, dy, edgeHere, edgeThere] of dirs) {
-            const nx = cx + dx, ny = cy + dy;
-            if (nx < 0 || nx >= width || ny < 0 || ny >= height) continue;
-            const nIdx = ny * width + nx;
-            if (visited.has(nIdx)) continue;
-            if (!best || elevationRank(tiles[nIdx]) <= elevationRank(tiles[best.idx])) {
-              best = { idx: nIdx, edgeHere, edgeThere };
-            }
-          }
-          if (!best) break; // local basin, river just ends here (endorheic)
-          t.hasRiver[best.edgeHere] = true;
-          // Stamp the edge on the tile the river is flowing INTO -- unless
-          // that tile is already water (coast/ocean). Water tiles are
-          // already rendered as water; painting a river-mouth overlay onto
-          // one would be redundant clutter on top of already-blue tiles.
-          // The land tile just above still gets its own edge marked (from
-          // the line above), so the river visually still runs right up to
-          // the coastline, it just doesn't paint anything on the water side.
-          if (!TERRAIN[tiles[best.idx].terrain].isWater) {
-            tiles[best.idx].hasRiver[best.edgeThere] = true;
-          }
-          cur = best.idx;
-        }
+      let flagged = 0;
+      // Spliced, not just sampled: the original left used sources in the
+      // pool, so on a landmass with few hills the same spring could seed two
+      // rivers that then ran the same course. Splicing also bounds this loop.
+      while (flagged < target && sources.length > 0) {
+        const start = sources.splice(Math.floor(rng() * sources.length), 1)[0];
+        const walked = walkRiver(start, tiles, width, height, rng, elevArr, meanderNoise, CFG);
+        // Reject stubs. A course that neither reached the sea nor covered
+        // any real distance is a walk that boxed itself in after a few
+        // steps; stamping it leaves a disconnected fragment on the map.
+        if (!walked.path.length) continue;
+        if (!walked.reachedSea && walked.path.length < CFG.minLength) continue;
+        flagged += stampRiver(walked.path, tiles);
       }
     }
-  }
-
-  function elevationRank(tile) {
-    const order = { ocean: 0, coast: 1, swamp: 2, plains: 3, forest: 3, desert: 3, tundra: 3, hills: 4, mountains: 5 };
-    return order[tile.terrain] ?? 3;
   }
 
   function placeRuins(tiles, width, height, rng, landmasses) {

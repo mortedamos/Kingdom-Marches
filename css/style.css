@@ -295,6 +295,10 @@ html, body {
    through to #map-canvas underneath, exactly as if this layer weren't
    here. Same treatment #map-canvas-3d-hud gets below, and for the same
    reason. See js/ui/clouds.js. */
+/* Rain and storm overlay (js/ui/weather.js). Sits above the clouds: rain is
+   between the viewer and everything else, sky included. Same non-interactive
+   treatment -- a click over the map must fall straight through. */
+#map-weather,
 #map-clouds {
   position: absolute;
   inset: 0;

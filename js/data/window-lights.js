@@ -79,6 +79,20 @@
  *     points at all -- that is how the Wisp and the Great Bonfire are
  *     authored, since neither has anywhere sensible to put a dot.
  *
+ *   flicker: how restless this sprite's light is. Unlike the two above this
+ *     is an absolute RATE that REPLACES its kind's default rather than
+ *     scaling it, because that is how flicker is written everywhere else
+ *     (config's units table reads burning 1.8, wisp 1.6, wizard 0.4) and a
+ *     bare "0.4" means something on its own. The global scale is config's
+ *     flickerAmount (reach) and flickerIntensityAmount (brightness); this is
+ *     only how hard THIS light rides it. Drives the broad pool and the window
+ *     dots together, each dot on its own phase so a row of windows never
+ *     gutters in unison. Pinned flat under reduced motion.
+ *       0     dead steady -- a warded lamp, a rune light
+ *       ~0.2  a hearth indoors
+ *       ~1    an open candle or torch
+ *       ~1.8  a unit on fire
+ *
  *   frames: [ [ [x, y, size?, color?], ... ], ... ]     (units only)
  *     Units are the only animated light sources: each sheet is four 128x128
  *     idle frames, so the lamp is authored once PER FRAME. A shorter list
@@ -951,9 +965,6 @@ window.GameData.WINDOW_LIGHTS = {
     ambientRadius: 1.1,
     frames: [
       [[0.853, 0.483], [0.728, 0.364, 0.70], [0.278, 0.352, 0.80], [0.145, 0.436], [0.245, 0.660], [0.756, 0.630, 0.90], [0.530, 0.613, 0.50], [0.498, 0.539, 0.40], [0.631, 0.682, 0.30], [0.414, 0.696, 0.40], [0.401, 0.594, 0.50]],
-      [],
-      [],
-      [],
     ],
   },
   "unit/militia/1": {

@@ -301,6 +301,14 @@
             <span>Day / Night Cycle</span>
             <input type="checkbox" id="daynight-toggle" checked>
           </label>
+          <!-- WEATHER (js/ui/weather.js). Rain, sometimes a thunderstorm.
+               Derived from (mapSeed, turnNumber) like the cycle above, so it
+               is never saved and old saves load with correct weather.
+               Persisted under roi_weather_settings. -->
+          <label class="audio-panel-row">
+            <span>Weather</span>
+            <input type="checkbox" id="weather-toggle" checked>
+          </label>
           <!-- Tuning. "Darker and bluer, but units still readable" is close
                to impossible to land by editing numbers and reloading, and
                reaching a given hour otherwise means ending that many turns.
@@ -431,6 +439,7 @@
       <div class="map-area">
         <canvas id="map-canvas"></canvas>
         <canvas id="map-clouds"></canvas>
+        <canvas id="map-weather"></canvas>
         <canvas id="map-canvas-3d"></canvas>
         <canvas id="map-canvas-3d-hud"></canvas>
         <input type="file" id="load-game-file-input" accept=".kmsg,.kms,application/json" style="display:none;">
@@ -658,6 +667,7 @@
   <script src="js/ui/daynight.js"></script>
   <script src="js/ui/render.js"></script>
   <script src="js/ui/clouds.js"></script>
+  <script src="js/ui/weather.js"></script>
   <script src="js/ui/villagers.js"></script>
   <script src="js/ui/daynight-clock.js"></script>
   <script src="js/ui/render3d.js"></script>

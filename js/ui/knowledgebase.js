@@ -1347,7 +1347,11 @@ window.UI = window.UI || {};
     });
     featureEntries.push({
       key: "river", label: "River", kind: "Tile Feature",
-      spriteKey: "river/cardinal", baseTerrain: "plains",
+      // overlayDraw, not spriteKey: rivers are drawn procedurally now (see
+      // render.js drawRiverOverlay), so there is no river PNG left to
+      // preview. Running the real draw path keeps this swatch honest.
+      overlayDraw: (ctx, size) => window.UI.render.drawRiverPreview(ctx, size),
+      baseTerrain: "plains",
       rows: [
         ["Tile Bonus", yieldLabelHtml(window.GameData.RIVER_YIELD_BONUS) || "None"],
         ["Land Movement", "The terrain underneath it — a river never changes what a tile costs to cross"],
@@ -1421,9 +1425,14 @@ window.UI = window.UI || {};
     const baseSprite = entry.baseTerrain ? window.UI.sprites.pick(`terrain/${entry.baseTerrain}`, null) : null;
     if (baseSprite) draw(baseSprite);
     // Overlay layer, when this entry is one (resource/ruin/cave/river/road).
+    // An entry may supply either a spriteKey (a PNG to stamp) or an
+    // overlayDraw (a canvas routine to run) -- the River entry uses the
+    // latter, since rivers stopped being a PNG. overlayDraw needs no load
+    // and so never counts as missing below.
     const isOverlay = entry.spriteKey && !entry.spriteKey.startsWith("terrain/");
     const overlaySprite = isOverlay ? window.UI.sprites.pick(entry.spriteKey, null) : null;
     if (overlaySprite) draw(overlaySprite);
+    else if (entry.overlayDraw) entry.overlayDraw(ctx, Math.min(canvas.width, canvas.height));
     // Retry only while something this entry actually wants is still absent
     // -- an entry with no overlay art at all (Bridge) must not schedule a
     // reload forever.
