@@ -2260,12 +2260,14 @@ window.UI = window.UI || {};
    *  The retired river_cardinal.png averaged 0.14 (9px of 64, ranging
    *  7-12), and matching that exactly was the first thing tried. It read as
    *  too heavy once the band was a clean stroke rather than a rough painted
-   *  one -- a crisp edge makes the same width look wider. 0.105 is a
+   *  one -- a crisp edge makes the same width look wider. 0.105 was a
    *  deliberate step down from the old art (2026-09-09, user-directed:
-   *  "generally (but not uniformly) narrower"), with the variation below
-   *  widened to match so the river still swells to roughly the old average
-   *  in places rather than being uniformly thin. */
-  const RIVER_BAND_WIDTH = 0.105;
+   *  "generally (but not uniformly) narrower"). Halved again the same day
+   *  (user-directed: "about 50%") to 0.0525 -- RIVER_WIDTH_VARIATION is a
+   *  fraction of whatever this is, not an absolute, so it scales down with
+   *  it automatically and needed no separate change. RIVER_TEXTURE_WIDTH
+   *  below was halved alongside it to hold its own proportion to the band. */
+  const RIVER_BAND_WIDTH = 0.0525;
   /** Sampled from the retired art, which in turn sampled assets/terrain/
    *  coast_1.png -- a river's blue must match the coast it empties into, or
    *  the mouth reads as two different substances meeting. See art guide S10.
@@ -2323,12 +2325,13 @@ window.UI = window.UI || {};
     { scale: 2.90, color: RIVER_BANK_SAND, alpha: 0.18 },
     { scale: 1.50, color: RIVER_BANK_SHALLOW, alpha: 0.34 },
   ];
-  /** Peak +-swing of the band's width, as a fraction of it. At 0.42 against
-   *  a 0.105 base the channel runs 0.061 to 0.149 tile: mostly narrower than
-   *  the old art, but still swelling to about its old average at the widest
-   *  points, so the river reads as varying rather than as uniformly thin.
-   *  Wider than the +-0.28 first used, precisely because the base came down
-   *  -- "generally, but not uniformly, narrower" is a change to both. */
+  /** Peak +-swing of the band's width, as a FRACTION of it -- so halving
+   *  RIVER_BAND_WIDTH above halved this variation's absolute swing right
+   *  along with it, with no edit needed here. At 0.42 against the current
+   *  0.0525 base the channel runs 0.030 to 0.075 tile: mostly narrower than
+   *  the old art, but still swelling to noticeably more than its own base at
+   *  the widest points, so the river still reads as varying rather than as
+   *  a uniform hairline. */
   const RIVER_WIDTH_VARIATION = 0.42;
   /** Pieces per channel. The width is constant within a piece, so this sets
    *  how finely the swell is followed; at 6 the step between adjacent pieces
@@ -2341,9 +2344,12 @@ window.UI = window.UI || {};
    *  is stroked once per channel at a flat width instead -- which is also
    *  where the most river tiles are on screen at once. */
   const RIVER_WIDTH_MIN_TS = 20;
-  /** Lighter flecks along the band. NOT an outline either, same reasoning. */
+  /** Lighter flecks along the band. NOT an outline either, same reasoning.
+   *  Halved alongside RIVER_BAND_WIDTH so the flecks keep the same
+   *  proportion to the (now narrower) band rather than looking oversized
+   *  next to it. */
   const RIVER_TEXTURE_COLOR = "#3e85a1";
-  const RIVER_TEXTURE_WIDTH = 0.055;
+  const RIVER_TEXTURE_WIDTH = 0.0275;
   const RIVER_TEXTURE_ALPHA = 0.5;
   /** Below this rendered tile size the flecks are sub-pixel and just muddy
    *  the band's color, so the river is drawn flat instead. */
@@ -2724,7 +2730,16 @@ window.UI = window.UI || {};
     // Passes 1-2 -- the soft banks, widest and faintest first, so the river
     // fades into the ground instead of being cut out of it. See
     // RIVER_BANK_STOPS. Butt caps, per the alpha rule below.
-    const bandW = Math.max(2, ts * RIVER_BAND_WIDTH);
+    //
+    // Floor lowered 2 -> 1 alongside the RIVER_BAND_WIDTH halving above
+    // (2026-09-09) -- at 2 it silently ate the requested reduction at
+    // anything zoomed further out than about 75%: by 50% zoom the "narrower"
+    // river measured only 73% of the old width, and by 25% zoom the two were
+    // pixel-identical, since both hit the same floor. 1 matches
+    // RIVER_TEXTURE_WIDTH's own floor a few lines below and keeps the band
+    // at roughly half the old width across the zoom range players actually
+    // use, not just at 100%.
+    const bandW = Math.max(1, ts * RIVER_BAND_WIDTH);
     ctx.lineCap = "butt";
     const near = ts >= RIVER_WIDTH_MIN_TS;
     // Coarser subdivision than the channel: these are soft and translucent,

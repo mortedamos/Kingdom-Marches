@@ -132,7 +132,7 @@
     // than a per-frame fraction, so the ramp takes the same wall-clock time
     // at 30fps as at 144.
     const now = performance.now();
-    const dt = lastTickMs === null ? 0 : Math.min(0.1, (now - lastTickMs) / 1000);
+    const dt = lastTickMs === null ? 0 : Math.max(0, Math.min(0.1, (now - lastTickMs) / 1000));
     lastTickMs = now;
     const rate = 1000 / Math.max(1, c.audio ? c.audio.fadeMs : 2500);
     const step = dt * rate;
@@ -203,6 +203,103 @@
   }
 
   // ---------------------------------------------------------------------
+  // Splashes -- drops landing on the ground.
+  //
+  // See config's splash block for the full rationale. Short version: a
+  // separate, sparser pool from the streaks above, modeled the same way (a
+  // fixed-size recycled array) so reduced motion's dt-forced-to-0 trick
+  // covers this for free -- every splash just freezes at whatever point in
+  // its ring-and-fade it was at, no separate static path needed.
+  // ---------------------------------------------------------------------
+  const splashes = [];
+
+  function targetSplashCount(w, h) {
+    const c = cfg().splash;
+    if (!c) return 0;
+    const mpx = (w * h) / 1e6;
+    const base = (c.densityPerMpx || 0) * mpx * tuning.densityMul;
+    const mul = 1 + ((c.stormDensityMul != null ? c.stormDensityMul : 1) - 1) * state.storm;
+    return Math.round(base * state.rain * mul);
+  }
+
+  function spawnSplash(w, h, c) {
+    const life = c.lifetimeMs[0] + Math.random() * (c.lifetimeMs[1] - c.lifetimeMs[0]);
+    return {
+      x: Math.random() * w,
+      y: Math.random() * h,
+      life,
+      // Staggered on first spawn so a freshly-grown batch doesn't all ring
+      // out in lockstep -- the same reason drops' own initial y is randomized
+      // rather than starting every one at the top.
+      age: Math.random() * life,
+      maxR: c.ringRadiusPx[0] + Math.random() * (c.ringRadiusPx[1] - c.ringRadiusPx[0]),
+    };
+  }
+
+  /** Returns the storm radius multiplier for drawSplashes to use, so the two
+   *  functions don't each recompute it. */
+  function updateSplashes(w, h, dt) {
+    const c = cfg().splash;
+    if (!c) { splashes.length = 0; return 1; }
+    const want = targetSplashCount(w, h);
+    const delta = want - splashes.length;
+    const maxStep = Math.max(2, Math.ceil(Math.abs(delta) * 0.08));
+    if (delta > 0) for (let i = 0; i < Math.min(delta, maxStep); i++) splashes.push(spawnSplash(w, h, c));
+    else if (delta < 0) splashes.length = Math.max(0, splashes.length - Math.min(-delta, maxStep));
+
+    const dtMs = dt * 1000;
+    for (const s of splashes) {
+      s.age += dtMs;
+      if (s.age >= s.life) {
+        s.x = Math.random() * w; s.y = Math.random() * h;
+        s.life = c.lifetimeMs[0] + Math.random() * (c.lifetimeMs[1] - c.lifetimeMs[0]);
+        s.age = 0;
+        s.maxR = c.ringRadiusPx[0] + Math.random() * (c.ringRadiusPx[1] - c.ringRadiusPx[0]);
+      }
+    }
+    return 1 + ((c.stormRadiusMul != null ? c.stormRadiusMul : 1) - 1) * state.storm;
+  }
+
+  function drawSplashes(ctx, stormRadiusMul) {
+    const c = cfg().splash;
+    if (!c || !splashes.length) return;
+    const rgb = hexRgb(c.color);
+    ctx.save();
+    for (const s of splashes) {
+      const t = s.age / s.life;                    // 0-1 through this splash's life
+      const ringT = Math.min(1, t / 0.9);           // the ring finishes just before the dot's own tail fades
+      const ringAlpha = (1 - ringT) * (c.ringAlpha || 0.5) * state.rain;
+      // Floored at 0 defensively: ctx.arc throws on a negative radius, and
+      // this is downstream of state.storm/stormRadiusMul, which this
+      // function has no business trusting blindly to stay in range (found
+      // via a test-harness clock glitch that briefly drove state.storm
+      // negative -- a real player could never reach that, but the render
+      // path itself shouldn't be able to crash if some future change to the
+      // easing math ever let it happen for real).
+      const r = Math.max(0, s.maxR * stormRadiusMul * (0.25 + 0.75 * ringT));
+      if (ringAlpha > 0.01) {
+        ctx.beginPath();
+        ctx.arc(s.x, s.y, r, 0, Math.PI * 2);
+        ctx.strokeStyle = `rgba(${rgb[0]},${rgb[1]},${rgb[2]},${ringAlpha})`;
+        ctx.lineWidth = 1;
+        ctx.stroke();
+      }
+      // Impact dot -- the "plink" before the ring opens, visible only in the
+      // first slice of the lifecycle.
+      if (t < 0.3) {
+        const dotAlpha = (1 - t / 0.3) * (c.dotAlpha || 0.6) * state.rain;
+        if (dotAlpha > 0.01) {
+          ctx.beginPath();
+          ctx.arc(s.x, s.y, Math.max(0.6, s.maxR * 0.22), 0, Math.PI * 2);
+          ctx.fillStyle = `rgba(${rgb[0]},${rgb[1]},${rgb[2]},${dotAlpha})`;
+          ctx.fill();
+        }
+      }
+    }
+    ctx.restore();
+  }
+
+  // ---------------------------------------------------------------------
   // Lightning
   //
   // See the config block. The short version: slow rise, bounded peak,
@@ -217,17 +314,49 @@
     if (!L.enabled || reduced() || state.storm <= 0.05) { flash = null; return 0; }
 
     if (!flash) {
-      if (!nextStrikeAt) nextStrikeAt = now + (L.meanGapMs || 7000) * Math.random();
+      if (!nextStrikeAt) nextStrikeAt = now + (L.meanGapMs || 9500) * Math.random();
       if (now >= nextStrikeAt) {
         const d = cfg().audio.thunderDelayMs || (L.thunderDelayMs || [400, 2600]);
         const delay = d[0] + Math.random() * (d[1] - d[0]);
         flash = { startedAt: now, thunderAt: now + delay, fired: false };
-        // Exponential-ish spacing, then clamped to the hard floor. The floor
-        // is what guarantees a run of unlucky rolls can't produce a train of
-        // flashes -- isolated slow brightenings are safe, repeated ones are
-        // not, and that is not something to leave to chance.
-        const gap = -(L.meanGapMs || 7000) * Math.log(1 - Math.random() * 0.95);
-        nextStrikeAt = now + Math.max(L.minGapMs || 3200, gap);
+        // The floor is what guarantees a run of unlucky rolls can't produce a
+        // train of flashes -- isolated slow brightenings are safe, repeated
+        // ones are not, and that is not something to leave to chance.
+        //
+        // Padded by the FULL WIDTH of the thunder-delay range, not just
+        // minGapMs on its own (2026-09-09, found by measuring real playback
+        // rather than trusting the math on paper: two strikes whose FLASHES
+        // were a clean 3200ms apart still produced thunder only ~2100ms
+        // apart, because thunder lags its flash by an independently random
+        // 400-2600ms -- a long delay on one strike and a short one on the
+        // next eats into the gap between the flashes themselves). Padding by
+        // the delay range's width (its max minus its min) covers the worst
+        // case in either direction, so the floor holds for what the player
+        // actually HEARS, not just for when the sky lit up.
+        const delaySwing = Math.max(0, d[1] - d[0]);
+        const floor = (L.minGapMs || 3200) + delaySwing;
+        // ADD a random extra wait on top of the floor -- do NOT sample an
+        // unbounded gap and then clamp it up to the floor. The two look
+        // similar on paper but are not: clamping puts a hard spike of
+        // probability exactly AT the floor (every draw that landed below it
+        // lands on the exact same value), and with this floor as high as it
+        // is, measured, that was the MAJORITY of draws -- which is exactly
+        // what "looks too regular" means (2026-09-09, user-reported). Adding
+        // an exponential on top instead spreads that same probability mass
+        // out continuously above the floor, so no single gap value is
+        // overrepresented, while every gap is still >= floor by construction
+        // (an addition of a non-negative number can't produce a result
+        // smaller than what it's added to).
+        //
+        // *0.999999 keeps Math.log's argument off exactly 0 -- Math.random()
+        // never returns 1, but 1 - Math.random() can round to exactly 0 in
+        // the extreme tail of IEEE754 precision, and log(0) is -Infinity,
+        // which would push nextStrikeAt to +Infinity and silently end
+        // lightning for the rest of the session. The 1-in-2^52-ish case this
+        // guards has never been observed here; the guard costs nothing.
+        const extraMean = Math.max(1, (L.meanGapMs || 9500) - floor);
+        const extra = -extraMean * Math.log(1 - Math.random() * 0.999999);
+        nextStrikeAt = now + floor + extra;
       }
       if (!flash) return 0;
     }
@@ -245,6 +374,21 @@
       return 0;
     }
     // Smoothstep both directions -- no linear edges, no corners.
+    //
+    // Tried swapping the RISE specifically to linear once (2026-09-09), on
+    // the theory that smoothstep's peak slope (1.5x its own average, right
+    // at its midpoint) must cost more per-frame than a constant one. Measured
+    // the opposite: the SAME peakAlpha/riseMs/fallMs got WORSE (15.6 -> 18.2
+    // max per-frame delta) under linear, not better. The dominant transition
+    // in practice isn't the curve's interior midpoint -- it's the very FIRST
+    // visible frame, jumping from "nothing drawn" (this function returns 0
+    // below its threshold and render() skips the whole pass) to whatever k
+    // is on the next frame. Smoothstep eases in slowly there (its own slope
+    // is exactly 0 at u=0); linear does not, so linear's first frame is
+    // actually the bigger jump despite the smaller theoretical midpoint
+    // slope. Left as smoothstep on both sides; the actual tuning happened by
+    // directly measuring (peakAlpha, riseMs, fallMs) combinations against
+    // this shape instead, per the values below.
     const smooth = (u) => u * u * (3 - 2 * u);
     const k = t < rise ? smooth(t / rise) : smooth(1 - (t - rise) / fall);
     return Math.max(0, k) * (L.peakAlpha || 0.3) * state.storm;
@@ -289,7 +433,7 @@
 
   /** Master gate: the game's own mute/volume settings win over anything here. */
   function audioAllowed() {
-    const sfx = window.UI.sfx;
+    const sfx = window.SfxSystem;
     if (!sfx) return false;
     if (typeof sfx.isMuted === "function" && sfx.isMuted()) return false;
     if (typeof sfx.isFocusSuspended === "function" && sfx.isFocusSuspended()) return false;
@@ -297,7 +441,7 @@
   }
 
   function masterScale() {
-    const sfx = window.UI.sfx;
+    const sfx = window.SfxSystem;
     let v = 1;
     if (sfx && typeof sfx.getMasterVolume === "function") v *= sfx.getMasterVolume();
     if (sfx && typeof sfx.getSfxVolume === "function") v *= sfx.getSfxVolume();
@@ -364,13 +508,13 @@
     if (!w || !h) return;
 
     const now = performance.now();
-    const dt = lastRenderMs === null ? 0 : Math.min(0.1, (now - lastRenderMs) / 1000);
+    const dt = lastRenderMs === null ? 0 : Math.max(0, Math.min(0.1, (now - lastRenderMs) / 1000));
     lastRenderMs = now;
     updateAudio(dt);
 
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.clearRect(0, 0, canvas.width, canvas.height);
-    if (!isActive()) { drops.length = 0; return; }
+    if (!isActive()) { drops.length = 0; splashes.length = 0; return; }
     ctx.setTransform(canvas.__dpr || 1, 0, 0, canvas.__dpr || 1, 0, 0);
 
     const c = cfg().rain;
@@ -406,6 +550,14 @@
       ctx.fillRect(0, 0, w, reach);
       ctx.restore();
     }
+
+    // --- splashes ---------------------------------------------------------
+    // Ground-level, so drawn BEFORE the streaks: rain in the air belongs in
+    // front of rain that already landed. Reduced motion freezes these the
+    // same way it freezes the streaks below -- dt forced to 0 -- rather than
+    // needing its own static-rendering branch; see config's splash block.
+    const stormRadiusMul = updateSplashes(w, h, reduced() ? 0 : dt);
+    drawSplashes(ctx, stormRadiusMul);
 
     // --- rain -----------------------------------------------------------
     // Reduced motion keeps the overcast and the darkening -- the weather is

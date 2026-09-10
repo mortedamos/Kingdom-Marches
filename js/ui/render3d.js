@@ -167,12 +167,17 @@ window.UI = window.UI || {};
   // stays a comfortable margin inside TILE/2 so a tile's waypoint can never
   // drift into a neighboring tile's footprint.
   const RIVER_CARVE_DEPTH = 0.06; // max dip below undisturbed height
-  const RIVER_CHANNEL_HALF_WIDTH = 0.11; // flat-bottomed core half-width
-  const RIVER_BANK_WIDTH = 0.09; // smoothstep ramp back to flat beyond the core
+  // Width trio halved together (2026-09-09, user-directed: rivers "narrower
+  // - about 50%", matched here to render.js's own RIVER_BAND_WIDTH halving
+  // so a river doesn't visibly change width when the player toggles 2D/3D).
+  // Depth/height constants above and below are untouched -- narrower is a
+  // horizontal change, not a "shallower groove" one.
+  const RIVER_CHANNEL_HALF_WIDTH = 0.055; // flat-bottomed core half-width
+  const RIVER_BANK_WIDTH = 0.045; // smoothstep ramp back to flat beyond the core
   const RIVER_WAYPOINT_JITTER = 0.15; // max drift of a river tile's waypoint from tile center
   const RIVER_GRID_N = 12; // NxN quads spanning a river-adjacent tile's FULL footprint (replaces its plateau+skirt+corner fans)
   const WATER_SURFACE_LIFT = 0.04; // water sits this far ABOVE the carved ground -- raised well up into the channel (not just a thin puddle at the very bottom) while staying under undisturbed bank height (RIVER_CARVE_DEPTH - WATER_SURFACE_LIFT = 0.02 of clearance) so it never breaches the banks
-  const WATER_RIBBON_HALF_WIDTH = 0.075; // < RIVER_CHANNEL_HALF_WIDTH so water always sits over the carve's flat bottom, leaving a visible bank rim
+  const WATER_RIBBON_HALF_WIDTH = 0.0375; // < RIVER_CHANNEL_HALF_WIDTH so water always sits over the carve's flat bottom, leaving a visible bank rim -- same ratio to it as before the halving
   const WATER_MOUTH_TAPER = 0.35; // distance (from the water tile's own center) over which a river mouth's carve fades to 0 -- see buildRiverWaterRibbon
   const SHADOW_RADIUS = 0.32, SHADOW_Y_LIFT = 0.017; // above every other decal layer -- sits "on top" under the unit
   // Ground-plane overlay decals (grid/influence/aura tint -- see

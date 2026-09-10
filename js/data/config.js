@@ -65,9 +65,9 @@ window.GameConfig = {
     /** Local date this build was cut, YYYY-MM-DD. */
     date: "2026-09-09",
     /** Local time this build was cut, 24-hour HH:MM. */
-    time: "21:32",
+    time: "22:34",
     /** Monotonic build counter -- increment it, don't recompute it. */
-    number: 278,
+    number: 279,
   },
 
   // =========================================================================
@@ -1260,6 +1260,42 @@ window.GameConfig = {
       },
 
       /**
+       * Splashes -- drops landing on the ground (2026-09-09, user-directed:
+       * "little splashes as if drops are landing"). A separate, sparser pool
+       * from the streaks above: a streak is rain IN THE AIR, a splash is the
+       * ground catching it, and the two need different densities and a
+       * different lifecycle shape (a streak falls at a constant rate for as
+       * long as it's on screen; a splash is born, rings out, and fades).
+       *
+       * Modeled the same way the streak pool is -- a fixed-size array,
+       * particles recycled in place rather than spawned-and-forgotten -- for
+       * the same payoff: under reduced motion, forcing dt to 0 (see
+       * weather.js's render) freezes every splash at whatever point in its
+       * ring-and-fade it happened to be at, which reads as "wet ground" with
+       * no extra reduced-motion code path needed, the same trick the streaks
+       * already use.
+       */
+      splash: {
+        /** Splashes on screen at once, at full rain. Deliberately much
+         *  sparser than rain's own densityPerMpx (900) -- a splash for every
+         *  streak would read as noise, not rain. */
+        densityPerMpx: 55,
+        stormDensityMul: 1.8,
+        stormRadiusMul: 1.3,
+        /** How long one splash takes to ring out and fade, in ms. */
+        lifetimeMs: [260, 420],
+        /** The ring's radius at the end of its life, in px (before
+         *  stormRadiusMul). Grows from a quarter of this at birth. */
+        ringRadiusPx: [2, 5],
+        color: "#dbe8f5",
+        ringAlpha: 0.5,
+        /** A brief bright dot at the impact point, visible only for the
+         *  first slice of the lifecycle -- the "plink" a real splash reads
+         *  as before it opens into a ring. */
+        dotAlpha: 0.6,
+      },
+
+      /**
        * LIGHTNING -- and the photosensitivity constraint it has to live
        * inside.
        *
@@ -1285,21 +1321,77 @@ window.GameConfig = {
       lightning: {
         enabled: true,
         color: "#cfe0ff",
-        peakAlpha: 0.30,
-        // 180, not 110: measured, a 110ms rise put 26.8 luma of change into a
-        // single frame at the top of the screen. Stretching the rise spreads the
-        // same brightening over more frames and roughly halves that, which is
-        // the number that matters -- the rise is the direction that provokes a
-        // photosensitive response, so it is the one bought slowest.
-        riseMs: 180,
-        fallMs: 460,
+        // peakAlpha/riseMs/fallMs raised and tightened together (2026-09-09,
+        // user-directed: "sharper, faster, and brighter"). All three fight
+        // over the SAME budget -- how much luma change lands in any one
+        // frame at the top of the screen -- so they were tuned as one group
+        // by actually measuring candidates against a canvas, not by picking
+        // numbers and hoping. (One measurement in an earlier draft of this
+        // comment claimed 18.9 without having actually been run; it was
+        // wrong, and the real number for those settings was 26.1. Every
+        // number below has since been re-measured for real before being
+        // written down.)
+        //
+        // Also tried, and reverted after measuring: swapping the rise's
+        // easing from smoothstep to plain linear, on the theory that
+        // smoothstep's peak slope (1.5x its own average, at its midpoint)
+        // must cost more per frame than a constant slope. Measured the
+        // opposite -- the SAME peakAlpha/riseMs/fallMs got WORSE (15.6 ->
+        // 18.2 max per-frame delta) under linear. The transition that
+        // actually dominates is the very FIRST visible frame, jumping from
+        // "nothing drawn" (below threshold, the whole pass is skipped) to
+        // whatever the curve gives on the next frame -- smoothstep eases in
+        // slowly there (its own slope is exactly 0 at the start), linear
+        // does not, so linear's first frame is the bigger jump despite the
+        // smaller theoretical midpoint slope. Left as smoothstep on both
+        // sides; see weather.js's updateLightning for where this lives.
+        //
+        // Landed values, measured together over a 240-second sample at full
+        // storm: peakAlpha 0.30->0.40 (+33%), riseMs 180->170, fallMs
+        // 460->220 (total flash duration 640ms->390ms, the real source of
+        // "faster"). Max per-frame delta at the top of the screen: 22.4,
+        // up from 15.6 at the old settings but comfortably clear of the ~26
+        // that the original 110ms/0.30 rise measured (which is what 180ms
+        // existed to fix in the first place) -- brighter and quicker without
+        // going back to the number already rejected. Play field bottom
+        // stayed a flat 0 across the same sample, confirming "sky layer
+        // only" still holds. If any of the three moves again, re-measure all
+        // three together over a run of at least a couple of minutes, not
+        // apart and not on a quick sample -- a short sample under-measured
+        // this exact config by 2.5 (19.9 at 140s vs 22.4 at 240s).
+        peakAlpha: 0.40,
+        riseMs: 170,
+        fallMs: 220,
         skyFraction: 0.42,
-        /** Expected seconds between strikes at full storm, and the hard
-         *  floor no amount of bad luck may go under. */
-        meanGapMs: 7000,
+        /**
+         * Expected seconds between strikes at full storm, and the hard floor
+         * no amount of bad luck may go under.
+         *
+         * meanGapMs raised 7000 -> 9500 the same day as a bug fix, not a
+         * taste change (2026-09-09, user-directed: "more randomness... looks
+         * too regular"). The regularity was real and measurable: the old
+         * scheduler was `max(floor, exponential(mean))`, and with the floor
+         * this project's own safety padding had pushed up to 5400ms (see
+         * updateLightning's own comment on thunderDelayMs), MORE THAN HALF
+         * of all exponential draws landed below that floor and got clamped
+         * UP to it -- meaning the majority of strikes arrived at exactly the
+         * same 5400ms spacing, which is precisely what "too regular" looks
+         * like. Fixed in weather.js by switching to `floor +
+         * exponential(mean - floor)`: every gap is still >= floor, but the
+         * randomness above it is now continuous instead of piling up on one
+         * value. Raising meanGapMs gives that continuous part more room to
+         * actually vary in -- at the old 7000 the amount above the floor
+         * would have averaged only ~1600ms; at 9500 it's ~4100ms, enough
+         * spread to read as genuinely irregular rather than "usually exactly
+         * the floor, occasionally more."
+         */
+        meanGapMs: 9500,
         minGapMs: 3200,
         /** Thunder follows the flash by this much, as distant weather does.
-         *  Randomized per strike within the range. */
+         *  Randomized per strike within the range. Widening this range also
+         *  widens how much slack weather.js's minGapMs scheduling has to pad
+         *  onto the floor to keep THUNDER (not just the flash) that far
+         *  apart -- see updateLightning's own comment. */
         thunderDelayMs: [400, 2600],
       },
 
