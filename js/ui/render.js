@@ -2255,10 +2255,17 @@ window.UI = window.UI || {};
    *  render3d.js's RIVER_WAYPOINT_JITTER exactly -- bounded well inside
    *  TILE/2 so a waypoint can never wander into a neighbor's footprint. */
   const RIVER_WAYPOINT_JITTER = 0.15;
-  /** Band width, in tile units. Measured across the retired
-   *  river_cardinal.png, whose wavy band ran 7-12px of 64 (0.11-0.19 tile)
-   *  and averaged 9 -- so the river keeps the weight it always had. */
-  const RIVER_BAND_WIDTH = 0.14;
+  /** Band width, in tile units, before RIVER_WIDTH_VARIATION swings it.
+   *
+   *  The retired river_cardinal.png averaged 0.14 (9px of 64, ranging
+   *  7-12), and matching that exactly was the first thing tried. It read as
+   *  too heavy once the band was a clean stroke rather than a rough painted
+   *  one -- a crisp edge makes the same width look wider. 0.105 is a
+   *  deliberate step down from the old art (2026-09-09, user-directed:
+   *  "generally (but not uniformly) narrower"), with the variation below
+   *  widened to match so the river still swells to roughly the old average
+   *  in places rather than being uniformly thin. */
+  const RIVER_BAND_WIDTH = 0.105;
   /** Sampled from the retired art, which in turn sampled assets/terrain/
    *  coast_1.png -- a river's blue must match the coast it empties into, or
    *  the mouth reads as two different substances meeting. See art guide S10.
@@ -2302,10 +2309,10 @@ window.UI = window.UI || {};
    *  cheap blur, and a per-tile gradient object would mean an allocation per
    *  tile per frame, so this is the ramp. */
   const RIVER_BANK_STOPS = [
-    { scale: 2.90, color: RIVER_BANK_SAND, alpha: 0.09 },
-    { scale: 2.30, color: RIVER_BANK_SAND, alpha: 0.13 },
-    { scale: 1.75, color: RIVER_BANK_SHALLOW, alpha: 0.16 },
-    { scale: 1.35, color: RIVER_BANK_SHALLOW, alpha: 0.28 },
+    { scale: 3.20, color: RIVER_BANK_SAND, alpha: 0.09 },
+    { scale: 2.55, color: RIVER_BANK_SAND, alpha: 0.13 },
+    { scale: 1.90, color: RIVER_BANK_SHALLOW, alpha: 0.16 },
+    { scale: 1.40, color: RIVER_BANK_SHALLOW, alpha: 0.28 },
   ];
   /** Zoomed out past RIVER_WIDTH_MIN_TS the band is only a couple of pixels
    *  wide and the intermediate stops land on the same pixels, so it drops to
@@ -2313,13 +2320,16 @@ window.UI = window.UI || {};
    *  the strokes. That matters here specifically: minimum zoom is where the
    *  whole map is on screen and every river tile on it is drawn at once. */
   const RIVER_BANK_STOPS_FAR = [
-    { scale: 2.60, color: RIVER_BANK_SAND, alpha: 0.18 },
-    { scale: 1.45, color: RIVER_BANK_SHALLOW, alpha: 0.34 },
+    { scale: 2.90, color: RIVER_BANK_SAND, alpha: 0.18 },
+    { scale: 1.50, color: RIVER_BANK_SHALLOW, alpha: 0.34 },
   ];
-  /** Peak +-swing of the band's width, as a fraction of it. 0.28 puts the
-   *  channel between 0.10 and 0.18 tile, which is very close to the 0.11-0.19
-   *  range the retired hand-painted art actually spanned. */
-  const RIVER_WIDTH_VARIATION = 0.28;
+  /** Peak +-swing of the band's width, as a fraction of it. At 0.42 against
+   *  a 0.105 base the channel runs 0.061 to 0.149 tile: mostly narrower than
+   *  the old art, but still swelling to about its old average at the widest
+   *  points, so the river reads as varying rather than as uniformly thin.
+   *  Wider than the +-0.28 first used, precisely because the base came down
+   *  -- "generally, but not uniformly, narrower" is a change to both. */
+  const RIVER_WIDTH_VARIATION = 0.42;
   /** Pieces per channel. The width is constant within a piece, so this sets
    *  how finely the swell is followed; at 6 the step between adjacent pieces
    *  is well under a pixel at every zoom, including across a tile boundary. */
@@ -2346,6 +2356,44 @@ window.UI = window.UI || {};
   /** Radius of the pool at a spring/mouth's waypoint, in tile units. The old
    *  river_hub.png was 12px of 64 across, i.e. this doubled. */
   const RIVER_POOL_RADIUS = 0.09;
+
+  /**
+   * BRAIDED REACHES (2026-09-09, user-directed: "in some rare tiles, the
+   * river split and rejoined itself, forming a small island").
+   *
+   * On a fraction of through-tiles a side channel peels off the main one and
+   * rejoins it a little downstream, leaving a lens of land in midstream.
+   * Both of its ends sit ON the main curve rather than at the tile's
+   * crossing points, so the tile still meets its neighbours exactly as an
+   * unbraided one would and no neighbour needs to know about it.
+   *
+   * Kept deliberately rare. An eyot is a thing you notice once while looking
+   * at a river, not a feature of rivers in general -- at this rate a
+   * reference map gets five or six of them.
+   */
+  const RIVER_BRAID_CHANCE = 0.045;
+  /** Where along the main curve the side channel leaves and rejoins. Kept
+   *  off the ends so both junctions stay well inside the tile, and wide
+   *  enough apart that the island is longer than it is broad -- a stubby
+   *  one reads as a bubble in the river rather than as land. */
+  const RIVER_BRAID_T = 0.13;
+  /** Cubic handle length for each leg, as a fraction of that leg's span.
+   *  This is what controls how gently the water separates: near 0 the branch
+   *  would kink away from the main channel at a hard angle (the "jug handle"
+   *  the first attempt had), while too large overshoots and the strand bulges
+   *  before it has finished dividing. ~0.55 is the usual value for a Bezier
+   *  approximating a circular arc, and it reads right here too. */
+  const RIVER_BRAID_HANDLE = 0.55;
+  /** How far the side channel bows off the main one, in tile units. Bounded
+   *  by what the tile can hold: the waypoint is already up to 0.15 off
+   *  centre and the band plus its banks reach ~0.15 further, so much past
+   *  this and the island's far bank starts spilling onto the next tile. */
+  const RIVER_BRAID_BULGE = 0.19;
+  /** The flow divides, so neither strand runs at full width -- and the
+   *  narrower they are, the more land is left between them to read as an
+   *  island rather than as one wide channel with a streak in it. */
+  const RIVER_BRAID_MAIN_WIDTH = 0.78;
+  const RIVER_BRAID_SIDE_WIDTH = 0.58;
 
   const RIVER_DX = { n: 0, s: 0, e: 1, w: -1 };
   const RIVER_DY = { n: -1, s: 1, e: 0, w: 0 };
@@ -2446,8 +2494,8 @@ window.UI = window.UI || {};
       // glint. That's the right outcome either way: these are one-stub
       // tiles, and a highlight on a stub reads as noise, not as current.
       channels.push(out === d
-        ? [S, mid(S, ends[d]), ends[d]]
-        : [ends[d], mid(S, ends[d]), S]);
+        ? quadToCubic(S, mid(S, ends[d]), ends[d], 1)
+        : quadToCubic(ends[d], mid(S, ends[d]), S, 1));
     } else {
       // The main channel is the most-opposed pair of directions, so a
       // through-flow curves and any extra branch hangs off it rather than
@@ -2466,7 +2514,67 @@ window.UI = window.UI || {};
       // main pair (possible at a junction), the main channel's own direction
       // isn't determined by it, so treat flow as unknown rather than guess.
       if (out && out !== a && out !== b) flowKnown = false;
-      channels.push(out === a ? [ends[b], S, ends[a]] : [ends[a], S, ends[b]]);
+      const main = out === a
+        ? quadToCubic(ends[b], S, ends[a], 1)
+        : quadToCubic(ends[a], S, ends[b], 1);
+      channels.push(main);
+
+      // Rare braid: a side channel divides off the main one and rejoins it
+      // downstream, leaving a small island in midstream (2026-09-09,
+      // user-directed). Both ends sit ON the main curve rather than at the
+      // tile's crossing points, so the tile still meets its neighbours
+      // exactly as an unbraided one would -- the braid is entirely internal
+      // and no neighbour needs to know about it.
+      //
+      // Built as TWO cubics meeting at the widest point, rather than one
+      // curve bowed sideways (2026-09-09, user-directed: the first attempt
+      // "reads as a forced jug-handle shape, rather than a natural branch
+      // aligning to the flow of the water"). That is exactly what a single
+      // bowed curve gives you: its tangent where it meets the main channel
+      // points sideways, so the branch appears to hang off the river instead
+      // of dividing from it. Here the tangents at A and B are taken FROM the
+      // main curve and imposed on the side channel, so the water separates
+      // and recombines travelling in the direction it was already going, and
+      // the two strands enclose a long lens instead of a loop.
+      if (dirs.length === 2 && riverHash(x, y, 53) < RIVER_BRAID_CHANCE) {
+        const [M0, M1, M2, M3] = main;
+        const tA = RIVER_BRAID_T, tB = 1 - RIVER_BRAID_T;
+        const A = cubicAt(M0, M1, M2, M3, tA);
+        const B = cubicAt(M0, M1, M2, M3, tB);
+        const TA = cubicTangent(M0, M1, M2, M3, tA);
+        const TB = cubicTangent(M0, M1, M2, M3, tB);
+        const mid5 = cubicAt(M0, M1, M2, M3, 0.5);
+        const T5 = cubicTangent(M0, M1, M2, M3, 0.5);
+        // Perpendicular to the flow at the widest point -- offset across the
+        // current, which is where an island sits, not along it.
+        const nx = -T5.y, ny = T5.x;
+        const p = { x: mid5.x + nx * RIVER_BRAID_BULGE, y: mid5.y + ny * RIVER_BRAID_BULGE };
+        const q = { x: mid5.x - nx * RIVER_BRAID_BULGE, y: mid5.y - ny * RIVER_BRAID_BULGE };
+        const dp = Math.hypot(p.x - 0.5, p.y - 0.5), dq = Math.hypot(q.x - 0.5, q.y - 0.5);
+        // Toward whichever side leaves more room inside the tile -- on a bend
+        // the outside runs out of tile first. Where both sides are equivalent
+        // (a straight reach) the hash picks, so the islands don't all sit on
+        // the same bank.
+        const K = Math.abs(dp - dq) < 0.04
+          ? (riverHash(x, y, 59) < 0.5 ? p : q)
+          : (dp < dq ? p : q);
+        const hA = Math.hypot(K.x - A.x, K.y - A.y) * RIVER_BRAID_HANDLE;
+        const hB = Math.hypot(B.x - K.x, B.y - K.y) * RIVER_BRAID_HANDLE;
+        // Leg 1: leaves A along the main flow, arrives at the island's widest
+        // point already turned back parallel to it. Leg 2 mirrors it, so the
+        // two meet at K with the same tangent and the join is invisible.
+        channels.push([A,
+          { x: A.x + TA.x * hA, y: A.y + TA.y * hA },
+          { x: K.x - T5.x * hA, y: K.y - T5.y * hA },
+          K, RIVER_BRAID_SIDE_WIDTH]);
+        channels.push([K,
+          { x: K.x + T5.x * hB, y: K.y + T5.y * hB },
+          { x: B.x - TB.x * hB, y: B.y - TB.y * hB },
+          B, RIVER_BRAID_SIDE_WIDTH]);
+        // The flow divides, so the main strand doesn't carry it all either.
+        main[4] = RIVER_BRAID_MAIN_WIDTH;
+      }
+
       for (const d of dirs) {
         if (d === a || d === b) continue;
         // A tributary spoke, drawn into the waypoint the main channel
@@ -2474,7 +2582,7 @@ window.UI = window.UI || {};
         // Always inward: a spoke that isn't the outflow is by definition an
         // inflow, and if the spoke IS the outflow we've already given up on
         // knowing the direction just above.
-        channels.push([ends[d], mid(S, ends[d]), S]);
+        channels.push(quadToCubic(ends[d], mid(S, ends[d]), S, 1));
       }
     }
     return { S, channels, isolated: dirs.length === 1, flowKnown };
@@ -2487,26 +2595,64 @@ window.UI = window.UI || {};
     return { x: dx / len, y: dy / len };
   }
 
-  /** Quadratic Bezier point at t, for glint placement. */
-  function quadAt(P0, P1, P2, t) {
-    const u = 1 - t;
-    return {
-      x: u * u * P0.x + 2 * u * t * P1.x + t * t * P2.x,
-      y: u * u * P0.y + 2 * u * t * P1.y + t * t * P2.y,
-    };
+  // Channels are CUBIC Beziers -- [P0, P1, P2, P3, widthScale].
+  //
+  // A tile's own channel is naturally a quadratic (two crossings and the
+  // waypoint between them), and was one until braided reaches arrived. A
+  // braid's side channel has to leave the main curve travelling in the same
+  // direction the main curve is travelling and rejoin it the same way, or it
+  // reads as a handle stuck on the side of the river rather than as the water
+  // dividing. That means fixing the tangent at BOTH ends independently, and a
+  // quadratic cannot: it has one control point, so its start tangent and its
+  // "pull" are the same vector. Cubics can, so everything is a cubic and the
+  // quadratics are exactly converted on the way in.
+  const lerp = (p, q, t) => ({ x: p.x + (q.x - p.x) * t, y: p.y + (q.y - p.y) * t });
+
+  /** Exact quadratic -> cubic promotion (same curve, no approximation). */
+  function quadToCubic(Q0, Q1, Q2, widthScale) {
+    return [
+      Q0,
+      { x: Q0.x + (2 / 3) * (Q1.x - Q0.x), y: Q0.y + (2 / 3) * (Q1.y - Q0.y) },
+      { x: Q2.x + (2 / 3) * (Q1.x - Q2.x), y: Q2.y + (2 / 3) * (Q1.y - Q2.y) },
+      Q2,
+      widthScale,
+    ];
   }
 
-  /** The exact sub-arc of a quadratic between u0 and u1, as its own
-   *  quadratic. This is the blossom (polar form) of the curve: f(p,q)
-   *  evaluated at (u0,u0), (u0,u1), (u1,u1) gives the sub-arc's three
-   *  control points directly. Exact, not a resampling -- so splitting a
-   *  channel into pieces to vary its width doesn't change the shape at all. */
-  function quadSub(P0, P1, P2, u0, u1) {
-    const f = (p, q) => ({
-      x: (1 - p) * (1 - q) * P0.x + ((1 - p) * q + p * (1 - q)) * P1.x + p * q * P2.x,
-      y: (1 - p) * (1 - q) * P0.y + ((1 - p) * q + p * (1 - q)) * P1.y + p * q * P2.y,
-    });
-    return [f(u0, u0), f(u0, u1), f(u1, u1)];
+  /** Cubic point at t. */
+  function cubicAt(P0, P1, P2, P3, t) {
+    const a = lerp(P0, P1, t), b = lerp(P1, P2, t), c = lerp(P2, P3, t);
+    const d = lerp(a, b, t), e = lerp(b, c, t);
+    return lerp(d, e, t);
+  }
+
+  /** Unit tangent at t. Falls back through the degenerate cases where a
+   *  control point coincides with its endpoint and the first derivative
+   *  vanishes. */
+  function cubicTangent(P0, P1, P2, P3, t) {
+    const u = 1 - t;
+    let dx = 3 * u * u * (P1.x - P0.x) + 6 * u * t * (P2.x - P1.x) + 3 * t * t * (P3.x - P2.x);
+    let dy = 3 * u * u * (P1.y - P0.y) + 6 * u * t * (P2.y - P1.y) + 3 * t * t * (P3.y - P2.y);
+    let len = Math.hypot(dx, dy);
+    if (len < 1e-9) { dx = P3.x - P0.x; dy = P3.y - P0.y; len = Math.hypot(dx, dy) || 1; }
+    return { x: dx / len, y: dy / len };
+  }
+
+  /** The exact sub-arc between u0 and u1, as its own cubic -- de Casteljau
+   *  twice, so splitting a channel into pieces to vary its width doesn't
+   *  change the shape at all. */
+  function cubicSub(P0, P1, P2, P3, u0, u1) {
+    // Right half at u0 gives the curve over [u0, 1], reparametrised to [0,1].
+    let a = lerp(P0, P1, u0), b = lerp(P1, P2, u0), c = lerp(P2, P3, u0);
+    let d = lerp(a, b, u0), e = lerp(b, c, u0);
+    let f = lerp(d, e, u0);
+    const R0 = f, R1 = e, R2 = c, R3 = P3;
+    // ...then the left half of THAT at the rescaled u1.
+    const t = u0 >= 1 ? 0 : (u1 - u0) / (1 - u0);
+    a = lerp(R0, R1, t); b = lerp(R1, R2, t); c = lerp(R2, R3, t);
+    d = lerp(a, b, t); e = lerp(b, c, t);
+    f = lerp(d, e, t);
+    return [R0, a, d, f];
   }
 
   /**
@@ -2540,15 +2686,19 @@ window.UI = window.UI || {};
    *  costs nothing. */
   function strokeRiverChannels(ctx, geo, x, y, px, py, ts, baseWidth, steps) {
     const K = ts >= RIVER_WIDTH_MIN_TS ? (steps || RIVER_WIDTH_STEPS) : 1;
-    for (const [P0, P1, P2] of geo.channels) {
+    for (const ch of geo.channels) {
+      const [P0, P1, P2, P3] = ch;
+      // A braided tile divides the flow, so its strands each carry less than
+      // the full width (see riverGeometry). Every other channel is 1.
+      const w = baseWidth * (ch[4] || 1);
       for (let k = 0; k < K; k++) {
         const u0 = k / K, u1 = (k + 1) / K;
-        const [Q0, Q1, Q2] = quadSub(P0, P1, P2, u0, u1);
-        const m = quadAt(P0, P1, P2, (u0 + u1) / 2);
-        ctx.lineWidth = K === 1 ? baseWidth : baseWidth * riverWidthAt(x + m.x, y + m.y);
+        const [Q0, Q1, Q2, Q3] = cubicSub(P0, P1, P2, P3, u0, u1);
+        const m = cubicAt(P0, P1, P2, P3, (u0 + u1) / 2);
+        ctx.lineWidth = K === 1 ? w : w * riverWidthAt(x + m.x, y + m.y);
         ctx.beginPath();
         ctx.moveTo(px(Q0), py(Q0));
-        ctx.quadraticCurveTo(px(Q1), py(Q1), px(Q2), py(Q2));
+        ctx.bezierCurveTo(px(Q1), py(Q1), px(Q2), py(Q2), px(Q3), py(Q3));
         ctx.stroke();
       }
     }
@@ -2565,9 +2715,9 @@ window.UI = window.UI || {};
     ctx.lineJoin = "round";
     const path = () => {
       ctx.beginPath();
-      for (const [P0, P1, P2] of geo.channels) {
+      for (const [P0, P1, P2, P3] of geo.channels) {
         ctx.moveTo(px(P0), py(P0));
-        ctx.quadraticCurveTo(px(P1), py(P1), px(P2), py(P2));
+        ctx.bezierCurveTo(px(P1), py(P1), px(P2), py(P2), px(P3), py(P3));
       }
     };
 
@@ -2700,15 +2850,16 @@ window.UI = window.UI || {};
     ctx.lineWidth = Math.max(1, ts * RIVER_GLINT_WIDTH);
     ctx.lineCap = "round";
     for (let i = 0; i < geo.channels.length; i++) {
-      const [P0, P1, P2] = geo.channels[i];
-      // Channels of a junction are offset from each other as well as from
-      // other tiles, so a confluence doesn't glint in unison.
+      const [P0, P1, P2, P3] = geo.channels[i];
+      // Channels of a junction -- or the two strands around a braided
+      // island -- are offset from each other as well as from other tiles,
+      // so neither a confluence nor a divide glints in unison.
       const ph = (phase + i * 0.37) % 1;
       const t = ((now / RIVER_GLINT_PERIOD_MS) + ph) % 1;
       const breath = 0.8 + 0.2 * Math.sin(now / RIVER_GLINT_BREATH_MS + ph * Math.PI * 2);
       ctx.globalAlpha = Math.sin(Math.PI * t) * RIVER_GLINT_ALPHA * breath;
-      const a = quadAt(P0, P1, P2, Math.max(0, t - RIVER_GLINT_HALF_T));
-      const b = quadAt(P0, P1, P2, Math.min(1, t + RIVER_GLINT_HALF_T));
+      const a = cubicAt(P0, P1, P2, P3, Math.max(0, t - RIVER_GLINT_HALF_T));
+      const b = cubicAt(P0, P1, P2, P3, Math.min(1, t + RIVER_GLINT_HALF_T));
       ctx.beginPath();
       ctx.moveTo(px(a), py(a));
       ctx.lineTo(px(b), py(b));

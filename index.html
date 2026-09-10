@@ -333,6 +333,21 @@
             </label>
             <button id="daynight-replay-btn" class="menu-dropdown-btn">Replay lamp ripple</button>
           </div>
+          <!-- WEATHER TUNING. Rain begins on only ~8.8% of days (measured)
+               and 30% of THOSE become a storm, so waiting on real RNG is a
+               poor way to check the feature is working -- same reasoning
+               the day/night scrub panel above exists for. The status line
+               reports the LIVE game.s own true weather regardless of any
+               force selected below, so forcing a preview never hides what
+               is actually about to happen. -->
+          <div id="weather-tuning-panel" class="fow-panel">
+            <div class="fow-panel-label">Weather Tuning</div>
+            <div class="audio-panel-row"><span id="weather-status-label">This game: —</span></div>
+            <label class="audio-panel-row"><span>Live (real weather)</span><input type="radio" name="weather-force" id="weather-force-live" value="" checked></label>
+            <label class="audio-panel-row"><span>Force Clear</span><input type="radio" name="weather-force" id="weather-force-clear" value="clear"></label>
+            <label class="audio-panel-row"><span>Force Rain</span><input type="radio" name="weather-force" id="weather-force-rain" value="rain"></label>
+            <label class="audio-panel-row"><span>Force Storm</span><input type="radio" name="weather-force" id="weather-force-storm" value="storm"></label>
+          </div>
           <div id="fog-of-war-panel" class="fow-panel" style="display:none;">
             <div class="fow-panel-label">Fog of War</div>
             <label class="audio-panel-row"><span>Off</span><input type="radio" name="fow-mode" id="fow-mode-off" value="off" checked></label>

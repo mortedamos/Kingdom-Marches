@@ -65,9 +65,9 @@ window.GameConfig = {
     /** Local date this build was cut, YYYY-MM-DD. */
     date: "2026-09-09",
     /** Local time this build was cut, 24-hour HH:MM. */
-    time: "21:04",
+    time: "21:32",
     /** Monotonic build counter -- increment it, don't recompute it. */
-    number: 277,
+    number: 278,
   },
 
   // =========================================================================
@@ -1204,8 +1204,23 @@ window.GameConfig = {
       /** One "day" is one full day/night cycle. Kept as its own number rather
        *  than read from dayNight.phases so the two can be retuned apart. */
       cycleLength: 12,
-      /** Chance a new system begins on any given day. */
-      rainChancePerDay: 0.10,
+      /**
+       * Chance a new system begins on any given day. Raised from 0.10
+       * (2026-09-09, user-directed: "around 20%") -- but note this is the RAW
+       * per-day roll, not the observed frequency, and the two diverge more
+       * than they might look like they should.
+       *
+       * weatherSystemForDay vetoes a day's roll if it would overlap a system
+       * still running from an earlier day (added the same session, to stop
+       * long systems merging into week-plus stretches of unbroken rain --
+       * see that function's own comment). A higher raw rate means more
+       * candidate start-days fall inside an existing system's shadow, so
+       * more of them get thrown away. Measured: 0.10 raw -> 8.8% of days
+       * actually start rain; 0.20 raw -> only 15.3%, well short of "around
+       * 20%". 0.30 raw is what actually measures out to ~19.8% observed,
+       * which is the number set below.
+       */
+      rainChancePerDay: 0.30,
       /** Chance a system turns thundery somewhere in its middle. The storm is
        *  always a window INSIDE the rain, so it builds out of rain and dies
        *  back into it rather than starting or ending the system. */

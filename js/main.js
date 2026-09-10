@@ -1161,6 +1161,57 @@
     if (replay) replay.addEventListener("click", () => dn.replayRipple());
   }
 
+  /**
+   * WEATHER TUNING panel (2026-09-09, user-reported: "ran spectator mode,
+   * and played some single player, and never saw the weather change").
+   *
+   * Investigated and confirmed NOT a wiring bug -- a live game (real seed,
+   * real turn advancement, no dev override) genuinely rains at the turn the
+   * engine says it should. The actual explanation is rarity: measured over
+   * 48,000 simulated days, only 8.8% of days start a system at all, and only
+   * 30% of THOSE become a storm. A session of even a few dozen turns has a
+   * real chance of showing nothing, exactly the way a short day/night test
+   * could in principle land entirely within one phase -- except that cycle
+   * is only 12 turns long and always cycles, where a weather system might
+   * not arrive for a week of turns. That gap is what this panel closes: the
+   * day/night scrub slider above exists for the identical reason ("darker
+   * and bluer, but still readable" is unverifiable by waiting on real turns
+   * either), just applied to an event this much rarer.
+   *
+   * The status line always reports the LIVE game's true unforced weather
+   * (straight from weatherForTurn, ignoring whatever's forced below) so
+   * previewing a storm can never make you think one is actually en route.
+   */
+  function setupWeatherControls() {
+    const wx = window.UI.weather;
+    if (!wx) return;
+    document.querySelectorAll('input[name="weather-force"]').forEach((radio) => {
+      radio.addEventListener("change", () => {
+        if (radio.checked) wx.setTuning({ force: radio.value || null });
+      });
+    });
+    // Reset to "Live" on every fresh game -- a forced preview from a
+    // previous session has no business surviving into a new one it never
+    // saw.
+    const liveRadio = $("weather-force-live");
+    if (liveRadio) liveRadio.checked = true;
+    wx.setTuning({ force: null });
+  }
+
+  /** Refreshes the Weather Tuning panel's status line with the current
+   *  game's actual (unforced) weather -- called from redraw() rather than
+   *  the animation loop, since it only needs to change when the turn does,
+   *  not 60 times a second. Safe to call before a game exists or before the
+   *  panel has been built (both fields no-op via optional chaining). */
+  function refreshWeatherStatusLabel() {
+    const label = $("weather-status-label");
+    if (!label || !gameState) return;
+    const w = window.GameEngine.turns.weatherForTurn(gameState.turnNumber || 0, gameState.seed || 0);
+    label.textContent = w.storming ? `This game: Storm — ${w.turnsLeft} turn${w.turnsLeft === 1 ? "" : "s"} left`
+      : w.raining ? `This game: Rain — ${w.turnsLeft} turn${w.turnsLeft === 1 ? "" : "s"} left`
+        : "This game: Clear";
+  }
+
   /** Open/close wiring for the title screen's own menu bar -- same
    *  click-to-toggle/click-outside-closes shape as the in-game
    *  setupMenuBar, kept as a fully separate instance (own menu list, own
@@ -2054,6 +2105,7 @@
       viewState.endTurnRemindersEnabled = endTurnRemindersToggle.checked;
     });
     setupDayNightControls();
+    setupWeatherControls();
     $("report-influence-btn").addEventListener("click", () => {
       viewState.reportView = "influence";
       redraw();
@@ -4831,6 +4883,10 @@
     // reason. See their own doc comments just above this function.
     checkImmediateVictory();
     checkPendingKingdomEliminations();
+    // Cheap and only needs to change when the turn does (unlike the weather
+    // canvas itself, which redraws every animation frame) -- see
+    // refreshWeatherStatusLabel's own doc comment for why this exists.
+    refreshWeatherStatusLabel();
 
     // Rebuild the selected tile's tab list from live state BEFORE anything
     // draws. The tabs hold direct references to units/cities/structures, any

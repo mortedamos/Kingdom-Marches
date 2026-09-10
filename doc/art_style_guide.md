@@ -1024,6 +1024,63 @@ width at a shared crossing must come out the same from both tiles or every
 tile boundary shows a step in the silhouette, putting the grid back on screen.
 Measured worst-case step at a boundary: 0.34px at default zoom.
 
+**Narrower than the old art, and less uniformly so** (same session,
+user-directed: "generally (but not uniformly) narrower"). The first pass
+matched the retired PNG's 0.14-tile average exactly and still read as too
+heavy — a crisp stroke looks wider than a roughly-painted band of the same
+width. The base dropped to 0.105 and the variation widened to ±0.42 at the
+same time: the point was not a uniformly thinner river but a mostly-thinner
+one that still swells to about the old average here and there. The bank stops
+were widened in compensation (they are multiples of the band, so they would
+otherwise have shrunk with it, and a thin hard line is exactly what the banks
+exist to prevent).
+
+**Braided reaches** (same session, user-directed: "in some rare tiles, the
+river split and rejoined itself, forming a small island"). On ~4% of
+through-tiles — about six per reference map — a side channel divides off the
+main curve, bows ~0.19 tile to one side, and rejoins downstream, leaving a
+lens of land midstream.
+
+**This is where the channel representation became cubic.** The first attempt
+made the side channel a single quadratic from A to B with its control point
+pushed sideways, and the user's verdict was immediate: it "reads as a forced
+jug-handle shape, rather than a natural branch aligning to the flow of the
+water". That is exactly what the construction produces, and it is worth
+understanding why, because the fix is not a tuning value. A quadratic has one
+control point, so its tangent at the start and its "pull" toward the bulge are
+the *same vector* — push the control sideways to get an island and the branch
+necessarily leaves the river sideways too. Measured on a representative
+straight reach: **55.7°**. Water does not do that.
+
+The fix is to take the tangents FROM the main curve at the split and rejoin
+points and impose them on the branch, which needs both end tangents set
+independently — so, cubics. The side channel is two cubics meeting at the
+island's widest point, each leaving one end along the flow and arriving at the
+other already turned parallel to it. Same measurement after: **0.0°**, with
+the separation opening gradually (0 → 0.03 → 0.09 → 0.19 tile) into a long
+lens instead of a loop.
+
+Everything else is a cubic now too, promoted exactly from the quadratics via
+`quadToCubic` (a quadratic is a cubic; the conversion is not an
+approximation). `cubicSub` — the exact-sub-arc split the width variation
+depends on — was checked against its parent curve over 6000 samples across 200
+random curves: worst deviation 5.55e-16.
+
+Two more things make the braid safe. Both its ends sit **on the main curve**,
+not at the tile's crossing points, so the tile still meets its neighbours
+exactly as an unbraided one would and the braid is entirely internal. And both
+strands run narrower than a single channel would (0.78 and 0.58) — physically
+right for a divided flow, and what leaves enough room between them to read as
+an island rather than one wide channel with a streak down it. The bulge goes
+toward whichever side has more room inside the tile (on a bend the outside
+runs out of tile first), with the hash breaking the tie on a straight reach so
+the islands don't all sit on the same bank.
+
+Note this is a *rendering* feature only: `hasRiver` is untouched, so the tile
+pays one river's yield, the AI sees one river, and the 3D view draws one
+channel. An island that mattered to gameplay would have to be a worldgen
+change, and would want a real land tile rather than a lens between two curves.
+
 **Two rules carried over from §10, and one added.**
 - Rimless. No dark outline; the bank stops are *lighter* than the channel.
 - Overlap at joins, don't butt — the channel overshoots slightly past the
