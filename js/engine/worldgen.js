@@ -663,33 +663,6 @@ window.GameEngine = window.GameEngine || {};
   }
 
   /**
-   * Downhill-flow river generation. Picks high ground (Hills/Mountains) as
-   * sources and walks to the sea, scoring each candidate step by
-   *
-   *     real elevation drop  +  inertia (continues heading)  +  meander noise
-   *
-   * and sampling among them (softmaxPick) rather than taking the best.
-   *
-   * What this replaced, and why (2026-09-09, user-directed: "rivers are very
-   * square... turn at 90 degree angles, do not appear to meander"): the
-   * original walk scored neighbors with elevationRank(), a six-value lookup
-   * keyed off TERRAIN TYPE, in which plains/forest/desert/tundra all
-   * returned 3. Across a continent's flat interior every candidate therefore
-   * tied, and the tie-break -- `<=` against the running best, with the
-   * direction list ordered n,s,e,w -- handed every tie to WEST. `rng` was
-   * used only to choose the source tile; the walk itself had no randomness
-   * at all. So rivers ran dead west until they hit something, turned hard,
-   * and ran dead in the new direction. The renderer's right-angle stubs got
-   * the blame, but half the squareness was here.
-   *
-   * The fix is mostly just using the height field that already existed:
-   * `elevArr` is continuous noise the rest of generateMap computes anyway,
-   * it simply was never passed in. Steepest descent on a smooth field
-   * curves on its own; inertia stops the remaining ties from zigzagging,
-   * and the meander term lets a course wander off the locally-steepest line
-   * the way a real one does.
-   */
-  /**
    * Walks one river from `start`, returning the ordered list of steps it
    * would take -- but stamping nothing. Separating the walk from the stamp
    * is what lets the caller reject a course before it reaches the map: a
