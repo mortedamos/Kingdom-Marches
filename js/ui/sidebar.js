@@ -313,7 +313,7 @@ window.UI = window.UI || {};
           ? `<div class="stat-row"><span>Spread Culture</span><span>Active (+50% this turn)</span></div>` : ''}
         ${window.GameEngine.cities.isThrowingParty(city, gameState)
           ? `<div class="stat-row"><span>Throw a Party</span><span>In full swing!</span></div>` : ''}
-        <div class="stat-row"><span>Vision Radius</span><span>${city.influenceRadius + 3}</span></div>
+        <div class="stat-row"><span>Vision Radius</span><span>${civ ? Math.max(window.GameEngine.turns.MIN_VISION_RADIUS, city.influenceRadius + 3 - window.GameEngine.turns.dayNightVisionPenaltyFor(civ, gameState)) : city.influenceRadius + 3}</span></div>
         <div class="stat-row"><span>Filled Tiles</span><span>${filledTileCount} / ${radiusTileCount}</span></div>
         <h3>Yield this turn</h3>
         <div class="stat-row"><span>Harvest</span><span>${y.harvest.toFixed(1)}</span></div>
@@ -459,9 +459,11 @@ window.UI = window.UI || {};
       visionRadius: "Vision", movement: "Movement",
     };
     const baseUnit = window.GameData.getUnit(unit.typeId);
-    const effVision = (baseUnit.visionRadius || 3) + (civ.unitOverrides?.[unit.typeId]?.visionRadius || 0)
+    const rawVision = (baseUnit.visionRadius || 3) + (civ.unitOverrides?.[unit.typeId]?.visionRadius || 0)
       + (unit.conditions?.flying?.visionBonus || 0) + (unit.conditions?.keepingWatch?.visionBonus || 0)
       + (unit.levelBonuses?.visionRadius || 0);
+    const effVision = Math.max(window.GameEngine.turns.MIN_VISION_RADIUS,
+      rawVision - window.GameEngine.turns.dayNightVisionPenaltyFor(civ, gameState));
     const currentValue = {
       attack: combat.effectiveAttack(unit, civ),
       defense: combat.effectiveDefense(unit, civ),
@@ -788,8 +790,10 @@ window.UI = window.UI || {};
 
     const isFlying = window.GameEngine.combat.isFlying(unit);
     const canCarry = window.GameEngine.combat.getUnitProperty(unit, civ, "canCarryUnit", false);
-    const effVision = (baseUnit.visionRadius || 3) + (civ.unitOverrides?.[unit.typeId]?.visionRadius || 0)
+    const rawVision = (baseUnit.visionRadius || 3) + (civ.unitOverrides?.[unit.typeId]?.visionRadius || 0)
       + (unit.conditions?.flying?.visionBonus || 0);
+    const effVision = Math.max(window.GameEngine.turns.MIN_VISION_RADIUS,
+      rawVision - window.GameEngine.turns.dayNightVisionPenaltyFor(civ, gameState));
     const properties = [];
     if (firstStrikePct > 0) properties.push(`First Strike ${Math.round(firstStrikePct * 100)}%`);
     if (doubleStrikePct > 0) properties.push(`Double Strike ${Math.round(doubleStrikePct * 100)}%`);

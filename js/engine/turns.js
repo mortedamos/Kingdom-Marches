@@ -25,6 +25,16 @@ window.GameEngine = window.GameEngine || {};
   const victoryTileTarget = () => window.GameConfig.victory.tileTarget;
   const victorySustainTurns = () => window.GameConfig.victory.sustainTurns;
 
+  // Hard floor for any vision radius, city or unit, after every bonus and
+  // penalty (racial day/night penalty today, whatever comes next later) is
+  // applied. Below this the flood-fill loops in refreshVisibility (bounded
+  // by `dy <= r`/`dx <= r`) never execute even once, which would make a
+  // unit invisible to its own civ rather than just seeing less -- a
+  // rendering bug, not a balance choice. Named so every site that floors a
+  // vision radius (refreshVisibility below, and sidebar.js's display copies)
+  // agrees on the same number.
+  const MIN_VISION_RADIUS = 1;
+
   /**
    * DAY / NIGHT PHASE -- where in the 12-turn cycle a given turn falls.
    *
@@ -34,13 +44,14 @@ window.GameEngine = window.GameEngine || {};
    * migration mechanism to hook into (savegame.js writes a `version` field
    * that nothing ever reads).
    *
-   * Lives in the engine rather than in js/ui/daynight.js even though today
-   * nothing but the renderer calls it. The cycle is currently PURELY
-   * COSMETIC -- vision radii, combat and AI are identical at midnight and
-   * at noon -- but "night reduces vision" or "night favours stealth" is the
-   * obvious next thing to want, and when that happens the engine and the
-   * renderer must not be able to disagree about what turn it is. One
-   * function, one answer.
+   * Lives in the engine, not js/ui/daynight.js, precisely so it has a
+   * gameplay-side caller too: dayNightVisionPenaltyFor (below, in this same
+   * module) calls this to find each civ's current slot and reduce vision
+   * radius by 1 during that race's own worst-sighted turns -- see
+   * RACES[raceId].visionPenaltySlots. Combat and AI otherwise still don't
+   * key off phase directly; the vision penalty is the one non-cosmetic hook
+   * into the cycle so far. One function, one answer, so the engine and the
+   * renderer never disagree about what turn it is.
    *
    * Returns:
    *   slot         0-11, the position in the cycle (turnNumber % 12)
@@ -255,6 +266,23 @@ window.GameEngine = window.GameEngine || {};
     };
   }
 
+  /**
+   * Racial day/night vision penalty: -1 to a civ's vision radius (city and
+   * unit alike) during the specific cycle slots its race sees worst in --
+   * see RACES[raceId].visionPenaltySlots. Undead and any other race with no
+   * such field are simply never penalized (absent means 0, same convention
+   * every other optional race field on RACES already uses). One lookup per
+   * civ per refreshVisibility pass, not per unit -- the amount is the same
+   * for every unit and the city alike, for a given civ, on a given turn.
+   */
+  function dayNightVisionPenaltyFor(civ, gameState) {
+    const race = window.GameData.RACES[civ.raceId];
+    const slots = race && race.visionPenaltySlots;
+    if (!slots || !slots.length) return 0;
+    const { slot } = phaseForTurn(gameState.turnNumber || 0);
+    return slots.includes(slot) ? 1 : 0;
+  }
+
   /** Computes each civ's currently-visible tile set (own territory + vision radius around units/cities) */
   function refreshVisibility(gameState) {
     const { map, civs } = gameState;
@@ -308,11 +336,12 @@ window.GameEngine = window.GameEngine || {};
     });
     for (const civ of orderedCivs) {
       const visible = new Set();
+      const dayNightPenalty = dayNightVisionPenaltyFor(civ, gameState);
       for (const city of civ.cities) {
         // Elf "Aelderwatch"/Treetop Watch: +vision radius for the specific
         // city it's built adjacent to -- see cities.js's tickCity/
         // computeStructureEffects.
-        const r = city.influenceRadius + 3 + (city.structureVisionBonus || 0);
+        const r = Math.max(MIN_VISION_RADIUS, city.influenceRadius + 3 + (city.structureVisionBonus || 0) - dayNightPenalty);
         for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) {
           const x = city.x + dx, y = city.y + dy;
           if (x < 0 || x >= map.width || y < 0 || y >= map.height) continue;
@@ -336,7 +365,7 @@ window.GameEngine = window.GameEngine || {};
         // Level-up "+1 Vision" pick -- same flat-add convention as
         // attack/defense, see combat.js's LEVEL_BONUS_VALUES.
         const levelVision = unit.levelBonuses?.visionRadius || 0;
-        const r = (baseUnit.visionRadius || 3) + overrideVision + flightVision + watchVision + bonfireVision + levelVision;
+        const r = Math.max(MIN_VISION_RADIUS, (baseUnit.visionRadius || 3) + overrideVision + flightVision + watchVision + bonfireVision + levelVision - dayNightPenalty);
         for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) {
           const x = unit.x + dx, y = unit.y + dy;
           if (x < 0 || x >= map.width || y < 0 || y >= map.height) continue;
@@ -2286,6 +2315,8 @@ window.GameEngine = window.GameEngine || {};
     phaseForTurn,
     weatherForTurn,
     refreshVisibility,
+    dayNightVisionPenaltyFor,
+    MIN_VISION_RADIUS,
     beginRound,
     beginCivTurn,
     stepCivTurnUnit,

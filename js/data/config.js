@@ -63,11 +63,11 @@ window.GameConfig = {
   // stamp, and the only cost of forgetting is being told the wrong thing.
   build: {
     /** Local date this build was cut, YYYY-MM-DD. */
-    date: "2026-09-09",
+    date: "2026-09-11",
     /** Local time this build was cut, 24-hour HH:MM. */
-    time: "22:34",
+    time: "12:15",
     /** Monotonic build counter -- increment it, don't recompute it. */
-    number: 279,
+    number: 280,
   },
 
   // =========================================================================
@@ -1170,7 +1170,14 @@ window.GameConfig = {
     },
 
     /**
-     * DAY / NIGHT CYCLE -- purely cosmetic atmosphere (see js/ui/daynight.js).
+     * DAY / NIGHT CYCLE -- atmosphere (see js/ui/daynight.js) plus one
+     * gameplay hook: each race sees 1 tile worse, city and unit vision
+     * alike, during its own worst-sighted stretch of the cycle (see
+     * races.js's visionPenaltySlots and turns.js's dayNightVisionPenaltyFor/
+     * refreshVisibility). Combat and AI decision-making don't key off phase
+     * directly -- only vision radius does, and the AI reacts to that
+     * indirectly through a smaller visibility set, same as a human player
+     * would.
      *
      * A 12-turn cycle derived from gameState.turnNumber and nothing else:
      * 4 turns of day, 2 of twilight, 4 of night, 2 of dawn. Deliberately
@@ -1178,11 +1185,6 @@ window.GameConfig = {
      * loads with a correct phase and needs no migration (there is no
      * migration mechanism -- savegame.js's `version` field is written and
      * never read).
-     *
-     * Nothing in here touches gameplay. Vision radii, combat and AI are
-     * identical at midnight and at noon; the single engine-side entry point,
-     * turns.js's phaseForTurn, exists so that if that ever CHANGES there's
-     * one obvious place it hangs off.
      */
     /**
      * WEATHER -- rain, and sometimes a thunderstorm.
@@ -1871,7 +1873,15 @@ window.GameConfig = {
          *  the dial itself is always half this width, since the shape is
          *  exactly the lower half of a circle. */
         desktopWidth: 135,
-        mobileWidth: 92,
+        /** 92 * 1.75 (2026-09-11, user-directed: "make it 75% larger" once
+         *  the clock moved to sit centred on the mobile sheet -- see
+         *  css/mobile.css's .daynight-clock). Everything else about the
+         *  dial -- the sun/moon body (bodySize below, already expressed as
+         *  a fraction of dialDiameter()/desktopWidth), the track radius,
+         *  the canvas box itself -- derives from this ONE number in
+         *  daynight-clock.js's geometry(), so scaling it here is the whole
+         *  change; nothing else needed touching to grow in proportion. */
+        mobileWidth: 161,
         /** Daytime sky. Every other slot's sky is this colour mixed toward
          *  that slot's own world tint by `skyMix` x its alpha -- so the dial
          *  is derived from the same numbers the map uses and the two cannot

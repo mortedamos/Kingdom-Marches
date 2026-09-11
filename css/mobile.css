@@ -479,34 +479,106 @@ body.mobile .m-topbar {
   gap: .5rem;
 }
 
-/* Astronomical clock, sitting directly on top of the End Turn FAB
-   (2026-09-09, user-directed "move the clock to the top of the toolbar /
-   FAB"). The desktop build puts it in the sidebar footer above End Turn;
-   on mobile that footer is inside the collapsible bottom sheet, which would
-   hide the clock entirely whenever the sheet is shut, so it stays a
-   floating overlay and is anchored to the FAB -- mobile's equivalent of
-   that same End Turn control -- instead.
+/* Astronomical clock, docked on the SLIDE-UP SHEET's own top edge --
+   mobile's equivalent of the desktop panel, not the End Turn FAB (2026-09-09
+   -11, user-directed; went through two homes before landing here. First
+   "move the clock to the top of the toolbar / FAB" put it above the FAB.
+   Corrected the same week -- "it should be pinned to the top of it, the
+   same way it is pinned to the top of the desktop browser version" --
+   which read at the time as "pin it to the FAB more tightly," and got a
+   z-index/overlap pass for exactly that. Corrected AGAIN once it became
+   clear "it" meant the sidebar/toolbar all along -- "just as the clock is
+   at the top of the toolbar on desktop browser, it should be at the top of
+   the slide up toolbar on mobile, moving with that toolbar up and down."
+   The FAB was never the right target: on desktop the dial docks on
+   #sidebar's own top border, and #sidebar IS the slide-up sheet on mobile
+   -- same element, same id, CSS just repositions it into a bottom sheet.
+   The FAB was the wrong analogy from the start; this is the literal one.)
 
-   Shares the FAB's own right edge (the same `.85rem` inset) rather than
-   being centred on it: the dial's box is ~120px wide against the FAB's
-   66px, so centring the two would hang the dial off the side of the
-   screen. Aligning one edge instead reads as a deliberate stack and stays
-   fully on screen. Both offsets are written in terms of the FAB's own
-   values -- including --m-fab-bottom and its 66px height -- so the pair
-   stay glued together if either is ever moved. */
+   SAME GEOMETRY AS DESKTOP: dial's own top edge lines up with the sheet's
+   own top edge, extending DOWN into the panel rather than floating above
+   it with a gap -- see .daynight-clock-docked's comment for the identical
+   relationship on the sidebar. z-index 31 (just above the sheet's own 30)
+   so the dial paints IN FRONT of the sheet at the seam, exactly like the
+   desktop dial sits in front of the sidebar's border instead of vanishing
+   behind it -- the reverse of the FAB-era version, which deliberately kept
+   the clock BEHIND the button to protect its label; here the clock is the
+   thing meant to be seen.
+
+   CENTRED (2026-09-11, user-directed, reversing the earlier "right-aligned,
+   not centred" call below). That earlier choice was to dodge the sheet's own
+   drag-handle (.m-sheet-toggle), which sits dead centre on this exact same
+   top edge -- centring the dial there too puts them on the same spot. Safe
+   to do anyway: the toggle's z-index (45) beats the dial's (31), so the
+   handle stays fully visible and tappable ON TOP of the dial wherever they
+   overlap, the same protection the FAB-era version leaned on for the
+   button's own label (see that note, still accurate, just for a different
+   element now). Confirmed live rather than assumed -- the handle reads
+   clearly against the dial at every detent.
+
+   TRACKS THE SHEET'S THREE DETENTS -- see #sidebar[data-detent=...] above
+   -- but NOT by copying its transform percentages verbatim: those (52%,
+   calc(100% - 23px)) are relative to #SIDEBAR'S OWN 78vh height, and this
+   element is a completely different size, so the same percentage would
+   move it a completely different distance and desync the two immediately.
+   Every value below is the ABSOLUTE shift those percentages actually
+   resolve to (52% of 78vh = 40.56vh -- if #sidebar's height or that 52%
+   ever changes, this needs updating by hand alongside it), which keeps the
+   two locked together regardless of either element's own height. Applied
+   via a mirrored data-detent attribute (main.js's setSheetDetent sets this
+   alongside the toggle's own copy) rather than the FAB's old
+   --m-fab-bottom custom property -- that property is set directly on
+   #sidebar and does not inherit to a sibling living outside its subtree,
+   which is also, incidentally, why the FAB itself has never actually
+   changed position when the sheet opens; a separate, pre-existing bug this
+   fix doesn't touch.
+
+   Every translateY below is paired with a translateX(-50%) for the
+   centring -- one `transform` property can't be split across two
+   declarations, so the horizontal half has to be repeated on all three
+   rules rather than factored out once.
+
+   `bottom`'s 80.5px is the dial's own rendered height at mobileWidth 161
+   (config.js's daynightClock block) -- R = 161/2, and the container's own
+   box height is exactly R (see daynight-clock.js's geometry()). Lines the
+   dial's TOP up with the sheet's top edge at rest (shift 0, "full" detent),
+   the same relationship desktop's dial has with the sidebar. Update this
+   by hand alongside mobileWidth if that ever changes again -- it is NOT
+   read from config, just kept in sync with it.
+
+   AT PEEK the sheet's own top edge sits almost entirely below the screen
+   (only its 23px lip shows), so the dial is mostly off-screen too -- by
+   design, not a bug: "visible when expanded... sliding up along with it"
+   describes a clock that reveals itself as the sheet rises, the same way
+   the sheet's own header content does, not one that must stay fully
+   visible at rest. Same transition timing as the sheet's own transform, so
+   the two read as one physical unit in motion rather than two animations
+   that happen to fire from the same tap. */
 body.mobile .daynight-clock {
   top: auto;
-  left: auto;
-  transform: none;
-  right: calc(env(safe-area-inset-right, 0px) + .85rem);
-  bottom: calc(var(--m-fab-bottom, 5.6rem) + env(safe-area-inset-bottom, 0px) + 66px + .4rem);
+  left: 50%;
+  right: auto;
+  bottom: calc(78vh - 80.5px);
+  transform: translateX(-50%) translateY(calc(78vh - var(--m-sheet-peek, 23px)));
+  transition: transform .28s cubic-bezier(.32, .72, 0, 1);
+  z-index: 31;
 }
+body.mobile .daynight-clock[data-detent="half"] { transform: translateX(-50%) translateY(40.56vh); }
+body.mobile .daynight-clock[data-detent="full"] { transform: translateX(-50%) translateY(0); }
 /* The desktop build reserves ~62px at the top of the sidebar for the clock
-   docked over its border. On mobile the sidebar is the bottom sheet and the
-   clock isn't there at all, so that headroom would just be dead space at
-   the top of every sheet. */
+   docked over its border (see .sidebar's own padding-top in style.css).
+   Mobile now docks the SAME clock on the sheet's own top edge too (see
+   .daynight-clock above), so this needs the equivalent headroom -- the
+   mobile dial's own rendered height (80.5px at mobileWidth 161, kept in
+   sync by hand alongside that config value and .daynight-clock's `bottom`,
+   same as that rule's own note), plus a little breathing room before the
+   sheet's first real line of content, the same proportions desktop's own
+   comment describes for its taller dial. Was 14px, back when this space
+   really was dead (the clock lived over by the FAB instead); if the clock
+   ever moves again, drop this back down rather than leaving unexplained
+   empty space at the top of every sheet. */
 body.mobile #sidebar {
-  padding-top: 14px;
+  padding-top: 87px;
 }
 
 body.mobile .m-menu-btn,

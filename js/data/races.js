@@ -107,6 +107,22 @@
  *     resting in this civ's OWN city (replaces the universal 4x default),
  *     further scaled by influenceHealMult while on any tile this civ owns
  *     at all (not just inside a city).
+ *
+ * DAY/NIGHT VISION PENALTY (Human, Orc, Dwarf, Halfellow, Elf -- not a
+ * tech-gated combat/vision modifier despite this file's header note above;
+ * this is an unconditional-from-turn-1 environmental trait, the same
+ * category as avoidsCultureSpread/ownCityHealingMultiplier just above, not
+ * something unlocked through the tech tree):
+ *   - visionPenaltySlots (optional, default: never penalized): a list of
+ *     0-11 day/night cycle slots (turns.js's phaseForTurn) during which
+ *     this race's vision radius -- city and unit alike -- is reduced by 1,
+ *     floored at MIN_VISION_RADIUS. See turns.js's dayNightVisionPenaltyFor
+ *     and refreshVisibility. Every race here sees worse for exactly 4 of
+ *     the cycle's 12 turns, each in a different window, so no kingdom holds
+ *     a net sight advantage across a full cycle: Human/Halfellow at Night,
+ *     Orc/Dwarf at Day, Elf split across Mid-Day and Mid-Night instead of
+ *     one continuous block. Undead omits this field entirely (not yet a
+ *     real playable race -- placeholder data only).
  */
 
 window.GameData = window.GameData || {};
@@ -131,6 +147,10 @@ window.GameData.RACES = {
 
     // Starting tech id (must exist in techs.js)
     startingTech: "spears_raised",
+
+    // Humans see worse at Night -- see this file's header note on
+    // visionPenaltySlots.
+    visionPenaltySlots: [6, 7, 8, 9],
 
     uniqueUnits: ["spearguard", "cavalry", "knight", "archer", "longbowman", "catapult", "trebuchet", "wizard"],
     uniqueBuildings: ["bazaar", "guild_hall", "mage_college", "palace"],
@@ -157,6 +177,10 @@ window.GameData.RACES = {
 
     startingTech: "elf_watching_hunting",
 
+    // Elves see worse at Mid-Day and Mid-Night (the middle 2 turns of each
+    // 4-turn phase) -- see this file's header note on visionPenaltySlots.
+    visionPenaltySlots: [1, 2, 7, 8],
+
     uniqueUnits: ["ranger", "blade_dancer", "druid", "raptor", "shadowsteed", "awakened_oak"],
     uniqueBuildings: ["treetop_watch", "silverleaf_atelier", "altar_of_ages", "wellspring_grove"],
   },
@@ -181,6 +205,10 @@ window.GameData.RACES = {
 
     startingTech: "dwarf_foe_hammer",
 
+    // Dwarves see worse during Day -- see this file's header note on
+    // visionPenaltySlots.
+    visionPenaltySlots: [0, 1, 2, 3],
+
     uniqueUnits: ["foehammer", "troubadour", "musketeer", "runeforged_titan"],
     uniqueBuildings: ["deep_forge", "great_hall", "runewall", "deep_gate"],
   },
@@ -201,6 +229,10 @@ window.GameData.RACES = {
     industriousness: 0.3, // low city investment; war camps over workshops
 
     startingTech: "orc_raiders",
+
+    // Orcs see worse during Day -- see this file's header note on
+    // visionPenaltySlots.
+    visionPenaltySlots: [0, 1, 2, 3],
 
     // Orcs take ground by holding it with blades, not by growing culture
     // into it -- see this file's header note on this field. Honored only at
@@ -254,6 +286,10 @@ window.GameData.RACES = {
     // Healing: bonus in own territory and cities
     ownCityHealingMultiplier: 6, // 6x(3d6)% instead of universal 4x(3d6)%
     influenceHealMult: 1.25,     // +25% heal rate when on any tile owned by this civ
+
+    // Halfellows see worse at Night -- see this file's header note on
+    // visionPenaltySlots.
+    visionPenaltySlots: [6, 7, 8, 9],
 
     aggressiveness: 0.1,
 

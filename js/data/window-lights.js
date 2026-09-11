@@ -113,12 +113,17 @@ window.GameData.WINDOW_LIGHTS = {
 
   // ---- bridge ----
   "bridge/dwarf/diagonal": {
+    ambient: 1.6,
+    ambientRadius: 1.6,
+    flicker: 0.2,
     windows: [
       [0.700, 0.485],
       [0.492, 0.689],
     ],
   },
   "bridge/dwarf/node": {
+    ambient: 1.8,
+    ambientRadius: 1.6,
     windows: [
       [0.814, 0.186],
       [0.181, 0.185],
@@ -127,18 +132,24 @@ window.GameData.WINDOW_LIGHTS = {
     ],
   },
   "bridge/dwarf/vertical": {
+    ambient: 1.6,
+    ambientRadius: 1.6,
     windows: [
       [0.708, 0.508],
       [0.287, 0.502],
     ],
   },
   "bridge/elf/diagonal": {
+    ambient: 1.6,
+    ambientRadius: 1.6,
     windows: [
       [0.609, 0.435],
       [0.426, 0.597],
     ],
   },
   "bridge/elf/node": {
+    ambient: 1.8,
+    ambientRadius: 1.6,
     windows: [
       [0.825, 0.175],
       [0.187, 0.188],
@@ -147,18 +158,24 @@ window.GameData.WINDOW_LIGHTS = {
     ],
   },
   "bridge/elf/vertical": {
+    ambient: 1.6,
+    ambientRadius: 1.6,
     windows: [
       [0.653, 0.497],
       [0.345, 0.497],
     ],
   },
   "bridge/halfellow/diagonal": {
+    ambient: 1.6,
+    ambientRadius: 1.6,
     windows: [
       [0.573, 0.410],
       [0.411, 0.572],
     ],
   },
   "bridge/halfellow/node": {
+    ambient: 1.8,
+    ambientRadius: 1.6,
     windows: [
       [0.808, 0.197],
       [0.194, 0.199],
@@ -167,18 +184,24 @@ window.GameData.WINDOW_LIGHTS = {
     ],
   },
   "bridge/halfellow/vertical": {
+    ambient: 1.6,
+    ambientRadius: 1.6,
     windows: [
       [0.694, 0.507],
       [0.314, 0.507],
     ],
   },
   "bridge/human/diagonal": {
+    ambient: 1.6,
+    ambientRadius: 1.6,
     windows: [
       [0.644, 0.371],
       [0.370, 0.635],
     ],
   },
   "bridge/human/node": {
+    ambient: 1.8,
+    ambientRadius: 1.6,
     windows: [
       [0.811, 0.185],
       [0.184, 0.185],
@@ -187,18 +210,24 @@ window.GameData.WINDOW_LIGHTS = {
     ],
   },
   "bridge/human/vertical": {
+    ambient: 1.6,
+    ambientRadius: 1.6,
     windows: [
       [0.709, 0.503],
       [0.297, 0.499],
     ],
   },
   "bridge/orc/diagonal": {
+    ambient: 1.6,
+    ambientRadius: 1.6,
     windows: [
       [0.612, 0.318],
       [0.344, 0.607],
     ],
   },
   "bridge/orc/node": {
+    ambient: 1.8,
+    ambientRadius: 1.6,
     windows: [
       [0.790, 0.175],
       [0.220, 0.175],
@@ -207,6 +236,8 @@ window.GameData.WINDOW_LIGHTS = {
     ],
   },
   "bridge/orc/vertical": {
+    ambient: 1.6,
+    ambientRadius: 1.6,
     windows: [
       [0.786, 0.380],
       [0.223, 0.372],
@@ -253,6 +284,7 @@ window.GameData.WINDOW_LIGHTS = {
     alwaysLitChance: 0.08,
   },
   "building/butchery": {
+    flicker: 2.1,
     windows: [
       [0.589, 0.676, 1.40],
       [0.498, 0.678, 0.60],
@@ -261,6 +293,7 @@ window.GameData.WINDOW_LIGHTS = {
     alwaysLitChance: 0.3,
   },
   "building/deep_forge": {
+    flicker: 1.3,
     windows: [
       [0.431, 0.283, 1.00, "#ffb14a"],
       [0.625, 0.669, 1.30, "#ff9a4d"],
@@ -272,6 +305,7 @@ window.GameData.WINDOW_LIGHTS = {
     alwaysLitChance: 0.65,
   },
   "building/deep_gate": {
+    flicker: 0.5,
     windows: [
       [0.481, 0.629, 0.90],
       [0.514, 0.621],
@@ -281,6 +315,7 @@ window.GameData.WINDOW_LIGHTS = {
     alwaysLitChance: 0.75,
   },
   "building/dragon_den": {
+    flicker: 0.65,
     windows: [
       [0.506, 0.649, 1.50, "#ff7a3a"],
       [0.430, 0.637, 0.60],
@@ -372,6 +407,7 @@ window.GameData.WINDOW_LIGHTS = {
     alwaysLitChance: 0.22,
   },
   "building/runewall": {
+    flicker: 0.65,
     windows: [
       [0.420, 0.370, 0.90, "#8fe4ff"],
       [0.519, 0.455, 0.90, "#8fe4ff"],
@@ -395,12 +431,14 @@ window.GameData.WINDOW_LIGHTS = {
     alwaysLitChance: 0.35,
   },
   "building/treetop_watch": {
+    flicker: 0.7,
     windows: [
       [0.539, 0.333, 1.20],
     ],
     alwaysLitChance: 0.6,
   },
   "building/war_camp": {
+    flicker: 1.2,
     windows: [
       [0.731, 0.526, 0.60],
       [0.648, 0.522, 0.30],
@@ -408,6 +446,7 @@ window.GameData.WINDOW_LIGHTS = {
     alwaysLitChance: 0.45,
   },
   "building/wellspring_grove": {
+    flicker: 0.75,
     windows: [
       [0.498, 0.568, 1.50, "#bfe8ff"],
       [0.350, 0.450, 0.60],
@@ -487,12 +526,14 @@ window.GameData.WINDOW_LIGHTS = {
     ],
   },
   "city/elf/1": {
+    flicker: 0.65,
     windows: [
       [0.398, 0.778, 1.00],
     ],
     alwaysLitChance: 0.75,
   },
   "city/elf/2": {
+    flicker: 0.7,
     windows: [
       [0.736, 0.785],
       [0.270, 0.798, 0.80],
@@ -568,6 +609,7 @@ window.GameData.WINDOW_LIGHTS = {
     ],
   },
   "city/halfellow/1": {
+    flicker: 0.75,
     windows: [
       [0.305, 0.799, 1.10],
     ],
@@ -745,11 +787,13 @@ window.GameData.WINDOW_LIGHTS = {
     ],
   },
   "city/orc/1": {
+    flicker: 1.2,
     windows: [
       [0.481, 0.698, 1.10],
     ],
   },
   "city/orc/2": {
+    flicker: 0.8,
     windows: [
       [0.476, 0.792, 1.20],
       [0.648, 0.754, 0.70],
@@ -757,6 +801,7 @@ window.GameData.WINDOW_LIGHTS = {
     ],
   },
   "city/orc/3": {
+    flicker: 0.4,
     windows: [
       [0.287, 0.780],
       [0.778, 0.745],
@@ -794,6 +839,7 @@ window.GameData.WINDOW_LIGHTS = {
   // ---- influence-water ----
   "influence-water/dwarf": {
     ambient: 0.2,
+    flicker: 0,
     windows: [
       [0.884, 0.783, 0.50],
     ],
@@ -812,6 +858,7 @@ window.GameData.WINDOW_LIGHTS = {
   },
   "influence-water/human": {
     ambient: 0.3,
+    flicker: 0,
     windows: [
       [0.873, 0.839, 0.70],
     ],
@@ -857,6 +904,7 @@ window.GameData.WINDOW_LIGHTS = {
   "influence/elf/2": {
     ambient: 0.4,
     ambientRadius: 1.8,
+    flicker: 0.75,
     windows: [
       [0.814, 0.330, 0.70],
       [0.855, 0.239, 0.40],
@@ -891,6 +939,7 @@ window.GameData.WINDOW_LIGHTS = {
   "influence/halfellow/3": {
     ambient: 0.6,
     ambientRadius: 1.7,
+    flicker: 1.85,
     windows: [
       [0.190, 0.796],
     ],
@@ -939,6 +988,7 @@ window.GameData.WINDOW_LIGHTS = {
   "influence/orc/3": {
     ambient: 0.7,
     ambientRadius: 1.5,
+    flicker: 1.65,
     windows: [
       [0.197, 0.844],
       [0.205, 0.825, 0.50],
@@ -961,8 +1011,9 @@ window.GameData.WINDOW_LIGHTS = {
     ],
   },
   "unit/great_bonfire/1": {
-    ambient: 1.5,
-    ambientRadius: 1.1,
+    ambient: 1,
+    ambientRadius: 1.2,
+    flicker: 3,
     frames: [
       [[0.853, 0.483], [0.728, 0.364, 0.70], [0.278, 0.352, 0.80], [0.145, 0.436], [0.245, 0.660], [0.756, 0.630, 0.90], [0.530, 0.613, 0.50], [0.498, 0.539, 0.40], [0.631, 0.682, 0.30], [0.414, 0.696, 0.40], [0.401, 0.594, 0.50]],
     ],
@@ -970,6 +1021,7 @@ window.GameData.WINDOW_LIGHTS = {
   "unit/militia/1": {
     ambient: 1,
     ambientRadius: 1.2,
+    flicker: 2.25,
     frames: [
       [[0.067, 0.283], [0.078, 0.253, 0.50]],
       [[0.065, 0.311], [0.062, 0.260, 0.50]],
@@ -980,6 +1032,7 @@ window.GameData.WINDOW_LIGHTS = {
   "unit/militia/2": {
     ambient: 1.1,
     ambientRadius: 1,
+    flicker: 2.15,
     frames: [
       [[0.105, 0.250], [0.114, 0.202, 0.40]],
       [[0.083, 0.308], [0.114, 0.202, 0.40], [0.109, 0.250, 0.30], [0.109, 0.313]],
@@ -990,6 +1043,7 @@ window.GameData.WINDOW_LIGHTS = {
   "unit/militia/3": {
     ambient: 1.2,
     ambientRadius: 1.1,
+    flicker: 2.1,
     frames: [
       [[0.078, 0.216], [0.089, 0.161]],
       [[0.065, 0.241], [0.070, 0.185, 0.60]],
@@ -998,12 +1052,14 @@ window.GameData.WINDOW_LIGHTS = {
     ],
   },
   "unit/mushroom/1": {
-    ambient: 1.8,
-    ambientRadius: 1.1,
+    ambient: 1.5,
+    ambientRadius: 1.4,
+    flicker: 1.5,
   },
   "unit/trap_fire/1": {
     ambient: 1,
     ambientRadius: 0.7,
+    flicker: 1.95,
     windows: [
       [0.614, 0.600, 0.20],
       [0.447, 0.389, 0.25],
@@ -1014,6 +1070,7 @@ window.GameData.WINDOW_LIGHTS = {
   "unit/wisp/1": {
     ambient: 0.9,
     ambientRadius: 1.2,
+    flicker: 2.25,
     frames: [
       [[0.520, 0.528, 0.50], [0.625, 0.524, 0.50]],
       [[0.506, 0.513, 0.50], [0.614, 0.514, 0.50]],
@@ -1044,12 +1101,16 @@ window.GameData.WINDOW_LIGHTS = {
 
   // ---- wall ----
   "wall/dwarf/horizontal": {
+    ambient: 1.6,
+    ambientRadius: 1.6,
     windows: [
       [0.525, 0.274],
       [0.523, 0.739],
     ],
   },
   "wall/dwarf/node": {
+    ambient: 1.8,
+    ambientRadius: 1.8,
     windows: [
       [0.931, 0.060],
       [0.070, 0.060],
@@ -1062,17 +1123,23 @@ window.GameData.WINDOW_LIGHTS = {
     ],
   },
   "wall/dwarf/vertical": {
+    ambient: 1.6,
+    ambientRadius: 1.6,
     windows: [
       [0.755, 0.496],
       [0.240, 0.500],
     ],
   },
   "wall/elf/horizontal": {
+    ambient: 1.6,
+    ambientRadius: 1.6,
     windows: [
       [0.506, 0.732],
     ],
   },
   "wall/elf/node": {
+    ambient: 1.8,
+    ambientRadius: 1.8,
     windows: [
       [0.853, 0.178],
       [0.190, 0.141],
@@ -1081,18 +1148,36 @@ window.GameData.WINDOW_LIGHTS = {
     ],
   },
   "wall/elf/vertical": {
+    ambient: 1.6,
+    ambientRadius: 1.6,
     windows: [
       [0.592, 0.150],
       [0.398, 0.843],
     ],
   },
+  "wall/halfellow/horizontal": {
+    ambient: 1.4,
+    ambientRadius: 1.6,
+  },
+  "wall/halfellow/node": {
+    ambient: 1.6,
+    ambientRadius: 1.6,
+  },
+  "wall/halfellow/vertical": {
+    ambient: 1.6,
+    ambientRadius: 1.6,
+  },
   "wall/human/horizontal": {
+    ambient: 1.6,
+    ambientRadius: 1.6,
     windows: [
       [0.503, 0.314],
       [0.503, 0.685],
     ],
   },
   "wall/human/node": {
+    ambient: 1.6,
+    ambientRadius: 1.6,
     windows: [
       [0.778, 0.218],
       [0.220, 0.218],
@@ -1101,18 +1186,24 @@ window.GameData.WINDOW_LIGHTS = {
     ],
   },
   "wall/human/vertical": {
+    ambient: 1.6,
+    ambientRadius: 1.6,
     windows: [
       [0.725, 0.444],
       [0.297, 0.444],
     ],
   },
   "wall/orc/horizontal": {
+    ambient: 1.6,
+    ambientRadius: 1.6,
     windows: [
       [0.500, 0.339],
       [0.506, 0.652],
     ],
   },
   "wall/orc/node": {
+    ambient: 1.3,
+    ambientRadius: 1.6,
     windows: [
       [0.594, 0.211],
       [0.330, 0.353],
@@ -1121,6 +1212,8 @@ window.GameData.WINDOW_LIGHTS = {
     ],
   },
   "wall/orc/vertical": {
+    ambient: 1.3,
+    ambientRadius: 1.6,
     windows: [
       [0.717, 0.477],
       [0.275, 0.478],

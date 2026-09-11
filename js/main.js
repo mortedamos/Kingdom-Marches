@@ -573,6 +573,18 @@
       // user-reported: the old Unicode arrow was too faint to see).
       toggle.classList.toggle("m-sheet-toggle-open", open);
     }
+    // The astronomical clock docks on this sheet's own top edge on mobile
+    // (2026-09-11, user-directed: "at the top of the slide up toolbar...
+    // moving with that toolbar up and down") and has to track the exact
+    // same three detents the sheet and the toggle button above do. Mirrored
+    // the same way rather than read via a shared CSS custom property --
+    // see css/mobile.css's .daynight-clock for why: a property set here on
+    // `sheet` itself doesn't inherit to a sibling living outside its
+    // subtree, which one-line fix is also, incidentally, why the FAB right
+    // above never actually changed position despite --m-fab-bottom
+    // genuinely changing -- a separate, pre-existing bug this doesn't fix.
+    const clock = document.querySelector(".daynight-clock");
+    if (clock) clock.dataset.detent = name;
   }
 
   /** Turn number, stockpile, research progress, and (mobile only) the FAB's
