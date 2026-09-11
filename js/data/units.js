@@ -459,7 +459,7 @@ window.GameData.UNITS = {
   // Trouble, its third trick behind The Riddle Game).
   mycomancer: {
     id: "mycomancer", label: "Mycomancer", symbol: "🍄", category: "military", raceOnly: "halfellow",
-    attack: 1, defense: 3, movement: 1, visionRadius: 2, poisonChancePct: 0.25, biggerPct: .7,
+    attack: 1, defense: 3, movement: 1, visionRadius: 2, poisonChancePct: 0.25, biggerPct: -.4,
     coinCost: 15, attackChars: ["🍄", "👊"],
   },
   // Summoned by a Mycomancer's full-turn "Create Mushroom" action (see
@@ -472,7 +472,7 @@ window.GameData.UNITS = {
   // visionRadius-matches-aura intent.
   mushroom: {
     id: "mushroom", label: "Mushroom", symbol: "🍄", category: "military", raceOnly: "halfellow",
-    attack: 0, defense: 0, movement: 0, visionRadius: 1, biggerPct: .5,
+    attack: 0, defense: 0, movement: 0, visionRadius: 1, biggerPct: -.5,
     coinCost: 0, cityBuildable: false, noUpkeep: true, nameSpecial: true, // an object, not a person
   },
 
