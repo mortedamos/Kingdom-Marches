@@ -79,6 +79,7 @@ window.UI = window.UI || {};
     resting: "⛺",
     webbed: "🕸️",
     poisoned: "🤢",
+    blind: "🙈",
     greatBonfireAura: "♨️",
     ancestralRage: "🗿",
     partyBuff: "🎉",

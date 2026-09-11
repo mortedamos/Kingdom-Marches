@@ -1358,9 +1358,9 @@ window.GameEngine = window.GameEngine || {};
       }
 
       // Halfellow "Fairy Ring": same tile-placement shape as Create The
-      // Great Bonfire just above, for the Mushroomancer instead of the
+      // Great Bonfire just above, for the Mycomancer instead of the
       // Wanderer (see main.js's startMushroomPlacement).
-      if (unit.typeId === "mushroomancer" && !unit.usedThisTurn
+      if (unit.typeId === "mycomancer" && !unit.usedThisTurn
           && civ.unlockedMechanics?.has("fairy_ring")) {
         options.push({ kind: "createMushroom", label: "Create Mushroom" });
       }

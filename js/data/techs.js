@@ -497,13 +497,26 @@ window.GameData.TECHS = {
     prereqs: ["mage_college_tech"], raceOnly: "human",
     // This used to raise the Wizard's firstStrikePct (0.50->0.75) -- Wizard
     // no longer has that property at all (its identity moved to `range`, see
-    // units.js), so this now grants +1 Ranged (base 2 -> 3) instead, on top
-    // of the existing attack/defense bump. range is additive here (see
-    // combat.js's effectiveRange), same as attack/defense -- it adds to the
-    // Wizard's base 2 rather than replacing it.
-    description: "The Wizard grows more powerful in every way: greater range, attack, and defense.",
+    // units.js), so this grants +1 Ranged (base 2 -> 3) instead, on top of
+    // an attack/defense bump. range/attack/defense are additive here (see
+    // combat.js's effectiveRange/effectiveAttack/effectiveDefense) -- each
+    // adds to the Wizard's own base rather than replacing it. burnChancePct
+    // is different: getUnitProperty (combat.js) returns the override OR the
+    // base, never their sum, so this tech's own 0.20 fully REPLACES the
+    // Wizard's dormant base 0.1 (units.js) rather than adding to it -- that
+    // base value was otherwise unused by anything (Fireball rolls its own
+    // hardcoded FIREBALL_IGNITE_CHANCE, not this field), so 0.20 is this
+    // tech's real, total chance, same "absolute value" convention as
+    // Afflictions of Anguish's own chance fields. The roll itself only
+    // fires on an ordinary Wizard attack once this tech's own
+    // unlock_mechanic is present (see ai.js's considerAttackOrGarrison,
+    // same shape as Human "Freezing Touch" just below it).
+    description: "The Wizard gains +1 Attack, +1 Defense, +1 Range, and a 20% chance to inflict Burning on any landed hit.",
     costBreakdown: { lore: 40, coin: 15 },
-    effects: [{ type: "unit_stat_upgrade", unit: "wizard", changes: { range: 1, attack: 3, defense: 3 } }],
+    effects: [
+      { type: "unit_stat_upgrade", unit: "wizard", changes: { range: 1, attack: 1, defense: 1, burnChancePct: 0.20 } },
+      { type: "unlock_mechanic", mechanic: "battle_mage" },
+    ],
   },
   teleportation: {
     id: "teleportation", label: "Teleportation", category: "mystic", layer: 4, cost: 60,
@@ -1468,10 +1481,13 @@ window.GameData.TECHS = {
       { type: "unlock_mechanic", mechanic: "malefic_malediction" },
     ],
   },
-  // New per-unit data fields introduced here: befuddledChancePct and
-  // webChancePct, same generic on-hit-chance convention as
-  // poisonChancePct/frozenChancePct/burnChancePct -- see ai.js's
-  // applyOrcCombatMechanics for where they're actually rolled.
+  // New per-unit data fields introduced here: befuddledChancePct,
+  // webChancePct, and blindChancePct, same generic on-hit-chance convention
+  // as poisonChancePct/frozenChancePct/burnChancePct -- see ai.js's
+  // applyOrcCombatMechanics for where they're actually rolled. blindChancePct
+  // sets unit.conditions.blind (turns.js's effectiveUnitVisionRadius reads
+  // it -- 0 vision radius, not floored) for BLIND_DURATION turns, same
+  // apply-on-landed-hit shape as poison/frozen/webbed just below it.
   // curseChancePct moved to orc_malefic_malediction above (2026-09-02,
   // user-directed) -- this tech no longer touches Curse at all. frozenChancePct
   // is this tech's own combined total (0.10 baseline this tech already had
@@ -1480,11 +1496,11 @@ window.GameData.TECHS = {
   orc_afflictions_of_anguish: {
     id: "orc_afflictions_of_anguish", label: "Afflictions of Anguish", category: "mystic", layer: 4, cost: 65,
     prereqs: ["orc_bog_witch", "orc_malefic_malediction"], raceOnly: "orc",
-    description: "Bog Witch gains +1 vision. Her attacks gain a 25% chance to inflict Poison, 25% chance to inflict Befuddled, +15% chance to inflict Frozen, and 15% chance to inflict Webbed.",
+    description: "Bog Witch gains +1 vision. Her attacks gain a 25% chance to inflict Poison, 25% chance to inflict Befuddled, +15% chance to inflict Frozen, 15% chance to inflict Webbed, and 20% chance to inflict Blind for 3 turns.",
     costBreakdown: { lore: 45, coin: 20 },
     effects: [
       { type: "unit_stat_upgrade", unit: "bog_witch", changes: {
-        visionRadius: 1, poisonChancePct: 0.25, befuddledChancePct: 0.25, frozenChancePct: 0.25, webChancePct: 0.15,
+        visionRadius: 1, poisonChancePct: 0.25, befuddledChancePct: 0.25, frozenChancePct: 0.25, webChancePct: 0.15, blindChancePct: 0.20,
       } },
       { type: "unlock_mechanic", mechanic: "afflictions_of_anguish" },
     ],
@@ -1821,12 +1837,12 @@ window.GameData.TECHS = {
   // unit itself this early is the point: another roster option/body on the
   // board from turn one, not gated behind the ring mechanic it'll
   // eventually carry.
-  halfellow_mushroomancer: {
-    id: "halfellow_mushroomancer", label: "Mushroomancer", category: "mystic", layer: 1, cost: 20,
+  halfellow_mycomancer: {
+    id: "halfellow_mycomancer", label: "Mycomancer", category: "mystic", layer: 1, cost: 20,
     prereqs: [], raceOnly: "halfellow",
-    description: "Unlocks the Mushroomancer, a squat forager who tends fungus rather than fighting.",
+    description: "Unlocks the Mycomancer, a squat forager who tends fungus rather than fighting.",
     costBreakdown: { harvest: 12, coin: 8 },
-    effects: [{ type: "unlock_unit", unit: "mushroomancer" }],
+    effects: [{ type: "unlock_unit", unit: "mycomancer" }],
   },
 
   // --- Layer 2 ---
@@ -1910,8 +1926,8 @@ window.GameData.TECHS = {
   // implemented as a FLOOR (Math.max against a unit's own range), not an
   // additive bonus, so it can never make an already-ranged unit worse and
   // never stacks oddly with a future per-unit range override.
-  // New (2026-09-04, user-directed): the Mushroomancer's second tech, its
-  // Create Mushroom action -- see ai.js's startMushroomancerCreateMushroom/
+  // New (2026-09-04, user-directed): the Mycomancer's second tech, its
+  // Create Mushroom action -- see ai.js's startMycomancerCreateMushroom/
   // maybeCreateMushroomPlay and turns.js's beginCivTurn for the Mushroom's
   // aura+poison block. A smaller, earlier cousin of Banish the Darkness's
   // Great Bonfire (radius 1 vs. that one's 4, 4-turn burn vs. 5, gated here
@@ -1925,29 +1941,29 @@ window.GameData.TECHS = {
   // extra value that isn't free.
   halfellow_fairy_ring: {
     id: "halfellow_fairy_ring", label: "Fairy Ring", category: "mystic", layer: 2, cost: 42,
-    prereqs: ["halfellow_mushroomancer"], raceOnly: "halfellow",
-    description: "The Mushroomancer gains a full-turn action, Create Mushroom: summons a Mushroom onto an open adjacent tile (replacing this kingdom's own Mushroom if it already has one). For 4 turns, every allied unit within 1 tile heals 5% of its max HP per turn (minimum 1) and gains Toadstool Tranquility. Any enemy unit within that same 1 tile has a 50% chance each turn to become Poisoned.",
+    prereqs: ["halfellow_mycomancer"], raceOnly: "halfellow",
+    description: "The Mycomancer gains a full-turn action, Create Mushroom: summons a Mushroom onto an open adjacent tile (replacing this kingdom's own Mushroom if it already has one). For 4 turns, every allied unit within 1 tile heals 5% of its max HP per turn (minimum 1) and gains Toadstool Tranquility. Any enemy unit within that same 1 tile has a 50% chance each turn to become Poisoned.",
     costBreakdown: { lore: 24, coin: 12, harvest: 6 },
     effects: [
       { type: "unlock_unit", unit: "mushroom" },
       { type: "unlock_mechanic", mechanic: "fairy_ring" },
     ],
   },
-  // New (2026-09-03, user-directed): the Mushroomancer's counterattack
+  // New (2026-09-03, user-directed): the Mycomancer's counterattack
   // deterrent -- unlike every other on-hit poison chance in this file
   // (Elf's Poisonous Extracts, Orc's Afflictions of Anguish/Pyromania, the
   // Marsh Adder's own venom), which all roll off the ATTACKER's forward
-  // hit, this rolls off the Mushroomancer's own successful COUNTER instead
-  // -- see ai.js's applyMushroomancerCounterPoison, called from every real
+  // hit, this rolls off the Mycomancer's own successful COUNTER instead
+  // -- see ai.js's applyMycomancerCounterPoison, called from every real
   // unit-vs-unit combat resolution site (including a monster attacking the
-  // Mushroomancer). A flat 60% chance, gated by its own dedicated mechanic
+  // Mycomancer). A flat 60% chance, gated by its own dedicated mechanic
   // id rather than the generic poisonChancePct unit field every other
   // poison-on-hit tech uses -- the roll direction here is the opposite of
   // what that field means everywhere else it appears.
   halfellow_poisonous_puff: {
     id: "halfellow_poisonous_puff", label: "Poisonous Puff", category: "mystic", layer: 3, cost: 40,
-    prereqs: ["halfellow_mushroomancer"], raceOnly: "halfellow",
-    description: "The Mushroomancer gains a 60% chance to inflict Poisoned on whatever attacks it, whenever its own counterattack lands.",
+    prereqs: ["halfellow_mycomancer"], raceOnly: "halfellow",
+    description: "The Mycomancer gains a 60% chance to inflict Poisoned on whatever attacks it, whenever its own counterattack lands.",
     costBreakdown: { lore: 22, harvest: 18 },
     effects: [{ type: "unlock_mechanic", mechanic: "poisonous_puff" }],
   },

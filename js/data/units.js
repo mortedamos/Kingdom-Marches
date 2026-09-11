@@ -453,17 +453,17 @@ window.GameData.UNITS = {
   // for its tier reads as "short and squat, almost as wide as tall" per the
   // character brief -- not built to chase or strike, built to plant its
   // feet and not get knocked over. Its own special action (Create Mushroom,
-  // see ai.js's startMushroomancerCreateMushroom) is gated behind a separate
+  // see ai.js's startMycomancerCreateMushroom) is gated behind a separate
   // follow-up tech (halfellow_fairy_ring), not this unit's own unlock --
   // same staged shape Trouble Maker's roster slot uses (base kit at Making
   // Trouble, its third trick behind The Riddle Game).
-  mushroomancer: {
-    id: "mushroomancer", label: "Mycomancer", symbol: "🍄", category: "military", raceOnly: "halfellow",
+  mycomancer: {
+    id: "mycomancer", label: "Mycomancer", symbol: "🍄", category: "military", raceOnly: "halfellow",
     attack: 1, defense: 3, movement: 1, visionRadius: 2, poisonChancePct: 0.25,
     coinCost: 15, attackChars: ["🍄", "👊"],
   },
-  // Summoned by a Mushroomancer's full-turn "Create Mushroom" action (see
-  // ai.js's startMushroomancerCreateMushroom), never built by a city, free
+  // Summoned by a Mycomancer's full-turn "Create Mushroom" action (see
+  // ai.js's startMycomancerCreateMushroom), never built by a city, free
   // to summon -- same "an inert, trivially-killable object" shape as the
   // traps/Great Bonfire above (attack:0/defense:0, so a Ranged unit can
   // destroy it from range at zero counter-risk -- the intended counterplay

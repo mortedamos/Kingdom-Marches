@@ -462,7 +462,7 @@ window.UI = window.UI || {};
     const rawVision = (baseUnit.visionRadius || 3) + (civ.unitOverrides?.[unit.typeId]?.visionRadius || 0)
       + (unit.conditions?.flying?.visionBonus || 0) + (unit.conditions?.keepingWatch?.visionBonus || 0)
       + (unit.levelBonuses?.visionRadius || 0);
-    const effVision = Math.max(window.GameEngine.turns.MIN_VISION_RADIUS,
+    const effVision = unit.conditions?.blind ? 0 : Math.max(window.GameEngine.turns.MIN_VISION_RADIUS,
       rawVision - window.GameEngine.turns.dayNightVisionPenaltyFor(civ, gameState));
     const currentValue = {
       attack: combat.effectiveAttack(unit, civ),
@@ -792,7 +792,7 @@ window.UI = window.UI || {};
     const canCarry = window.GameEngine.combat.getUnitProperty(unit, civ, "canCarryUnit", false);
     const rawVision = (baseUnit.visionRadius || 3) + (civ.unitOverrides?.[unit.typeId]?.visionRadius || 0)
       + (unit.conditions?.flying?.visionBonus || 0);
-    const effVision = Math.max(window.GameEngine.turns.MIN_VISION_RADIUS,
+    const effVision = unit.conditions?.blind ? 0 : Math.max(window.GameEngine.turns.MIN_VISION_RADIUS,
       rawVision - window.GameEngine.turns.dayNightVisionPenaltyFor(civ, gameState));
     const properties = [];
     if (firstStrikePct > 0) properties.push(`First Strike ${Math.round(firstStrikePct * 100)}%`);
@@ -846,6 +846,8 @@ window.UI = window.UI || {};
     if (poisoned) properties.push(`Poisoned (-1 HP/turn${turnsLeftSuffix(poisoned, gameState)})`);
     const burning = unit.conditions?.burning;
     if (burning) properties.push(`Burning (-1 HP/turn${turnsLeftSuffix(burning, gameState)})`);
+    const blind = unit.conditions?.blind;
+    if (blind) properties.push(`Blind (0 vision${turnsLeftSuffix(blind, gameState)})`);
     // A channeled Rest and Defend reads the label differently even though
     // it's the SAME "defending" condition underneath as a plain one-off
     // Defend (ai.js's performDefend, AI-only) -- Rest and Defend's whole

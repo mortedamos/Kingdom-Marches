@@ -473,13 +473,16 @@ window.GameEngine = window.GameEngine || {};
    */
   // Halfellow "Banish the Darkness": while an ally stands in The Great
   // Bonfire's aura (unit.conditions.greatBonfireAura, refreshed every turn
-  // by turns.js), it can't be newly afflicted with any of these six negative
+  // by turns.js), it can't be newly afflicted with any of these seven negative
   // conditions -- a single guard here covers every current AND future call
   // site (scattered across ai.js/combat.js) automatically, rather than
   // needing each one to remember to check. Curing an already-active one on
   // entry is a separate step (turns.js's aura loop calls clearCondition
-  // directly, which this guard does not gate).
-  const GREAT_BONFIRE_IMMUNE_CONDITIONS = new Set(["burning", "poisoned", "frozen", "curse", "befuddled", "webbed"]);
+  // directly, which this guard does not gate). Blind joined the set the
+  // moment it became a real on-hit debuff (Orc's Afflictions of Anguish,
+  // same tech and same guarded roll as Poisoned/Befuddled/Frozen/Webbed
+  // above it) rather than staying pure infrastructure.
+  const GREAT_BONFIRE_IMMUNE_CONDITIONS = new Set(["burning", "poisoned", "frozen", "curse", "befuddled", "webbed", "blind"]);
 
   function setCondition(unit, key, data) {
     if (GREAT_BONFIRE_IMMUNE_CONDITIONS.has(key) && unit.conditions?.greatBonfireAura) return;

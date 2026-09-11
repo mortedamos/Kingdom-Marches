@@ -283,6 +283,42 @@ window.GameEngine = window.GameEngine || {};
     return slots.includes(slot) ? 1 : 0;
   }
 
+  /**
+   * A unit's actual current vision radius, every bonus and penalty applied --
+   * the single formula refreshVisibility uses to flood-fill sight, and that
+   * every sidebar display of "this unit's vision" should call too, rather
+   * than re-deriving its own copy that can drift (see js/ui/sidebar.js's
+   * three display sites).
+   *
+   * Blind (unit.conditions.blind) overrides everything else to exactly 0 --
+   * not floored to MIN_VISION_RADIUS like every other penalty. That's safe
+   * here (unlike an unfloored day/night penalty) because 0 doesn't break the
+   * flood-fill loop the way a negative radius would: `dy <= 0`/`dx <= 0`
+   * still runs once, at dx=dy=0, so a blind unit still sees its own tile,
+   * just nothing beyond it -- it's blind, not erased from its own map.
+   */
+  function effectiveUnitVisionRadius(unit, civ, gameState) {
+    if (unit.conditions?.blind) return 0;
+    const baseUnit = window.GameData.getUnit(unit.typeId);
+    // Tech can raise a unit type's vision via unit_stat_upgrade (additive,
+    // same convention as attack/defense/movement -- see tech.js).
+    const overrideVision = civ.unitOverrides?.[unit.typeId]?.visionRadius || 0;
+    // Human "Flight": a unit granted temporary flight also gets +2 vision
+    // for the duration (see ai.js's performWizardGrantFlight).
+    const flightVision = unit.conditions?.flying?.visionBonus || 0;
+    // Halfellow "Keep an Eye Out": +3 vision while holding a lookout
+    // post (Hidden + stationary) -- see ai.js's maybeKeepAnEyeOutPlay.
+    const watchVision = unit.conditions?.keepingWatch?.visionBonus || 0;
+    // Halfellow "Banish the Darkness": +2 vision while inside The Great
+    // Bonfire's aura -- see beginCivTurn's per-turn application below.
+    const bonfireVision = unit.conditions?.greatBonfireAura?.visionBonus || 0;
+    // Level-up "+1 Vision" pick -- same flat-add convention as
+    // attack/defense, see combat.js's LEVEL_BONUS_VALUES.
+    const levelVision = unit.levelBonuses?.visionRadius || 0;
+    const dayNightPenalty = dayNightVisionPenaltyFor(civ, gameState);
+    return Math.max(MIN_VISION_RADIUS, (baseUnit.visionRadius || 3) + overrideVision + flightVision + watchVision + bonfireVision + levelVision - dayNightPenalty);
+  }
+
   /** Computes each civ's currently-visible tile set (own territory + vision radius around units/cities) */
   function refreshVisibility(gameState) {
     const { map, civs } = gameState;
@@ -349,23 +385,7 @@ window.GameEngine = window.GameEngine || {};
         }
       }
       for (const unit of civ.units) {
-        const baseUnit = window.GameData.getUnit(unit.typeId);
-        // Tech can raise a unit type's vision via unit_stat_upgrade (additive,
-        // same convention as attack/defense/movement -- see tech.js).
-        const overrideVision = civ.unitOverrides?.[unit.typeId]?.visionRadius || 0;
-        // Human "Flight": a unit granted temporary flight also gets +2 vision
-        // for the duration (see ai.js's performWizardGrantFlight).
-        const flightVision = unit.conditions?.flying?.visionBonus || 0;
-        // Halfellow "Keep an Eye Out": +3 vision while holding a lookout
-        // post (Hidden + stationary) -- see ai.js's maybeKeepAnEyeOutPlay.
-        const watchVision = unit.conditions?.keepingWatch?.visionBonus || 0;
-        // Halfellow "Banish the Darkness": +2 vision while inside The Great
-        // Bonfire's aura -- see beginCivTurn's per-turn application below.
-        const bonfireVision = unit.conditions?.greatBonfireAura?.visionBonus || 0;
-        // Level-up "+1 Vision" pick -- same flat-add convention as
-        // attack/defense, see combat.js's LEVEL_BONUS_VALUES.
-        const levelVision = unit.levelBonuses?.visionRadius || 0;
-        const r = Math.max(MIN_VISION_RADIUS, (baseUnit.visionRadius || 3) + overrideVision + flightVision + watchVision + bonfireVision + levelVision - dayNightPenalty);
+        const r = effectiveUnitVisionRadius(unit, civ, gameState);
         for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) {
           const x = unit.x + dx, y = unit.y + dy;
           if (x < 0 || x >= map.width || y < 0 || y >= map.height) continue;
@@ -1404,7 +1424,7 @@ window.GameEngine = window.GameEngine || {};
 
     // Halfellow "Fairy Ring": the Mushroom only lasts MUSHROOM_DURATION
     // turns from the moment it's summoned (see ai.js's
-    // startMushroomancerCreateMushroom, which stamps mushroomExpiresAtTurn)
+    // startMycomancerCreateMushroom, which stamps mushroomExpiresAtTurn)
     // -- same "checked before the aura loop further below" shape as Great
     // Bonfire's own expiry just above.
     civ.units = civ.units.filter((u) => !(u.typeId === "mushroom"
@@ -1528,10 +1548,10 @@ window.GameEngine = window.GameEngine || {};
     // this function's own visionRadius sum above, and ai.js's
     // computeMovementBudget), same refresh-every-turn convention as
     // Crusade/Heavy Metal above. Also cures AND grants immunity to Burning,
-    // Poisoned, Frozen, Curse, Befuddled, and Webbed -- the cure is the
-    // explicit clearCondition calls below; the immunity is enforced
+    // Poisoned, Frozen, Curse, Befuddled, Webbed, and Blind -- the cure is
+    // the explicit clearCondition calls below; the immunity is enforced
     // generically inside combat.js's setCondition (see
-    // GREAT_BONFIRE_IMMUNE_CONDITIONS there), which blocks any of those six
+    // GREAT_BONFIRE_IMMUNE_CONDITIONS there), which blocks any of those seven
     // from being (re-)applied to a unit that currently has this condition.
     // Per-civ singleton (at most one Great Bonfire ever exists for a given
     // civ, see ai.js's startWandererBonfireSummon), so unlike Crusade/Heavy
@@ -1546,7 +1566,7 @@ window.GameEngine = window.GameEngine || {};
           const bonfireBefore = ally.hp;
           ally.hp = Math.min(ally.maxHp, ally.hp + Math.max(1, Math.round(ally.maxHp * 0.10)));
           if (ally.hp > bonfireBefore) window.GameEngine.floatingText.spawnHealGain(ally, ally.hp - bonfireBefore);
-          for (const key of ["burning", "poisoned", "frozen", "curse", "befuddled", "webbed"]) {
+          for (const key of ["burning", "poisoned", "frozen", "curse", "befuddled", "webbed", "blind"]) {
             window.GameEngine.combat.clearCondition(ally, key);
           }
           window.GameEngine.combat.setCondition(ally, "greatBonfireAura", {
@@ -1572,7 +1592,7 @@ window.GameEngine = window.GameEngine || {};
     // every turn, to be Poisoned (see ai.js's applyPoisoned) -- re-rolled
     // every turn it lingers, so staying put isn't safe just because an
     // earlier roll missed. Per-civ singleton (at most one Mushroom per civ,
-    // see ai.js's startMushroomancerCreateMushroom), so no dedup Set is
+    // see ai.js's startMycomancerCreateMushroom), so no dedup Set is
     // needed for the ally side, same reasoning as Great Bonfire's own.
     if (civ.unlockedMechanics && civ.unlockedMechanics.has("fairy_ring")) {
       const MUSHROOM_AURA_RADIUS = 1;
@@ -2316,6 +2336,7 @@ window.GameEngine = window.GameEngine || {};
     weatherForTurn,
     refreshVisibility,
     dayNightVisionPenaltyFor,
+    effectiveUnitVisionRadius,
     MIN_VISION_RADIUS,
     beginRound,
     beginCivTurn,

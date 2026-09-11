@@ -301,7 +301,7 @@ window.GameData.RACES = {
 
     startingTech: "halfellow_arms",
 
-    uniqueUnits: ["wanderer", "pony_patrol", "militia", "trouble_maker", "mushroomancer"],
+    uniqueUnits: ["wanderer", "pony_patrol", "militia", "trouble_maker", "mycomancer"],
     uniqueBuildings: ["farmers_market", "neighborhood_pub", "historical_society", "armory"],
   },
 };

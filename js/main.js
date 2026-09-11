@@ -4474,7 +4474,7 @@
           window.GameEngine.ai.performPlayerWandererBonfireSummon(civ, unit, gameState);
           window.GameEngine.turns.refreshVisibility(gameState);
         } else if (intent.kind === "createMushroom") {
-          window.GameEngine.ai.performPlayerMushroomancerCreateMushroom(civ, unit, gameState);
+          window.GameEngine.ai.performPlayerMycomancerCreateMushroom(civ, unit, gameState);
           window.GameEngine.turns.refreshVisibility(gameState);
         }
         finish();
@@ -6375,7 +6375,7 @@
           startGreatBonfirePlacement(unit);
         } else if (kind === "createMushroom") {
           // Halfellow "Fairy Ring": same tile-placement shape as Create The
-          // Great Bonfire just above, for the Mushroomancer.
+          // Great Bonfire just above, for the Mycomancer.
           startMushroomPlacement(unit);
         } else if (kind === "whirlwindStrike" || kind === "bladeStorm") {
           // Elf "Whirlwind Strike"/"Blade Storm": single click, no
@@ -6769,9 +6769,9 @@
   }
 
   /** Halfellow "Fairy Ring": same tile-placement mechanism as Create The
-   *  Great Bonfire just above, for the Mushroomancer's Create Mushroom
+   *  Great Bonfire just above, for the Mycomancer's Create Mushroom
    *  instead -- see ai.js's isValidMushroomPlacementTile. */
-  function startMushroomPlacement(mushroomancer) {
+  function startMushroomPlacement(mycomancer) {
     if (!humanCivId) return;
     const civ = gameState.civs[humanCivId];
     if (!civ) return;
@@ -6779,8 +6779,8 @@
     for (let dy = -1; dy <= 1; dy++) {
       for (let dx = -1; dx <= 1; dx++) {
         if (dx === 0 && dy === 0) continue;
-        const x = mushroomancer.x + dx, y = mushroomancer.y + dy;
-        if (window.GameEngine.ai.isValidMushroomPlacementTile(gameState, civ.id, x, y, mushroomancer)) slots.push({ x, y });
+        const x = mycomancer.x + dx, y = mycomancer.y + dy;
+        if (window.GameEngine.ai.isValidMushroomPlacementTile(gameState, civ.id, x, y, mycomancer)) slots.push({ x, y });
       }
     }
     viewState.placement = {
@@ -6790,7 +6790,7 @@
       onPick: (slot) => {
         viewState.placement = null;
         if (slot) {
-          window.GameEngine.ai.performPlayerMushroomancerCreateMushroom(civ, mushroomancer, gameState, slot.x, slot.y);
+          window.GameEngine.ai.performPlayerMycomancerCreateMushroom(civ, mycomancer, gameState, slot.x, slot.y);
           window.GameEngine.turns.refreshVisibility(gameState);
         }
         redraw();

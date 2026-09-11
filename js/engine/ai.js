@@ -5172,7 +5172,7 @@ window.GameEngine = window.GameEngine || {};
       // checked before everything else" shape as Great Bonfire just above
       // -- without this, a freshly-spawned Mushroom (which, like Bonfire,
       // never gets usedThisTurn stamped on itself at creation -- only the
-      // Mushroomancer that made it does) would fall through into the
+      // Mycomancer that made it does) would fall through into the
       // generic cascade below on the very turn it's created, and could be
       // walked away from its own tile by e.g. handleCorneredCombat's flee
       // logic if an enemy happened to be nearby -- exactly the situation
@@ -5378,10 +5378,10 @@ window.GameEngine = window.GameEngine || {};
       // above. See maybeCreateGreatBonfirePlay's doc comment.
       if (unit.typeId === "wanderer" && maybeCreateGreatBonfirePlay(civ, unit, gameState, log)) continue;
 
-      // Halfellow "Fairy Ring" (Mushroomancer only): same "back up a fight
+      // Halfellow "Fairy Ring" (Mycomancer only): same "back up a fight
       // or a hurting ally" priority as Banish the Darkness just above, for
       // its own unit type. See maybeCreateMushroomPlay's doc comment.
-      if (unit.typeId === "mushroomancer" && maybeCreateMushroomPlay(civ, unit, gameState, log)) continue;
+      if (unit.typeId === "mycomancer" && maybeCreateMushroomPlay(civ, unit, gameState, log)) continue;
 
       // Elf "fight smarter, not harder": same idea as Halfellow's above, but
       // split by whether the unit is Ranged (the Ranger's hide-shoot-hide
@@ -7709,7 +7709,7 @@ window.GameEngine = window.GameEngine || {};
       markCombatEngaged(defenderCiv);
       window.GameEngine.combat.revealHidden(target, currentTurnNumber);
       applyElfCombatMechanics(unit, civ, target, defenderCiv, result, gameState);
-      applyMushroomancerCounterPoison(unit, target, defenderCiv, result, gameState);
+      applyMycomancerCounterPoison(unit, target, defenderCiv, result, gameState);
       hitCount++;
 
       if (target.hp <= 0) {
@@ -8588,19 +8588,19 @@ window.GameEngine = window.GameEngine || {};
     civ.units = civ.units.filter((u) => u.typeId !== "mushroom" || u === exceptUnit);
   }
 
-  /** A Mushroomancer creates a Mushroom on an open adjacent tile IMMEDIATELY
+  /** A Mycomancer creates a Mushroom on an open adjacent tile IMMEDIATELY
    *  -- same free, instant, per-civ-singleton shape as
    *  startWandererBonfireSummon (see that function's doc comment for the
    *  full reasoning, all of which applies here unchanged). Stamps
    *  `mushroomExpiresAtTurn` -- see turns.js's beginCivTurn, which removes
    *  the Mushroom once that turn is reached. `confirmed`/`targetXY` mirror
    *  the same pendingIntent-staging and player-tile-pick conventions. */
-  function startMushroomancerCreateMushroom(civ, mushroomancer, gameState, log, confirmed = false, targetXY = null) {
-    if (mushroomancer.automated && !confirmed) {
-      mushroomancer.pendingIntent = { kind: "createMushroom", label: "Create Mushroom" };
-      mushroomancer.usedThisTurn = true;
-      mushroomancer.currentMission = "Proposing to create a Mushroom — awaiting confirmation";
-      log.push(`Mushroomancer proposing to create a Mushroom at (${mushroomancer.x},${mushroomancer.y}) — awaiting player confirmation`);
+  function startMycomancerCreateMushroom(civ, mycomancer, gameState, log, confirmed = false, targetXY = null) {
+    if (mycomancer.automated && !confirmed) {
+      mycomancer.pendingIntent = { kind: "createMushroom", label: "Create Mushroom" };
+      mycomancer.usedThisTurn = true;
+      mycomancer.currentMission = "Proposing to create a Mushroom — awaiting confirmation";
+      log.push(`Mycomancer proposing to create a Mushroom at (${mycomancer.x},${mycomancer.y}) — awaiting player confirmation`);
       return true;
     }
     let spawned;
@@ -8609,27 +8609,27 @@ window.GameEngine = window.GameEngine || {};
       window.GameEngine.combat.initUnitHP(spawned, civ);
       civ.units.push(spawned);
     } else {
-      spawned = spawnUnitAdjacentToUnit(civ, mushroomancer, "mushroom", gameState);
+      spawned = spawnUnitAdjacentToUnit(civ, mycomancer, "mushroom", gameState);
     }
     if (!spawned) return false; // no open adjacent tile -- nothing spent, turn not consumed
     dismissExistingMushroom(civ, spawned);
     spawned.mushroomExpiresAtTurn = (gameState.turnNumber || 0) + MUSHROOM_DURATION;
-    mushroomancer.usedThisTurn = true;
-    mushroomancer.currentMission = `Created a Mushroom at (${spawned.x},${spawned.y})`;
-    log.push(`Fairy Ring: ${civ.id}'s Mushroomancer creates a Mushroom at (${spawned.x},${spawned.y})`);
-    window.SfxSystem.playAction(civ.raceId, "mushroomancer", "create_mushroom", spawned.x, spawned.y);
+    mycomancer.usedThisTurn = true;
+    mycomancer.currentMission = `Created a Mushroom at (${spawned.x},${spawned.y})`;
+    log.push(`Fairy Ring: ${civ.id}'s Mycomancer creates a Mushroom at (${spawned.x},${spawned.y})`);
+    window.SfxSystem.playAction(civ.raceId, "mycomancer", "create_mushroom", spawned.x, spawned.y);
     window.GameEngine.combat.spawnAreaEffect(spawned.x, spawned.y, 0, "summon");
     return true;
   }
 
   /** Direct player-invoked Mushroom summon -- mirrors
    *  performPlayerWandererBonfireSummon exactly. */
-  function performPlayerMushroomancerCreateMushroom(civ, mushroomancer, gameState, x = null, y = null) {
+  function performPlayerMycomancerCreateMushroom(civ, mycomancer, gameState, x = null, y = null) {
     currentTurnNumber = gameState.turnNumber || 0;
     currentGameStateRef = gameState;
     const log = [];
     const targetXY = (x != null && y != null) ? { x, y } : null;
-    const ok = startMushroomancerCreateMushroom(civ, mushroomancer, gameState, log, true, targetXY);
+    const ok = startMycomancerCreateMushroom(civ, mycomancer, gameState, log, true, targetXY);
     if (log.length) appendAIActionLog(gameState, civ.id, log);
     return ok;
   }
@@ -8637,9 +8637,9 @@ window.GameEngine = window.GameEngine || {};
   /** Halfellow "Fairy Ring" placement target -- mirrors
    *  isValidGreatBonfirePlacementTile exactly (see that function's doc
    *  comment); lets main.js's tile-placement mode build a slot list. */
-  function isValidMushroomPlacementTile(gameState, civId, x, y, mushroomancer) {
+  function isValidMushroomPlacementTile(gameState, civId, x, y, mycomancer) {
     const { map, civs } = gameState;
-    if (window.GameEngine.influence.chebyshev(x, y, mushroomancer.x, mushroomancer.y) > 1) return false;
+    if (window.GameEngine.influence.chebyshev(x, y, mycomancer.x, mycomancer.y) > 1) return false;
     const occupied = buildOccupancySet(civs, null);
     return isOpenPlacementTile(x, y, map, civs, occupied, civId);
   }
@@ -9277,7 +9277,7 @@ window.GameEngine = window.GameEngine || {};
     }
 
     // Halfellow "Poisonous Puff": target's own successful counter against the monster.
-    applyMushroomancerCounterPoison(monster, target, targetCiv, result, gameState);
+    applyMycomancerCounterPoison(monster, target, targetCiv, result, gameState);
 
     if (target.hp <= 0) {
       otherCivRemoveDeadUnit(civs, target, monsterCiv.id);
@@ -13094,10 +13094,10 @@ window.GameEngine = window.GameEngine || {};
   const MUSHROOM_TRIGGER_RADIUS = 2;
 
   /**
-   * Halfellow "Fairy Ring" (Mushroomancer only): situational, not automatic
+   * Halfellow "Fairy Ring" (Mycomancer only): situational, not automatic
    * -- same "only bother when there's an actual reason to" shape as
    * maybeCreateGreatBonfirePlay just above. Skips entirely if this civ's
-   * existing Mushroom (if any) already reaches this Mushroomancer's own
+   * existing Mushroom (if any) already reaches this Mycomancer's own
    * position. Otherwise fires when EITHER an enemy unit, OR a hurt (<70%
    * HP) allied military unit, is within MUSHROOM_TRIGGER_RADIUS. Checked in
    * runUnitTurn near Banish the Darkness's own call site -- backing up a
@@ -13106,7 +13106,7 @@ window.GameEngine = window.GameEngine || {};
    */
   function maybeCreateMushroomPlay(civ, unit, gameState, log) {
     if (civ.raceId !== "halfellow" || !civ.unlockedMechanics || !civ.unlockedMechanics.has("fairy_ring")) return false;
-    if (unit.typeId !== "mushroomancer" || unit.usedThisTurn) return false;
+    if (unit.typeId !== "mycomancer" || unit.usedThisTurn) return false;
 
     const existing = civ.units.find((u) => u.typeId === "mushroom");
     if (existing && window.GameEngine.influence.chebyshev(existing.x, existing.y, unit.x, unit.y) <= MUSHROOM_AURA_RADIUS) {
@@ -13135,7 +13135,7 @@ window.GameEngine = window.GameEngine || {};
     }
     if (!reason) return false;
 
-    return startMushroomancerCreateMushroom(civ, unit, gameState, log);
+    return startMycomancerCreateMushroom(civ, unit, gameState, log);
   }
 
   function maybeHalfellowStealthPlay(civ, unit, gameState, weights, difficulty, log) {
@@ -13539,6 +13539,25 @@ window.GameEngine = window.GameEngine || {};
       // Human "Fireball!" does not ride on an ordinary attack -- it's its
       // own standalone targeted action, see performWizardFireball below.
 
+      // Human "Battle Mage": a passive chance on the Wizard's own attacks
+      // to inflict Burning, same shape as Freezing Touch just below it
+      // (and Burn It All Down above) -- burnChancePct is per-unit data,
+      // set to 0.20 by this tech's own unit_stat_upgrade effect (see
+      // techs.js's battle_mage for why that fully replaces rather than
+      // adds to the Wizard's dormant 0.1 base). Rolled once per landed
+      // hit, same Double Strike treatment as the other two.
+      if (unit.typeId === "wizard" && civ.unlockedMechanics && civ.unlockedMechanics.has("battle_mage")) {
+        const battleMageBurnChance = window.GameEngine.combat.getUnitProperty(unit, civ, "burnChancePct", 0);
+        if (battleMageBurnChance > 0) {
+          for (let i = 0; i < landedHitCount(result); i++) {
+            if (Math.random() < battleMageBurnChance) {
+              applyBurning(bestTarget, "unit", gameState);
+              log.push(`Battle Mage: ${civ.id}'s ${describeUnit(unit)} sets ${bestTarget.civId}'s ${describeUnit(bestTarget)} ablaze`);
+            }
+          }
+        }
+      }
+
       // Human "Freezing Touch": a passive chance on the Wizard's own
       // attacks, same shape as Fireball's burnChancePct trigger just
       // above. frozenChancePct is per-unit data (see units.js's wizard
@@ -13565,8 +13584,8 @@ window.GameEngine = window.GameEngine || {};
       // Elf "First Frost of Autumn": passive chance to Freeze on any landed hit.
       applyElfCombatMechanics(unit, civ, bestTarget, defenderCiv, result, gameState);
 
-      // Halfellow "Poisonous Puff": a Mushroomancer defender's own successful counter.
-      applyMushroomancerCounterPoison(unit, bestTarget, defenderCiv, result, gameState);
+      // Halfellow "Poisonous Puff": a Mycomancer defender's own successful counter.
+      applyMycomancerCounterPoison(unit, bestTarget, defenderCiv, result, gameState);
 
       if (bestTarget.hp <= 0) {
         // Undead "Zombie": tried BEFORE any of the usual "this unit really
@@ -14560,6 +14579,7 @@ window.GameEngine = window.GameEngine || {};
   }
 
   const CURSE_DURATION = 5;
+  const BLIND_DURATION = 3;
 
   // Violent Momentum: +2 movement, +10% First Strike, +10% Double Strike
   // for a unit that
@@ -14619,7 +14639,7 @@ window.GameEngine = window.GameEngine || {};
     // Afflictions, Goblin Miscreant via Pyromania), so it checks either
     // mechanic; Curse is Malefic Malediction-only (2026-09-02, user-
     // directed: moved off its own unconditional-100% special case into this
-    // same generic chance roll); Befuddled/Frozen/Webbed are
+    // same generic chance roll); Befuddled/Frozen/Webbed/Blind are
     // Afflictions-only.
     if (attackerCiv.unlockedMechanics) {
       for (let i = 0; i < landedHitCount(result); i++) {
@@ -14647,6 +14667,10 @@ window.GameEngine = window.GameEngine || {};
           const webChance = window.GameEngine.combat.getUnitProperty(attackerUnit, attackerCiv, "webChancePct", 0);
           if (webChance > 0 && Math.random() < webChance) {
             applyWebbed(defenderUnit, gameState);
+          }
+          const blindChance = window.GameEngine.combat.getUnitProperty(attackerUnit, attackerCiv, "blindChancePct", 0);
+          if (blindChance > 0 && Math.random() < blindChance) {
+            setCondition(defenderUnit, "blind", { expiresAtTurn: turn + BLIND_DURATION });
           }
         }
       }
@@ -14698,7 +14722,7 @@ window.GameEngine = window.GameEngine || {};
     }
   }
 
-  // Halfellow "Poisonous Puff": a Mushroomancer that successfully
+  // Halfellow "Poisonous Puff": a Mycomancer that successfully
   // counterattacks has a flat 60% chance to leave its attacker Poisoned.
   // Unlike applyOrcCombatMechanics/applyElfCombatMechanics above, this reads
   // off the DEFENDER's landed COUNTER, not the forward attacker's hit --
@@ -14709,12 +14733,12 @@ window.GameEngine = window.GameEngine || {};
   // Unyielding roll retroactively negates it -- every other failure mode
   // (denied, missed, out of range) never touches it at all, so it's never
   // left nonzero without a real, un-negated counter behind it.
-  const MUSHROOMANCER_COUNTER_POISON_CHANCE = 0.60;
-  function applyMushroomancerCounterPoison(attackerUnit, defenderUnit, defenderCiv, result, gameState) {
-    if (defenderUnit.typeId !== "mushroomancer") return;
+  const MYCOMANCER_COUNTER_POISON_CHANCE = 0.60;
+  function applyMycomancerCounterPoison(attackerUnit, defenderUnit, defenderCiv, result, gameState) {
+    if (defenderUnit.typeId !== "mycomancer") return;
     if (!defenderCiv.unlockedMechanics || !defenderCiv.unlockedMechanics.has("poisonous_puff")) return;
     if (!(result.counterDamage > 0)) return;
-    if (Math.random() < MUSHROOMANCER_COUNTER_POISON_CHANCE) applyPoisoned(attackerUnit, gameState);
+    if (Math.random() < MYCOMANCER_COUNTER_POISON_CHANCE) applyPoisoned(attackerUnit, gameState);
   }
 
   /**
@@ -14994,7 +15018,7 @@ window.GameEngine = window.GameEngine || {};
     trapCapReached,
     performPlayerWandererBonfireSummon,
     isValidGreatBonfirePlacementTile,
-    performPlayerMushroomancerCreateMushroom,
+    performPlayerMycomancerCreateMushroom,
     isValidMushroomPlacementTile,
     // Exported (2026-09-04) so turns.js's Fairy Ring aura block can poison
     // enemy units caught in a Mushroom's radius through the same helper
