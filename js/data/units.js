@@ -547,7 +547,7 @@ window.GameData.UNITS = {
   // naturally cost (see ai.js buildUnitOption's CHEAP_UNIT_DISCOUNT_RATE,
   // mirror image of Dragon's `rare` premium). Meant to be Orc's fallback
   // build when nothing else is affordable or worth building, and its
-  // expected deaths feed Honor the Dead's +5-lore-per-death bonus
+  // expected deaths feed The Old Ways' +30-lore-per-death bonus
   // automatically (no special-casing needed -- that tech applies to any
   // Orc unit dying).
   goblin_miscreant: {

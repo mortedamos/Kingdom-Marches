@@ -1,10 +1,14 @@
 /**
- * TECH TREE VIEWER
+ * ADVANCEMENTS VIEWER (2026-09-12: rebranded from "Tech Tree" -- player-
+ * facing text everywhere says "advancement"/"Advancements" now; internal
+ * names, ids, and file names in this codebase still say "tech" throughout,
+ * unchanged, so completedTechs/currentResearch and every tech id string
+ * stay exactly as they were in any existing save)
  * ----------------
- * The full tech tree for a chosen civ, laid out by layer (rows, Level 0
- * through Level 5) and column (civic/building/military), with each node's
- * status -- completed, currently researching (with progress %), the AI's
- * intended next pick (via ai.js's previewNextResearch, a non-mutating
+ * The full advancement tree for a chosen civ, laid out by layer (rows,
+ * Level 0 through Level 5) and column (civic/building/military), with each
+ * node's status -- completed, currently researching (with progress %), the
+ * AI's intended next pick (via ai.js's previewNextResearch, a non-mutating
  * preview), locked (city-gate or prereqs unmet), or simply available.
  *
  * Read-only for every civ EXCEPT the human player's own: chooseResearch is
@@ -254,7 +258,8 @@ window.UI = window.UI || {};
 
     return `
       <div class="panel${isReference ? " techtree-reference" : ""}">
-        <h2>${escapeHtml(race.label)} — Tech Tree</h2>
+        <h2>${escapeHtml(race.label)} — Advancements</h2>
+        <div class="stat-row"><span>Advancements Researched</span><span>${techIds.filter((id) => civ.completedTechs && civ.completedTechs.has(id)).length} / ${techIds.length}</span></div>
         <div class="stat-row"><span>Cities</span><span>${civ.cities.length}</span></div>
         ${isPlayerCiv ? (() => {
           // Multi-resource stockpile readout:
@@ -268,9 +273,9 @@ window.UI = window.UI || {};
           return `<div class="stat-row"><span>Stockpile</span><span>${stockHtml}</span></div>`;
         })() : ''}
         ${isPlayerCiv && !civ.currentResearch
-          ? '<div class="techtree-prompt">Nothing is being researched. Click any available tech to start.</div>'
+          ? '<div class="techtree-prompt">Nothing is being researched. Click any available advancement to start.</div>'
           : ''}
-        ${rows ? header + rows : '<div class="stat-row"><em>No researchable techs for this race yet.</em></div>'}
+        ${rows ? header + rows : '<div class="stat-row"><em>No researchable advancements for this race yet.</em></div>'}
       </div>`;
   }
 

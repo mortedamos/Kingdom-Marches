@@ -3404,7 +3404,7 @@
     redraw();
   }
 
-  /** Free first-city tech choice: opens right
+  /** Free first-city advancement choice: opens right
    *  after a civ's FIRST city is founded (see openFoundCityDialog above),
    *  offering every Layer-1 tech for its race as a free pick -- see
    *  tech.js's firstCityTechChoices/grantFreeTech. No-ops straight to
@@ -3414,8 +3414,8 @@
     if (choices.length === 0) { if (onDone) onDone(); return; }
     viewState.dialog = {
       kind: "chooseTech",
-      title: "Choose a Free Tech",
-      text: "Founding your first city grants one Tier 1 tech, free.",
+      title: "Choose a Free Advancement",
+      text: "Founding your first city grants one Tier 1 advancement, free.",
       options: choices.map((id) => {
         const tech = window.GameData.getTech(id);
         return { id, label: tech.label, description: tech.description || "" };

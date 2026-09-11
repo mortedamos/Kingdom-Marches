@@ -1595,19 +1595,17 @@ window.GameData.TECHS = {
   },
 
   // --- Layer 4 ---
+  // 2026-09-12, user-directed: absorbed Honor the Dead's entire effect
+  // (death_lore_bonus) directly into this tech, and removed Honor the Dead
+  // as a separate tech -- nothing else prereq'd off it (grep-confirmed), so
+  // no other tech needed retargeting.
   orc_the_old_ways: {
     id: "orc_the_old_ways", label: "The Old Ways", category: "mystic", layer: 1, cost: 50,
     prereqs: [], raceOnly: "orc",
-    description: "+0.5 Lore from Swamp.",
+    description: "+0.5 Lore from Swamp. When an Orc unit dies, gain +30 lore.",
     costBreakdown: { lore: 50 },
-    effects: [{ type: "unlock_tile_bonus", terrain: "swamp", bonus: { lore: 0.5 } }],
-  },
-  orc_honor_the_dead: {
-    id: "orc_honor_the_dead", label: "Honor the Dead", category: "mystic", layer: 1, cost: 55,
-    prereqs: [], raceOnly: "orc",
-    description: "When an Orc unit dies, gain +30 lore.",
-    costBreakdown: { lore: 45, harvest: 10 },
     effects: [
+      { type: "unlock_tile_bonus", terrain: "swamp", bonus: { lore: 0.5 } },
       { type: "death_lore_bonus", value: 30 },
     ],
   },

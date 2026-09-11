@@ -341,7 +341,7 @@ window.UI = window.UI || {};
         <div class="stat-row"><span>Turns Survived</span><span>${dialog.turnsSurvived}</span></div>
         <div class="stat-row"><span>Cities Founded</span><span>${dialog.citiesFounded}</span></div>
         <div class="stat-row"><span>Cities Lost</span><span>${dialog.citiesLost}</span></div>
-        <div class="stat-row"><span>Technologies Researched</span><span>${dialog.techsResearched}</span></div>
+        <div class="stat-row"><span>Advancements Researched</span><span>${dialog.techsResearched}</span></div>
         ${info ? `
         <p>${escapeHtml(info.winnerLabel)} claimed territorial dominance with
         ${info.winnerTiles.toLocaleString()} / ${info.tileTarget.toLocaleString()} tiles

@@ -355,7 +355,7 @@ window.UI = window.UI || {};
     const monsterCivId = window.GameConfig.worldEncounters.monsters.civId;
     const civIds = Object.keys(gameState.civs).filter((civId) => civId !== monsterCivId);
     if (civIds.length === 0) {
-      return `<h2>AI Tech Trees</h2><p><em>No active civs in this game.</em></p>`;
+      return `<h2>AI Advancements</h2><p><em>No active civs in this game.</em></p>`;
     }
     if (!_techTreesState.civId || !gameState.civs[_techTreesState.civId]) {
       _techTreesState.civId = civIds[0];
@@ -381,7 +381,7 @@ window.UI = window.UI || {};
     // "AI intends to research next" hint should always show here rather
     // than being suppressed the way it is on the player's own sidebar
     // overlay. No focus/hover target in this embedding (null, null).
-    return `<h2>AI Tech Trees</h2>${controlsHtml}${window.UI.techtree.render(civ, false, null, null)}`;
+    return `<h2>AI Advancements</h2>${controlsHtml}${window.UI.techtree.render(civ, false, null, null)}`;
   }
 
   function refreshTechTreesView() {

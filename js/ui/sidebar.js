@@ -77,7 +77,7 @@ window.UI = window.UI || {};
     // of a turn. Only shown when there's actually something to jump to.
     let cyclerHtml = "";
     // Research: the only way in used to be a
-    // "View Tech Tree" button buried inside the Kingdom panel, which
+    // "View Advancements" button buried inside the Kingdom panel, which
     // disappears the instant anything else is selected -- e.g. the moment a
     // player clicks their own starting Pioneer, which is the natural first
     // move of the game. That made it look like there was no research UI at
@@ -98,7 +98,7 @@ window.UI = window.UI || {};
       const civ = civs[viewState.humanCivId];
       const allTechsResearched = civ && civ.completedTechs.size >= window.GameData.techsForRace(civ.raceId).length;
       if (civ && !civ.currentResearch && allTechsResearched) {
-        researchHtml = `<div class="all-units-moved">All tech has been researched.</div>`;
+        researchHtml = `<div class="all-units-moved">All advancements have been researched.</div>`;
       } else {
         let researchLabel = "Choose Research";
         if (civ && civ.currentResearch) {
@@ -417,7 +417,7 @@ window.UI = window.UI || {};
         : "";
       return `<h3>Building</h3>
         ${autoHtml}
-        <div class="stat-row"><span>Research Tech</span><span>${escapeHtml(summary)}</span></div>
+        <div class="stat-row"><span>Research Advancement</span><span>${escapeHtml(summary)}</span></div>
         <div class="stat-row"><em>This turn's production went to research</em></div>`;
     }
 
@@ -1069,7 +1069,7 @@ window.UI = window.UI || {};
         ${economyHtml}
         <h3>Research</h3>
         <div class="stat-row">${isOwn ? researchHtml : UNKNOWN}</div>
-        ${/* The "View Tech Tree" button at the end of this block is now
+        ${/* The "View Advancements" button at the end of this block is now
               SPECTATOR-ONLY (2026-09-09, user-asked "do we need both?").
               In a normal game it was a strict duplicate of the footer's
               "Choose Research": this whole block is gated on isOwn, and
@@ -1083,8 +1083,8 @@ window.UI = window.UI || {};
               It has to stay for spectator mode though, where isOwn is
               true for EVERY civ (there's no human civ to compare against)
               and the footer button isn't rendered at all -- there it's the
-              only way into any civ's tech tree, and data-civ-id is doing
-              real work picking which. */ ''}
+              only way into any civ's advancement tree, and data-civ-id is
+              doing real work picking which. */ ''}
         ${isOwn ? `<h3>Cities</h3>
         ${civ.cities.map((c) => {
           // Idle tag: same shared predicate the
@@ -1096,7 +1096,7 @@ window.UI = window.UI || {};
           return `<div class="stat-row">${tileLink(c.x, c.y, c.name, "city")}<span>${idleTag}pop ${c.population.toFixed(0)}</span></div>`;
         }).join("")}
         ${!viewState.humanCivId && civ.id !== window.GameConfig.worldEncounters.monsters.civId
-          ? `<button class="action-btn view-tech-tree-btn" data-civ-id="${escapeHtml(civ.id)}">View Tech Tree</button>` : ''}` : ''}
+          ? `<button class="action-btn view-tech-tree-btn" data-civ-id="${escapeHtml(civ.id)}">View Advancements</button>` : ''}` : ''}
       </div>`;
   }
 

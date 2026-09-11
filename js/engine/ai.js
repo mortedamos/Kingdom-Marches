@@ -13625,7 +13625,7 @@ window.GameEngine = window.GameEngine || {};
         // Anti-Titan learning: the defeated civ just lost a unit TO a Titan
         // (fires regardless of whether it was then raised as a zombie).
         if (unit.typeId === "runeforged_titan") maybeLearnAntiTitanLesson(defenderCiv);
-        // Orc "Honor the Dead": the defeated civ's OWN loss grants them lore,
+        // Orc "The Old Ways": the defeated civ's OWN loss grants them lore,
         // regardless of who defeated them (or what became of the body after).
         if (defenderCiv.deathLoreBonus) {
           defenderCiv.stockpile = defenderCiv.stockpile || { harvest: 0, coin: 0, lore: 0 };
@@ -13652,7 +13652,7 @@ window.GameEngine = window.GameEngine || {};
         // Anti-Titan learning: this civ just lost a unit attacking a Titan
         // and taking its counter -- same lesson, opposite direction.
         if (bestTarget.typeId === "runeforged_titan") maybeLearnAntiTitanLesson(civ);
-        // Orc "Honor the Dead": the attacker's OWN death also grants their civ lore.
+        // Orc "The Old Ways": the attacker's OWN death also grants their civ lore.
         if (civ.deathLoreBonus) {
           civ.stockpile = civ.stockpile || { harvest: 0, coin: 0, lore: 0 };
           civ.stockpile.lore = (civ.stockpile.lore || 0) + civ.deathLoreBonus;

@@ -80,7 +80,7 @@ window.UI = window.UI || {};
     forcedRest: "Shaken by a near-death blow -- forced to Rest for exactly one turn, then clears on its own.",
     defending: "Actively defending this turn -- doubles this unit's Defense against any attack.",
     killMomentum: "Riding the momentum of a recent kill (Orc's Violent Momentum) -- temporary bonuses to First Strike and Double Strike chance.",
-    flying: "Moves over any terrain ignoring movement penalties, though a non-Ranged attacker still has a flat chance to simply miss it. Either a permanent trait of the unit type, or temporarily granted (e.g. the Human Flight tech).",
+    flying: "Moves over any terrain ignoring movement penalties, though a non-Ranged attacker still has a flat chance to simply miss it. Either a permanent trait of the unit type, or temporarily granted (e.g. the Human Flight advancement).",
     crusadeAura: "Within a Paladin's Crusade aura: +2 Attack, +1 Defense, +25% Siege, and a small heal, refreshed every turn the aura still reaches it.",
     heavyMetalAura: "Within a Troubadour's Heavy Metal performance: +2 Defense, +30% Siege, and a small heal, refreshed every turn the aura still reaches it.",
     powerMetalAura: "Within a Troubadour's Power Metal performance: +2 Attack and +5% First Strike, refreshed every turn the aura still reaches it.",
@@ -132,7 +132,7 @@ window.UI = window.UI || {};
   const STAT_DESCRIPTIONS = {
     attack: "This unit's base combat power. Each hit's raw damage starts as this value, randomly varied by roughly ±3-18% (a 3d6 roll used as a percentage, bell-curved around ±10-11%, rolled fresh every hit), THEN reduced by the target's Defense -- see Defense's own entry for the exact mitigation formula. The same Attack value is also what this unit swings back with on a counterattack.",
     defense: "Reduces incoming damage using a self-scaling RATIO, not a flat subtraction:\n\ndamage = round( randomized_attack_roll × Attack / (Attack + Defense) ), floored at a minimum of 1.\n\nEqual Attack and Defense lets roughly half the roll through; doubling Defense relative to Attack cuts it to about a third. Defense can never fully block a hit -- every attack deals at least 1 damage.",
-    maxHp: "How much damage this unit can take before dying. Not set directly on the unit -- always round(Attack + Defense + this unit's own tech-tree depth), so a unit whose kit sits deeper in its race's tech tree is innately tougher, on top of whatever Attack/Defense it has.",
+    maxHp: "How much damage this unit can take before dying. Not set directly on the unit -- always round(Attack + Defense + this unit's own depth among its race's advancements), so a unit whose kit sits deeper in its race's advancements is innately tougher, on top of whatever Attack/Defense it has.",
     movement: "How many tiles this unit can move in a single turn, before terrain movement costs and any movement-affecting conditions (Frozen, Webbed, Hidden's own movement penalty, ...) are applied.",
     visionRadius: "How far (in tiles) this unit can see, feeding the fog of war -- a tile within Vision range of any of a kingdom's units or cities is visible that turn.",
     range: "How far away (in tiles, measured diagonally-inclusive) this unit can attack from. 1 means melee-only (adjacent targets only). A Ranged attack (greater than 1) needs a clear line to its target -- Mountains block it, nothing else does -- gets NO counterattack back (the defender isn't adjacent, so it can't reach the attacker), and gets no Siege bonus against a structure/city unless this unit ALSO has the separate \"even at range\" Siege property (e.g. Catapult, Trebuchet).",
@@ -529,7 +529,7 @@ window.UI = window.UI || {};
     }
     const unlockSection = relParts.length
       ? `<h3>Unlockable Actions &amp; Upgrades</h3>${relParts.join("")}`
-      : `<h3>Unlockable Actions &amp; Upgrades</h3><div class="kb-profile-empty-inline">No techs currently reference this unit.</div>`;
+      : `<h3>Unlockable Actions &amp; Upgrades</h3><div class="kb-profile-empty-inline">No advancements currently reference this unit.</div>`;
 
     return `
       <div class="kb-profile-header">
@@ -821,8 +821,8 @@ window.UI = window.UI || {};
       description: "Devotes this city's production for the turn straight into the stockpile instead of a unit or building: an extra 100% of whatever Harvest/Coin/Lore the city would normally yield this turn, banked immediately on top of its ordinary income. Only offered once the city actually has something to double.",
     },
     {
-      key: "research", label: "Research Tech", icon: "🔬",
-      description: "Spends this city's production turn, PLUS a stockpile cost that scales with population, to cut turns off whatever tech the kingdom is currently researching -- the city's own population sets how many turns it can shave off in one go. Only offered while a tech is actually in progress and the civ can afford the stockpile price.",
+      key: "research", label: "Research Advancement", icon: "🔬",
+      description: "Spends this city's production turn, PLUS a stockpile cost that scales with population, to cut turns off whatever advancement the kingdom is currently researching -- the city's own population sets how many turns it can shave off in one go. Only offered while an advancement is actually in progress and the civ can afford the stockpile price.",
     },
     {
       key: "expediteBuild", label: "Expedite Unit Build", icon: "⏩", restriction: "Requires a Bazaar (Human)",
@@ -834,7 +834,7 @@ window.UI = window.UI || {};
     },
     {
       key: "spreadCulture", label: "Spread Culture", icon: "🎭",
-      description: "A paid, one-turn boost to this city's influence-tile spread rate (+50%), funded entirely from the civ's stockpile rather than the city's own production -- so it stacks freely with a queued build, Gather Resources, or Research Tech the very same turn. Cost scales with the city's population.",
+      description: "A paid, one-turn boost to this city's influence-tile spread rate (+50%), funded entirely from the civ's stockpile rather than the city's own production -- so it stacks freely with a queued build, Gather Resources, or Research Advancement the very same turn. Cost scales with the city's population.",
     },
     {
       key: "throwAParty", label: "Throw a Party", icon: "🎉", restriction: "Requires Throw a Party (Halfellow)",
@@ -858,11 +858,11 @@ window.UI = window.UI || {};
     },
     {
       key: "buildRoad", label: "Build Roads", icon: "🛤️", restriction: "Pioneer only",
-      description: "Lays one road tile, either on the Pioneer's own tile immediately (Build Road Here) or, via Build Road To..., one new segment per turn along the path toward a chosen destination -- a road under construction is never left half-finished with a gap partway through. Speeds movement, and boosts a nearby city's yield for certain kingdoms' techs.",
+      description: "Lays one road tile, either on the Pioneer's own tile immediately (Build Road Here) or, via Build Road To..., one new segment per turn along the path toward a chosen destination -- a road under construction is never left half-finished with a gap partway through. Speeds movement, and boosts a nearby city's yield for certain kingdoms' advancements.",
     },
     {
       key: "foundCity", label: "Found City", icon: "🏳️", restriction: "Pioneer only",
-      description: "Consumes the Pioneer to found a new city on its current tile (Found City), or, from a remote tile's own ring, walks it there first (Found City Here). Only legal on suitable land, far enough from any existing city. The very first city a kingdom founds grants one free Tier 1 tech of the player's choice.",
+      description: "Consumes the Pioneer to found a new city on its current tile (Found City), or, from a remote tile's own ring, walks it there first (Found City Here). Only legal on suitable land, far enough from any existing city. The very first city a kingdom founds grants one free Tier 1 advancement of the player's choice.",
     },
     {
       key: "buildBridge", label: "Build Bridge", icon: "🌉", restriction: "Pioneer only",
@@ -882,7 +882,7 @@ window.UI = window.UI || {};
     },
     {
       key: "restAndDefend", label: "Rest and Defend", icon: "🏕️",
-      description: "A standing order, available to any unit that hasn't yet acted this turn: the unit holds position, healing and gaining doubled Defense against any attack, persisting automatically every turn until cancelled (Cancel Rest and Defend) or superseded by a new order.\n\nWhile standing in one of this kingdom's own cities, it additionally grants that city a defensive bonus package for as long as it stays there:\n- Heals every structure in the city -- every Wall and every ordinary Building alike -- by 1 HP per turn.\n- Raises the city's Wall potshot fire chance from 50% to 75%, and its Wall potshot attack by +2, on top of whatever its tier already grants.\n- The same +25 percentage point / +2 attack boost applies to a Human city's Mage College potshot too (75% to 100% fire chance).\n- Elf's Warden of the Trees, if unlocked: when the resting unit is itself a Scout, Ranger, Blade Dancer, or Druid, the city's Wall potshots use THAT unit's own attack power and on-hit properties (Poison/Frozen chance, Double Strike) instead of the flat tier value.\n- When the resting unit is specifically a military-category unit, the city's influence tiles also fill in faster: this kingdom's own Industriousness trait scaled by 50%, plus a flat +25% on top -- compounding multiplicatively with any tech that already speeds up fill-in.",
+      description: "A standing order, available to any unit that hasn't yet acted this turn: the unit holds position, healing and gaining doubled Defense against any attack, persisting automatically every turn until cancelled (Cancel Rest and Defend) or superseded by a new order.\n\nWhile standing in one of this kingdom's own cities, it additionally grants that city a defensive bonus package for as long as it stays there:\n- Heals every structure in the city -- every Wall and every ordinary Building alike -- by 1 HP per turn.\n- Raises the city's Wall potshot fire chance from 50% to 75%, and its Wall potshot attack by +2, on top of whatever its tier already grants.\n- The same +25 percentage point / +2 attack boost applies to a Human city's Mage College potshot too (75% to 100% fire chance).\n- Elf's Warden of the Trees, if unlocked: when the resting unit is itself a Scout, Ranger, Blade Dancer, or Druid, the city's Wall potshots use THAT unit's own attack power and on-hit properties (Poison/Frozen chance, Double Strike) instead of the flat tier value.\n- When the resting unit is specifically a military-category unit, the city's influence tiles also fill in faster: this kingdom's own Industriousness trait scaled by 50%, plus a flat +25% on top -- compounding multiplicatively with any advancement that already speeds up fill-in.",
     },
     {
       key: "automate", label: "Automate Actions", icon: "🎛️",
@@ -918,7 +918,7 @@ window.UI = window.UI || {};
     },
     {
       key: "enterCave", label: "Enter Cave", icon: "🕳️",
-      description: "Any unit standing on a cave entrance can spend its turn to emerge instantly at that cave's one linked exit elsewhere on the map -- a universal terrain shortcut, available to every kingdom, no tech required.",
+      description: "Any unit standing on a cave entrance can spend its turn to emerge instantly at that cave's one linked exit elsewhere on the map -- a universal terrain shortcut, available to every kingdom, no advancement required.",
     },
     // -- Race-specific special abilities --
     {
@@ -1219,7 +1219,7 @@ window.UI = window.UI || {};
     plains: "Open, easily worked ground and the cheapest land to cross. The most common place to found a city.",
     forest: "Dense woodland: slow to march through, but steady food and material. Elves treat it as home ground.",
     hills: "Rolling high ground -- slow going, but rich in coin, and the terrain Iron and Gold veins are most often cut into.",
-    mountains: "Impassable to ordinary land units and to ships alike. Only flight, or a tech that tunnels through, gets a unit across one; a city can still work an adjacent mountain tile for its coin.",
+    mountains: "Impassable to ordinary land units and to ships alike. Only flight, or an advancement that tunnels through, gets a unit across one; a city can still work an adjacent mountain tile for its coin.",
     desert: "Barren but flat -- as fast to cross as Plains, with almost nothing to harvest. Gold Veins do turn up here.",
     swamp: "Waterlogged, slow, and poor. Orcs are at home here, and it's the one terrain a Marsh Adder or a summoned Wisp can occupy.",
     tundra: "Frozen ground: slow to cross and yields nothing at all on its own. Only a resource sitting on top of it makes a tundra tile worth working.",
@@ -1229,12 +1229,12 @@ window.UI = window.UI || {};
     gold: "A gold vein. Mined exactly like Iron, and the target of the Dwarf's Prospector's Claim.",
     fertile: "Unusually rich soil. A prospecting unit can channel Farm Soil here for a large one-off harvest payout.",
     fish: "A shoal in shallow water. Only a Galley can work it, and only with Fishing researched -- it channels in place, banking its catch when it stops.",
-    chest: "A one-shot find, not a worked tile -- it yields nothing at all while it just sits there. Any unit standing on it can Open Chest, which consumes it and rolls once: most of the time a payout of coin, lore, XP, a slice of the map revealed, or research time cut off the current tech -- but it can also be trapped.",
+    chest: "A one-shot find, not a worked tile -- it yields nothing at all while it just sits there. Any unit standing on it can Open Chest, which consumes it and rolls once: most of the time a payout of coin, lore, XP, a slice of the map revealed, or research time cut off the current advancement -- but it can also be trapped.",
 
     ruin: "The remains of something older. Any unit can channel Delving here (granted free to every kingdom at the start of the game), which pays out coin and lore when the channel ends. While delving, each turn also carries a small independent chance of waking a monster or turning up buried treasure -- each can happen only once per ruin, ever. An exhausted ruin reappears somewhere else after a few turns.",
     cave: "Always found in linked pairs. A unit that spends a full turn to Enter Cave is moved to its partner cave wherever that is on the map -- a shortcut, not a yield. Caves produce nothing.",
     river: "Flows along tile EDGES rather than filling a tile, so a river always sits on top of some other terrain and adds its bonus to whatever that terrain already yields. Standing on a river tile also puts out Burning.",
-    road: "Built by a Pioneer. Leaving a road tile costs only 0.5 movement points, whatever terrain lies beneath it, and a unit that BEGINS its turn already standing on a road gets +1 movement point on top of that. The two combine, so a connected road chain lets a unit travel much farther in a single turn than the terrain alone would allow. Some kingdoms' techs also make roads yield.",
+    road: "Built by a Pioneer. Leaving a road tile costs only 0.5 movement points, whatever terrain lies beneath it, and a unit that BEGINS its turn already standing on a road gets +1 movement point on top of that. The two combine, so a connected road chain lets a unit travel much farther in a single turn than the terrain alone would allow. Some kingdoms' advancements also make roads yield.",
     bridge: "A Pioneer-built span across shallow water. It makes an otherwise impassable Coast tile walkable for land units, and matches a road for movement exactly: 0.5 movement points to leave, plus +1 movement point for a unit that begins its turn there. Ships still sail underneath it unaffected. Bridges can't be built over deep Ocean.",
   };
 
@@ -1364,7 +1364,7 @@ window.UI = window.UI || {};
       key: "road", label: "Road", kind: "Built Improvement",
       spriteKey: "road/hub", baseTerrain: "plains",
       rows: [
-        ["Tile Bonus", "None by default — some kingdoms' techs add one"],
+        ["Tile Bonus", "None by default — some kingdoms' advancements add one"],
         ["Land Movement", `${window.GameEngine.ai.ROAD_MOVE_COST} to leave a road tile, whatever terrain is underneath`],
         ["Starting Here", "+1 Movement for the turn"],
         ["Built By", "Pioneer"],
