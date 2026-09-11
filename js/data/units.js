@@ -201,7 +201,7 @@ window.GameData.UNITS = {
   },
   scout: {
     id: "scout", label: "Tracker", symbol: "⊙", category: "civilian",
-    attack: 1, defense: 1, movement: 2, visionRadius: 3, range: 2,
+    attack: 1, defense: 1, movement: 2, visionRadius: 3, range: 2, biggerPct: .1,
     canExplore: true, canProspect: true, canBuildRoad: true, attackChars: ["➵", "➳"],
   },
   galley: {
