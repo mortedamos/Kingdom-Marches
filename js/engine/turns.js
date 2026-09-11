@@ -1591,14 +1591,17 @@ window.GameEngine = window.GameEngine || {};
     // that same radius has a MUSHROOM_POISON_CHANCE chance, rolled fresh
     // every turn, to be Poisoned (see ai.js's applyPoisoned) -- re-rolled
     // every turn it lingers, so staying put isn't safe just because an
-    // earlier roll missed. Per-civ singleton (at most one Mushroom per civ,
-    // see ai.js's startMycomancerCreateMushroom), so no dedup Set is
-    // needed for the ally side, same reasoning as Great Bonfire's own.
+    // earlier roll missed. Civ-wide pooled cap (up to one Mushroom per
+    // living Mycomancer, see ai.js's mushroomCapReached/
+    // startMycomancerCreateMushroom) rather than a per-civ singleton, so
+    // this runs once PER Mushroom rather than assuming there's at most one
+    // -- an ally or enemy caught in more than one Mushroom's radius at once
+    // gets each one's own independent heal/poison roll, same as standing in
+    // range of two of anything else in this game would.
     if (civ.unlockedMechanics && civ.unlockedMechanics.has("fairy_ring")) {
       const MUSHROOM_AURA_RADIUS = 1;
       const MUSHROOM_POISON_CHANCE = 0.5;
-      const mushroom = civ.units.find((u) => u.typeId === "mushroom");
-      if (mushroom) {
+      for (const mushroom of civ.units.filter((u) => u.typeId === "mushroom")) {
         for (const ally of civ.units) {
           if (window.GameEngine.influence.chebyshev(mushroom.x, mushroom.y, ally.x, ally.y) > MUSHROOM_AURA_RADIUS) continue;
           const mushroomBefore = ally.hp;

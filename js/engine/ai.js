@@ -8580,22 +8580,32 @@ window.GameEngine = window.GameEngine || {};
   // block (which, unlike Bonfire's ally-only aura, also threatens enemies).
   const MUSHROOM_DURATION = 4;
 
-  /** Removes this civ's own existing Mushroom from civ.units, if it has one
-   *  -- per-civ singleton, same shape as dismissExistingGreatBonfire.
-   *  `exceptUnit` (optional) is spared even if it's a Mushroom -- protects a
-   *  just-spawned replacement from its own dismissal pass. */
-  function dismissExistingMushroom(civ, exceptUnit = null) {
-    civ.units = civ.units.filter((u) => u.typeId !== "mushroom" || u === exceptUnit);
+  /** Mushroom civ-wide cap (2026-09-12, user-directed: "like halfellow
+   *  traps, there should be a limit of one mushroom per mycomancer") --
+   *  same pooled, self-cleaning shape as trapCapReached: a dead Mycomancer
+   *  or an expired Mushroom simply shrinks/frees the cap next time this is
+   *  checked, and the cap isn't tied to which specific Mycomancer placed
+   *  which Mushroom, same as a trap isn't tied to which Trouble Maker set
+   *  it. Replaces the old per-civ-singleton behavior (creating a new
+   *  Mushroom used to unconditionally dismiss any existing one). */
+  function mushroomCapReached(civ) {
+    const mycomancers = civ.units.filter((u) => u.typeId === "mycomancer").length;
+    const mushrooms = civ.units.filter((u) => u.typeId === "mushroom").length;
+    return mushrooms >= mycomancers;
   }
 
-  /** A Mycomancer creates a Mushroom on an open adjacent tile IMMEDIATELY
-   *  -- same free, instant, per-civ-singleton shape as
-   *  startWandererBonfireSummon (see that function's doc comment for the
-   *  full reasoning, all of which applies here unchanged). Stamps
+  /** A Mycomancer creates a Mushroom on an open adjacent tile IMMEDIATELY --
+   *  same free, instant shape as startWandererBonfireSummon (see that
+   *  function's doc comment for the full reasoning, all of which applies
+   *  here unchanged), but pooled-capped at one Mushroom per living
+   *  Mycomancer (mushroomCapReached) rather than a per-civ singleton --
+   *  a new Mushroom no longer dismisses any existing one, it just adds to
+   *  the pool as long as there's room under the cap. Stamps
    *  `mushroomExpiresAtTurn` -- see turns.js's beginCivTurn, which removes
    *  the Mushroom once that turn is reached. `confirmed`/`targetXY` mirror
    *  the same pendingIntent-staging and player-tile-pick conventions. */
   function startMycomancerCreateMushroom(civ, mycomancer, gameState, log, confirmed = false, targetXY = null) {
+    if (mushroomCapReached(civ)) return false;
     if (mycomancer.automated && !confirmed) {
       mycomancer.pendingIntent = { kind: "createMushroom", label: "Create Mushroom" };
       mycomancer.usedThisTurn = true;
@@ -8612,7 +8622,6 @@ window.GameEngine = window.GameEngine || {};
       spawned = spawnUnitAdjacentToUnit(civ, mycomancer, "mushroom", gameState);
     }
     if (!spawned) return false; // no open adjacent tile -- nothing spent, turn not consumed
-    dismissExistingMushroom(civ, spawned);
     spawned.mushroomExpiresAtTurn = (gameState.turnNumber || 0) + MUSHROOM_DURATION;
     mycomancer.usedThisTurn = true;
     mycomancer.currentMission = `Created a Mushroom at (${spawned.x},${spawned.y})`;
@@ -13096,22 +13105,25 @@ window.GameEngine = window.GameEngine || {};
   /**
    * Halfellow "Fairy Ring" (Mycomancer only): situational, not automatic
    * -- same "only bother when there's an actual reason to" shape as
-   * maybeCreateGreatBonfirePlay just above. Skips entirely if this civ's
-   * existing Mushroom (if any) already reaches this Mycomancer's own
-   * position. Otherwise fires when EITHER an enemy unit, OR a hurt (<70%
-   * HP) allied military unit, is within MUSHROOM_TRIGGER_RADIUS. Checked in
-   * runUnitTurn near Banish the Darkness's own call site -- backing up a
-   * fight or a hurting ally outranks a pure economy action for this race in
-   * general, not just for the Wanderer's tools.
+   * maybeCreateGreatBonfirePlay just above. Skips entirely if the civ-wide
+   * cap (mushroomCapReached, one per living Mycomancer) is already full, or
+   * if ANY of this civ's existing Mushrooms already reaches this
+   * Mycomancer's own position -- multiple can coexist now, so this checks
+   * every one, not just the first found. Otherwise fires when EITHER an
+   * enemy unit, OR a hurt (<70% HP) allied military unit, is within
+   * MUSHROOM_TRIGGER_RADIUS. Checked in runUnitTurn near Banish the
+   * Darkness's own call site -- backing up a fight or a hurting ally
+   * outranks a pure economy action for this race in general, not just for
+   * the Wanderer's tools.
    */
   function maybeCreateMushroomPlay(civ, unit, gameState, log) {
     if (civ.raceId !== "halfellow" || !civ.unlockedMechanics || !civ.unlockedMechanics.has("fairy_ring")) return false;
     if (unit.typeId !== "mycomancer" || unit.usedThisTurn) return false;
+    if (mushroomCapReached(civ)) return false;
 
-    const existing = civ.units.find((u) => u.typeId === "mushroom");
-    if (existing && window.GameEngine.influence.chebyshev(existing.x, existing.y, unit.x, unit.y) <= MUSHROOM_AURA_RADIUS) {
-      return false;
-    }
+    const alreadyCovered = civ.units.some((u) => u.typeId === "mushroom"
+      && window.GameEngine.influence.chebyshev(u.x, u.y, unit.x, unit.y) <= MUSHROOM_AURA_RADIUS);
+    if (alreadyCovered) return false;
 
     const { civs } = gameState;
     let reason = false;
@@ -15016,6 +15028,7 @@ window.GameEngine = window.GameEngine || {};
     isValidTrapPlacementTile,
     performPlayerTrapSet,
     trapCapReached,
+    mushroomCapReached,
     performPlayerWandererBonfireSummon,
     isValidGreatBonfirePlacementTile,
     performPlayerMycomancerCreateMushroom,

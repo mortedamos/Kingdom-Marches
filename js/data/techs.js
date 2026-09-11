@@ -1940,7 +1940,7 @@ window.GameData.TECHS = {
   halfellow_fairy_ring: {
     id: "halfellow_fairy_ring", label: "Fairy Ring", category: "mystic", layer: 2, cost: 42,
     prereqs: ["halfellow_mycomancer"], raceOnly: "halfellow",
-    description: "The Mycomancer gains a full-turn action, Create Mushroom: summons a Mushroom onto an open adjacent tile (replacing this kingdom's own Mushroom if it already has one). For 4 turns, every allied unit within 1 tile heals 5% of its max HP per turn (minimum 1) and gains Toadstool Tranquility. Any enemy unit within that same 1 tile has a 50% chance each turn to become Poisoned.",
+    description: "The Mycomancer gains a full-turn action, Create Mushroom: summons a Mushroom onto an open adjacent tile (at most one Mushroom per living Mycomancer at a time). For 4 turns, every allied unit within 1 tile heals 5% of its max HP per turn (minimum 1) and gains Toadstool Tranquility. Any enemy unit within that same 1 tile has a 50% chance each turn to become Poisoned.",
     costBreakdown: { lore: 24, coin: 12, harvest: 6 },
     effects: [
       { type: "unlock_unit", unit: "mushroom" },

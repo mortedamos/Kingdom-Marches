@@ -119,8 +119,14 @@
     /** null = follow the real turn. A number 0-11 pins the sky to that slot
      *  so all twelve can be inspected without ending twelve turns. */
     scrubSlot: null,
-    darknessMul: 1.0,
-    glowMul: 1.0,
+    // 2026-09-12, user-directed: half darkness, double glow, as the new
+    // out-of-the-box feel -- see index.html's matching slider `value`s,
+    // which is what actually wins once wireDaynightTuning's apply() runs
+    // (it overwrites these on setup from the HTML's own current value).
+    // Kept in sync here too so anything reading getTuning() before that
+    // wiring runs sees the same numbers.
+    darknessMul: 0.5,
+    glowMul: 2.0,
     radiusMul: 1.0,
     /** Tints the world with "multiply" instead of "source-over". Multiply is
      *  more physically honest (it preserves bright highlights and deepens

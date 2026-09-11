@@ -7328,6 +7328,26 @@
     if (animFrameId !== null) return; // already running
     function frame() {
       if (gameState && viewState) {
+        // Ambient music ducking (2026-09-12, user-directed): rain and night
+        // each pull music down so their own mood/sfx can come through --
+        // combined multiplicatively, same "each factor scales what's already
+        // there" convention modifiers elsewhere in this codebase stack with.
+        // Rain rides the weather module's own real-time-eased 0-1 intensity
+        // (window.UI.weather.current().rain) rather than a flat on/off, so
+        // ducking fades in and out exactly in step with the rain sfx/visual
+        // already doing that; night is a flat cut keyed to the discrete
+        // "night" phase (not scaled by darkness) since that's what was asked
+        // for. Runs outside the 2D/3D split below so night ducking still
+        // applies in 3D (rain ducking is keyed to weather.tick(), which --
+        // like the rest of weather -- is 2D-only and simply holds its last
+        // value while in 3D, same pre-existing scope every other weather
+        // effect has).
+        const weatherCfg = window.GameConfig.view.weather;
+        const rainDuck = (weatherCfg.audio.musicDuckPct || 0) * window.UI.weather.current().rain;
+        const isNight = window.GameEngine.turns.phaseForTurn(gameState.turnNumber || 0).phase === "night";
+        const nightDuck = isNight ? (window.GameConfig.view.dayNight.nightMusicDuckPct || 0) : 0;
+        window.MusicSystem.setAmbientDuck((1 - rainDuck) * (1 - nightDuck));
+
         if (viewState.is3D) {
           window.UI.render3d.render($("map-canvas-3d"), gameState, viewState);
         } else {

@@ -1359,9 +1359,11 @@ window.GameEngine = window.GameEngine || {};
 
       // Halfellow "Fairy Ring": same tile-placement shape as Create The
       // Great Bonfire just above, for the Mycomancer instead of the
-      // Wanderer (see main.js's startMushroomPlacement).
+      // Wanderer (see main.js's startMushroomPlacement). Gated on
+      // mushroomCapReached same as Set Trap just above -- one Mushroom per
+      // living Mycomancer, civ-wide pool (see ai.js's mushroomCapReached).
       if (unit.typeId === "mycomancer" && !unit.usedThisTurn
-          && civ.unlockedMechanics?.has("fairy_ring")) {
+          && civ.unlockedMechanics?.has("fairy_ring") && !window.GameEngine.ai.mushroomCapReached(civ)) {
         options.push({ kind: "createMushroom", label: "Create Mushroom" });
       }
 

@@ -71,6 +71,15 @@ window.MusicSystem = (function () {
   // alongside SfxSystem.setVisibilityCheck, same callback.
   let visibilityCheck = null;
   let duckTimeoutId = null;
+  // Continuous ambient ducking (2026-09-12, user-directed: rain/night should
+  // pull music down so their own sfx/mood can come through) -- distinct from
+  // duckMusic below, which fully pauses-then-resumes for one specific cue.
+  // This instead multiplies straight into effectiveVolume() every frame (see
+  // main.js's animation loop), so it rides smoothly with whatever real-time
+  // rain intensity/night phase is currently true, no pause or fade of its
+  // own needed. Callers combine every active ducking reason into one factor
+  // before calling setAmbientDuck -- see that function's own doc comment.
+  let ambientDuckFactor = 1.0;
   // Set once the human player loses -- see notifyGameOver. Same
   // one-way-until-a-fresh-game shape and reset point (setRace) as
   // victoryRace above; takes priority over it in resolveCurrent since a loss
@@ -102,7 +111,7 @@ window.MusicSystem = (function () {
    *  underlying master/music volume levels (which are preserved, not reset,
    *  so un-muting restores exactly where the sliders were left). */
   function effectiveVolume() {
-    return (muted || focusSuspended) ? 0 : masterVolume * musicVolume;
+    return (muted || focusSuspended) ? 0 : masterVolume * musicVolume * ambientDuckFactor;
   }
 
   function trackPath(race, situation, variant) {
@@ -658,6 +667,19 @@ window.MusicSystem = (function () {
   }
 
   /**
+   * Public: sets the current ambient ducking factor (0-1, multiplicative --
+   * see ambientDuckFactor's own doc comment for how this differs from
+   * duckMusic above). Callers are expected to have already combined every
+   * ducking reason that currently applies into one number, e.g. main.js's
+   * per-frame tick multiplying a rain factor and a night factor together,
+   * rather than calling this once per reason. Reapplies immediately to
+   * whatever's currently playing, same as setMusicVolume. */
+  function setAmbientDuck(factor) {
+    ambientDuckFactor = Math.max(0, Math.min(1, factor));
+    if (currentAudio) currentAudio.volume = effectiveVolume();
+  }
+
+  /**
    * Public: pin playback to one specific track (by its "race_situation_n" or
    * "neutral_n" key, as returned by getAvailableTracks), looping it directly
    * and ignoring the automatic race/situation resolution until cleared.
@@ -721,6 +743,7 @@ window.MusicSystem = (function () {
     isFocusSuspended,
     setVisibilityCheck,
     duckMusic,
+    setAmbientDuck,
     setManualTrack,
     getManualTrack,
     getAvailableTracks,

@@ -65,9 +65,9 @@ window.GameConfig = {
     /** Local date this build was cut, YYYY-MM-DD. */
     date: "2026-09-11",
     /** Local time this build was cut, 24-hour HH:MM. */
-    time: "13:32",
+    time: "14:23",
     /** Monotonic build counter -- increment it, don't recompute it. */
-    number: 282,
+    number: 283,
   },
 
   // =========================================================================
@@ -1413,6 +1413,13 @@ window.GameConfig = {
         thunderVolume: 0.7,
         /** Crossfade when rain starts, stops, or escalates into a storm. */
         fadeMs: 2500,
+        /** How much rain ducks MUSIC (not this rain audio itself), 0-1, so
+         *  the rain/storm loop above stays audible over it -- see main.js's
+         *  animation loop, which multiplies this by the live 0-1 rain
+         *  intensity (window.UI.weather.current().rain, already eased
+         *  in real time) before calling MusicSystem.setAmbientDuck. Full
+         *  strength (1.0 intensity) means music drops to 80% volume. */
+        musicDuckPct: 0.20,
       },
     },
 
@@ -1421,6 +1428,16 @@ window.GameConfig = {
        *  choice is persisted separately (roi_daynight_settings) and wins;
        *  this is only what a first-time player gets. */
       enabledByDefault: true,
+
+      /** How much the Night phase specifically ducks music, 0-1 -- flat, not
+       *  scaled by darkness/phaseTurn, since this is tied to the discrete
+       *  "night" phase named in turns.js's phaseForTurn, the same phase
+       *  convention the racial vision penalty uses (see races.js's
+       *  visionPenaltySlots), not a continuous darkness value. See main.js's
+       *  animation loop, which combines this with weather's own
+       *  musicDuckPct (config's view.weather.audio) before calling
+       *  MusicSystem.setAmbientDuck. 0.10 means music drops to 90% volume. */
+      nightMusicDuckPct: 0.10,
 
       /** Phase table, in cycle order. Lengths must sum to 12 -- daynight.js
        *  asserts this at load rather than silently producing a lopsided
