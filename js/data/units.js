@@ -298,8 +298,11 @@ window.GameData.UNITS = {
     id: "druid", label: "Druid", symbol: "✦", category: "military", raceOnly: "elf",
     attack: 3, defense: 2, movement: 2, visionRadius: 3, range: 2, siegePct: 0.10, poisonChancePct: 0.10,
     // canProspect: orders.js's contextMenuOptions/turns.js's Hunt Game/Farm
-    // Soil channels gate purely on this flag, no race/unit-type
-    // restriction.
+    // Soil/Fishing channels gate on this flag, no race/unit-type
+    // restriction of their own -- though Halfellow's Forrager tech grants
+    // every unit of that race an OR-bypass around it (same shape as
+    // Dwarf's own Dwarven Mining bypass for Mine Vein), so this flag being
+    // false doesn't mean a Halfellow unit can't gather.
     canProspect: true,
     coinCost: 30, attackChars: ["🍃", "✨", "🌙"],
   },

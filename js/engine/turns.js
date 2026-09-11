@@ -1268,7 +1268,14 @@ window.GameEngine = window.GameEngine || {};
     // never there -- channeling got cleared elsewhere) or the shoal
     // exhausts (same RESOURCE_EXHAUSTION_CHANCE used above).
     for (const unit of civ.units) {
-      if (unit.typeId !== "galley" || unit.channeling !== "fishing") continue;
+      // Halfellow Forrager OR-bypass (2026-09-12, user-directed), same
+      // shape as Dwarven Mining's own OR-bypass below: lets ANY Halfellow
+      // unit fish, not just Galleys -- must mirror orders.js's ring-menu
+      // gate exactly, or a unit the menu let start this channel would just
+      // have it silently cancelled the next time this block runs.
+      const canFish = unit.typeId === "galley"
+        || (civ.raceId === "halfellow" && civ.unlockedMechanics && civ.unlockedMechanics.has("forrager"));
+      if (!canFish || unit.channeling !== "fishing") continue;
       const tile = map.tiles[unit.y * map.width + unit.x];
       const hasTech = civ.unlockedMechanics && civ.unlockedMechanics.has("fishing");
       if (!tile || tile.resource !== "fish" || !hasTech) {
@@ -1309,9 +1316,14 @@ window.GameEngine = window.GameEngine || {};
     // tile, the tech is no longer unlocked (defense in depth, same check
     // the sidebar button is already gated on), or the resource exhausts
     // (same RESOURCE_EXHAUSTION_CHANCE used above). Internally keyed
-    // "hunting"/"farming" -- see sidebar.js's CHANNEL_LABELS.
+    // "hunting"/"farming" -- see sidebar.js's CHANNEL_LABELS. Halfellow
+    // Forrager OR-bypass (2026-09-12, user-directed) mirrors Dwarven
+    // Mining's own below: lets ANY Halfellow unit hunt, not just
+    // canProspect ones.
     for (const unit of civ.units) {
-      if (!window.GameData.getUnit(unit.typeId).canProspect || unit.channeling !== "hunting") continue;
+      const canHunt = window.GameData.getUnit(unit.typeId).canProspect
+        || (civ.raceId === "halfellow" && civ.unlockedMechanics && civ.unlockedMechanics.has("forrager"));
+      if (!canHunt || unit.channeling !== "hunting") continue;
       const tile = map.tiles[unit.y * map.width + unit.x];
       const hasTech = civ.unlockedMechanics && civ.unlockedMechanics.has("hunt_game");
       if (!tile || tile.resource !== "game" || !hasTech) {
@@ -1332,7 +1344,10 @@ window.GameEngine = window.GameEngine || {};
       }
     }
     for (const unit of civ.units) {
-      if (!window.GameData.getUnit(unit.typeId).canProspect || unit.channeling !== "farming") continue;
+      // Halfellow Forrager OR-bypass -- see the matching hunting block above.
+      const canFarm = window.GameData.getUnit(unit.typeId).canProspect
+        || (civ.raceId === "halfellow" && civ.unlockedMechanics && civ.unlockedMechanics.has("forrager"));
+      if (!canFarm || unit.channeling !== "farming") continue;
       const tile = map.tiles[unit.y * map.width + unit.x];
       const hasTech = civ.unlockedMechanics && civ.unlockedMechanics.has("farm_soil");
       if (!tile || tile.resource !== "fertile" || !hasTech) {

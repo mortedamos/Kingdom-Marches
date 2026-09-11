@@ -1857,10 +1857,19 @@ window.GameData.TECHS = {
   // instead of resting. Applies to any Halfellow civ's unit on one of those
   // three channels -- Fishing is Galley-only and universal-race, so this
   // checks the CIV's race, not the unit's type.
+  // Extended (2026-09-12, user-directed): the same "checks the CIV's race,
+  // not the unit's type" mechanic id now ALSO grants every Halfellow unit
+  // an OR-bypass around Hunt Game/Farm Soil's canProspect gate and
+  // Fishing's Galley-only gate, same shape as Dwarf's own Dwarven Mining
+  // bypass for Mine Vein -- see orders.js's contextMenuOptions and
+  // turns.js's Hunt Game/Farm Soil/Fishing channel blocks, all three of
+  // which now OR in `civ.raceId === "halfellow" &&
+  // civ.unlockedMechanics.has("forrager")` alongside their original
+  // per-unit-type check.
   halfellow_forrager: {
     id: "halfellow_forrager", label: "Forrager", category: "civic", layer: 2, cost: 24,
     prereqs: [], raceOnly: "halfellow",
-    description: "Units gathering resources (Farm Soil, Hunt Game, or Fishing) live off the land: heal 2 HP per turn.",
+    description: "Units gathering resources (Farm Soil, Hunt Game, or Fishing) live off the land: heal 2 HP per turn. In addition, any Halfellow unit may Farm Soil, Hunt Game, or go Fishing, not just Pioneers, Scouts, and Galleys.",
     costBreakdown: { harvest: 14, coin: 10 },
     effects: [{ type: "unlock_mechanic", mechanic: "forrager" }],
   },

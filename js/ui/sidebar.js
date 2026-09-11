@@ -751,6 +751,20 @@ window.UI = window.UI || {};
     // "Forced Visible", which was the only non-button content this block
     // ever had.)
 
+    // Self-expiring objects (Mushroom -- see units.js's mushroomExpiresAtTurn,
+    // stamped by ai.js's startMycomancerCreateMushroom, cleared by turns.js's
+    // beginCivTurn): the one thing about it the ring can't tell you, same
+    // "answers what the buttons can't" reasoning as channelActions' turn
+    // counter above. Not gated on isHumanUnit -- a Mushroom sitting on the
+    // map is already fully visible to anyone who can see the tile at all,
+    // same as its HP or symbol, so there's no hidden-information reason to
+    // hide this from a spectator or an opposing player either.
+    let expiryStatus = "";
+    if (unit.mushroomExpiresAtTurn != null && gameState) {
+      const turnsLeft = Math.max(0, unit.mushroomExpiresAtTurn - (gameState.turnNumber || 0));
+      expiryStatus = `<h3>Status</h3><div class="stat-row"><span>Turns Left</span><span>${turnsLeft}</span></div>`;
+    }
+
     const carriedByTag = unit.carriedBy
       ? `<div class="stat-row"><span>Status</span><span>Aboard ${escapeHtml(window.GameData.getUnit(unit.carriedBy.typeId).label)}</span></div>`
       : '';
@@ -963,6 +977,7 @@ window.UI = window.UI || {};
         ${turnStatus}
         ${pioneerActions}
         ${channelActions}
+        ${expiryStatus}
       </div>`;
   }
 

@@ -958,12 +958,26 @@ window.UI = window.UI || {};
     // the type pill (see drawSelectionLabel), or a city's own proper name,
     // which has no separate "type" line to sit above -- a city IS its name,
     // so `text` stays null and only the name pill renders.
+    //
+    // The first-word trim only makes sense for that "First Epithet" shape
+    // (e.g. "Aldric the Bold" -> "Aldric") -- a `nameSpecial: true` unit
+    // (units.js) skips the person-name system entirely and gets a single
+    // indivisible proper noun instead (unit-names.js's
+    // UNIT_TYPE_PROPER_NAMES, several of which are multi-word: "The Fairy
+    // Ring", "Old Spore", "The Ring-Keeper"), so trimming those the same
+    // way left a Mushroom's label reading "The" or "Old" instead of its
+    // whole name (2026-09-12, user-reported). Shown in full for those types
+    // instead, same "has more room" reasoning sidebar.js's own untrimmed
+    // display already leans on.
     let selectionLabel = null;
     if (selectedUnit) {
+      const selectedBaseUnit = window.GameData.getUnit(selectedUnit.typeId);
       selectionLabel = {
         x: selectedUnit.x, y: selectedUnit.y,
-        text: window.GameData.getUnit(selectedUnit.typeId).label,
-        name: selectedUnit.name ? selectedUnit.name.split(" ")[0] : null,
+        text: selectedBaseUnit.label,
+        name: selectedUnit.name
+          ? (selectedBaseUnit.nameSpecial ? selectedUnit.name : selectedUnit.name.split(" ")[0])
+          : null,
       };
     } else if (selectedCity) {
       selectionLabel = { x: selectedCity.x, y: selectedCity.y, text: null, name: selectedCity.name };

@@ -1120,12 +1120,17 @@ window.GameEngine = window.GameEngine || {};
           // Granted free to every race via the Level 0 "ruin_delving" tech;
           // any unit can Delve, not just Wizards.
           options.push({ kind: "startChannel:delving", label: "Start Delving" });
-        } else if (unit.typeId === "galley" && !unit.carries && tile.resource === "fish"
-            && civ.unlockedMechanics && civ.unlockedMechanics.has("fishing")) {
+        } else if (!unit.carries && tile.resource === "fish"
+            && civ.unlockedMechanics && civ.unlockedMechanics.has("fishing")
+            // Halfellow Forrager OR-bypass, same shape as Dwarven Mining's
+            // below: lets ANY Halfellow unit fish, not just Galleys.
+            && (unit.typeId === "galley" || (civ.raceId === "halfellow" && civ.unlockedMechanics.has("forrager")))) {
           options.push({ kind: "startChannel:fishing", label: "Start Fishing" });
-        } else if (baseUnit.canProspect && onGame && civ.unlockedMechanics && civ.unlockedMechanics.has("hunt_game")) {
+        } else if (onGame && civ.unlockedMechanics && civ.unlockedMechanics.has("hunt_game")
+            && (baseUnit.canProspect || (civ.raceId === "halfellow" && civ.unlockedMechanics.has("forrager")))) {
           options.push({ kind: "startChannel:hunting", label: "Hunt Game" });
-        } else if (baseUnit.canProspect && onFertile && civ.unlockedMechanics && civ.unlockedMechanics.has("farm_soil")) {
+        } else if (onFertile && civ.unlockedMechanics && civ.unlockedMechanics.has("farm_soil")
+            && (baseUnit.canProspect || (civ.raceId === "halfellow" && civ.unlockedMechanics.has("forrager")))) {
           options.push({ kind: "startChannel:farming", label: "Farm Soil" });
         } else if (onVein
             && ((baseUnit.canProspect && civ.unlockedMechanics && civ.unlockedMechanics.has("mining"))

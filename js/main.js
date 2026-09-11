@@ -4494,7 +4494,10 @@
    * attacked," which is exactly what the player needs to hear about,
    * without this file needing to know anything about siege/splash/counter-
    * attack/spikes/wall-defense/etc mechanics or keep that list in sync as
-   * new ones are added.
+   * new ones are added. One deliberate exception: a Mushroom/Great Bonfire
+   * that simply timed out (see isExpectedExpiry below) is excluded, since a
+   * temporary object's own clock running out is expected and not remotely
+   * an attack -- everything else about "don't care why" still holds.
    */
   function snapshotHumanDefense() {
     if (!humanCivId) return null;
@@ -4506,6 +4509,21 @@
     };
   }
 
+  /** True for a self-expiring object (Mushroom/Great Bonfire) whose own
+   *  natural timeout had already been reached by `turnNumber` -- see
+   *  turns.js's beginCivTurn, which removes both from civ.units the exact
+   *  same way a real kill does (mushroomExpiresAtTurn/bonfireExpiresAtTurn).
+   *  detectHumanAttack below uses this to tell "it simply timed out" apart
+   *  from "it was destroyed": the snapshotted unit object (`snap.ref`)
+   *  still exists in memory even after being spliced out of civ.units, so
+   *  its own expiry field is still readable here. A unit ATTACKED and
+   *  killed before its timer ran out fails this check (turnNumber is still
+   *  under its expiry), so that case still correctly reports as an attack. */
+  function isExpectedExpiry(unit, turnNumber) {
+    return (unit.mushroomExpiresAtTurn != null && turnNumber >= unit.mushroomExpiresAtTurn)
+      || (unit.bonfireExpiresAtTurn != null && turnNumber >= unit.bonfireExpiresAtTurn);
+  }
+
   /** Compares `before` (see snapshotHumanDefense) against the CURRENT state.
    *  Returns the first unit or city that lost hp or was destroyed since the
    *  snapshot was taken, as { x, y, label }, or null if nothing changed. */
@@ -4515,6 +4533,7 @@
     if (!civ) return null;
     for (const snap of before.units) {
       const stillAlive = civ.units.includes(snap.ref);
+      if (!stillAlive && isExpectedExpiry(snap.ref, gameState.turnNumber || 0)) continue;
       if (!stillAlive || snap.ref.hp < snap.hp) {
         const baseUnit = window.GameData.getUnit(snap.typeId);
         return { x: snap.x, y: snap.y, label: snap.name || baseUnit.label };
