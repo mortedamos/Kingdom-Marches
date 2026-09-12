@@ -65,9 +65,9 @@ window.GameConfig = {
     /** Local date this build was cut, YYYY-MM-DD. */
     date: "2026-09-11",
     /** Local time this build was cut, 24-hour HH:MM. */
-    time: "20:26",
+    time: "21:03",
     /** Monotonic build counter -- increment it, don't recompute it. */
-    number: 290,
+    number: 291,
   },
 
   // =========================================================================
@@ -1497,6 +1497,14 @@ window.GameConfig = {
        * below roughly luma 45 means every slot darkens no matter what it's
        * drawn over, while the hue still does the work of saying which time of
        * day it is. Check that with the luma probe if you retune these.
+       *
+       * NIGHT (slots 6-9) leaned toward grey (2026-09-12, user-reported:
+       * "night is still too blue"). Both `tint` and `cool` were blended 55%
+       * toward their own luma-equivalent grey (rgb -> (luma,luma,luma) at
+       * that ratio), preserving each slot's luma EXACTLY so the darkening
+       * feel is untouched -- only saturation dropped, not brightness. Only
+       * Night's own four slots moved; Twilight/Dawn keep their existing
+       * amber/violet/indigo hues, which weren't the ones reported as off.
        */
       slots: [
         { tint: "#000000", alpha: 0.00, cool: "#1a3a8a", colorize: 0.00, unitLights: false }, //  0  Day 1
@@ -1505,10 +1513,10 @@ window.GameConfig = {
         { tint: "#000000", alpha: 0.00, cool: "#1a3a8a", colorize: 0.00, unitLights: false }, //  3  Day 4
         { tint: "#3a2410", alpha: 0.15, cool: "#6e5230", colorize: 0.14, unitLights: false }, //  4  Twilight 1 -- first hint of dusk, muted amber-brown (user-reported 2026-09-07: an earlier, more saturated orange here read as "too orange" for just the first turn of dusk)
         { tint: "#2e1430", alpha: 0.22, cool: "#553a72", colorize: 0.34, unitLights: true }, //  5  Twilight 2 -- dusk violet
-        { tint: "#0e1b38", alpha: 0.24, cool: "#1c46c4", colorize: 0.50, unitLights: true }, //  6  Night 1
-        { tint: "#0b1730", alpha: 0.26, cool: "#1a42c0", colorize: 0.54, unitLights: true }, //  7  Night 2
-        { tint: "#0a1530", alpha: 0.28, cool: "#183fbc", colorize: 0.58, unitLights: true }, //  8  Night 3 -- the small hours
-        { tint: "#0d1a36", alpha: 0.25, cool: "#1d47c6", colorize: 0.52, unitLights: true }, //  9  Night 4
+        { tint: "#151b28", alpha: 0.24, cool: "#344780", colorize: 0.50, unitLights: true }, //  6  Night 1
+        { tint: "#111722", alpha: 0.26, cool: "#31437c", colorize: 0.54, unitLights: true }, //  7  Night 2
+        { tint: "#101521", alpha: 0.28, cool: "#2f4079", colorize: 0.58, unitLights: true }, //  8  Night 3 -- the small hours
+        { tint: "#141a26", alpha: 0.25, cool: "#354881", colorize: 0.52, unitLights: true }, //  9  Night 4
         { tint: "#141d3d", alpha: 0.22, cool: "#2a53c8", colorize: 0.42, unitLights: true }, // 10  Dawn 1 -- cold indigo
         { tint: "#2e2618", alpha: 0.14, cool: "#8a7038", colorize: 0.16, unitLights: false }, // 11  Dawn 2 -- first warm light
       ],

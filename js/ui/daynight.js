@@ -124,8 +124,10 @@
     // which is what actually wins once wireDaynightTuning's apply() runs
     // (it overwrites these on setup from the HTML's own current value).
     // Kept in sync here too so anything reading getTuning() before that
-    // wiring runs sees the same numbers.
-    darknessMul: 0.5,
+    // wiring runs sees the same numbers. darknessMul set to .3 later the
+    // same day (user-directed: "set darkness to .3"), superseding the
+    // "half" figure above.
+    darknessMul: 0.3,
     glowMul: 2.0,
     radiusMul: 1.0,
     /** Tints the world with "multiply" instead of "source-over". Multiply is
