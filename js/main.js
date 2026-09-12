@@ -295,16 +295,17 @@
   // extra unclaimed space. Floored well above zero so a civ count far past
   // the UI's actual 2-6 range can't invert the map size.
   const CIV_ABOVE_TWO_SHRINK_RATE = 0.05;
-  // Two separate -10% AREA cuts on top of everything above, applied as
+  // Three separate -10% AREA cuts on top of everything above, applied as
   // sqrt() to the linear dimension scale (same convention as MAP_SIZE_BOOST
   // and CIV_ABOVE_TWO_SHRINK_RATE) -- width/height each shrink by sqrt(0.9)
-  // per constant (~5.1%), not 10% each. The two compound to -19% AREA
-  // combined (0.9*0.9 = 0.81), not -20%.
+  // per constant (~5.1%), not 10% each. The three compound to ~-27.1% AREA
+  // combined (0.9*0.9*0.9 = 0.729), not -30%.
   const MAP_SIZE_USER_SHRINK = 0.9;
   const MAP_SIZE_USER_SHRINK_2 = 0.9;
+  const MAP_SIZE_USER_SHRINK_3 = 0.9;
   function mapSizeForCivCount(civCount) {
     const areaShrink = Math.max(0.2, 1 - CIV_ABOVE_TWO_SHRINK_RATE * Math.max(0, civCount - 2));
-    const linearScale = Math.sqrt(civCount / REFERENCE_CIV_COUNT) * Math.sqrt(MAP_SIZE_BOOST) * Math.sqrt(areaShrink) * Math.sqrt(MAP_SIZE_USER_SHRINK) * Math.sqrt(MAP_SIZE_USER_SHRINK_2);
+    const linearScale = Math.sqrt(civCount / REFERENCE_CIV_COUNT) * Math.sqrt(MAP_SIZE_BOOST) * Math.sqrt(areaShrink) * Math.sqrt(MAP_SIZE_USER_SHRINK) * Math.sqrt(MAP_SIZE_USER_SHRINK_2) * Math.sqrt(MAP_SIZE_USER_SHRINK_3);
     const width = Math.round(Math.min(MAX_MAP_WIDTH, Math.max(MIN_MAP_WIDTH, REFERENCE_MAP_WIDTH * linearScale)));
     const height = Math.round(Math.min(MAX_MAP_HEIGHT, Math.max(MIN_MAP_HEIGHT, REFERENCE_MAP_HEIGHT * linearScale)));
     return { width, height };

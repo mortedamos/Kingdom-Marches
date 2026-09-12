@@ -353,9 +353,28 @@ html, body {
   z-index: 7;
 }
 /* MOBILE (and any other over-the-map placement): a free-floating overlay.
-   See css/mobile.css for where it actually lands. */
+   See css/mobile.css for where it actually lands.
+
+   `fixed`, NOT `absolute` (2026-09-12, user-reported: "the top of the clock
+   should be aligned with, and overlap, the top of the slide up toolbar...
+   right now, it sits mostly above" -- on a real phone with a home
+   indicator, not in a desktop-emulated mobile viewport, which is why this
+   didn't show up in the obvious way of testing it). `absolute` made this
+   position relative to .map-area, whose OWN bottom edge is NOT the true
+   screen edge on mobile: body.mobile .game-screen carries
+   `padding-bottom: env(safe-area-inset-bottom)` (mobile.css), and .map-area
+   (`inset: 0`) fills that already-inset padding box, so its bottom sits
+   ABOVE the real viewport bottom by however tall the device's home
+   indicator inset is (~34px on an iPhone with one). #sidebar, the sheet
+   this dial has to track, is `position: fixed` and deliberately ignores
+   that exact same inset to sit flush with the true screen edge (see
+   mobile.css's own comment on that choice) -- so the dial was drifting
+   away from the sheet by exactly the inset's height on any device that
+   actually has one. `fixed` anchors this to the true viewport instead,
+   the same reference frame #sidebar already uses, closing the gap on any
+   device regardless of its own safe-area inset. */
 .daynight-clock-floating {
-  position: absolute;
+  position: fixed;
   top: 0;
   left: 50%;
   transform: translateX(-50%);

@@ -65,9 +65,9 @@ window.GameConfig = {
     /** Local date this build was cut, YYYY-MM-DD. */
     date: "2026-09-11",
     /** Local time this build was cut, 24-hour HH:MM. */
-    time: "20:06",
+    time: "20:26",
     /** Monotonic build counter -- increment it, don't recompute it. */
-    number: 289,
+    number: 290,
   },
 
   // =========================================================================
@@ -1219,18 +1219,37 @@ window.GameConfig = {
        * candidate start-days fall inside an existing system's shadow, so
        * more of them get thrown away. Measured: 0.10 raw -> 8.8% of days
        * actually start rain; 0.20 raw -> only 15.3%, well short of "around
-       * 20%". 0.30 raw is what actually measures out to ~19.8% observed,
-       * which is the number set below.
+       * 20%". 0.30 raw measured out to ~19.8% observed.
+       *
+       * Raised again to 0.34 (2026-09-12, user-directed: "rain should start
+       * and stop 30% more frequently"), alongside shortening minTurns/
+       * maxTurns below by the same 30% -- the two had to move together: at
+       * the OLD (3-36 turn) duration range, even pushing this raw rate as
+       * high as 0.70 only reached ~35% observed (measured, 160,000
+       * simulated days), because a long-running system shadows so many
+       * subsequent days that there's no room left for new ones to land no
+       * matter how high the raw chance goes. Shortening duration first
+       * frees up enough unshadowed days that a raw rate increase can
+       * actually reach the target: measured (same 160,000-day methodology)
+       * 0.34 raw at the NEW 2-25 turn range -> ~25.5% observed, which is
+       * ~1.3x the previous ~19.7% observed baseline at the old settings --
+       * i.e. every system that starts also stops exactly once, so "starts
+       * and stops 30% more often" is the same target either way: 30% more
+       * systems per unit time.
        */
-      rainChancePerDay: 0.30,
+      rainChancePerDay: 0.34,
       /** Chance a system turns thundery somewhere in its middle. The storm is
        *  always a window INSIDE the rain, so it builds out of rain and dies
        *  back into it rather than starting or ending the system. */
       stormChance: 0.30,
-      /** How long a system runs, in turns. Three turns is "a squall passed
-       *  through"; thirty-six is three solid days of weather. */
-      minTurns: 3,
-      maxTurns: 36,
+      /** How long a system runs, in turns. Was 3-36 (a squall passed
+       *  through, up to three solid days of weather); shortened by 30% each
+       *  (2026-09-12, user-directed, alongside rainChancePerDay above -- see
+       *  that field's own comment for why the two moved together) to 2-25,
+       *  so an individual system also stops sooner, not just starts more
+       *  often. */
+      minTurns: 2,
+      maxTurns: 25,
       /** Clear turns required between one system ending and the next being
        *  allowed to begin. Without a gap, systems overlap and run together
        *  into stretches of rain far longer than maxTurns -- see
