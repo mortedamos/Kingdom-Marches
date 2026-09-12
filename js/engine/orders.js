@@ -565,7 +565,20 @@ window.GameEngine = window.GameEngine || {};
       }
     }
     if (best) {
-      attack(unit, gameState, best, unit.civId);
+      // Staged, not resolved immediately (2026-09-12, user-directed: "center
+      // the map on that unit [...] similar to zooming in on enemy units
+      // that are attacking you"). This runs inside turns.js's finishCivTurn,
+      // itself inside advanceOneUnitStep's synchronous per-civ loop -- there
+      // is no per-unit-step yield back to main.js for the human civ the way
+      // an AI unit's own pendingIntent gets one, so main.js can't intercept
+      // this BEFORE the hit lands unless it's queued somewhere first. See
+      // main.js's processPendingSentryAttacks, which drains this array with
+      // the camera-center/pause/resolve/pause treatment and is what
+      // actually calls attack() -- this function only ever decides WHO to
+      // attack, never resolves it directly, from this point on.
+      gameState.pendingSentryAttacks = gameState.pendingSentryAttacks || [];
+      gameState.pendingSentryAttacks.push({ unit, target: best });
+      unit.currentMission = "On Sentry — engaging a spotted target";
     } else {
       unit.currentMission = "On Sentry";
     }

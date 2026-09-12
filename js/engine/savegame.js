@@ -56,6 +56,16 @@ window.GameEngine = window.GameEngine || {};
     // pattern just above: strip before stringify, put back after.
     const savedTurnCtx = gameState._civTurnCtx;
     delete gameState._civTurnCtx;
+    // Same reasoning, same treatment (2026-09-12): gameState.
+    // pendingSentryAttacks (orders.js's advanceSentryOrder) holds live
+    // { unit, target: { unit, civ } } references -- a target's `civ` drags
+    // its own entire `units` array along for a JSON.stringify deep-copy,
+    // and the queue only ever exists for a few hundred ms during
+    // main.js's own animated camera sequence (processPendingSentryAttacks)
+    // before draining itself, with nothing worth resuming either -- a
+    // reload just re-decides the attack fresh next time this civ's turn runs.
+    const savedPendingSentryAttacks = gameState.pendingSentryAttacks;
+    delete gameState.pendingSentryAttacks;
     try {
       return JSON.stringify(payload, (key, value) => {
         // followTarget is a one-way reference, not a cycle like carries/
@@ -78,6 +88,7 @@ window.GameEngine = window.GameEngine || {};
         for (const unit of civ.units) delete unit.__uid;
       }
       if (savedTurnCtx !== undefined) gameState._civTurnCtx = savedTurnCtx;
+      if (savedPendingSentryAttacks !== undefined) gameState.pendingSentryAttacks = savedPendingSentryAttacks;
     }
   }
 

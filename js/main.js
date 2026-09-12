@@ -4633,6 +4633,56 @@
     redraw();
   }
 
+  /**
+   * Own-Sentry attack camera treatment (2026-09-12, user-directed: "when one
+   * of your own units is on sentry and takes its sentry attack, center the
+   * map on that unit. wait briefly, resolve the attack, then wait briefly
+   * again - similar to zooming in on enemy units that are attacking you").
+   *
+   * Sentry fires inside turns.js's finishCivTurn, itself inside
+   * advanceOneUnitStep's synchronous per-civ loop -- unlike an AI unit
+   * deciding to attack the human (which yields a `steppedUnit` result
+   * processBatch can intercept BEFORE the hit lands), the human civ never
+   * gets stepped that way, so there is no hook to pause on before the
+   * attack resolves. orders.js's advanceSentryOrder works around this by
+   * staging the decision onto gameState.pendingSentryAttacks instead of
+   * calling attack() itself; THIS function is what drains that queue, one
+   * entry at a time, with the exact center/pause/resolve/pause shape
+   * processBatch's own "Enemy-action camera follow" below already uses for
+   * the analogous enemy-side case (same ENEMY_ACTION_FOLLOW_PAUSE_MS both
+   * sides, for the same "zooming in" feel the request asked to match).
+   *
+   * Checked at the top of processBatch's loop, before anything else --
+   * turnOrder is shuffled once at game start (not human-first by
+   * convention), so a sentry attack can get queued after any civ's step,
+   * not just the first -- and must always be drained before the loop can
+   * exit via any path (including round-complete), since draining is also
+   * what actually calls attack() at all; skipping it here would mean the
+   * queued attack simply never happens.
+   */
+  function processPendingSentryAttacks(onDone) {
+    const pending = gameState.pendingSentryAttacks;
+    if (!pending || !pending.length) { onDone(); return; }
+    const { unit, target } = pending.shift();
+    // Nothing else runs between staging and this drain (it's a same-tick
+    // UI pause, not a game-simulation gap), so these can never actually be
+    // stale -- kept anyway as cheap insurance against a future change
+    // introducing one, same "don't trust a reference blindly" caution
+    // resolvePendingAIAttack takes for its own staged attacks.
+    const civ = gameState.civs[unit.civId];
+    const stillValid = civ && civ.units.includes(unit) && unit.hp > 0
+      && target.unit && target.unit.hp > 0 && target.civ && !target.civ.eliminated;
+    if (!stillValid) { processPendingSentryAttacks(onDone); return; }
+    const onScreen = window.UI.render.isTileOnScreen(unit.x, unit.y, $("map-canvas"), gameState, viewState);
+    if (!onScreen) centerViewOn(unit.x, unit.y);
+    redraw();
+    setTimeout(() => {
+      window.GameEngine.orders.attack(unit, gameState, target, unit.civId);
+      redraw();
+      setTimeout(() => processPendingSentryAttacks(onDone), ENEMY_ACTION_FOLLOW_PAUSE_MS);
+    }, ENEMY_ACTION_FOLLOW_PAUSE_MS);
+  }
+
   /** Fires the attack an enemy AI unit staged instead of resolving
    *  immediately -- see processBatch's pendingAttack check and ai.js's
    *  considerAttackOrGarrison
@@ -4757,6 +4807,16 @@
         // of an attack that this is an acceptable gap.
         const preAttackSnap = snapshotHumanDefense();
         stepResult = advanceOneStep();
+
+        // Own-Sentry attack: checked FIRST, before even the round-complete
+        // branch just below -- see processPendingSentryAttacks' own doc
+        // comment for why this must run before anything else can exit the
+        // loop, on every iteration, not just the first.
+        if (gameState.pendingSentryAttacks && gameState.pendingSentryAttacks.length) {
+          processPendingSentryAttacks(processBatch);
+          return;
+        }
+
         if (stepResult.roundComplete) {
           viewState.turnBanner = null;
           // Back to the player: center on whatever unit they should look at
