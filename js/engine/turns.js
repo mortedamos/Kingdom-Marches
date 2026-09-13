@@ -1615,7 +1615,14 @@ window.GameEngine = window.GameEngine || {};
     // range of two of anything else in this game would.
     if (civ.unlockedMechanics && civ.unlockedMechanics.has("fairy_ring")) {
       const MUSHROOM_AURA_RADIUS = 1;
-      const MUSHROOM_POISON_CHANCE = 0.5;
+      // Raised 0.5 -> 0.66 (2026-09-12, user-directed, part of the same
+      // pass that made Halfellow's trap/mushroom kit its primary combat
+      // identity -- see js/engine/ai.js's RACE_UNIT_RATIO.halfellow):
+      // headless sim testing found Halfellow still losing straight fights
+      // to Elf/Dwarf's standing armies even once Mycomancers were actually
+      // being built, so the aura itself needed to hit harder, not just
+      // exist more often.
+      const MUSHROOM_POISON_CHANCE = 0.66;
       for (const mushroom of civ.units.filter((u) => u.typeId === "mushroom")) {
         for (const ally of civ.units) {
           if (window.GameEngine.influence.chebyshev(mushroom.x, mushroom.y, ally.x, ally.y) > MUSHROOM_AURA_RADIUS) continue;

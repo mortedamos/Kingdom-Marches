@@ -153,9 +153,17 @@ window.GameData.RACES = {
 
     // Personality traits (0.0–1.0) — drive all AI scoring and behavior.
     // See ai.js racialWeights() for how each trait maps to decisions.
-    militarism:      0.6, // balanced-leaning-defensive — builds armies when threatened, not as first instinct 
+    militarism:      0.6, // balanced-leaning-defensive — builds armies when threatened, not as first instinct
     expansionism:    0.8, // eager settlers; Humans expand aggressively by land and sea
-    curiosity:       0.9, // strong research drive; adaptability through tech
+    // Trimmed 0.9 -> 0.7 (2026-09-12, user-directed): Human was the only
+    // race with no genuine dump stat (every other race trades off HARD
+    // somewhere -- Orc's curiosity 0.2, Halfellow's militarism, Dwarf's
+    // expansionism 0.2), which headless sim testing showed made it the
+    // clear win-rate outlier (65% in 1v1) with nothing else touched. Was
+    // still the highest curiosity of any race even at 0.7 (Halfellow's
+    // 0.6 was next), so this trims the outright ceiling rather than
+    // demoting Human's identity as the research-forward race.
+    curiosity:       0.7, // strong research drive; adaptability through tech
     industriousness: 0.7, // solid city development; roads and markets before barracks
 
     // Starting tech id (must exist in techs.js)
@@ -308,7 +316,13 @@ window.GameData.RACES = {
     aggressiveness: 0.1,
 
     // Personality traits
-    militarism:      0.2, // minimal standing armies; halfellows rely on community, not soldiers
+    // Raised 0.2 -> 0.3 (2026-09-12, user-directed): headless sim testing
+    // found Halfellow still losing every 1v1 to Elf/Dwarf's standing
+    // armies even after the trap/mushroom build-priority fix -- a small
+    // bump here lets it hold a real garrison without abandoning "not a
+    // soldier race" (still the lowest militarism of any race by a wide
+    // margin: Orc's next-lowest combat-relevant race sits at 0.9).
+    militarism:      0.3, // minimal standing armies; halfellows rely on community, not soldiers
     expansionism:    0.3, //
     curiosity:       0.6, // strong research; halfellows value hearth-wisdom and practical craft
     // Raised to the 1.0 ceiling (2026-09-12, was 0.8) to match what

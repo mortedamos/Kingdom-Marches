@@ -219,32 +219,32 @@ window.GameData.UNITS = {
   // --- HUMAN full roster (see tech_tree_design.md) ---
   spearguard: {
     id: "spearguard", label: "Spearguard", symbol: "⚔", category: "military", raceOnly: "human",
-    attack: 3, defense: 5, movement: 2, visionRadius: 2, attackChars: ["𐃆"],
+    attack: 3, defense: 4, movement: 2, visionRadius: 2, attackChars: ["𐃆"],
     coinCost: 15,
   },
   cavalry: {
     id: "cavalry", label: "Cavalry", symbol: "♞", category: "military", raceOnly: "human",
-    attack: 6, defense: 4, movement: 3, visionRadius: 3, firstStrikePct: 0.05,
+    attack: 5, defense: 4, movement: 3, visionRadius: 3, firstStrikePct: 0.05,
     coinCost: 22, biggerPct: .2,  attackChars: ["⚔", "🗡"],
   },
   knight: {
     id: "knight", label: "Knight", symbol: "♞", category: "military", raceOnly: "human",
-    attack: 8, defense: 7, movement: 3, visionRadius: 3, // replaces Cavalry via the Knighthood tech
+    attack: 7, defense: 7, movement: 3, visionRadius: 3, // replaces Cavalry via the Knighthood tech
     coinCost: 32, firstStrikePct: 0.1, biggerPct: .25, attackChars: ["⚔", "🗡"],
   },
   paladin: {
     id: "paladin", label: "Paladin", symbol: "♞", category: "military", raceOnly: "human",
-    attack: 10, defense: 8, movement: 3, visionRadius: 4, firstStrikePct: 0.2, doubleStrikePct: 0.1, // replaces Knight via the Chivalric Order tech
+    attack: 9, defense: 8, movement: 3, visionRadius: 4, firstStrikePct: 0.2, doubleStrikePct: 0.1, // replaces Knight via the Chivalric Order tech
     coinCost: 42, biggerPct: .4, attackChars: ["⚔", "🗡", "🛡"], rare: true,
   },
   archer: {
     id: "archer", label: "Archer", symbol: "⌖", category: "military", raceOnly: "human",
-    attack: 4, defense: 3, movement: 2, visionRadius: 3, range: 2, attackChars: ["➵", "➳"], 
+    attack: 3, defense: 3, movement: 2, visionRadius: 3, range: 2, attackChars: ["➵", "➳"], 
     coinCost: 20, firstStrikePct: 0.01, 
   },
   longbowman: {
     id: "longbowman", label: "Longbowman", symbol: "⌖", category: "military", raceOnly: "human", range: 3, 
-    attack: 5, defense: 4, movement: 2, visionRadius: 4,  // replaces Archer via the Longbow tech
+    attack: 4, defense: 4, movement: 2, visionRadius: 4,  // replaces Archer via the Longbow tech
     coinCost: 30, attackChars: ["➵", "➳"], firstStrikePct: 0.02,
   },
   catapult: {
@@ -274,7 +274,7 @@ window.GameData.UNITS = {
     // (ai.js's UTILITY_UNIT_MECHANICS taper, `relevantMechanics.length * 7
     // * 0.6^owned`) is entirely stat-independent by design.
     id: "wizard", label: "Wizard", symbol: "🧙‍♂️", category: "military", raceOnly: "human",
-    attack: 3, defense: 2, movement: 2, visionRadius: 3, range: 2, burnChancePct: 0.1, frozenChancePct: 0.1, 
+    attack: 2, defense: 2, movement: 2, visionRadius: 3, range: 2, burnChancePct: 0.1, frozenChancePct: 0.1, 
     coinCost: 35, attackChars: ["⚡", "❄️", "🔥", "✨"], biggerPct: .1,
   },
 
