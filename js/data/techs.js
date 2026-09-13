@@ -1070,9 +1070,9 @@ window.GameData.TECHS = {
   dwarf_chronicle_in_stone: {
     id: "dwarf_chronicle_in_stone", label: "Chronicle in Stone", category: "civic", layer: 3, cost: 36,
     prereqs: ["dwarf_deep_lore"], raceOnly: "dwarf",
-    description: "+3 lore per building constructed in a city (walls don't count).",
+    description: "+5 lore per building constructed in a city (walls don't count).",
     costBreakdown: { coin: 20, lore: 16 },
-    effects: [{ type: "building_count_bonus", bonus: { lore: 3 } }],
+    effects: [{ type: "building_count_bonus", bonus: { lore: 5 } }],
   },
   dwarf_the_long_reckoning: {
     id: "dwarf_the_long_reckoning", label: "The Long Reckoning", category: "civic", layer: 3, cost: 42,
@@ -1217,8 +1217,8 @@ window.GameData.TECHS = {
   },
   dwarf_shield_wall: {
     id: "dwarf_shield_wall", label: "Shield Wall", category: "military", layer: 2, cost: 40,
-    prereqs: [], raceOnly: "dwarf",
-    description: "Any Dwarf military unit standing adjacent to at least one other Dwarf military unit gains a flat +2 defense.",
+    prereqs: ["dwarf_foe_hammer"], raceOnly: "dwarf",
+    description: "Any Dwarf military unit standing within range 2 of at least one other Dwarf military unit gains a flat +1 defense.",
     costBreakdown: { coin: 24, lore: 16 },
     effects: [{ type: "unlock_mechanic", mechanic: "shieldwall" }],
   },
@@ -1334,6 +1334,18 @@ window.GameData.TECHS = {
   },
 
   // --- Layer 2 ---
+  // Orc mirror of Dwarf "Shield Wall" (see combat.js's effectiveAttack/
+  // countAdjacentMilitaryAllies for the range-2 ally check both mechanics
+  // share, and ai.js's computeMovementBudget for the movement half of this
+  // one) -- a flat attack AND movement bonus instead of Shield Wall's
+  // defense-only one, fitting Orc's aggressive-raiding identity.
+  orc_raiding_party: {
+    id: "orc_raiding_party", label: "Raiding Party", category: "military", layer: 2, cost: 40,
+    prereqs: ["orc_raiders"], raceOnly: "orc",
+    description: "Any Orc military unit standing within range 2 of at least one other Orc military unit gains a flat +1 attack and +1 movement.",
+    costBreakdown: { lore: 28, coin: 12 },
+    effects: [{ type: "unlock_mechanic", mechanic: "raiding_party" }],
+  },
   orc_wolf_riders: {
     id: "orc_wolf_riders", label: "Wolf Riders", category: "military", layer: 2, cost: 16,
     prereqs: ["orc_dire_wolf"], raceOnly: "orc",
@@ -1357,16 +1369,6 @@ window.GameData.TECHS = {
     description: "50% chance each turn an Orc wall attacks an enemy unit within range 1 for 2 attack.",
     costBreakdown: { coin: 12, lore: 6 },
     effects: [{ type: "unlock_mechanic", mechanic: "defend_the_walls_orc" }],
-  },
-  // See combat.js's spikesAttackRating/spikesCounterattack. Covers ANY Orc
-  // structure (walls, buildings, cities) -- no attack bonus multiplier, no
-  // militia spawn, flat attack rating instead of deriving from the Archer.
-  orc_spikes: {
-    id: "orc_spikes", label: "Spikes!", category: "building", layer: 2, cost: 22,
-    prereqs: [], raceOnly: "orc",
-    description: "Orc structures (walls, buildings, cities) can counterattack with attack rating 2.",
-    costBreakdown: { coin: 14, lore: 8 },
-    effects: [{ type: "unlock_mechanic", mechanic: "spikes" }],
   },
   orc_impaler_rite: {
     id: "orc_impaler_rite", label: "Impaler Rites", category: "military", layer: 2, cost: 15,
@@ -1395,7 +1397,7 @@ window.GameData.TECHS = {
     // (see combat.js's effectiveFirstStrikePct) -- this stacks on top of
     // Wolf Rider's baked-in base (see units.js) rather than replacing it.
     // 0.02 -> 0.20 (2026-09-02, user-directed).
-    description: "Wolf Rider gains 20% First Strike and increased attack and movement. Impaler and Raider each also gain +1 movement.",
+    description: "Wolf Rider gains 20% First Strike, +2 attack, and +1 movement. Impaler and Raider each also gain +1 movement.",
     costBreakdown: { lore: 17, coin: 7 },
     effects: [
       { type: "unit_stat_upgrade", unit: "wolf_rider", changes: { firstStrikePct: 0.20, attack: 2, movement: 1 } },
@@ -1550,20 +1552,26 @@ window.GameData.TECHS = {
   // unit_stat_upgrade handler. Since orc_burn_it_all_down is a REQUIRED
   // prereq here (always researched first), the burnChancePct values below
   // are the COMBINED total (Burn It All Down's own 0.10 baseline + this
-  // tech's stated bonus), not just this tech's own increment, so the two
-  // techs' effects actually stack instead of one silently overwriting the
-  // other: Impaler 0.10+0.05=0.15, Raider 0.10+0.10=0.20, Goblin Miscreant
-  // 0.10+0.15=0.25 (2026-09-02, user-directed: Goblin Miscreant's Pyromania
-  // poison chance was also dropped entirely in this same pass).
+  // tech's own flat +0.10, applied uniformly to every unit type Burn It All
+  // Down touches, 2026-09-13 user-directed rework -- previously varied
+  // per unit type and included a Raider attack bonus; both dropped in favor
+  // of one flat, universal burn-chance bump).
   orc_pyromania: {
     id: "orc_pyromania", label: "Pyromania", category: "military", layer: 4, cost: 60,
     prereqs: ["orc_burn_it_all_down"], raceOnly: "orc",
-    description: "Impaler gains +5% chance to inflict Burning (on top of Burn It All Down's own 10%). Raider gains +1 attack and +10% chance to inflict Burning (on top of Burn It All Down's own 10%). Goblin Miscreant gains +15% chance to inflict Burning (on top of Burn It All Down's own 10%).",
+    description: "All Orc units gain an additional +10% chance to inflict Burning (on top of Burn It All Down's own 10%, for 20% total).",
     costBreakdown: { lore: 30, coin: 20, harvest: 10 },
     effects: [
-      { type: "unit_stat_upgrade", unit: "impaler", changes: { burnChancePct: 0.15 } },
-      { type: "unit_stat_upgrade", unit: "raider", changes: { attack: 1, burnChancePct: 0.20 } },
-      { type: "unit_stat_upgrade", unit: "goblin_miscreant", changes: { burnChancePct: 0.25 } },
+      { type: "unit_stat_upgrade", unit: "scout", changes: { burnChancePct: 0.20 } },
+      { type: "unit_stat_upgrade", unit: "raider", changes: { burnChancePct: 0.20 } },
+      { type: "unit_stat_upgrade", unit: "goblin_miscreant", changes: { burnChancePct: 0.20 } },
+      { type: "unit_stat_upgrade", unit: "impaler", changes: { burnChancePct: 0.20 } },
+      { type: "unit_stat_upgrade", unit: "dire_wolf", changes: { burnChancePct: 0.20 } },
+      { type: "unit_stat_upgrade", unit: "wolf_rider", changes: { burnChancePct: 0.20 } },
+      { type: "unit_stat_upgrade", unit: "bog_witch", changes: { burnChancePct: 0.20 } },
+      { type: "unit_stat_upgrade", unit: "battering_ram", changes: { burnChancePct: 0.20 } },
+      { type: "unit_stat_upgrade", unit: "ogre", changes: { burnChancePct: 0.20 } },
+      { type: "unit_stat_upgrade", unit: "dragon", changes: { burnChancePct: 0.20 } },
       { type: "unlock_mechanic", mechanic: "pyromania" },
     ],
   },
@@ -1583,17 +1591,6 @@ window.GameData.TECHS = {
     costBreakdown: { lore: 18, coin: 10 },
     effects: [{ type: "unlock_mechanic", mechanic: "hound_and_hunter" }],
   },
-  // Replaces (not stacks with) Spikes!'s attack rating while both are
-  // known -- same "upgrade tech" convention as e.g. Sudden Doom replacing
-  // Strike from the Shadows -- see combat.js's spikesAttackRating.
-  orc_bigger_spikes: {
-    id: "orc_bigger_spikes", label: "Bigger Spikes!", category: "building", layer: 3, cost: 38,
-    prereqs: ["orc_spikes"], raceOnly: "orc",
-    description: "Orc structures (walls, buildings, cities) can counterattack with attack rating 4.",
-    costBreakdown: { coin: 22, lore: 16 },
-    effects: [{ type: "unlock_mechanic", mechanic: "bigger_spikes" }],
-  },
-
   // --- Layer 4 ---
   // 2026-09-12, user-directed: absorbed Honor the Dead's entire effect
   // (death_lore_bonus) directly into this tech, and removed Honor the Dead

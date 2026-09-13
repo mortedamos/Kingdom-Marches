@@ -2609,6 +2609,20 @@ window.GameEngine = window.GameEngine || {};
     // Violent Momentum above.
     if (unit.conditions?.flying) movement += unit.conditions.flying.moveBonus || 0;
 
+    // Tech: Orc "Raiding Party" -- +1 movement while within range 2 of
+    // another Orc military unit, same range-2 ally check the tech's +1
+    // attack bonus uses (see combat.js's effectiveAttack/
+    // countAdjacentMilitaryAllies). Movement budget is computed once per
+    // turn outside the combat-resolution path that attack bonus goes
+    // through, so it's checked directly here instead.
+    if (baseUnit.category === "military") {
+      const raidingPartyCiv = civs?.[unit.civId];
+      if (raidingPartyCiv?.unlockedMechanics?.has("raiding_party")
+          && window.GameEngine.combat.countAdjacentMilitaryAllies(unit, raidingPartyCiv, 2) > 0) {
+        movement += 1;
+      }
+    }
+
     // Orc Bog Witch curse (death-curse or Malefic Malediction): halves movement
     // while active. Applied after the terrain bonus so a cursed unit still gets
     // its terrain bonus, just halved along with everything else.
@@ -10117,31 +10131,32 @@ window.GameEngine = window.GameEngine || {};
 
   /**
    * Dwarf "Shield Wall": when a fight is imminent (isNearActiveCombat) and
-   * this unit isn't already touching another Dwarf military unit, close
-   * ranks with the nearest one instead of dueling alone -- the tech only
-   * grants +defense per ADJACENT ally (see combat.js
+   * this unit has no other Dwarf military unit within range 2, close ranks
+   * with the nearest one instead of dueling alone -- the tech only grants
+   * +defense per NEARBY ally (see combat.js
    * countAdjacentMilitaryAllies/effectiveDefense), so a unit that never
-   * actually stands next to one gets nothing from having researched it.
-   * Same single-nearest-ally chase shape as maybeCrusadeVanguard.
+   * actually gets within range of one gets nothing from having researched
+   * it. Same single-nearest-ally chase shape as maybeCrusadeVanguard.
    * Deliberately excludes the Titan -- it doesn't need the help, and its
    * one job is marching, not wall-forming (see maybeTitanMarch).
    */
+  const SHIELDWALL_RANGE = 2;
   const SHIELDWALL_SEARCH_RADIUS = 6;
   function maybeShieldWallPosition(civ, unit, gameState, nearActiveCombat, log) {
     if (!civ.unlockedMechanics || !civ.unlockedMechanics.has("shieldwall")) return false;
     if (unit.typeId === "runeforged_titan") return false;
     if (window.GameData.getUnit(unit.typeId).category !== "military") return false;
     if (!nearActiveCombat) return false;
-    let adjacentAllies = 0;
+    let nearbyAllies = 0;
     let nearest = null, nearestDist = Infinity;
     for (const ally of civ.units) {
       if (ally === unit || ally.carriedBy) continue;
       if (window.GameData.getUnit(ally.typeId).category !== "military") continue;
       const d = window.GameEngine.influence.chebyshev(unit.x, unit.y, ally.x, ally.y);
-      if (d <= 1) adjacentAllies++;
+      if (d <= SHIELDWALL_RANGE) nearbyAllies++;
       if (d < nearestDist) { nearestDist = d; nearest = ally; }
     }
-    if (adjacentAllies > 0) return false; // already shoulder-to-shoulder -- the bonus is already active
+    if (nearbyAllies > 0) return false; // already in formation -- the bonus is already active
     if (!nearest || nearestDist > SHIELDWALL_SEARCH_RADIUS) return false;
     moveUnitToward(unit, nearest.x, nearest.y, gameState.map, gameState.civs);
     unit.usedThisTurn = true;

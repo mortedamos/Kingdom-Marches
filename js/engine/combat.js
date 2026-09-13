@@ -377,18 +377,23 @@ window.GameEngine = window.GameEngine || {};
     return xp;
   }
 
-  /** Dwarf "Shield Wall": how many of `civ`'s OTHER military units are
-   *  standing adjacent (Chebyshev 1) to `unit` right now -- read by
-   *  effectiveDefense via context.adjacentAllyCount, computed fresh for both
-   *  sides of every exchange in resolveRound (a unit's neighbors can change
-   *  attack to attack, so this is never cached). */
-  function countAdjacentMilitaryAllies(unit, civ) {
+  /** Dwarf "Shield Wall"/Orc "Raiding Party": how many of `civ`'s OTHER
+   *  military units are standing within `range` tiles (Chebyshev) of `unit`
+   *  right now. Shield Wall reads this via effectiveDefense's
+   *  context.nearbyAllyCount, computed fresh for both sides of every
+   *  exchange in resolveRound (a unit's neighbors can change attack to
+   *  attack, so it's never cached); Raiding Party calls it directly from
+   *  effectiveAttack instead, since an Orc's attack bonus needs to apply to
+   *  every effectiveAttack call site (sieging a city/structure, splash
+   *  damage, etc.), not just unit-vs-unit exchanges. Both currently use
+   *  range 2. */
+  function countAdjacentMilitaryAllies(unit, civ, range = 1) {
     if (!civ || !civ.units) return 0;
     let count = 0;
     for (const other of civ.units) {
       if (other === unit || other.carriedBy) continue;
       if (window.GameData.getUnit(other.typeId).category !== "military") continue;
-      if (Math.max(Math.abs(other.x - unit.x), Math.abs(other.y - unit.y)) <= 1) count++;
+      if (Math.max(Math.abs(other.x - unit.x), Math.abs(other.y - unit.y)) <= range) count++;
     }
     return count;
   }
@@ -709,6 +714,18 @@ window.GameEngine = window.GameEngine || {};
     // as Crusade/Power Metal above.
     if (unit.conditions?.partyBuff) atk += unit.conditions.partyBuff.attackBonus || 0;
 
+    // Orc "Raiding Party": +1 flat attack while within range 2 of another
+    // Orc military unit -- computed directly here (not threaded through
+    // context, unlike Shield Wall's matching defense bonus) so it applies
+    // to every effectiveAttack call site, not just resolveRound's unit-vs-
+    // unit exchanges -- sieging a city/structure, splash damage, etc. all
+    // route through this same function. See countAdjacentMilitaryAllies.
+    if (civ.unlockedMechanics && civ.unlockedMechanics.has("raiding_party")
+        && baseUnit.category === "military"
+        && countAdjacentMilitaryAllies(unit, civ, 2) > 0) {
+      atk += 1;
+    }
+
     // Dwarf "The Long Reckoning": +25% attack against a civ marked as a
     // rival (see markRival below) -- applies to that civ's units, cities,
     // AND structures alike, since every real-damage call site below passes
@@ -781,14 +798,14 @@ window.GameEngine = window.GameEngine || {};
     // applyThrowAParty and effectiveAttack's matching partyBuff read.
     if (unit.conditions?.partyBuff) def += unit.conditions.partyBuff.defenseBonus || 0;
 
-    // Dwarf "Shield Wall": flat +2 defense as long as at least one other
-    // Dwarf military unit is adjacent -- doesn't scale with how many are
-    // adjacent (2026-07-15: was +1/adjacent up to 3, now just a binary
-    // gate). adjacentAllyCount is computed by the caller (resolveRound/
-    // attackStructure/attackCity in ai.js, which alone has access to
-    // civ.units' live positions) and passed through context.
-    if (context.adjacentAllyCount > 0 && civ.unlockedMechanics && civ.unlockedMechanics.has("shieldwall")) {
-      def += 2;
+    // Dwarf "Shield Wall": flat +1 defense as long as at least one other
+    // Dwarf military unit is within range 2 -- doesn't scale with how many
+    // are in range (2026-07-15: was +1/adjacent up to 3, then a binary +2
+    // gate at range 1; 2026-09-13, user-directed: now +1 at range 2, and
+    // requires Foe Hammer as a prereq). nearbyAllyCount is computed by the
+    // caller (resolveRound) and passed through context.
+    if (context.nearbyAllyCount > 0 && civ.unlockedMechanics && civ.unlockedMechanics.has("shieldwall")) {
+      def += 1;
     }
 
     if (race.forestCombatBonus && context.defenderInForest) def *= race.forestCombatBonus;
@@ -1008,10 +1025,10 @@ window.GameEngine = window.GameEngine || {};
     const attackingSiegeTarget = !!window.GameData.getUnit(defenderUnit.typeId).siegeTarget;
 
     const atkContext = { ...context, garrisoned: !!context.attackerGarrisoned,
-      opposingCivId: defenderCiv.id, adjacentAllyCount: countAdjacentMilitaryAllies(attackerUnit, attackerCiv),
+      opposingCivId: defenderCiv.id, nearbyAllyCount: countAdjacentMilitaryAllies(attackerUnit, attackerCiv, 2),
       isSiege: context.isSiege || attackingSiegeTarget };
     const defContext = { ...context, garrisoned: !!context.defenderGarrisoned,
-      opposingCivId: attackerCiv.id, adjacentAllyCount: countAdjacentMilitaryAllies(defenderUnit, defenderCiv) };
+      opposingCivId: attackerCiv.id, nearbyAllyCount: countAdjacentMilitaryAllies(defenderUnit, defenderCiv, 2) };
 
     const isAdjacent = Math.max(Math.abs(attackerUnit.x - defenderUnit.x), Math.abs(attackerUnit.y - defenderUnit.y)) <= 1;
 
@@ -1293,8 +1310,9 @@ window.GameEngine = window.GameEngine || {};
    * building fights back. Gains an attack stat (at least the Militia's,
    * never less than whatever it already had). A deliberate, confirmed
    * exception to "structures never counterattack" everywhere else in the
-   * game -- and, since Human's Ramparts was removed in 2026-08-24, now one
-   * of only two sources of structure counterattack (with Orc's Spikes!).
+   * game -- and, since Human's Ramparts was removed in 2026-08-24 and Orc's
+   * Spikes!/Bigger Spikes! in 2026-09-13, the only source of structure
+   * counterattack left.
    *
    * Reach: derived from the Militia's own range --
    * Militia has no `range` property, so this is melee-only (1 tile). An
@@ -1321,35 +1339,10 @@ window.GameEngine = window.GameEngine || {};
   // "inherit the resting unit's attack" idea, but as a proactive per-turn
   // wall shot -- see ai.js's tickWallDefense, not a counterattack.)
 
-  /** Orc "Spikes!"/"Bigger Spikes!": the higher tech (if known) always wins
-   *  rather than stacking with the lower one -- same "upgrade tech"
-   *  convention as e.g. Sudden Doom replacing Strike from the Shadows. 0 if
-   *  the civ has neither. */
-  function spikesAttackRating(civ) {
-    if (!civ.unlockedMechanics) return 0;
-    if (civ.unlockedMechanics.has("bigger_spikes")) return 4;
-    if (civ.unlockedMechanics.has("spikes")) return 2;
-    return 0;
-  }
-
-  /** Orc "Spikes!"/"Bigger Spikes!": Archer-derived reach and a 25%
-   *  First-Strike discount, with a FLAT attack rating (spikesAttackRating)
-   *  -- never LOWERS the structure's existing attack, same max() convention
-   *  as structureCounterattack. (It used to be described as "identical to
-   *  Human's Ramparts"; that tech was removed 2026-08-24.) Mutates
-   *  attackerUnit.hp; returns the raw counter damage dealt (0 if out of
-   *  reach). */
-  function spikesCounterattack(structureRecord, defenderCiv, attackerUnit, attackerCiv, flatAttack) {
-    const archer = window.GameData.getUnit("archer");
-    const dist = Math.max(Math.abs(attackerUnit.x - structureRecord.x), Math.abs(attackerUnit.y - structureRecord.y));
-    if (dist > (archer.range || 1)) return 0;
-    const baseAtk = Math.max(structureRecord.attack || 0, flatAttack);
-    const defStat = effectiveDefense(attackerUnit, attackerCiv, {});
-    let dmg = mitigatedDamage(baseAtk, defStat);
-    if (hasFirstStrike(attackerUnit, attackerCiv)) dmg = Math.round(dmg * 0.75);
-    attackerUnit.hp -= dmg;
-    return dmg;
-  }
+  // (2026-09-13: spikesAttackRating/spikesCounterattack lived here -- Orc
+  // "Spikes!"/"Bigger Spikes!", which let structures counterattack with a
+  // flat Archer-derived attack rating. Both techs were removed and this was
+  // their only consumer, so it went with them.)
 
   /** Halfellow "Rouse the People": `chance` probability a Militia spawns
    *  adjacent to (x,y) -- 5% on being attacked (see attackStructure/
@@ -1481,13 +1474,10 @@ window.GameEngine = window.GameEngine || {};
     // strike back with the attack of a unit Resting and Defending in the
     // city. That tech was removed -- Human keeps its per-turn wall potshot,
     // renamed "Ramparts!", but no longer counterattacks. wallCounterattack
-    // went with it; recover from git if a future tech wants it back.)
-    } else if (defenderCiv && spikesAttackRating(defenderCiv) > 0) {
-      // Orc "Spikes!"/"Bigger Spikes!": scope
-      // widened from walls-only to any structure (walls, buildings, and
-      // cities via attackCity below) -- same "any structure" scope Rouse
-      // the People already uses just above, no isWall gate anymore.
-      counterDamage = spikesCounterattack(structureRecord, defenderCiv, unit, attackerCiv, spikesAttackRating(defenderCiv));
+    // went with it; recover from git if a future tech wants it back. 2026-
+    // 09-13: an Orc "Spikes!"/"Bigger Spikes!" branch sat here too, letting
+    // any structure counterattack with a flat attack rating. Both techs were
+    // removed; spikesAttackRating/spikesCounterattack went with them.)
     }
     return { damage: dmg, destroyed: structureRecord.hp <= 0, counterDamage, militiaSpawned, doubleStruck, doubleDamage };
   }
@@ -1505,8 +1495,9 @@ window.GameEngine = window.GameEngine || {};
    * one population level and hp refills to the new (smaller) max -- no
    * overkill carryover into that fresh pool. A level-1 city that hits 0 hp
    * is destroyed outright rather than dropping to a nonsensical level 0. A
-   * city never counterattacks on its own (Rouse the People/Ramparts/Spikes
-   * below are the only exceptions).
+   * city never counterattacks on its own (Rouse the People is the only
+   * exception left -- see attackStructure's doc comment for the two removed
+   * ones, Ramparts and Spikes).
    */
   const CITY_BASE_DEFENSE = CFG.cityBaseDefense;
   const CITY_DEFENSE_PER_LEVEL = CFG.cityDefensePerLevel;
@@ -1657,10 +1648,9 @@ window.GameEngine = window.GameEngine || {};
     if (defenderCiv && defenderCiv.unlockedMechanics && defenderCiv.unlockedMechanics.has("rouse_the_people")) {
       counterDamage = structureCounterattack(city, defenderCiv, unit, attackerCiv);
       if (gameState) militiaSpawned = maybeSpawnMilitia(defenderCiv, city.x, city.y, gameState.map, gameState.civs);
-    // (2026-08-24: Human "Ramparts" branch removed here too -- see
-    // attackStructure's matching note above.)
-    } else if (defenderCiv && spikesAttackRating(defenderCiv) > 0) {
-      counterDamage = spikesCounterattack(city, defenderCiv, unit, attackerCiv, spikesAttackRating(defenderCiv));
+    // (2026-08-24: Human "Ramparts" branch removed here too, and 2026-09-13:
+    // Orc "Spikes!"/"Bigger Spikes!" likewise -- see attackStructure's
+    // matching note above.)
     }
     return { damage: dmg, populationLost, destroyed, counterDamage, militiaSpawned, hp: Math.max(0, city.hp), maxHp: cityMaxHp(city) };
   }
@@ -1864,6 +1854,7 @@ window.GameEngine = window.GameEngine || {};
     revealHidden,
     applyBefuddled,
     isCityWallDefenseSuppressed,
+    countAdjacentMilitaryAllies,
     resolveRound,
     resolveToTheDeath,
     initUnitHP,
