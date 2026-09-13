@@ -65,9 +65,9 @@ window.GameConfig = {
     /** Local date this build was cut, YYYY-MM-DD. */
     date: "2026-09-12",
     /** Local time this build was cut, 24-hour HH:MM. */
-    time: "11:06",
+    time: "20:31",
     /** Monotonic build counter -- increment it, don't recompute it. */
-    number: 292,
+    number: 293,
   },
 
   // =========================================================================
@@ -1460,11 +1460,23 @@ window.GameConfig = {
 
       /** Phase table, in cycle order. Lengths must sum to 12 -- daynight.js
        *  asserts this at load rather than silently producing a lopsided
-       *  cycle if someone edits one number. */
+       *  cycle if someone edits one number.
+       *
+       *  Day=6/Dusk=2/Midnight=2/Dawn=2 (2026-09-12, user-reported: "too
+       *  much darkness, even though it is in equal measure" -- the old
+       *  4/2/4/2 split left only 4 of 12 turns fully lit). `id`s are
+       *  deliberately UNCHANGED from the old day/twilight/night/dawn split
+       *  even though "Night"'s label became "Midnight" -- js/main.js's
+       *  night-music-duck check and js/ui/overlays.js's glint-dimming check
+       *  both branch on `phase === "night"` (the id, not the label), and
+       *  js/ui/daynight-clock.js's arc geometry finds twilight/dawn by
+       *  matching `p.id`. Renaming the ids would silently break all three;
+       *  renaming only `label` keeps every id-based branch working while
+       *  showing players the new name. */
       phases: [
-        { id: "day", label: "Day", turns: 4 },
-        { id: "twilight", label: "Twilight", turns: 2 },
-        { id: "night", label: "Night", turns: 4 },
+        { id: "day", label: "Day", turns: 6 },
+        { id: "twilight", label: "Dusk", turns: 2 },
+        { id: "night", label: "Midnight", turns: 2 },
         { id: "dawn", label: "Dawn", turns: 2 },
       ],
 
@@ -1473,14 +1485,14 @@ window.GameConfig = {
        * washed over the world and `alpha` its strength.
        *
        * `unitLights` is whether UNIT-carried light burns during that slot --
-       * torches, staves, wisps, burning units. Slots 5-10 is exactly what
-       * was asked for (last turn of twilight, all four of night, first turn
-       * of dawn) and also exactly the half of the cycle the moon is up, so
-       * the clock widget and the world agree by construction.
+       * torches, staves, wisps, burning units. Slots 7-10 (last turn of
+       * dusk, both midnight turns, first turn of dawn) is exactly the half
+       * of the cycle the moon is up, so the clock widget and the world
+       * agree by construction.
        *
        * BUILDING windows are deliberately NOT governed by this flag -- they
        * schedule themselves per window (see `windows` below) and start
-       * lighting a turn earlier, at first twilight, because a settlement
+       * lighting a turn earlier, at first dusk, because a settlement
        * lighting its lamps is what tells you dusk has arrived. A torch is
        * lit when you can no longer see; a lamp is lit when you'd rather not
        * have to.
@@ -1498,25 +1510,39 @@ window.GameConfig = {
        * drawn over, while the hue still does the work of saying which time of
        * day it is. Check that with the luma probe if you retune these.
        *
-       * NIGHT (slots 6-9) leaned toward grey (2026-09-12, user-reported:
-       * "night is still too blue"). Both `tint` and `cool` were blended 55%
-       * toward their own luma-equivalent grey (rgb -> (luma,luma,luma) at
-       * that ratio), preserving each slot's luma EXACTLY so the darkening
-       * feel is untouched -- only saturation dropped, not brightness. Only
-       * Night's own four slots moved; Twilight/Dawn keep their existing
+       * NIGHT leaned toward grey (2026-09-12, user-reported: "night is still
+       * too blue"). Both `tint` and `cool` were blended 55% toward their own
+       * luma-equivalent grey (rgb -> (luma,luma,luma) at that ratio),
+       * preserving each slot's luma EXACTLY so the darkening feel is
+       * untouched -- only saturation dropped, not brightness. Only the
+       * night-leaning slots moved; Dusk/Dawn keep their existing
        * amber/violet/indigo hues, which weren't the ones reported as off.
+       *
+       * REPROPORTIONED (2026-09-12, user-directed: "too much darkness, even
+       * though it is in equal measure" -- 6 Day, 2 Dusk, 2 Midnight, 2 Dawn
+       * instead of the old 4/2/4/2). Day simply runs 2 turns longer (slots
+       * 4-5 added, cloned from the existing flat daylight look). Dusk's art
+       * is unchanged, just shifted from slots 4-5 to 6-7. Dawn's art is
+       * unchanged and stays at 10-11 -- both layouts sum to 12 with Dawn
+       * always last, so its absolute position never moved. Midnight
+       * shrank from 4 authored slots to 2; rather than re-author a new
+       * curve, it keeps the OLD curve's two darkest entries (old Night 2 and
+       * Night 3, the former "small hours" peak) so peak darkness
+       * (`darknessReferencePeak` below) is unchanged despite running for
+       * less time -- the fix here is the DURATION of the dark stretch, not
+       * its intensity.
        */
       slots: [
         { tint: "#000000", alpha: 0.00, cool: "#1a3a8a", colorize: 0.00, unitLights: false }, //  0  Day 1
         { tint: "#000000", alpha: 0.00, cool: "#1a3a8a", colorize: 0.00, unitLights: false }, //  1  Day 2
         { tint: "#000000", alpha: 0.00, cool: "#1a3a8a", colorize: 0.00, unitLights: false }, //  2  Day 3
         { tint: "#000000", alpha: 0.00, cool: "#1a3a8a", colorize: 0.00, unitLights: false }, //  3  Day 4
-        { tint: "#3a2410", alpha: 0.15, cool: "#6e5230", colorize: 0.14, unitLights: false }, //  4  Twilight 1 -- first hint of dusk, muted amber-brown (user-reported 2026-09-07: an earlier, more saturated orange here read as "too orange" for just the first turn of dusk)
-        { tint: "#2e1430", alpha: 0.22, cool: "#553a72", colorize: 0.34, unitLights: true }, //  5  Twilight 2 -- dusk violet
-        { tint: "#151b28", alpha: 0.24, cool: "#344780", colorize: 0.50, unitLights: true }, //  6  Night 1
-        { tint: "#111722", alpha: 0.26, cool: "#31437c", colorize: 0.54, unitLights: true }, //  7  Night 2
-        { tint: "#101521", alpha: 0.28, cool: "#2f4079", colorize: 0.58, unitLights: true }, //  8  Night 3 -- the small hours
-        { tint: "#141a26", alpha: 0.25, cool: "#354881", colorize: 0.52, unitLights: true }, //  9  Night 4
+        { tint: "#000000", alpha: 0.00, cool: "#1a3a8a", colorize: 0.00, unitLights: false }, //  4  Day 5
+        { tint: "#000000", alpha: 0.00, cool: "#1a3a8a", colorize: 0.00, unitLights: false }, //  5  Day 6
+        { tint: "#3a2410", alpha: 0.15, cool: "#6e5230", colorize: 0.14, unitLights: false }, //  6  Dusk 1 -- first hint of dusk, muted amber-brown (user-reported 2026-09-07: an earlier, more saturated orange here read as "too orange" for just the first turn of dusk)
+        { tint: "#2e1430", alpha: 0.22, cool: "#553a72", colorize: 0.34, unitLights: true }, //  7  Dusk 2 -- dusk violet
+        { tint: "#111722", alpha: 0.26, cool: "#31437c", colorize: 0.54, unitLights: true }, //  8  Midnight 1 (was Night 2)
+        { tint: "#101521", alpha: 0.28, cool: "#2f4079", colorize: 0.58, unitLights: true }, //  9  Midnight 2 -- the small hours (was Night 3, the old peak)
         { tint: "#141d3d", alpha: 0.22, cool: "#2a53c8", colorize: 0.42, unitLights: true }, // 10  Dawn 1 -- cold indigo
         { tint: "#2e2618", alpha: 0.14, cool: "#8a7038", colorize: 0.16, unitLights: false }, // 11  Dawn 2 -- first warm light
       ],
@@ -1860,13 +1886,21 @@ window.GameConfig = {
 
       windows: {
         /** Which slots a window may light on, and which it may go dark on.
-         *  Lighting spans twilight into the first night turn; going dark is
-         *  confined to the last three night turns, so the city empties
-         *  toward morning. Each window picks one of each, deterministically
-         *  per building instance per cycle -- see daynight.js's
-         *  windowSchedule. */
-        onSlots: [4, 5, 6],
-        offSlots: [7, 8, 9],
+         *  Lighting spans dusk into the first midnight turn; going dark is
+         *  confined to midnight's last turn plus the first turn of dawn, so
+         *  the city empties toward morning. Each window picks one of each,
+         *  deterministically per building instance per cycle -- see
+         *  daynight.js's windowSchedule.
+         *
+         *  Recomputed (2026-09-12) for the Day=6/Dusk=2/Midnight=2/Dawn=2
+         *  reproportion -- same rule as before (light through dusk into the
+         *  first dark-phase turn, go dark over what's left of it), just
+         *  re-pointed at the new slot numbers. Midnight only has one slot
+         *  left after onSlots claims its first, so offSlots spills one turn
+         *  into dawn to keep some per-building spread instead of collapsing
+         *  every non-always-lit window onto the exact same turn. */
+        onSlots: [6, 7, 8],
+        offSlots: [9, 10],
         /** Wall-clock spread, in ms, AFTER the chosen turn begins. This is
          *  the whole point of the feature: people do not all reach for the
          *  lamp at the same instant, so a settlement has to ripple to life
@@ -1891,8 +1925,13 @@ window.GameConfig = {
        *  spawn rolls by this. 0 at night means no NEW wanderers; figures
        *  already out finish their route and fade through the states they
        *  already have, so the streets visibly drain at dusk instead of
-       *  snapping empty. */
-      villagerActivity: [1, 1, 1, 1, 0.6, 0.25, 0, 0, 0, 0, 0.25, 0.6],
+       *  snapping empty.
+       *
+       *  Resized (2026-09-12) for the Day=6/Dusk=2/Midnight=2/Dawn=2
+       *  reproportion -- same taper curve for Dusk/Dawn, just two more
+       *  full-activity entries for Day's extra turns and two fewer zero
+       *  entries now that Midnight is shorter. */
+      villagerActivity: [1, 1, 1, 1, 1, 1, 0.6, 0.25, 0, 0, 0.25, 0.6],
 
       /** How far the cloud layer's own colour is dragged toward the night
        *  tint. Clouds live on a canvas ABOVE the map, so the night pass

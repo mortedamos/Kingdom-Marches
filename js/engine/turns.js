@@ -57,7 +57,7 @@ window.GameEngine = window.GameEngine || {};
    *   slot         0-11, the position in the cycle (turnNumber % 12)
    *   phase        "day" | "twilight" | "night" | "dawn"
    *   label        display form of the above
-   *   phaseTurn    1-based turn within the phase ("Night 2 of 4")
+   *   phaseTurn    1-based turn within the phase ("Midnight 2 of 2")
    *   phaseLength  how many turns that phase runs
    *   cycleIndex   which full cycle we're in -- seeds per-night variation
    *   darkness     0-1 normalized, purely for display/tuning readouts

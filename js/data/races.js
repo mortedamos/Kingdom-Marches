@@ -119,10 +119,23 @@
  *     floored at MIN_VISION_RADIUS. See turns.js's dayNightVisionPenaltyFor
  *     and refreshVisibility. Every race here sees worse for exactly 4 of
  *     the cycle's 12 turns, each in a different window, so no kingdom holds
- *     a net sight advantage across a full cycle: Human/Halfellow at Night,
- *     Orc/Dwarf at Day, Elf split across Mid-Day and Mid-Night instead of
- *     one continuous block. Undead omits this field entirely (not yet a
- *     real playable race -- placeholder data only).
+ *     a net sight advantage across a full cycle: Human/Halfellow across
+ *     Dusk+Midnight (slots 6-9), Orc/Dwarf at Mid-Day, Elf split across
+ *     Mid-Day and Mid-Night instead of one continuous block. Undead omits
+ *     this field entirely (not yet a real playable race -- placeholder
+ *     data only).
+ *
+ *     Recomputed (2026-09-12) for the day/night cycle's Day=6/Dusk=2/
+ *     Midnight=2/Dawn=2 reproportion (was Day=4/Twilight=2/Night=4/Dawn=2).
+ *     Human/Halfellow's window is numerically unchanged -- slots 6-9 were
+ *     "all of Night" before and are now "all of Dusk+Midnight", the same 4
+ *     slots either way. Orc/Dwarf's window shrank from "all of Day" (Day
+ *     was only 4 slots) to the middle 4 of the new 6-slot Day, since
+ *     covering all 6 would double their penalized-turn count relative to
+ *     every other race and break the "exactly 4 of 12" balance. Elf's
+ *     Mid-Night half (slots 7,8) is unchanged for the same reason
+ *     Human/Halfellow's window is; only its Mid-Day half re-centers on the
+ *     new 6-slot Day.
  */
 
 window.GameData = window.GameData || {};
@@ -148,8 +161,8 @@ window.GameData.RACES = {
     // Starting tech id (must exist in techs.js)
     startingTech: "spears_raised",
 
-    // Humans see worse at Night -- see this file's header note on
-    // visionPenaltySlots.
+    // Humans see worse from Dusk through Midnight -- see this file's header
+    // note on visionPenaltySlots.
     visionPenaltySlots: [6, 7, 8, 9],
 
     uniqueUnits: ["spearguard", "cavalry", "knight", "archer", "longbowman", "catapult", "trebuchet", "wizard"],
@@ -177,9 +190,10 @@ window.GameData.RACES = {
 
     startingTech: "elf_watching_hunting",
 
-    // Elves see worse at Mid-Day and Mid-Night (the middle 2 turns of each
-    // 4-turn phase) -- see this file's header note on visionPenaltySlots.
-    visionPenaltySlots: [1, 2, 7, 8],
+    // Elves see worse at Mid-Day (middle 2 of the 6-turn Day) and Mid-Night
+    // (middle 2 of the 4-slot Dusk+Midnight stretch) -- see this file's
+    // header note on visionPenaltySlots.
+    visionPenaltySlots: [2, 3, 7, 8],
 
     uniqueUnits: ["ranger", "blade_dancer", "druid", "raptor", "shadowsteed", "awakened_oak"],
     uniqueBuildings: ["treetop_watch", "silverleaf_atelier", "altar_of_ages", "wellspring_grove"],
@@ -205,9 +219,9 @@ window.GameData.RACES = {
 
     startingTech: "dwarf_foe_hammer",
 
-    // Dwarves see worse during Day -- see this file's header note on
-    // visionPenaltySlots.
-    visionPenaltySlots: [0, 1, 2, 3],
+    // Dwarves see worse at Mid-Day (the middle 4 of Day's 6 turns) -- see
+    // this file's header note on visionPenaltySlots.
+    visionPenaltySlots: [1, 2, 3, 4],
 
     uniqueUnits: ["foehammer", "troubadour", "musketeer", "runeforged_titan"],
     uniqueBuildings: ["deep_forge", "great_hall", "runewall", "deep_gate"],
@@ -230,9 +244,9 @@ window.GameData.RACES = {
 
     startingTech: "orc_raiders",
 
-    // Orcs see worse during Day -- see this file's header note on
-    // visionPenaltySlots.
-    visionPenaltySlots: [0, 1, 2, 3],
+    // Orcs see worse at Mid-Day (the middle 4 of Day's 6 turns) -- see this
+    // file's header note on visionPenaltySlots.
+    visionPenaltySlots: [1, 2, 3, 4],
 
     // Orcs take ground by holding it with blades, not by growing culture
     // into it -- see this file's header note on this field. Honored only at
@@ -287,8 +301,8 @@ window.GameData.RACES = {
     ownCityHealingMultiplier: 6, // 6x(3d6)% instead of universal 4x(3d6)%
     influenceHealMult: 1.25,     // +25% heal rate when on any tile owned by this civ
 
-    // Halfellows see worse at Night -- see this file's header note on
-    // visionPenaltySlots.
+    // Halfellows see worse from Dusk through Midnight -- see this file's
+    // header note on visionPenaltySlots.
     visionPenaltySlots: [6, 7, 8, 9],
 
     aggressiveness: 0.1,

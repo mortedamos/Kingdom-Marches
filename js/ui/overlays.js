@@ -2099,7 +2099,7 @@ window.UI = window.UI || {};
   // the same reason: a tile that DOES show them gets the full look, it's
   // just not every tile, so density drops without any single sighting
   // reading as sparser than it should.
-  const FIREFLY_SLOTS = [5, 6]; // Twilight 2, Night 1 -- "late twilight and early night"
+  const FIREFLY_SLOTS = [7, 8]; // Dusk 2, Midnight 1 -- "late dusk and early midnight" (recomputed 2026-09-12 for the Day=6/Dusk=2/Midnight=2/Dawn=2 reproportion)
   // Thinned hard (2026-09-09, user-directed: "about 75% less fireflies
   // overall") by raising the per-tile SKIP chance from 0.45 to 0.86 --
   // 55% of eligible tiles participating down to 14%, a quarter as many --

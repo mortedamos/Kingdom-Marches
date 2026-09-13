@@ -379,8 +379,8 @@
     const seed = hashInts(source.seedA, source.seedB, strHash(source.spriteKey), index, state.cycleIndex);
     const r = (k) => rand01(seed, k);
 
-    const onSlots = w.onSlots || [4, 5, 6];
-    const offSlots = w.offSlots || [7, 8, 9];
+    const onSlots = w.onSlots || [6, 7, 8];
+    const offSlots = w.offSlots || [9, 10];
     const alwaysChance = (spec && typeof spec.alwaysLitChance === "number")
       ? spec.alwaysLitChance
       : (w.alwaysLitChance || 0);
