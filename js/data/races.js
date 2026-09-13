@@ -154,7 +154,15 @@ window.GameData.RACES = {
     // Personality traits (0.0–1.0) — drive all AI scoring and behavior.
     // See ai.js racialWeights() for how each trait maps to decisions.
     militarism:      0.6, // balanced-leaning-defensive — builds armies when threatened, not as first instinct
-    expansionism:    0.8, // eager settlers; Humans expand aggressively by land and sea
+    // Trimmed 0.8 -> 0.6, then back up to 0.7 (2026-09-13, user-directed).
+    // 0.6 overcorrected: a follow-up 6-seed sweep of just Human's four
+    // matchups showed it flipping from beating Elf/Dwarf 4-2 each (at 0.8)
+    // to LOSING to both 2-4 each -- 0.7 splits the difference between
+    // "clear outlier" and "underdog". (Orc was 5-0-1 against Human
+    // regardless of this value at either 0.8 or 0.6 -- that specific
+    // matchup's problem turned out to be a pioneer-safety gap, not a trait
+    // number; see ai.js's maybeFoundCity IMMINENT_THREAT_RADIUS flee check.)
+    expansionism:    0.7, // eager settlers; Humans expand aggressively by land and sea
     // Trimmed 0.9 -> 0.7 (2026-09-12, user-directed): Human was the only
     // race with no genuine dump stat (every other race trades off HARD
     // somewhere -- Orc's curiosity 0.2, Halfellow's militarism, Dwarf's
@@ -163,6 +171,20 @@ window.GameData.RACES = {
     // still the highest curiosity of any race even at 0.7 (Halfellow's
     // 0.6 was next), so this trims the outright ceiling rather than
     // demoting Human's identity as the research-forward race.
+    //
+    // Tried 0.7 -> 0.6 (2026-09-13, user-directed, reverted same day): the
+    // pioneer flee fix (ai.js) had pushed Human vs Dwarf from an even 3-3
+    // to 5-0-1, and this was meant to claw it back. It didn't -- Dwarf
+    // barely moved (still 5-1) -- while Human vs Elf flipped from 2-4 to
+    // 5-1 and Human vs Orc from an even 3-3 to 5-1, BOTH already-working
+    // matchups broken by a change meant to fix a third. A trait nerf
+    // producing more wins across multiple matchups has no coherent causal
+    // story; it's the simulation's chaotic sensitivity to small trait
+    // changes outrunning what a 6-seed sample can reliably steer, not a
+    // real signal. Reverted to 0.7. Human vs Dwarf (5-0-1) is left
+    // unresolved pending either a much larger seed sample to confirm real
+    // signal vs noise, or a fix targeted at the Dwarf side specifically
+    // rather than another global Human trait.
     curiosity:       0.7, // strong research drive; adaptability through tech
     industriousness: 0.7, // solid city development; roads and markets before barracks
 

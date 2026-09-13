@@ -1500,6 +1500,42 @@ window.GameEngine = window.GameEngine || {};
       pioneer._lastIdleX = pioneer.x;
       pioneer._lastIdleY = pioneer.y;
 
+      // Self-preservation while traveling (2026-09-13, user-directed,
+      // race-agnostic): the existing escort gate below only guards the
+      // MOMENT of founding -- a pioneer marching cross-country beforehand
+      // had no threat-awareness at all. Headless sim testing found Orc's
+      // raiders repeatedly picking off Human's pioneers in transit
+      // (turns 28/49/61/67/75/84/116/120 in one traced game, one burned
+      // alive), permanently denying its expansion regardless of any
+      // personality-trait tuning on either side -- a gap in pioneer
+      // behavior, not a race balance number. Any civ's Pioneer retreats
+      // toward its nearest own city when a visible enemy military unit is
+      // within IMMINENT_THREAT_RADIUS and no friendly military unit is
+      // already close enough to help -- same "penalize, don't hard-block"
+      // spirit as settleDangerPenalty, just reacting to an immediate
+      // adjacent-ish threat during travel rather than scoring a candidate
+      // site. Skipped with no cities yet (isFirstCity, mirrors the escort
+      // gate's own exemption below) -- nowhere to retreat TO, and the very
+      // first settle is never delayed.
+      const IMMINENT_THREAT_RADIUS = 2;
+      if (civ.cities.length > 0) {
+        const threatDist = nearestVisibleEnemyMilitaryDist(civ, gameState, pioneer.x, pioneer.y);
+        const hasNearbyEscort = civ.units.some((u) =>
+          u !== pioneer && !u.carriedBy && window.GameData.getUnit(u.typeId).category === "military"
+          && window.GameEngine.influence.chebyshev(u.x, u.y, pioneer.x, pioneer.y) <= IMMINENT_THREAT_RADIUS);
+        if (threatDist <= IMMINENT_THREAT_RADIUS && !hasNearbyEscort) {
+          const nearestCity = civ.cities.reduce((best, c) => {
+            const d = window.GameEngine.influence.chebyshev(pioneer.x, pioneer.y, c.x, c.y);
+            return (!best || d < best.d) ? { c, d } : best;
+          }, null);
+          moveUnitToward(pioneer, nearestCity.c.x, nearestCity.c.y, gameState.map, gameState.civs);
+          pioneer.usedThisTurn = true;
+          pioneer.currentMission = `Fleeing toward ${nearestCity.c.name} — enemy raider spotted nearby`;
+          log.push(`Pioneer at (${pioneer.x},${pioneer.y}) flees toward ${nearestCity.c.name} — enemy military unit spotted within ${IMMINENT_THREAT_RADIUS} tiles`);
+          continue;
+        }
+      }
+
       // A short, obvious reconnection to one of this civ's own cities on
       // another landmass jumps the queue ahead of ordinary settling -- see
       // maybeReconnectByShortBridge's own doc comment. This also guarantees
@@ -1848,12 +1884,15 @@ window.GameEngine = window.GameEngine || {};
    * it just makes a peaceful site win out over a war-torn one of similar
    * quality.
    */
-  const SETTLE_DANGER_RADIUS = 6;
-  function settleDangerPenalty(civ, gameState, x, y) {
+  /** Chebyshev distance to the nearest CURRENTLY VISIBLE enemy military unit
+   *  from (x,y), or Infinity if none is in sight -- shared by
+   *  settleDangerPenalty (site scoring) and maybeFoundCity's in-transit
+   *  flee check below. Only currently-visible enemies count (no stale
+   *  tileMemory positions), same convention as huntNearestEnemy/
+   *  assessInvasionTarget elsewhere in this file. */
+  function nearestVisibleEnemyMilitaryDist(civ, gameState, x, y) {
     const { map, civs } = gameState;
     const visible = gameState.visibility[civ.id] || new Set();
-    const tile = map.tiles[y * map.width + x];
-    let penalty = tile.status === "contested" ? 6 : 0;
     let nearestEnemyDist = Infinity;
     for (const other of Object.values(civs)) {
       if (other.id === civ.id || other.eliminated) continue;
@@ -1864,6 +1903,15 @@ window.GameEngine = window.GameEngine || {};
         if (d < nearestEnemyDist) nearestEnemyDist = d;
       }
     }
+    return nearestEnemyDist;
+  }
+
+  const SETTLE_DANGER_RADIUS = 6;
+  function settleDangerPenalty(civ, gameState, x, y) {
+    const { map } = gameState;
+    const tile = map.tiles[y * map.width + x];
+    let penalty = tile.status === "contested" ? 6 : 0;
+    const nearestEnemyDist = nearestVisibleEnemyMilitaryDist(civ, gameState, x, y);
     if (nearestEnemyDist <= SETTLE_DANGER_RADIUS) {
       penalty += (SETTLE_DANGER_RADIUS - nearestEnemyDist) * 2;
     }
