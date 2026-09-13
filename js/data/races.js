@@ -309,9 +309,16 @@ window.GameData.RACES = {
 
     // Personality traits
     militarism:      0.2, // minimal standing armies; halfellows rely on community, not soldiers
-    expansionism:    0.3, // 
+    expansionism:    0.3, //
     curiosity:       0.6, // strong research; halfellows value hearth-wisdom and practical craft
-    industriousness: 0.8, // maximum city investment; halls, hearths, and gardens before walls
+    // Raised to the 1.0 ceiling (2026-09-12, was 0.8) to match what
+    // cities.js's own comments already assumed ("a max-industriousness civ
+    // (Halfellow, 1.0)", cities.js:158/1446) -- a real mismatch between
+    // documented design intent and the shipped value. Also the direct lever
+    // for Halfellow's win condition being influence/territory rather than
+    // conquest (see cities.js's industriousnessInfluenceMult): at 0.8 it was
+    // under-delivering on its own "maximum city investment" identity below.
+    industriousness: 1.0, // maximum city investment; halls, hearths, and gardens before walls
 
     startingTech: "halfellow_arms",
 

@@ -4217,7 +4217,7 @@ window.GameEngine = window.GameEngine || {};
         },
         halfellow: {
           frontline: ["wanderer"], skirmish: ["pony_patrol"], standing: ["militia"],
-          support: ["trouble_maker"],
+          support: ["trouble_maker"], mystic: ["mycomancer"],
         },
       };
       const RACE_UNIT_RATIO = {
@@ -4231,7 +4231,18 @@ window.GameEngine = window.GameEngine || {};
         // Bombard is a regular, repeatedly-fieldable siege option instead.
         dwarf:     { frontline: 0.30, ranged: 0.20, support: 0.15, siege: 0.15, bombard: 0.20 },
         orc:       { frontline: 0.25, defensive: 0.15, skirmish: 0.15, ranged: 0.15, siege: 0.10, heavy: 0.10, capstone: 0.10 },
-        halfellow: { frontline: 0.25, skirmish: 0.30, standing: 0.25, support: 0.20 },
+        // Rebalanced (2026-09-12, user-directed): traps (support) and
+        // mushrooms (mystic) become Halfellow's primary combat identity --
+        // together the largest single share of the army -- rather than
+        // fighting head-on with conventional frontline/skirmish/standing
+        // units, which its rock-bottom militarism/aggressiveness (0.2/0.1)
+        // was never going to win. Mycomancer previously had no lineage entry
+        // at all (see RACE_UNIT_LINEAGES.halfellow's mystic role above) and
+        // was consequently never built despite being fully implemented --
+        // 0 built across a live 250-turn game, confirmed via a headless
+        // sim -- so its 0.20 share here is a genuine new option, not a
+        // reshuffle of an already-working one.
+        halfellow: { frontline: 0.20, skirmish: 0.20, standing: 0.15, support: 0.25, mystic: 0.20 },
       };
       /** Whichever role-lineage sits furthest BELOW its target share of the
        *  current (owned + queued, summed across every id in that lineage)
@@ -7034,6 +7045,19 @@ window.GameEngine = window.GameEngine || {};
     unit.usedThisTurn = true;
     unit.currentMission = `Unlocked the gate at (${structure.x},${structure.y})`;
     log.push(`Unlock the Gate: ${civ.id}'s ${describeUnit(unit)} suppresses ${target.civId}'s ${city.name}'s wall defense by 75% for ${UNLOCK_THE_GATE_ROUNDS} rounds`);
+    // "Trickster opens the gate, then the army walks in" (2026-09-12,
+    // user-directed): headless testing found this fired 75 times in one
+    // 250-turn game with ZERO follow-up attacks -- Halfellow's own units
+    // scored the now-vulnerable city no differently than any other, so
+    // nothing ever finished the job. Records the opportunity so
+    // considerAttackOrGarrison's city-scoring loop can single it out (same
+    // shared-target-bonus shape as Elf's civ._elfPartyTarget) for any
+    // Halfellow unit that's already within range when the gate falls --
+    // this is a follow-through nudge, not new cross-map pathing toward the
+    // opportunity.
+    civ._halfellowGateTargets = (civ._halfellowGateTargets || [])
+      .filter((t) => t.expiresAtTurn > currentTurnNumber);
+    civ._halfellowGateTargets.push({ city, civId: target.civId, expiresAtTurn: untilTurn });
     return true;
   }
 
@@ -8655,11 +8679,21 @@ window.GameEngine = window.GameEngine || {};
 
   /** Halfellow Trouble Maker AI: if Set the Trap is researched and there's a
    *  free slot under the civ-wide cap (trapCapReached), plants a trap
-   *  (instant, see startTroubleMakerTrapSet) at the nearest legal tile to
-   *  the Trouble Maker's own position -- unlike the Wisp's frontier-seeking
-   *  pick, this is a short-range plant right under its own feet
-   *  (TRAP_PLACEMENT_RANGE), so "nearest legal tile" is really just "pick
-   *  any open adjacent-ish tile" rather than a real strategic search.
+   *  (instant, see startTroubleMakerTrapSet) at a legal tile near the
+   *  Trouble Maker's own position (TRAP_PLACEMENT_RANGE) -- unlike the
+   *  Wisp's frontier-seeking pick, this is a short-range plant right under
+   *  its own feet, so "pick" is really just "pick any open adjacent-ish
+   *  tile" rather than a real strategic search.
+   *
+   *  Home-turf preference (2026-09-12, user-directed: traps/mushrooms
+   *  should be a real "viable combat strategy," not incidental litter from
+   *  wherever a wandering Trouble Maker happened to be standing): a tile
+   *  this civ already owns is preferred outright over one it doesn't, and
+   *  only broken by distance within that same ownership tier -- so a
+   *  Trouble Maker mostly at home rings its own cities' approaches with
+   *  traps by default, falling back to the plain nearest-tile pick only
+   *  when no owned tile is in range (e.g. a Trouble Maker off on a
+   *  Resource Heist/Unlock the Gate run deep in enemy territory).
    *  Alternates flavor by a coin flip -- no tactical reasoning about which
    *  is better here, just variety. Returns true if it consumed the Trouble
    *  Maker's turn. */
@@ -8667,14 +8701,18 @@ window.GameEngine = window.GameEngine || {};
     if (unit.typeId !== "trouble_maker" || !civ.unlockedMechanics) return false;
     if (!civ.unlockedMechanics.has("trap_summon") || unit.usedThisTurn) return false;
     if (trapCapReached(civ)) return false;
-    let pick = null, bestDist = Infinity;
+    const { map } = gameState;
+    let pick = null, bestOwned = false, bestDist = Infinity;
     for (let dy = -TRAP_PLACEMENT_RANGE; dy <= TRAP_PLACEMENT_RANGE; dy++) {
       for (let dx = -TRAP_PLACEMENT_RANGE; dx <= TRAP_PLACEMENT_RANGE; dx++) {
         if (dx === 0 && dy === 0) continue;
         const x = unit.x + dx, y = unit.y + dy;
         if (!isValidTrapPlacementTile(gameState, civ.id, x, y, unit)) continue;
+        const owned = map.tiles[y * map.width + x].ownerCivId === civ.id;
         const dist = Math.abs(dx) + Math.abs(dy);
-        if (dist < bestDist) { bestDist = dist; pick = { x, y }; }
+        if (!pick || (owned && !bestOwned) || (owned === bestOwned && dist < bestDist)) {
+          pick = { x, y }; bestOwned = owned; bestDist = dist;
+        }
       }
     }
     if (!pick) return false;
@@ -13227,6 +13265,15 @@ window.GameEngine = window.GameEngine || {};
   // also in range.
   const ELF_PARTY_FOCUS_BONUS = 25;
 
+  // Halfellow "trickster opens the gate, then the army walks in": flat
+  // bonus for a city this civ's own Trouble Maker currently has wall-
+  // suppressed via Unlock the Gate (civ._halfellowGateTargets, set by
+  // performUnlockTheGate) -- see considerAttackOrGarrison's city-scoring
+  // loop. Sized to comfortably beat a competing structure/wall target in
+  // the same 0-100-ish city-score range, since the whole point is "finish
+  // the job before the 3-round suppression expires," not a soft nudge.
+  const HALFELLOW_GATE_RUSH_BONUS = 40;
+
   /** How many of `civ`'s OTHER (not-yet-acted, uncarried) Rangers can
    *  currently reach `target` -- same range/line-of-sight rules
    *  considerAttackOrGarrison itself uses for `unit`, just re-checked per
@@ -13769,8 +13816,18 @@ window.GameEngine = window.GameEngine || {};
           if (expectedDmg <= 1 && !opts.forcedCity) continue;
           const winProb = window.GameEngine.combat.cityAttackWinProbability(unit, targetCity, civ, otherCiv.id, currentTurnNumber);
           const level = Math.floor(targetCity.population);
+          // Halfellow "trickster opens the gate, then the army walks in":
+          // this exact city is currently wall-suppressed by this civ's OWN
+          // Trouble Maker (see performUnlockTheGate's civ._halfellowGateTargets)
+          // -- follow through on it decisively rather than letting the
+          // ordinary aggressiveness-driven willingness gate (Halfellow's own
+          // minAcceptableWinProbability sits at 0.86, see that function's
+          // doc comment) throw the opportunity away before it expires.
+          const gateRush = civ.raceId === "halfellow" && civ._halfellowGateTargets
+            && civ._halfellowGateTargets.some((t) => t.city === targetCity && t.expiresAtTurn > currentTurnNumber);
           let score = winProb * 50 * (weights.attack || 1.0) + level * 5;
-          if (winProb < minAcceptableWinProbability(civ)) score *= 0.1; // heavily suppressed, not zeroed
+          if (gateRush) score += HALFELLOW_GATE_RUSH_BONUS;
+          else if (winProb < minAcceptableWinProbability(civ)) score *= 0.1; // heavily suppressed, not zeroed
           if (score > bestCityScore) {
             bestCityScore = score;
             bestCity = { city: targetCity, civ: otherCiv };

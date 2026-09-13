@@ -372,7 +372,7 @@ window.GameData.UNITS = {
   // --- HALFELLOW full roster (see techs.js) ---
   wanderer: {
     id: "wanderer", label: "Wanderer", symbol: "⚔", category: "military", raceOnly: "halfellow",
-    attack: 2, defense: 3, movement: 2, visionRadius: 3,
+    attack: 3, defense: 3, movement: 2, visionRadius: 3,
     // canFoundCity removed (2026-08-17, user-directed) -- Wanderer settling
     // was an additional option alongside the shared Pioneer (see
     // halfellow_arms); every consumer of this flag (orders.js/main.js/
@@ -388,7 +388,7 @@ window.GameData.UNITS = {
   },
   militia: {
     id: "militia", label: "Militia", symbol: "⚔", category: "military", raceOnly: "halfellow",
-    attack: 5, defense: 6, movement: 2, visionRadius: 4, siegePct: .3,
+    attack: 6, defense: 6, movement: 2, visionRadius: 4, siegePct: .3,
     coinCost: 22, attackChars: ["🔪", "🔱"], biggerPct: .2, rare: true, nameSpecial: true,
   },
   // Deliberately unremarkable combat stats, same "the real value is the
@@ -537,7 +537,7 @@ window.GameData.UNITS = {
   // nothing was worth bombarding.
   bombard: {
     id: "bombard", label: "Bombard", symbol: "⛰", category: "military", raceOnly: "dwarf", range: 3,
-    attack: 7, defense: 4, movement: 2, visionRadius: 3, siegePct: 1.25, siegeAtRange: true,
+    attack: 8, defense: 4, movement: 2, visionRadius: 3, siegePct: 1.25, siegeAtRange: true,
     attackChars: ["⚫️", "💥"], biggerPct: .6, burnChancePct: 0.5,
     neverExplores: true, muzzleSmoke: true,
     nameSpecial: true, // a machine, not a person -- see unit-names.js
@@ -555,13 +555,13 @@ window.GameData.UNITS = {
   // Orc unit dying).
   goblin_miscreant: {
     id: "goblin_miscreant", label: "Goblin Miscreant", symbol: "◇", category: "military", raceOnly: "orc",
-    attack: 1, defense: 0, movement: 2, visionRadius: 2,
+    attack: 2, defense: 0, movement: 2, visionRadius: 2,
     coinCost: 8, attackChars: ["🔪", "💣", "🗡", "🧨"], biggerPct: -0.2, doubleStrikePct: 0.2,
     cheap: true,
   },
   raider: {
     id: "raider", label: "Raider", symbol: "⚔", category: "military", raceOnly: "orc",
-    attack: 3, defense: 2, movement: 2, visionRadius: 2,
+    attack: 4, defense: 2, movement: 2, visionRadius: 2,
     coinCost: 15, attackChars: ["🪓", "🔪", "𓌜"],
   },
   // A beast, not a real fighter -- its value is the "hunt" AI behavior
@@ -571,13 +571,13 @@ window.GameData.UNITS = {
   // its own dedicated AI job and isn't a person to be gendered/epitheted.
   dire_wolf: {
     id: "dire_wolf", label: "Dire Wolf", symbol: "🐺", category: "military", raceOnly: "orc",
-    attack: 2, defense: 1, movement: 4, visionRadius: 4, firstStrikePct: 0.03,
+    attack: 3, defense: 1, movement: 4, visionRadius: 4, firstStrikePct: 0.03,
     coinCost: 12, attackChars: ["𓆩"], doubleStrikePct: 0.1,
     neverExplores: true, nameSpecial: true,
   },
   impaler: {
     id: "impaler", label: "Impaler", symbol: "▲", category: "military", raceOnly: "orc", range: 2,
-    attack: 2, defense: 3, movement: 1, visionRadius: 2, attackChars: ["𐃆"], firstStrikePct: 0.1,
+    attack: 3, defense: 3, movement: 1, visionRadius: 2, attackChars: ["𐃆"], firstStrikePct: 0.1,
     coinCost: 18,
   },
   wolf_rider: {
@@ -617,7 +617,7 @@ window.GameData.UNITS = {
   },
   battering_ram: {
     id: "battering_ram", label: "Battering Ram", symbol: "⚙", category: "military", raceOnly: "orc",
-    attack: 8, defense: 6, movement: 1, visionRadius: 2, siegePct: 1.5,
+    attack: 9, defense: 7, movement: 1, visionRadius: 2, siegePct: 1.5,
     coinCost: 30, biggerPct: .5, attackChars: ["💥"], impactSmoke: true,
     nameSpecial: true, // a machine, not a person -- see unit-names.js
   },
@@ -629,7 +629,7 @@ window.GameData.UNITS = {
 
   dragon: {
     id: "dragon", label: "Dragon", symbol: "🐉", category: "military", raceOnly: "orc",
-    attack: 10, defense: 9, movement: 6, visionRadius: 5, flying: true, range: 2, siegePct: 1.00, burnChancePct: 0.50,
+    attack: 11, defense: 9, movement: 6, visionRadius: 5, flying: true, range: 2, siegePct: 1.00, burnChancePct: 0.50,
     coinCost: 55, biggerPct: 1.0, attackChars: ["🔥", "💥", "彡"], impactSmoke: true,
     // No `rare` (2026-08-24): the build-cost premium was how the Dragon was
     // kept scarce back when Dragon Den was a +10% coin building. The Den is
