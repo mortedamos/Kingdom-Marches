@@ -1819,13 +1819,48 @@
     fetch("tutorial.txt")
       .then((r) => r.text())
       .then((text) => {
-        $("tutorial-content").innerHTML = window.UI.credits.render(text);
+        const content = $("tutorial-content");
+        content.innerHTML = window.UI.credits.render(text);
+        // [Label](kb:view:id) cross-links (credits.js's KB_LINK_RE) --
+        // jump straight into the Knowledge Base, same idea as the Knowledge
+        // Base's own internal cross-links (jumpToCondition/jumpToStat/etc.)
+        // just sourced from tutorial.txt's markdown instead of unit/tech
+        // data.
+        for (const a of content.querySelectorAll(".kb-link")) {
+          a.onclick = (e) => {
+            e.preventDefault();
+            jumpToKnowledgeFromTutorial(a.dataset.kbView, a.dataset.kbId);
+          };
+        }
         $("tutorial-overlay").style.display = "flex";
       });
   }
 
   function closeTutorial() {
     $("tutorial-overlay").style.display = "none";
+  }
+
+  /** A tutorial cross-link ([Label](kb:view:id), see js/ui/credits.js's
+   *  KB_LINK_RE) -- closes the Tutorial and jumps straight to that Knowledge
+   *  Base page/entry. Same shape as jumpToUnitFromTechTree/
+   *  jumpToConditionFromTechTree above: no back-target, since there's no
+   *  single Knowledge Base screen "the tutorial" itself corresponds to the
+   *  way a unit profile does for jumpToCondition/jumpToStat. `view`/`id`
+   *  come straight from tutorial.txt's own markdown, so an unrecognized
+   *  view is ignored rather than thrown on -- a typo in the text file
+   *  shouldn't be able to break the Tutorial window. */
+  function jumpToKnowledgeFromTutorial(view, id) {
+    closeTutorial();
+    knowledgeBackTarget = null;
+    knowledgeView = view;
+    if (view === "units") knowledgeSelectedUnitId = id;
+    else if (view === "structures") knowledgeSelectedStructureId = id;
+    else if (view === "terrain") knowledgeSelectedTerrainKey = id;
+    else if (view === "conditions") knowledgeSelectedConditionKey = id;
+    else if (view === "stats") knowledgeSelectedStatKey = id;
+    else if (view === "actions") knowledgeSelectedActionKey = id;
+    else return;
+    renderKnowledgeOverlay();
   }
 
   /** Open/close wiring for the Tutorial window -- same generous-dismissal

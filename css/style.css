@@ -1657,9 +1657,11 @@ html, body {
 .shortcuts-modal { width: min(520px, 94vw); }
 /* Tutorial window -- reuses .techtree-modal for the backdrop/frame (same as
    .shortcuts-modal above) and credits.js's .credits-title/-heading/-para
-   classes for its content (see js/main.js's openTutorial), just narrower
-   than the tech tree's own 1240px to read like a document, not a chart. */
-.tutorial-modal { width: min(960px, 94vw); }
+   classes for its content (see js/main.js's openTutorial). Widened twice,
+   960px then this (2026-09-13, user-directed) as tutorial.txt itself grew
+   from a handful of short sections into a full walkthrough -- now matches
+   .techtree-modal's own 1240px default (no override needed) rather than
+   trailing it. */
 /* The credits crawl centers everything (it's a scrolling marquee) and sizes
    its type for a big projected scroll, but a static document reads better
    smaller and left-aligned -- override both, scoped to #tutorial-content so
@@ -2478,4 +2480,16 @@ html, body {
   line-height: 1.7;
 }
 .credits-para a { color: var(--accent-hover); }
+/* [Label](kb:view:id) cross-links (js/ui/credits.js's KB_LINK_RE, wired up
+   by js/main.js's openTutorial/jumpToKnowledgeFromTutorial) -- dotted
+   underline, same convention as the Knowledge Base's own .kb-stat-link, so
+   an in-app jump reads differently from the plain http(s) auto-links above
+   (solid underline, actually leaves the page). */
+.kb-link {
+  color: var(--accent-hover);
+  text-decoration: underline dotted;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+.kb-link:hover { color: var(--accent); }
 
