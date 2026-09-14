@@ -1660,12 +1660,16 @@ html, body {
    classes for its content (see js/main.js's openTutorial), just narrower
    than the tech tree's own 1240px to read like a document, not a chart. */
 .tutorial-modal { width: min(720px, 94vw); }
-/* The credits crawl centers everything (it's a scrolling marquee), but a
-   static document reads better left-aligned -- override just the alignment,
-   scoped to #tutorial-content so the credits crawl itself is untouched. */
+/* The credits crawl centers everything (it's a scrolling marquee) and sizes
+   its type for a big projected scroll, but a static document reads better
+   smaller and left-aligned -- override both, scoped to #tutorial-content so
+   the credits crawl itself is untouched. */
 #tutorial-content .credits-title,
 #tutorial-content .credits-heading,
 #tutorial-content .credits-para { text-align: left; }
+#tutorial-content .credits-title { font-size: 22px; }
+#tutorial-content .credits-heading { font-size: 15px; }
+#tutorial-content .credits-para { font-size: 14px; }
 .shortcuts-modal #fullscreen-toggle-btn { width: 100%; margin: 12px 0 4px 0; }
 .shortcuts-section { margin-top: 16px; }
 .shortcuts-section-title {
