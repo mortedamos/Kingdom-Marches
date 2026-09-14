@@ -28,7 +28,7 @@ Select your pioneer and choose "[Found City](kb:actions:foundCity)" from the men
 · Build structures like walls, or, when unlocked with the right advancement, new buildings that give your kingdom bonuses.
 · Focus on gathering resources to support your economy, or researching new advancements. 
 
-Next, use your trackers. Trackers are early game units meant to explore your new world.
+Next, use your trackers. A [tracker](kb:units:scout) is an early game units meant to explore your new world.
 
 · Build a [roads](kb:terrain:road) or [bridges](kb:terrain:bridge), which help your units move more quickly around the map. 
 · [Gather Resources](kb:actions:gatherResources) from map tiles with special resources present faster than your city would on its own. 
