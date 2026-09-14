@@ -22,14 +22,18 @@ Advancements can be purchased with resources and represent new abilities for you
 
 You start with a [pioneer](kb:units:pioneer), one or more [trackers](kb:units:scout), and possibly a [galley](kb:units:galley) if you began near water.
 
-Select your pioneer and select "[Found City](kb:actions:foundCity)" from the menu. This wll create your first city.
+Select your pioneer and choose "[Found City](kb:actions:foundCity)" from the menu. This wll create your first city.
+
+· Create a new unit to explore, defend, [Attack](kb:actions:attack), or [Gather Resources](kb:actions:gatherResources).
+· Build structures like walls, or, when unlocked with the right advancement, new buildings that give your kingdom bonuses.
+· Focus on gathering resources to support your economy, or researching new advancements. 
 
 Next, use your trackers. Trackers are early game units meant to explore your new world.
 
 · Build a [roads](kb:terrain:road) or [bridges](kb:terrain:bridge), which help your units move more quickly around the map. 
 · [Gather Resources](kb:actions:gatherResources) from map tiles with special resources present faster than your city would on its own. 
 · Can attack, but are very weak compared to actual military units.
-· Trackers, or any military unit, can be used to garrison a city by moving the tracker onto your city and giving it the "[Rest and Defend](kb:actions:restAndDefend)" action, which provides several benefits to the city. 
+· Trackers, or any military unit, can support city by moving the unit onto the city and giving it the "[Rest and Defend](kb:actions:restAndDefend)" action. 
 
 ## Knowledge Base
 
