@@ -15,8 +15,10 @@
  *   any other line          -> body text; consecutive non-blank lines join
  *                            into one paragraph, each on its own row
  *
- * Bare "http(s)://..." URLs in any line are auto-linked. Everything else is
- * escaped, so credits.txt/tutorial.txt itself never needs HTML.
+ * Bare "http(s)://..." URLs in any line are auto-linked. **text** renders
+ * bold (<strong>) -- no _italic_/other emphasis, just the one a tutorial
+ * actually needs for "press T" style callouts. Everything else is escaped,
+ * so credits.txt/tutorial.txt itself never needs HTML.
  *
  * [Label](kb:view:id) -> a Knowledge Base cross-link (2026-09-13, added for
  * tutorial.txt): renders as an in-page link the caller wires up itself (see
@@ -50,14 +52,24 @@
       `<a href="#" class="kb-link" data-kb-view="${view}" data-kb-id="${id}">${label}</a>`);
   }
 
+  // **text** -> <strong>. Matched against the already-escaped line, same as
+  // KB_LINK_RE/URL_RE -- non-greedy so "**a** and **b**" makes two <strong>
+  // runs instead of one spanning "a** and **b".
+  const BOLD_RE = /\*\*([^*]+)\*\*/g;
+  function linkifyBold(escaped) {
+    return escaped.replace(BOLD_RE, (_m, inner) => `<strong>${inner}</strong>`);
+  }
+
   /** Every place text actually reaches the page runs through this one path,
-   *  so URL auto-linking and kb: cross-links both apply everywhere (title/
-   *  heading/paragraph) instead of only wherever someone remembered to call
-   *  linkify -- kb-link substitution goes first since its own output (a
-   *  literal "#" href) would otherwise never itself get mistaken for a bare
-   *  URL, but doing it in this order means it never has to consider one. */
+   *  so URL auto-linking, kb: cross-links, and **bold** all apply everywhere
+   *  (title/heading/paragraph) instead of only wherever someone remembered
+   *  to call linkify -- kb-link substitution goes first since its own
+   *  output (a literal "#" href) would otherwise never itself get mistaken
+   *  for a bare URL, but doing it in this order means it never has to
+   *  consider one; bold's `**`/`*` delimiters don't overlap either of the
+   *  other two's syntax, so its own position in the chain doesn't matter. */
   function renderInline(raw) {
-    return linkify(linkifyKb(escapeHtml(raw)));
+    return linkify(linkifyBold(linkifyKb(escapeHtml(raw))));
   }
 
   function parse(text) {
