@@ -155,6 +155,8 @@
           <button id="title-kb-conditions-btn" class="menu-dropdown-btn">Conditions</button>
           <button id="title-kb-stats-btn" class="menu-dropdown-btn">Stats</button>
           <button id="title-kb-techtrees-btn" class="menu-dropdown-btn">Advancements</button>
+          <button id="title-kb-tutorial-btn" class="menu-dropdown-btn menu-dropdown-btn-shortcut">
+            <span>Tutorial</span><span class="menu-shortcut">T</span></button>
         </div>
       </div>
     </div>
@@ -405,6 +407,8 @@
           <button id="kb-conditions-btn" class="menu-dropdown-btn">Conditions</button>
           <button id="kb-stats-btn" class="menu-dropdown-btn">Stats</button>
           <button id="kb-techtrees-btn" class="menu-dropdown-btn">Advancements</button>
+          <button id="kb-tutorial-btn" class="menu-dropdown-btn menu-dropdown-btn-shortcut">
+            <span>Tutorial</span><span class="menu-shortcut">T</span></button>
         </div>
       </div>
       <div class="menu-item">
@@ -599,6 +603,7 @@
           <div class="shortcuts-section-title">General</div>
           <div class="shortcuts-row"><span class="shortcuts-key">W A S D / Arrow Keys</span><span>Scroll around the map</span></div>
           <div class="shortcuts-row"><span class="shortcuts-key">M</span><span>Mute or unmute all sound</span></div>
+          <div class="shortcuts-row"><span class="shortcuts-key">T</span><span>Show the Tutorial</span></div>
         </div>
         <div class="shortcuts-section">
           <div class="shortcuts-section-title">Unit Selected</div>
@@ -629,6 +634,22 @@
     <div id="knowledge-modal" class="knowledge-modal">
       <button class="techtree-close-btn" id="knowledge-close-btn" aria-label="Close">&times;</button>
       <div id="knowledge-content"></div>
+    </div>
+  </div>
+
+  <!-- Tutorial: fetched/parsed from tutorial.txt (root folder) fresh every
+       time it's opened -- same convention as #credits-overlay (see
+       js/ui/credits.js for the tiny markdown dialect both share), just a
+       static readable modal instead of a scrolling crawl. Opened from the
+       Knowledge menu (title screen and in-game), the "T" shortcut, and
+       automatically on a fresh game start when the Game Options "Show
+       Tutorial" checkbox was checked -- see js/main.js's openTutorial. Lives
+       outside both #title-screen and #game-screen, same reasoning as
+       #knowledge-overlay just above: it has to open from either. -->
+  <div id="tutorial-overlay" class="techtree-overlay" style="display:none;">
+    <div id="tutorial-modal" class="techtree-modal tutorial-modal">
+      <button class="techtree-close-btn" id="tutorial-close-btn" aria-label="Close">&times;</button>
+      <div id="tutorial-content" class="techtree-modal-scroll"></div>
     </div>
   </div>
 

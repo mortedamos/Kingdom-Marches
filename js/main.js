@@ -43,6 +43,10 @@
   // button can jump straight back to it. null whenever that page was opened
   // directly from the menu instead.
   let knowledgeBackTarget = null;
+  // Set by startGame() from the Game Options "Show Tutorial" checkbox, read
+  // and cleared once by finishStartGame() -- see openTutorial/closeTutorial.
+  // Left false by startGameFromSave (Load Game/Quick Load never show it).
+  let pendingShowTutorial = false;
   let humanCivId = null;
   let spectatorMode = false;
   let spectatorSpeed = 1; // 1x/2x/4x/8x/16x -- see the speed-btn row in index.html
@@ -473,6 +477,15 @@
         </label>
         <p class="launch-hint">Win by controlling enough of the map. Turn off to require Elimination instead.</p>
       </div>
+
+      <div class="launch-section">
+        <div class="launch-section-label">Help</div>
+        <label class="launch-row launch-row-check">
+          <span>Show Tutorial</span>
+          <input type="checkbox" id="show-tutorial-toggle" checked>
+        </label>
+        <p class="launch-hint">Opens a quick guide once the game loads. Auto-unchecked if your quicksave already has 50+ turns played.</p>
+      </div>
       </div>
 
       <div class="launch-actions">
@@ -867,6 +880,7 @@
     applyMuteUrlSwitch();
     $("title-build-stamp").textContent = renderBuildStamp();
     $("launch-options-content").innerHTML = renderLaunchOptions();
+    applyDefaultShowTutorial();
 
     // Spectator mode: pick exactly which races participate via checkboxes,
     // instead of a random subset sized by "Opponents" (that dropdown/random
@@ -920,6 +934,7 @@
 
     setupLaunchOptionsOverlay();
     setupCreditsOverlay();
+    setupTutorialOverlay();
     setupContextMenuDismissal();
     setupButtonClickSfx();
     setupGlobalShortcuts();
@@ -1793,6 +1808,61 @@
     });
   }
 
+  /** Tutorial window -- fetches/parses tutorial.txt (root folder) fresh
+   *  every time it's opened, same "no rebuild needed" convention as
+   *  openCredits, and reuses that same tiny markdown renderer (js/ui/
+   *  credits.js) rather than a second parser for an near-identical format.
+   *  Opened from the Knowledge menu, the "T" shortcut (setupGlobalShortcuts),
+   *  and automatically on a fresh game start -- see finishStartGame's
+   *  pendingShowTutorial check. */
+  function openTutorial() {
+    fetch("tutorial.txt")
+      .then((r) => r.text())
+      .then((text) => {
+        $("tutorial-content").innerHTML = window.UI.credits.render(text);
+        $("tutorial-overlay").style.display = "flex";
+      });
+  }
+
+  function closeTutorial() {
+    $("tutorial-overlay").style.display = "none";
+  }
+
+  /** Open/close wiring for the Tutorial window -- same generous-dismissal
+   *  convention as setupCreditsOverlay. */
+  function setupTutorialOverlay() {
+    const overlay = $("tutorial-overlay");
+    $("kb-tutorial-btn")?.addEventListener("click", openTutorial);
+    $("title-kb-tutorial-btn")?.addEventListener("click", openTutorial);
+    $("tutorial-close-btn").addEventListener("click", closeTutorial);
+    overlay.addEventListener("mousedown", (e) => { if (e.target === overlay) closeTutorial(); });
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape" && overlay.style.display === "flex") closeTutorial();
+    });
+  }
+
+  /** Decides the Game Options "Show Tutorial" checkbox's starting state:
+   *  checked by default, EXCEPT when a quicksave already exists with 50+
+   *  turns played -- reaching that far without the tutorial is treated as
+   *  evidence the player already knows the ropes. Reads the quicksave slot
+   *  directly (QUICKSAVE_KEY/deserializeFromLocalStorageString, both defined
+   *  further down alongside quickSave/quickLoad) rather than waiting on a
+   *  live game -- this runs at showSetupScreen, before any game exists.
+   *  Async (the quicksave is gzipped), so the checkbox starts checked and
+   *  flips off a moment later if the 50-turn quicksave is found; never
+   *  blocks the rest of setup on it. */
+  function applyDefaultShowTutorial() {
+    const checkbox = $("show-tutorial-toggle");
+    if (!checkbox) return;
+    const value = localStorage.getItem(QUICKSAVE_KEY);
+    if (!value) return; // no quicksave at all -- stays checked
+    window.GameEngine.savegame.deserializeFromLocalStorageString(value)
+      .then((payload) => {
+        if ((payload?.gameState?.turnNumber || 0) >= 50) checkbox.checked = false;
+      })
+      .catch(() => {}); // corrupt/unreadable quicksave -- leave the default checked
+  }
+
   /** Dismissal wiring for the map context menu: registered ONCE at bootstrap
    *  (safe pre-game -- both listeners no-op until viewState.ringMenu is
    *  actually set), rather than re-registering a fresh document listener
@@ -1875,6 +1945,7 @@
   }
 
   function startGame() {
+    pendingShowTutorial = $("show-tutorial-toggle").checked;
     spectatorMode = $("spectator-toggle").checked;
     const checkedSpectatorRaces = [...document.querySelectorAll(".spectator-race-checkbox:checked")].map((cb) => cb.value);
     if (spectatorMode && checkedSpectatorRaces.length < 2) {
@@ -2152,6 +2223,15 @@
 
     redraw();
     startAnimationLoop();
+
+    // Game Options "Show Tutorial" checkbox -- only ever set true by
+    // startGame (a fresh game), never startGameFromSave, so Load Game/Quick
+    // Load never re-show it. Cleared immediately so it can't leak into a
+    // later in-game action that happens to also route through here.
+    if (pendingShowTutorial) {
+      pendingShowTutorial = false;
+      openTutorial();
+    }
   }
 
   function hashStringToSeed(str) {
@@ -3464,7 +3544,7 @@
   const SHORTCUT_OVERLAY_IDS = [
     "launch-options-overlay", "credits-overlay", "techtree-overlay",
     "reports-overlay", "game-dialog-overlay", "keyboard-shortcuts-overlay",
-    "knowledge-overlay",
+    "knowledge-overlay", "tutorial-overlay",
   ];
 
   /** True while any full-screen modal is up -- gates the gameplay shortcuts
@@ -3521,6 +3601,20 @@
       // fire through a dialog, unlike the movement/action shortcuts below.
       if (e.key === "m" || e.key === "M") {
         setGlobalMuted(!window.MusicSystem.isMuted());
+        return;
+      }
+
+      // T: Tutorial toggle -- same always-on scope as M above (works from
+      // the title screen too), except it DOES respect other open overlays:
+      // unlike muting, popping the tutorial open over a dialog the player is
+      // mid-interaction with would be disruptive. Toggles closed if it's
+      // already the thing showing, rather than being a one-way open, so the
+      // same key dismisses it.
+      if (e.key === "t" || e.key === "T") {
+        if (e.repeat) return;
+        if ($("tutorial-overlay").style.display === "flex") { closeTutorial(); return; }
+        if (anyOverlayOpen()) return;
+        openTutorial();
         return;
       }
 

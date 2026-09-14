@@ -1,0 +1,25 @@
+# Kingdom Marches Tutorial
+
+## Your Kingdom
+
+You lead one kingdom on a shared map, growing your cities, training units, and researching new technology while rival kingdoms do the same.
+
+## The Basics
+
+Click a unit to select it, then click a tile to move there. Click one of your cities to see what it can build. Use the End Turn button (or press Enter) once you have given orders to everyone you want to act this turn.
+
+## Cities
+
+Found new cities with a Settler unit. Cities produce resources, build units and structures, and research technology for your kingdom.
+
+## Combat
+
+Move a unit next to an enemy and choose Attack to fight. Terrain, unit type, and technology all affect the outcome.
+
+## Knowledge Base
+
+Open the Knowledge menu any time to look up Units, Structures, Terrain, Actions, Conditions, and Stats.
+
+## Keyboard Shortcuts
+
+Press T to reopen this tutorial. See the Keyboard Shortcuts window (Interface menu) for the full list.
