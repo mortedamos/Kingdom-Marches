@@ -1659,7 +1659,7 @@ html, body {
    .shortcuts-modal above) and credits.js's .credits-title/-heading/-para
    classes for its content (see js/main.js's openTutorial), just narrower
    than the tech tree's own 1240px to read like a document, not a chart. */
-.tutorial-modal { width: min(720px, 94vw); }
+.tutorial-modal { width: min(960px, 94vw); }
 /* The credits crawl centers everything (it's a scrolling marquee) and sizes
    its type for a big projected scroll, but a static document reads better
    smaller and left-aligned -- override both, scoped to #tutorial-content so
