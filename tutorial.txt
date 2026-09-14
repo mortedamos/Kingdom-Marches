@@ -1,6 +1,6 @@
 # Kingdom Marches Tutorial
 
-To open and close this tutorial, use the "T" key or the Tutorial option undder the Knowledge menu.
+To open and close this tutorial, use the " **T** " key or the Tutorial option undder the **Knowledge menu**.
 
 ## Your Kingdom
 
@@ -10,21 +10,21 @@ You lead one kingdom on a shared map, growing your cities, training units, and r
 
 Click a unit to select it, then click an action for that unit from the menu. Once all of your units have actions, your turn will complete and rival kingdoms will then take their turn. 
 
-Your kingdom is made of units and cities. A city can make new units, new structures, gather resources, and take other actions. Cities will automatically gather resources from map tiles within their radius. These map tiles will also eventually fall under the influence of your kingdom, representing the spread of your kingdom's culture. Once of the ways to win is to spread your kindgom's influence. Cities will grow over time, expanding their radius, and thereby also the area where your kingdom's influence take hold.
+Your kingdom is made of units and cities. A city can make new units, new structures, gather resources, and take other actions. Cities will automatically gather resources from map tiles within their radius. These map tiles will also eventually fall under the influence of your kingdom, representing the spread of your kingdom's [culture](kb:actions:spreadCulture). Once of the ways to win is to spread your kindgom's influence. Cities will grow over time, expanding their radius, and thereby also the area where your kingdom's influence take hold.
 
-Units are used to explore, gather resources from special areas of the map, and wage combat against enemy cities and units. Another way to win is by eliminating all rival kingdoms through military force. A unit within range of an enemy unit or structure can choose to [Attack](kb:actions:attack). Their damage and [defense](kb:stats:defense) statistics, as well as other abiities and conditions, determine the outcome of combat. More information about units, combat, and conditions can be found under the Knowledge menu.
+Units are used to explore, gather resources from special areas of the map, and wage combat against enemy cities and units. Another way to win is by eliminating all rival kingdoms through military force. A unit within range of an enemy unit or structure can choose to [Attack](kb:actions:attack). Their attack and [defense](kb:stats:defense) statistics, as well as other abilities and conditions, determine the outcome of combat. More information about units, combat, and conditions can be found under the **Knowledge menu**.
 
-Resources are harvest, coin, and lore. These are used to purchase units, buildings, advancements, and pay for upkeep of your units. Resources come from map tiles with the radius of your city and also from map tiles with special resources present like rich soil, iron veins, fish, wild game, or ruins. 
+Resources are harvest, coin, and lore. These are used to purchase units, buildings, advancements, and pay for upkeep of your units. Resources come from map tiles with the radius of your city and also from map tiles with special resources present like [rich soil](kb:terrain:fertile), [iron veins](kb:terrain:iron), [fish](kb:terrain:fish), [wild game](kb:terrain:game), or [ruins](kb:terrain:ruin).
 
-Advancements can be purchased with resources and represent new abilities for your kingdom from civic, building, military, and mystic categories. These give you special advantages, abilities, or even new units with their own powers. Advancements are different for each kingdom and represent their cultural identity and ethos. More information about advancements can be found under the Knowledge menu.
+Advancements can be purchased with resources and represent new abilities for your kingdom from civic, building, military, and mystic categories. These give you special advantages, abilities, or even new units with their own powers. Advancements are different for each kingdom and represent their cultural identity and ethos. More information about advancements can be found under the **Knowledge menu**.
 
 ## Quick Start
 
-You start with a [pioneer](kb:units:pioneer), one or more [trackers](kb:units:scout), and possibly a galley if you began near water.
+You start with a [pioneer](kb:units:pioneer), one or more [trackers](kb:units:scout), and possibly a [galley](kb:units:galley) if you began near water.
 
 Select your pioneer and select "[Found City](kb:actions:foundCity)" from the menu. This wll create your first city.
 
-Next, use your trackers to explore. Trackers can build roads, which help your units move more quickly around the map. They can also gather resources from map tiles with special resources present, helping your gather then faster than your city would on its own. Trackers can attack, but are very weak compared to actual military units. 
+Next, use your trackers to explore. Trackers can build [roads](kb:terrain:road), which help your units move more quickly around the map. They can also [gather resources](kb:actions:gatherResources) from map tiles with special resources present, helping your gather then faster than your city would on its own. Trackers can attack, but are very weak compared to actual military units.
 
 ## Knowledge Base
 
