@@ -10,7 +10,7 @@ You lead one kingdom on a shared map, growing your cities, training units, and r
 
 Click a unit to select it, then click an action for that unit from the menu. Once all of your units have actions, your turn will complete and rival kingdoms will then take their turn. 
 
-Your kingdom is made of units and cities. A city can make new units, new structures, gather resources, and take other actions. Cities will automatically gather resources from map tiles within their radius. These map tiles will also eventually fall under the influence of your kingdom, representing the spread of your kingdom's [culture](kb:actions:spreadCulture). Once of the ways to win is to spread your kindgom's influence. Cities will grow over time, expanding their radius, and thereby also the area where your kingdom's influence take hold.
+Your kingdom is made of units and cities. A city can make new units, new structures, gather resources, and take other actions. Cities will automatically gather resources from map tiles within their radius. These map tiles will also eventually fall under the influence of your kingdom, representing the spread of your kingdom's culture. Once of the ways to win is to spread your kindgom's influence. Cities will grow over time, expanding their radius, and thereby also the area where your kingdom's influence take hold.
 
 Units are used to explore, gather resources from special areas of the map, and wage combat against enemy cities and units. Another way to win is by eliminating all rival kingdoms through military force. A unit within range of an enemy unit or structure can choose to [Attack](kb:actions:attack). Their [attack](kb:stats:attack) and [defense](kb:stats:defense) statistics, as well as other abilities and conditions, determine the outcome of combat. More information about units, combat, and conditions can be found under the **Knowledge menu**.
 
@@ -26,8 +26,8 @@ Select your pioneer and select "[Found City](kb:actions:foundCity)" from the men
 
 Next, use your trackers. Trackers are early game units meant to explore your new world.
 
-Trackers, or any military unit, can be used to garrison a city by moving the tracker onto your city and giving it the "[Rest and Defend](kb:actions:restAndDefend)" action, which provides several benefits to the city. Trackers can build [roads](kb:terrain:road) or [bridge](kb:terrain:bridge), which help your units move more quickly around the map. They can also [gather resources](kb:actions:gatherResources) from map tiles with special resources present, helping your gather then faster than your city would on its own. Trackers can attack, but are very weak compared to actual military units.
+Trackers, or any military unit, can be used to garrison a city by moving the tracker onto your city and giving it the "[Rest and Defend](kb:actions:restAndDefend)" action, which provides several benefits to the city. Trackers can build [roads](kb:terrain:road) or [bridges](kb:terrain:bridge), which help your units move more quickly around the map. They can also [gather resources](kb:actions:gatherResources) from map tiles with special resources present faster than your city would on its own. Trackers can attack, but are very weak compared to actual military units.
 
 ## Knowledge Base
 
-Open the Knowledge menu any time to look up Units, Structures, Terrain, Actions, Conditions, and Stats.
+Open the **Knowledge menu** any time to look up Units, Structures, Terrain, Actions, Conditions, and Stats.
