@@ -1,10 +1,10 @@
 # Kingdom Marches Tutorial
 
-To open and close this tutorial, use the " **T** " key or the Tutorial option undder the **Knowledge menu**.
+To open and close this tutorial, use the " **T** " key or the Tutorial option under the **Knowledge menu**.
 
 ## Your Kingdom
 
-You lead one kingdom on a shared map, growing your cities, training units, and researching advancements while rival kingdoms do the same. The goal is to win by either eliminating all rival kingdoms with your military or expand your kingdom influence. 
+You lead one kingdom on a shared map, growing your cities, training units, and researching advancements while rival kingdoms do the same. The goal is to win by either eliminating all rival kingdoms with your military or expand your kingdom's influence. 
 
 ## Playing the Game
 
@@ -16,7 +16,7 @@ Units are used to explore, gather resources from special areas of the map, and w
 
 Resources are harvest, coin, and lore. These are used to purchase units, buildings, advancements, and pay for upkeep of your units. Resources come from map tiles with the radius of your city and also from map tiles with special resources present like [fertile soil](kb:terrain:fertile), [iron veins](kb:terrain:iron), [fish](kb:terrain:fish), [wild game](kb:terrain:game), or [ruins](kb:terrain:ruin).
 
-Advancements can be purchased with resources and represent new abilities for your kingdom from civic, building, military, and mystic categories. These give you special advantages, abilities, or even new units with their own powers. Advancements are different for each kingdom and represent their cultural identity and ethos. More information about advancements can be found under the **Knowledge menu**.
+Advancements can be purchased with resources and represent new abilities for your kingdom from civic, building, military, and mystic categories. These give you special advantages, abilities, or even new units with their own powers. Advancements are different for each kingdom and reflect their cultural identity and ethos. More information about advancements can be found under the **Knowledge menu**.
 
 ## Quick Start
 
@@ -26,7 +26,10 @@ Select your pioneer and select "[Found City](kb:actions:foundCity)" from the men
 
 Next, use your trackers. Trackers are early game units meant to explore your new world.
 
-Trackers, or any military unit, can be used to garrison a city by moving the tracker onto your city and giving it the "[Rest and Defend](kb:actions:restAndDefend)" action, which provides several benefits to the city. Trackers can build [roads](kb:terrain:road) or [bridges](kb:terrain:bridge), which help your units move more quickly around the map. They can also [gather resources](kb:actions:gatherResources) from map tiles with special resources present faster than your city would on its own. Trackers can attack, but are very weak compared to actual military units.
+· Build a [roads](kb:terrain:road) or [bridges](kb:terrain:bridge), which help your units move more quickly around the map. 
+· [Gather Resources](kb:actions:gatherResources) from map tiles with special resources present faster than your city would on its own. 
+· Can attack, but are very weak compared to actual military units.
+· Trackers, or any military unit, can be used to garrison a city by moving the tracker onto your city and giving it the "[Rest and Defend](kb:actions:restAndDefend)" action, which provides several benefits to the city. 
 
 ## Knowledge Base
 
