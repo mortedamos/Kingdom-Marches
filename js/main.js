@@ -3275,26 +3275,68 @@
    *  synthesizes after release, long press or not, so onClick never fires
    *  as a follow-up to onLongPress. Not map-gesture machinery like
    *  input.js's own long-press -- this is one button, so no pointer capture
-   *  or move-triggered cancellation, just leave-cancels-the-hold. */
+   *  or move-triggered cancellation, just leave-cancels-the-hold.
+   *
+   *  2026-09-19 bugfix (user-reported: "sometimes hitting Next gives the
+   *  end-turn confirm instead of going to the next unit"): the End Turn
+   *  button's own DOM node is rebuilt from scratch on every redraw (see
+   *  this function's call site in redraw() -- sidebar.js rebuilds the whole
+   *  footer's innerHTML, taking any previously-attached listeners with it),
+   *  which can happen for reasons that have nothing to do with the click in
+   *  progress (background AI activity, an animation tick, ...). If a redraw
+   *  landed between this button's own pointerdown and pointerup, the OLD
+   *  node -- and the pointerup/pointerleave listeners this function had
+   *  attached to it -- was already gone from the document by the time the
+   *  user actually released: the browser delivers that release to whatever
+   *  element is now in its place instead, so the old node's own listeners
+   *  never fire and its pending long-press timer was never cancelled. It
+   *  fired unconditionally ~500ms after the ORIGINAL pointerdown, straight
+   *  to onLongPress (handleEndTurnClick, which skips the "go to next
+   *  attention item" step and jumps straight to the confirm-unresolved-work
+   *  dialog if anything's left) -- regardless of how quickly the user had
+   *  actually let go. Fixed by cancelling on pointerup/pointercancel
+   *  ANYWHERE (document-level, wired exactly once via the module-level
+   *  guard below, not per-call -- this function itself is called fresh on
+   *  every redraw) rather than only on the specific button node's own
+   *  events, so a mid-press node swap can no longer orphan the timer. The
+   *  timer reference itself has to live at module level for the same
+   *  reason: a document-level listener wired by a LATER call (the fresh
+   *  node's own) must still be able to cancel a timer an EARLIER call (the
+   *  stale node's) started. */
   const END_TURN_LONG_PRESS_MS = 500;
+  let pendingLongPressTimer = null;
+  function cancelPendingLongPress() {
+    if (pendingLongPressTimer !== null) {
+      clearTimeout(pendingLongPressTimer);
+      pendingLongPressTimer = null;
+    }
+  }
+  let longPressCancelWiredToDocument = false;
   function wireLongPress(btn, onClick, onLongPress) {
     if (!btn) return;
-    let timer = null, fired = false;
-    const cancel = () => { if (timer !== null) { clearTimeout(timer); timer = null; } };
+    if (!longPressCancelWiredToDocument) {
+      longPressCancelWiredToDocument = true;
+      document.addEventListener("pointerup", cancelPendingLongPress);
+      document.addEventListener("pointercancel", cancelPendingLongPress);
+    }
+    let fired = false;
     btn.addEventListener("pointerdown", (e) => {
       if (e.pointerType === "mouse" && e.button !== 0) return; // right/middle click, not a press-and-hold
       fired = false;
-      cancel();
-      timer = window.setTimeout(() => {
-        timer = null;
+      cancelPendingLongPress();
+      pendingLongPressTimer = window.setTimeout(() => {
+        pendingLongPressTimer = null;
         fired = true;
         navigator.vibrate?.(10);
         onLongPress();
       }, END_TURN_LONG_PRESS_MS);
     });
-    btn.addEventListener("pointerup", cancel);
-    btn.addEventListener("pointerleave", cancel);
-    btn.addEventListener("pointercancel", cancel);
+    // Still node-local: moving off THIS button without releasing should
+    // only cancel THIS press, same as before -- pointerleave can't be
+    // orphaned by a mid-press redraw the way pointerup/pointercancel could,
+    // since it only ever needs to fire while the node it's bound to is
+    // still the one under the pointer.
+    btn.addEventListener("pointerleave", cancelPendingLongPress);
     btn.addEventListener("click", (e) => {
       if (fired) { fired = false; e.preventDefault(); e.stopPropagation(); return; }
       onClick();
