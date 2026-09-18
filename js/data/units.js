@@ -274,8 +274,36 @@ window.GameData.UNITS = {
     // (ai.js's UTILITY_UNIT_MECHANICS taper, `relevantMechanics.length * 7
     // * 0.6^owned`) is entirely stat-independent by design.
     id: "wizard", label: "Wizard", symbol: "🧙‍♂️", category: "military", raceOnly: "human",
-    attack: 2, defense: 2, movement: 2, visionRadius: 3, range: 2, burnChancePct: 0.1, frozenChancePct: 0.1, 
+    attack: 2, defense: 2, movement: 2, visionRadius: 3, range: 2, burnChancePct: 0.1, frozenChancePct: 0.1,
     coinCost: 35, attackChars: ["⚡", "❄️", "🔥", "✨"], biggerPct: .1,
+  },
+  // Skyship (2026-09-18, user-directed): replaces the Galley via "Sail the
+  // Skies" (prereqs Flight + Make Way), same replace_unit shape as
+  // Cavalry->Knight/Archer->Longbowman. Attack/movement/visionRadius/range
+  // deliberately UNCHANGED from Galley -- the whole point of this upgrade is
+  // `flying` (crosses any terrain, not just water -- see ai.js's
+  // getMoveCost) and the new "Barrel Bomb" action, not raw stat inflation.
+  // Defense gets a modest +1 bump (galley's 2 -> 3), matching the "the
+  // replacement is a little tougher too" convention every other replace_unit
+  // pair follows. siegePct/burnChancePct exist here as ordinary unit-level
+  // stats (same convention as Bombard/Dragon) -- Barrel Bomb reads them via
+  // getUnitProperty, and they also apply to this unit's ordinary attacks
+  // against structures, same precedent as Bombard's own siegePct after it
+  // gained an ordinary attack. Still isNaval (built only at a coastal city,
+  // categorized as naval fleet everywhere else in ai.js) -- flying overrides
+  // isNaval for movement-cost purposes only, so this is still fundamentally
+  // a ship that also flies, not a land-capable aircraft.
+  skyship: {
+    id: "skyship", label: "Skyship", symbol: "⛵", category: "military", raceOnly: "human", range: 1,
+    attack: 1, defense: 3, movement: 4, visionRadius: 4,
+    isNaval: true, canCarryUnit: true, flying: true, biggerPct: .5,
+    siegePct: 1.0, burnChancePct: 0.5,
+    coinCost: 40, attackChars: ["💣", "🔥", "💥"], muzzleSmoke: true, impactSmoke: true,
+    // A ship, not a person -- see unit-names.js's UNIT_TYPE_PROPER_NAMES doc.
+    nameSpecial: true,
+    // Opts out of Boomerang's civ-wide Ranged-2 floor, same reasoning as
+    // Galley's own comment on this flag -- not a scouting/skirmish unit.
+    exemptFromUniversalRangeGrant: true,
   },
 
   // --- ELF full roster (see techs.js) ---

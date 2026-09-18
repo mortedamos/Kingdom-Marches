@@ -544,9 +544,31 @@ window.GameData.TECHS = {
   battlefield_promotion: {
     id: "battlefield_promotion", label: "Battlefield Promotion", category: "military", layer: 4, cost: 55,
     prereqs: [], raceOnly: "human",
-    description: "As a full turn action, a unit whose type has since been superseded (Archer, Cavalry, Knight, or Catapult) may promote itself into its replacement outright, paying only the cost difference between the two units. The unit's name and veteran level are retained.",
+    description: "As a full turn action, a unit whose type has since been superseded (Archer, Cavalry, Knight, Catapult, or Galley) may promote itself into its replacement outright, paying only the cost difference between the two units. The unit's name and veteran level are retained.",
     costBreakdown: { harvest: 20, coin: 20, lore: 15 },
     effects: [{ type: "unlock_mechanic", mechanic: "battlefield_promotion" }],
+  },
+  // New (2026-09-18, user-directed): Galley -> Skyship, same replace_unit
+  // shape as every other successor tech, gated behind BOTH Flight (the
+  // flying-property tech) and Make Way (the Galley's own movement/vision
+  // upgrade) since Skyship is conceptually "a Galley that flies." The
+  // unit_stat_upgrade duplicates Make Way's exact {movement:2,
+  // visionRadius:1} bonus onto "skyship" specifically -- Make Way's OWN
+  // effect only ever targets "galley" and already fired (once, at Make
+  // Way's own completion, necessarily before this tech since it's a
+  // prereq), so it can never retroactively pick up a unit id that didn't
+  // exist for this civ yet. Duplicating the bonus here, rather than editing
+  // Make Way itself, is what actually makes "Skyship also benefits from
+  // Make Way" true regardless of research order.
+  sail_the_skies: {
+    id: "sail_the_skies", label: "Sail the Skies", category: "military", layer: 4, cost: 60,
+    prereqs: ["flight", "make_way"], raceOnly: "human",
+    description: "Unlocks the Skyship, a flying vessel that replaces the Galley -- same attack, vision, and movement (plus Make Way's own +2 movement/+1 vision), a little tougher, and able to cross any terrain, not just water. Gains Barrel Bomb: a single-tile ranged strike with a 50% chance to inflict Burning and +100% siege damage.",
+    costBreakdown: { lore: 40, coin: 20 },
+    effects: [
+      { type: "replace_unit", from: "galley", to: "skyship" },
+      { type: "unit_stat_upgrade", unit: "skyship", changes: { movement: 2, visionRadius: 1 } },
+    ],
   },
 
   // --- Layer 5 ---

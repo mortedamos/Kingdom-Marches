@@ -1767,26 +1767,28 @@ window.GameEngine = window.GameEngine || {};
   }
 
   /**
-   * Dwarf "Bombardment" (see ai.js's performDwarfBombardment): same
-   * standalone-targeted-blast shape as Human's Fireball just above, but a
-   * 2x2 area (not 3x3) and anchored differently -- a 2x2 block has no
-   * single center tile, so per the tech's own design the TARGETED tile is
-   * one of the block's corners (see bombardBlastOffsets above for which
-   * one, and why). Unlike Fireball, unit
-   * and structure damage are computed SEPARATELY: structure hits go
-   * through effectiveAttack's own isSiege context so Bombard's siegePct
-   * (its whole identity as a wall-breaker) actually applies, the same way
-   * it would on an ordinary attack against a structure -- Fireball's own
-   * blast never had a siegePct-bearing caster worth the same treatment
-   * when it was written, so it didn't need this distinction. Indiscriminate
-   * like Fireball: the caster's own civ is just as exposed as anyone else.
+   * Shared body for every "standalone targeted-blast that isn't Fireball"
+   * ability (Dwarf Bombardment, Orc Dragonfire, Human Barrel Bomb) -- takes
+   * a caller-supplied list of {dx,dy} tile offsets from (centerX,centerY)
+   * so the exact same unit/structure/city hit-resolution logic serves both
+   * a 2x2 area (bombardBlastOffsets) and a single tile ([{dx:0,dy:0}]),
+   * without duplicating it. See applyBombardBlast/applyBarrelBombBlast
+   * below for the two current callers.
+   *
+   * Unit and structure damage are computed SEPARATELY: structure hits go
+   * through effectiveAttack's own isSiege context so the caster's siegePct
+   * actually applies, the same way it would on an ordinary attack against a
+   * structure -- Fireball's own blast never had a siegePct-bearing caster
+   * worth the same treatment when it was written, so it didn't need this
+   * distinction. Indiscriminate like Fireball: the caster's own civ is just
+   * as exposed as anyone else.
    */
-  function applyBombardBlast(casterUnit, casterCiv, centerX, centerY, gameState) {
+  function applyOffsetBlast(casterUnit, casterCiv, offsets, centerX, centerY, gameState) {
     const { map, civs } = gameState;
     const atkUnit = effectiveAttack(casterUnit, casterCiv, {});
     const atkStruct = effectiveAttack(casterUnit, casterCiv, { isSiege: true });
     const hits = [];
-    for (const { dx, dy } of bombardBlastOffsets(casterUnit.x, centerX)) {
+    for (const { dx, dy } of offsets) {
       const x = centerX + dx, y = centerY + dy;
       if (x < 0 || x >= map.width || y < 0 || y >= map.height) continue;
       for (const otherCiv of Object.values(civs)) {
@@ -1827,6 +1829,30 @@ window.GameEngine = window.GameEngine || {};
     return hits;
   }
 
+  /**
+   * Dwarf "Bombardment" (see ai.js's performDwarfBombardment) / Orc
+   * "Dragonfire" (see ai.js's performDragonfire) -- both reuse this exact
+   * function, differing only in caster/range, which live entirely in
+   * ai.js. Same standalone-targeted-blast shape as Human's Fireball just
+   * above, but a 2x2 area (not 3x3) and anchored differently -- a 2x2 block
+   * has no single center tile, so per the tech's own design the TARGETED
+   * tile is one of the block's corners (see bombardBlastOffsets above for
+   * which one, and why).
+   */
+  function applyBombardBlast(casterUnit, casterCiv, centerX, centerY, gameState) {
+    return applyOffsetBlast(casterUnit, casterCiv, bombardBlastOffsets(casterUnit.x, centerX), centerX, centerY, gameState);
+  }
+
+  /**
+   * Human Skyship "Barrel Bomb" (see ai.js's performSkyshipBarrelBomb):
+   * same applyOffsetBlast body as Bombardment/Dragonfire, but a single
+   * tile -- described by the user as picking "a square" (singular),
+   * deliberately distinct in shape from the other two abilities' 2x2 area.
+   */
+  function applyBarrelBombBlast(casterUnit, casterCiv, x, y, gameState) {
+    return applyOffsetBlast(casterUnit, casterCiv, [{ dx: 0, dy: 0 }], x, y, gameState);
+  }
+
   window.GameEngine.combat = {
     roll3d6,
     damageRoll,
@@ -1863,6 +1889,7 @@ window.GameEngine = window.GameEngine || {};
     applySplashDamage,
     applyFireballBlast,
     applyBombardBlast,
+    applyBarrelBombBlast,
     bombardBlastOffsets,
     cityDefenseValue,
     cityMaxHp,

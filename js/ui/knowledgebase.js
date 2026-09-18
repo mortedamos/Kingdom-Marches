@@ -348,10 +348,13 @@ window.UI = window.UI || {};
    *  plain, unlinked chip. */
   function availableActionsFor(unit) {
     const actions = [];
-    // Dwarf "Bombardment": Bombard's own standalone targeted-blast action,
-    // on top of (not instead of, since 2026-09-06 -- see units.js's bombard
-    // comment) its ordinary attack below.
+    // Dwarf "Bombardment"/Orc "Dragonfire"/Human "Barrel Bomb": each unit's
+    // own standalone targeted-blast action, on top of (not instead of) its
+    // ordinary attack below -- see units.js's bombard/dragon/skyship
+    // comments.
     if (unit.typeId === "bombard") actions.push({ label: "Bombardment", actionKey: "bombardment" });
+    if (unit.typeId === "dragon") actions.push({ label: "Dragonfire", actionKey: "dragonfire" });
+    if (unit.typeId === "skyship") actions.push({ label: "Barrel Bomb", actionKey: "barrelBomb" });
     if (unit.attack > 0 && !unit.noOrdinaryAttack) actions.push({ label: "Attack", actionKey: "attack" });
     if (unit.movement > 0) actions.push({ label: "Move", actionKey: "moveTo" });
     if (unit.canFoundCity) actions.push({ label: "Found a City", actionKey: "foundCity" });
@@ -952,7 +955,15 @@ window.UI = window.UI || {};
     },
     {
       key: "bombardment", label: "Bombardment", icon: "💣", restriction: "Dwarf — Bombard",
-      description: "Bombard's ONLY offensive action -- it has no ordinary melee/ranged attack at all. Blasts a 2x2 block anywhere within 3 tiles, dealing damage to every unit, structure, or city caught there, each independently rolling the Bombard's own burn chance to also catch fire.",
+      description: "Blasts a 2x2 block anywhere within 3 tiles, dealing damage to every unit, structure, or city caught there, each independently rolling the Bombard's own burn chance to also catch fire. On top of, not instead of, the Bombard's ordinary attack.",
+    },
+    {
+      key: "dragonfire", label: "Dragonfire", icon: "🔥", restriction: "Orc — Dragon",
+      description: "Blasts a 2x2 block anywhere within 2 tiles, dealing damage to every unit, structure, or city caught there, each independently rolling the Dragon's own burn chance to also catch fire. On top of, not instead of, the Dragon's ordinary attack.",
+    },
+    {
+      key: "barrelBomb", label: "Barrel Bomb", icon: "💣", restriction: "Human — Skyship",
+      description: "A single-tile ranged strike anywhere within 1 tile, dealing damage with a 50% chance to inflict Burning and +100% siege damage against structures/cities. On top of, not instead of, the Skyship's ordinary attack.",
     },
     {
       key: "riddle", label: "Riddle", icon: "❓", restriction: "Halfellow — Trouble Maker or Wanderer",

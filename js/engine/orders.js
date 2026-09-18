@@ -716,9 +716,13 @@ window.GameEngine = window.GameEngine || {};
       // "It cannot carry an Awakened Oak, a Raptor, or a Galley." --
       // techs.js's elf_shadowsteed. Also excludes another Shadowsteed
       // (2026-08-24 bugfix): nothing in that tech's design intends a
-      // Shadowsteed to ferry its own kind.
+      // Shadowsteed to ferry its own kind. Skyship excluded too (2026-09-18)
+      // for the same reason as Galley -- it's still fundamentally a ship
+      // (and now also flying in its own right, so it has no need of a
+      // Shadowsteed's help either).
       if (passengerUnit.typeId === "awakened_oak" || passengerUnit.typeId === "raptor"
-          || passengerUnit.typeId === "galley" || passengerUnit.typeId === "shadowsteed") return false;
+          || passengerUnit.typeId === "galley" || passengerUnit.typeId === "shadowsteed"
+          || passengerUnit.typeId === "skyship") return false;
     } else if (window.GameData.getUnit(carrierUnit.typeId).isNaval) {
       // A Galley (or any future naval carrier) doesn't ferry another boat,
       // or a flier that doesn't need ferrying -- mirrors ai.js's own
@@ -1136,8 +1140,11 @@ window.GameEngine = window.GameEngine || {};
         } else if (!unit.carries && tile.resource === "fish"
             && civ.unlockedMechanics && civ.unlockedMechanics.has("fishing")
             // Halfellow Forrager OR-bypass, same shape as Dwarven Mining's
-            // below: lets ANY Halfellow unit fish, not just Galleys.
-            && (unit.typeId === "galley" || (civ.raceId === "halfellow" && civ.unlockedMechanics.has("forrager")))) {
+            // below: lets ANY Halfellow unit fish, not just Galleys/Skyships
+            // (the latter via Human's Sail the Skies, replacing Galley --
+            // must mirror turns.js's/ai.js's own matching canFish checks).
+            && (unit.typeId === "galley" || unit.typeId === "skyship"
+                || (civ.raceId === "halfellow" && civ.unlockedMechanics.has("forrager")))) {
           options.push({ kind: "startChannel:fishing", label: "Start Fishing" });
         } else if (onGame && civ.unlockedMechanics && civ.unlockedMechanics.has("hunt_game")
             && (baseUnit.canProspect || (civ.raceId === "halfellow" && civ.unlockedMechanics.has("forrager")))) {
@@ -1289,6 +1296,19 @@ window.GameEngine = window.GameEngine || {};
       // owning a Bombard already implies dwarf_bombardment is researched.
       if (unit.typeId === "bombard" && !unit.usedThisTurn) {
         options.push({ kind: "bombardment", label: "Bombardment" });
+      }
+
+      // Orc "Dragonfire": same shape as Bombardment just above, unconditional
+      // on owning a Dragon at all (see units.js's dragon comment).
+      if (unit.typeId === "dragon" && !unit.usedThisTurn) {
+        options.push({ kind: "dragonfire", label: "Dragonfire" });
+      }
+
+      // Human "Barrel Bomb": same shape as Bombardment/Dragonfire above, but
+      // a single-tile strike rather than a 2x2 area (see units.js's skyship
+      // comment) -- unconditional on owning a Skyship at all.
+      if (unit.typeId === "skyship" && !unit.usedThisTurn) {
+        options.push({ kind: "barrelBomb", label: "Barrel Bomb" });
       }
 
       // Halfellow "Riddle"/"Resource Heist"/"Unlock the Gate": ONE pill each,

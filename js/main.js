@@ -1126,120 +1126,6 @@
     window.UI.motion.onChange(sync);
   }
 
-  /** Interface > Day/Night Cycle, plus its tuning panel.
-   *
-   *  The on/off is persisted by the module itself (roi_daynight_settings),
-   *  exactly as motion.js persists its own -- this only mirrors the stored
-   *  value onto the checkbox, since a reload or a loaded save can otherwise
-   *  leave the DOM's checked state stale.
-   *
-   *  The sliders are session-only and deliberately NOT persisted: they're a
-   *  dev affordance for dialling in the look, not a player setting. Scrub at
-   *  -1 means "follow the real turn"; 0-11 pins the sky (and the clock) to
-   *  that slot so all twelve can be inspected without ending twelve turns. */
-  function setupDayNightControls() {
-    const dn = window.UI.daynight;
-    const toggle = $("daynight-toggle");
-    if (toggle) {
-      toggle.checked = dn.isEnabled();
-      toggle.addEventListener("change", () => dn.setEnabled(toggle.checked));
-    }
-
-    // Weather rides this same setup pass -- it's the same shape of control
-    // (own persisted flag, own module) and shares the panel.
-    const wx = window.UI.weather;
-    const wxToggle = $("weather-toggle");
-    if (wxToggle && wx) {
-      wxToggle.checked = wx.isEnabled();
-      wxToggle.addEventListener("change", () => wx.setEnabled(wxToggle.checked));
-    }
-
-    const scrub = $("daynight-scrub"), scrubLabel = $("daynight-scrub-label");
-    if (scrub) {
-      const apply = () => {
-        const v = Number(scrub.value);
-        dn.setTuning({ scrubSlot: v < 0 ? null : v });
-        if (v < 0) {
-          scrubLabel.textContent = "Scrub: live";
-        } else {
-          const info = dn.phaseInfoForSlot(v);
-          scrubLabel.textContent = `Scrub: ${info.label} ${info.phaseTurn}/${info.phaseLength}`;
-        }
-      };
-      scrub.addEventListener("input", apply);
-      apply();
-    }
-
-    const slider = (id, labelId, key, name) => {
-      const el = $(id), label = $(labelId);
-      if (!el) return;
-      const apply = () => {
-        const v = Number(el.value);
-        dn.setTuning({ [key]: v });
-        label.textContent = `${name} ${v.toFixed(2)}`;
-      };
-      el.addEventListener("input", apply);
-      apply();
-    };
-    slider("daynight-dark", "daynight-dark-label", "darknessMul", "Darkness");
-    slider("daynight-glow", "daynight-glow-label", "glowMul", "Glow");
-    slider("daynight-radius", "daynight-radius-label", "radiusMul", "Light radius");
-
-    const replay = $("daynight-replay-btn");
-    if (replay) replay.addEventListener("click", () => dn.replayRipple());
-  }
-
-  /**
-   * WEATHER TUNING panel (2026-09-09, user-reported: "ran spectator mode,
-   * and played some single player, and never saw the weather change").
-   *
-   * Investigated and confirmed NOT a wiring bug -- a live game (real seed,
-   * real turn advancement, no dev override) genuinely rains at the turn the
-   * engine says it should. The actual explanation is rarity: measured over
-   * 48,000 simulated days, only 8.8% of days start a system at all, and only
-   * 30% of THOSE become a storm. A session of even a few dozen turns has a
-   * real chance of showing nothing, exactly the way a short day/night test
-   * could in principle land entirely within one phase -- except that cycle
-   * is only 12 turns long and always cycles, where a weather system might
-   * not arrive for a week of turns. That gap is what this panel closes: the
-   * day/night scrub slider above exists for the identical reason ("darker
-   * and bluer, but still readable" is unverifiable by waiting on real turns
-   * either), just applied to an event this much rarer.
-   *
-   * The status line always reports the LIVE game's true unforced weather
-   * (straight from weatherForTurn, ignoring whatever's forced below) so
-   * previewing a storm can never make you think one is actually en route.
-   */
-  function setupWeatherControls() {
-    const wx = window.UI.weather;
-    if (!wx) return;
-    document.querySelectorAll('input[name="weather-force"]').forEach((radio) => {
-      radio.addEventListener("change", () => {
-        if (radio.checked) wx.setTuning({ force: radio.value || null });
-      });
-    });
-    // Reset to "Live" on every fresh game -- a forced preview from a
-    // previous session has no business surviving into a new one it never
-    // saw.
-    const liveRadio = $("weather-force-live");
-    if (liveRadio) liveRadio.checked = true;
-    wx.setTuning({ force: null });
-  }
-
-  /** Refreshes the Weather Tuning panel's status line with the current
-   *  game's actual (unforced) weather -- called from redraw() rather than
-   *  the animation loop, since it only needs to change when the turn does,
-   *  not 60 times a second. Safe to call before a game exists or before the
-   *  panel has been built (both fields no-op via optional chaining). */
-  function refreshWeatherStatusLabel() {
-    const label = $("weather-status-label");
-    if (!label || !gameState) return;
-    const w = window.GameEngine.turns.weatherForTurn(gameState.turnNumber || 0, gameState.seed || 0);
-    label.textContent = w.storming ? `This game: Storm — ${w.turnsLeft} turn${w.turnsLeft === 1 ? "" : "s"} left`
-      : w.raining ? `This game: Rain — ${w.turnsLeft} turn${w.turnsLeft === 1 ? "" : "s"} left`
-        : "This game: Clear";
-  }
-
   /** Open/close wiring for the title screen's own menu bar -- same
    *  click-to-toggle/click-outside-closes shape as the in-game
    *  setupMenuBar, kept as a fully separate instance (own menu list, own
@@ -2223,8 +2109,6 @@
     endTurnRemindersToggle.addEventListener("change", () => {
       viewState.endTurnRemindersEnabled = endTurnRemindersToggle.checked;
     });
-    setupDayNightControls();
-    setupWeatherControls();
     $("report-influence-btn").addEventListener("click", () => {
       viewState.reportView = "influence";
       redraw();
@@ -5104,10 +4988,6 @@
     // reason. See their own doc comments just above this function.
     checkImmediateVictory();
     checkPendingKingdomEliminations();
-    // Cheap and only needs to change when the turn does (unlike the weather
-    // canvas itself, which redraws every animation frame) -- see
-    // refreshWeatherStatusLabel's own doc comment for why this exists.
-    refreshWeatherStatusLabel();
 
     // Rebuild the selected tile's tab list from live state BEFORE anything
     // draws. The tabs hold direct references to units/cities/structures, any
@@ -6634,6 +6514,10 @@
           startFireballPlacement(unit);
         } else if (kind === "bombardment") {
           startBombardmentPlacement(unit);
+        } else if (kind === "dragonfire") {
+          startDragonfirePlacement(unit);
+        } else if (kind === "barrelBomb") {
+          startBarrelBombPlacement(unit);
         } else if (kind === "riddle") {
           const civ = gameState.civs[humanCivId];
           startTargetSelection("Riddle",
@@ -6848,6 +6732,72 @@
       onPick: (slot) => {
         viewState.placement = null;
         if (slot) window.GameEngine.ai.performPlayerBombardment(civ, caster, slot.x, slot.y, gameState);
+        redraw();
+      },
+    };
+    redraw();
+  }
+
+  /** Orc "Dragonfire": identical shape to startBombardmentPlacement just
+   *  above -- same 2x2-blast mechanic (combat.js's applyBombardBlast is
+   *  shared by both), just the Dragon's own range (2, not the Bombard's 3)
+   *  and its own performPlayerDragonfire commit call. */
+  function startDragonfirePlacement(caster) {
+    if (!humanCivId) return;
+    const civ = gameState.civs[humanCivId];
+    if (!civ) return;
+    const { map } = gameState;
+    const range = 2; // DRAGONFIRE_RANGE, ai.js
+    const slots = [];
+    for (let dy = -range; dy <= range; dy++) {
+      for (let dx = -range; dx <= range; dx++) {
+        const x = caster.x + dx, y = caster.y + dy;
+        if (x < 0 || x >= map.width || y < 0 || y >= map.height) continue;
+        if (window.GameEngine.influence.chebyshev(caster.x, caster.y, x, y) > range) continue;
+        slots.push({ x, y });
+      }
+    }
+    viewState.placement = {
+      slots,
+      label: "Dragonfire",
+      aoeOffsets: (tile) => window.GameEngine.combat.bombardBlastOffsets(caster.x, tile.x),
+      onPick: (slot) => {
+        viewState.placement = null;
+        if (slot) window.GameEngine.ai.performPlayerDragonfire(civ, caster, slot.x, slot.y, gameState);
+        redraw();
+      },
+    };
+    redraw();
+  }
+
+  /** Human "Barrel Bomb": same two-stage placement shape as
+   *  Bombardment/Dragonfire above, but a single targeted tile -- no corner-
+   *  direction logic needed at all (aoeOffsets is just the one tile itself),
+   *  matching combat.js's single-tile applyBarrelBombBlast. Range matches
+   *  the Skyship's own `range: 1`. */
+  function startBarrelBombPlacement(caster) {
+    if (!humanCivId) return;
+    const civ = gameState.civs[humanCivId];
+    if (!civ) return;
+    const { map } = gameState;
+    const range = 1; // BARREL_BOMB_RANGE, ai.js
+    const slots = [];
+    for (let dy = -range; dy <= range; dy++) {
+      for (let dx = -range; dx <= range; dx++) {
+        if (dx === 0 && dy === 0) continue;
+        const x = caster.x + dx, y = caster.y + dy;
+        if (x < 0 || x >= map.width || y < 0 || y >= map.height) continue;
+        if (window.GameEngine.influence.chebyshev(caster.x, caster.y, x, y) > range) continue;
+        slots.push({ x, y });
+      }
+    }
+    viewState.placement = {
+      slots,
+      label: "Barrel Bomb",
+      aoeOffsets: () => [{ dx: 0, dy: 0 }],
+      onPick: (slot) => {
+        viewState.placement = null;
+        if (slot) window.GameEngine.ai.performPlayerBarrelBomb(civ, caster, slot.x, slot.y, gameState);
         redraw();
       },
     };

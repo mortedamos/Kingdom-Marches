@@ -133,6 +133,7 @@ window.GameData.SPRITE_FILES = [
   "units/shadowsteed.png",
   "units/skeleton.json",
   "units/skeleton.png",
+  "units/skyship.png",
   "units/spearguard_1.png",
   "units/spearguard_2.png",
   "units/spearguard_3.png",

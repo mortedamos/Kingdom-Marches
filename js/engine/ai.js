@@ -293,6 +293,27 @@ window.GameEngine = window.GameEngine || {};
     return best;
   }
 
+  // Naval-carrier unit ids (2026-09-18): every unit type that has ever been
+  // the buildable "ferry pioneers/military across water" unit for some
+  // race -- currently Galley (every race) and Human's Skyship (once "Sail
+  // the Skies" replaces it, see techs.js). Every place below that used to
+  // hardcode the literal string "galley" for fleet-counting/embark-finding
+  // purposes now checks this instead, so a civ that's upgraded doesn't
+  // silently lose all of its naval-transport AI (build-need scoring,
+  // embark/carry-finding, fishing) the moment Galley stops being
+  // buildable -- `civ.unlockedUnits` already handles NOT building a
+  // replaced unit going forward; this is only about still recognizing
+  // EXISTING/FUTURE naval carriers of either type as the same fleet.
+  const NAVAL_CARRIER_TYPE_IDS = ["galley", "skyship"];
+  function isNavalCarrierTypeId(id) { return NAVAL_CARRIER_TYPE_IDS.includes(id); }
+  /** Which naval-carrier unit id this civ should actually queue/afford-check
+   *  when it wants to build a new one -- "skyship" once Sail the Skies has
+   *  replaced Galley for this civ, "galley" otherwise (including every
+   *  non-Human race, which never unlocks "skyship" at all). */
+  function currentGalleyBuildId(civ) {
+    return civ.unlockedUnits && civ.unlockedUnits.has("skyship") ? "skyship" : "galley";
+  }
+
   const MAX_GALLEYS = 3;
   // A large stranded backlog should be able to grow the fleet past the
   // MAX_GALLEYS baseline instead of hard-stopping there forever -- see
@@ -317,8 +338,8 @@ window.GameEngine = window.GameEngine || {};
    */
   function computeGalleyNeed(civ, gameState) {
     const { map } = gameState;
-    const galleyCount = civ.units.filter((u) => u.typeId === "galley").length
-      + countQueuedUnits(civ, (id) => id === "galley");
+    const galleyCount = civ.units.filter((u) => isNavalCarrierTypeId(u.typeId)).length
+      + countQueuedUnits(civ, isNavalCarrierTypeId);
     const overseasBacklog = civ.units.filter((u) => {
       if (u.carriedBy) return false;
       const ud = window.GameData.getUnit(u.typeId);
@@ -952,7 +973,7 @@ window.GameEngine = window.GameEngine || {};
     // Never touches a galley mid-transport (disbandCandidates already excludes
     // any galley with cargo). Population/need check, not economic -- applies
     // even to noUpkeep races (Undead), same rationale as the military cap above.
-    const galleys = civ.units.filter((u) => u.typeId === "galley");
+    const galleys = civ.units.filter((u) => isNavalCarrierTypeId(u.typeId));
     if (galleys.length > 0) {
       const { overseasBacklog } = computeGalleyNeed(civ, gameState);
       const hasCoastalCity = civ.cities.some((c) => c.isPort || isCoastalTile(gameState.map, c.x, c.y));
@@ -1438,7 +1459,7 @@ window.GameEngine = window.GameEngine || {};
       pioneer._idleTurns = stayedPut ? (pioneer._idleTurns || 0) + 1 : 0;
       if (pioneer._idleTurns >= 3) {
         const nearestGalley = civ.units
-          .filter(u => u.typeId === "galley")
+          .filter(u => isNavalCarrierTypeId(u.typeId))
           .reduce((best, g) => {
             const d = window.GameEngine.influence.chebyshev(pioneer.x, pioneer.y, g.x, g.y);
             return (!best || d < best.d) ? { g, d } : best;
@@ -1558,7 +1579,7 @@ window.GameEngine = window.GameEngine || {};
         const ct = gameState.map.tiles[c.y * gameState.map.width + c.x];
         return ct && ct.landmassId === pioneerLandmassId;
       }).length;
-      const emptyGalley = civ.units.find(u => u.typeId === "galley" && !u.carries);
+      const emptyGalley = civ.units.find(u => isNavalCarrierTypeId(u.typeId) && !u.carries);
       // Either the per-landmass city-count heuristic, or the civ already
       // controls the majority of this landmass outright (see computeLandmassMajority)
       // -- a civ that conquered a whole island through combat rather than
@@ -3802,7 +3823,18 @@ window.GameEngine = window.GameEngine || {};
     // is exactly the "greyed out" case -- surfaced with affordable:false
     // rather than hidden, so the player can see what they're saving toward.
     const unitIds = new Set(civ.unlockedUnits || []);
-    for (const legacyId of ["pioneer", "galley"]) unitIds.add(legacyId);
+    // Legacy fallback for civs whose save predates Level 0 granting these two
+    // via a real unlock_unit effect. Skipped for "galley" once its
+    // replace_unit successor (Human's Skyship) is actually unlocked for this
+    // civ -- otherwise this forced add would keep showing "Galley" in the
+    // build menu forever, even after Sail the Skies is supposed to fully
+    // replace it (unitUpgradeTarget resolves generically, so this needs no
+    // Skyship-specific check).
+    for (const legacyId of ["pioneer", "galley"]) {
+      const upgradeTo = window.GameData.unitUpgradeTarget(legacyId);
+      if (upgradeTo && civ.unlockedUnits && civ.unlockedUnits.has(upgradeTo)) continue;
+      unitIds.add(legacyId);
+    }
     for (const unitId of unitIds) {
       const unitData = window.GameData.getUnit(unitId);
       if (!unitData) continue;
@@ -3924,8 +3956,8 @@ window.GameEngine = window.GameEngine || {};
     // turn independently thinks "we have none yet" and each queues its own.
     const civHasPioneer  = civ.units.some((u) => u.typeId === "pioneer")
       || countQueuedUnits(civ, (id) => id === "pioneer") > 0;
-    const civHasGalley   = civ.units.some((u) => u.typeId === "galley")
-      || countQueuedUnits(civ, (id) => id === "galley") > 0;
+    const civHasGalley   = civ.units.some((u) => isNavalCarrierTypeId(u.typeId))
+      || countQueuedUnits(civ, isNavalCarrierTypeId) > 0;
     const cityIsCoastal  = city.isPort || isCoastalTile(map, city.x, city.y);
     const hasViableSite  = civHasReachableSettleSite(civ, gameState);
     // Island-locked: this city is coastal but there's nowhere left to found on the same landmass
@@ -4056,11 +4088,12 @@ window.GameEngine = window.GameEngine || {};
     // desire gates on it -- see rollsForSettleNeed's doc comment.
     const galleyUrgent = islandLocked || civHasPioneer || wantsTitanScouting;
     const galleyOrdinaryNeed = (wantsNavalExpansion || wantsMoreGalleys) && !galleyUrgent;
+    const galleyBuildId = currentGalleyBuildId(civ);
     if (cityIsCoastal && (!civHasGalley || wantsMoreGalleys)
         && (galleyUrgent || (galleyOrdinaryNeed && civ._galleyNeedRoll))
-        && canAffordUnitUpkeep(civ, "galley", race)) {
+        && canAffordUnitUpkeep(civ, galleyBuildId, race)) {
       const settleWeight = weights.settle || 1.0;
-      const opt = buildUnitOption(civ, "galley",
+      const opt = buildUnitOption(civ, galleyBuildId,
         (expansionism * 12 + (wantsMoreGalleys ? overseasBacklog * 3 : 0) + (wantsTitanScouting ? 25 : 0)) * settleWeight, unitCostMult);
       if (opt) options.push(opt);
     }
@@ -5398,12 +5431,20 @@ window.GameEngine = window.GameEngine || {};
       // cascade below, where the "always try to attack first" call picks up
       // its ordinary attack instead (2026-09-06: no longer gated off here).
       if (unit.typeId === "bombard" && maybeBombardStrike(civ, unit, gameState, log)) continue;
+      // Orc "Dragonfire": same "tried first, falls through on failure"
+      // shape as Bombardment just above -- see maybeDragonfireStrike.
+      if (unit.typeId === "dragon" && maybeDragonfireStrike(civ, unit, gameState, log)) continue;
 
       if (unit.typeId === "scout") {
         if (considerAttackOrGarrison(civ, unit, gameState, weights, difficulty, log)) continue;
         exploreWith(unit, gameState, log);
         continue;
       }
+      // Human "Barrel Bomb": tried before the naval dispatch (and thus
+      // before its own ordinary-attack-first check) just below, same
+      // "special ability first, ordinary attack picks up the fallthrough"
+      // shape as Bombardment/Dragonfire above -- see maybeBarrelBombStrike.
+      if (unit.typeId === "skyship" && maybeBarrelBombStrike(civ, unit, gameState, log)) continue;
       if (window.GameData.getUnit(unit.typeId).isNaval) {
         // Same fix as Scouts just above: a Galley (range 2, Atk 1/Def 2) has
         // real combat stats, but operateGalley used to intercept every
@@ -5418,9 +5459,12 @@ window.GameEngine = window.GameEngine || {};
         // "not with an enemy in sight" treatment the land channels get
         // further down the cascade -- wired in here rather than there
         // because the naval branch returns before ever reaching that tier.
-        // See threatBlocksGathering/maybeBreakOffGathering.
-        if (unit.typeId === "galley" && maybeBreakOffGathering(civ, unit, gameState, log)) continue;
-        if (unit.typeId === "galley" && !threatBlocksGathering(civ, unit, gameState)
+        // See threatBlocksGathering/maybeBreakOffGathering. isNavalCarrierTypeId,
+        // not just "galley", so a Human Skyship keeps fishing too (see
+        // turns.js's/orders.js's matching canFish checks -- must stay in
+        // sync with those).
+        if (isNavalCarrierTypeId(unit.typeId) && maybeBreakOffGathering(civ, unit, gameState, log)) continue;
+        if (isNavalCarrierTypeId(unit.typeId) && !threatBlocksGathering(civ, unit, gameState)
             && maybeGalleyFishingPlay(civ, unit, gameState, log)) continue;
         operateGalley(civ, unit, gameState, log);
         continue;
@@ -6453,6 +6497,239 @@ window.GameEngine = window.GameEngine || {};
     }
     if (!best || bestScore < BOMBARDMENT_MIN_TARGETS) return false;
     return performDwarfBombardment(civ, unit, best.x, best.y, gameState, log);
+  }
+
+  // Orc "Dragonfire" (2026-09-18, user-directed): the Dragon's own
+  // standalone 2x2-blast action, on top of its ordinary attack -- same
+  // shape as Dwarf Bombardment above (down to reusing combat.js's
+  // applyBombardBlast directly, unchanged), differing only in caster,
+  // range (matches the Dragon's own `range: 2`, not the Bombard's 3), and
+  // reading the Dragon's own burnChancePct (units.js: 0.50) instead of the
+  // Bombard's. Unconditional once a civ owns a Dragon -- no separate tech,
+  // same convention as Bombardment (owning a Dragon already implies
+  // Dragon's Den + whatever tech unlocks the Dragon itself).
+  const DRAGONFIRE_RANGE = 2;
+  const DRAGONFIRE_MIN_TARGETS = 1;
+  const DRAGONFIRE_ALLY_RISK_WEIGHT = 1.5;
+
+  /** Dry-run scoring for a Dragonfire blast -- identical shape to
+   *  scoreBombardBlast, just named for its own caller/constants. */
+  function scoreDragonfireBlast(cx, cy, casterUnit, civs, casterCivId, gameState) {
+    const { map } = gameState;
+    let enemy = 0, allied = 0;
+    for (const { dx, dy } of window.GameEngine.combat.bombardBlastOffsets(casterUnit.x, cx)) {
+      const x = cx + dx, y = cy + dy;
+      if (x < 0 || x >= map.width || y < 0 || y >= map.height) continue;
+      for (const otherCiv of Object.values(civs)) {
+        if (otherCiv.eliminated) continue;
+        if (!otherCiv.units.some((u) => u.x === x && u.y === y && !u.conditions?.hidden)) continue;
+        if (otherCiv.id === casterCivId) allied++; else enemy++;
+      }
+      const struct = window.GameEngine.cities.findStructureAt(gameState, x, y);
+      if (struct) { if (struct.civ.id === casterCivId) allied++; else enemy++; }
+    }
+    return enemy - allied * DRAGONFIRE_ALLY_RISK_WEIGHT;
+  }
+
+  /** Direct player-invoked Dragonfire -- same "manual ring click + tile
+   *  pick already IS the confirmation" shape as performPlayerBombardment. */
+  function performPlayerDragonfire(civ, dragon, tx, ty, gameState) {
+    currentTurnNumber = gameState.turnNumber || 0;
+    currentGameStateRef = gameState;
+    const log = [];
+    const ok = performDragonfire(civ, dragon, tx, ty, gameState, log);
+    if (log.length) appendAIActionLog(gameState, civ.id, log);
+    return ok;
+  }
+
+  /**
+   * Orc "Dragonfire": same body as performDwarfBombardment (combat.js's
+   * applyBombardBlast is fully caster-agnostic), just relabeled for its own
+   * log lines/mission text/sfx key and the Dragon's own describeUnit.
+   */
+  function performDragonfire(civ, caster, tx, ty, gameState, log) {
+    if (caster.usedThisTurn) return false;
+    const hits = window.GameEngine.combat.applyBombardBlast(caster, civ, tx, ty, gameState);
+    const igniteChance = window.GameEngine.combat.getUnitProperty(caster, civ, "burnChancePct", 0);
+    let ignited = 0;
+    for (const hit of hits) {
+      if (igniteChance > 0 && Math.random() < igniteChance) {
+        ignited++;
+        if (hit.kind === "unit") applyBurning(hit.unit, "unit", gameState);
+        else if (hit.kind === "structure") applyBurning(hit.record, "structure", gameState);
+      }
+      if (hit.kind === "unit" && hit.unit.hp <= 0) otherCivRemoveDeadUnit(gameState.civs, hit.unit, civ.id);
+      if (hit.kind === "structure" && hit.record.hp <= 0) {
+        window.GameEngine.cities.destroyStructure(gameState, hit.x, hit.y);
+      }
+      if (hit.kind === "city") {
+        if (hit.result.counterDamage) {
+          log.push(`Rouse the People: ${hit.civId}'s city struck back at ${civ.id}'s ${describeUnit(caster)} for ${hit.result.counterDamage}`);
+        }
+        if (hit.result.militiaSpawned) {
+          log.push(`Rouse the People: ${hit.civId} raised a Militia to defend at (${hit.result.militiaSpawned.x},${hit.result.militiaSpawned.y})`);
+        }
+        if (hit.result.destroyed) {
+          window.GameEngine.combat.markRival(hit.civ, civ.id);
+          window.GameEngine.cities.destroyCity(gameState, hit.civ, hit.city);
+        }
+      }
+    }
+    window.GameEngine.combat.recordCombatEvent({
+      ax: caster.x, ay: caster.y, atkUnit: caster, dx: tx, dy: ty, defUnit: null,
+    });
+    const { map } = gameState;
+    for (let dy = 0; dy <= 1; dy++) {
+      for (let dx = 0; dx <= 1; dx++) {
+        const x = tx + dx, y = ty + dy;
+        if (x < 0 || x >= map.width || y < 0 || y >= map.height) continue;
+        window.GameEngine.combat.spawnAreaEffect(x, y, 0, "fireball");
+      }
+    }
+    window.SfxSystem.playAction(civ.raceId, caster.typeId, "dragonfire", tx, ty);
+    log.push(`Dragonfire: ${civ.id}'s Dragon blasts (${tx},${ty}), hitting ${hits.length} target(s), igniting ${ignited}`);
+    if (caster.hp <= 0) {
+      log.push(`Dragonfire: ${civ.id}'s Dragon is consumed by its own blast`);
+      return true;
+    }
+    caster.usedThisTurn = true;
+    caster.currentMission = `Dragonfire (${tx},${ty})`;
+    return true;
+  }
+
+  /** Orc "Dragonfire" AI: same shape as maybeBombardStrike, scanning
+   *  DRAGONFIRE_RANGE instead of BOMBARDMENT_RANGE. Returns true if it
+   *  consumed the turn. */
+  function maybeDragonfireStrike(civ, unit, gameState, log) {
+    const { map, civs } = gameState;
+    const visible = gameState.visibility[civ.id] || new Set();
+    let best = null, bestScore = -Infinity;
+    for (let dy = -DRAGONFIRE_RANGE; dy <= DRAGONFIRE_RANGE; dy++) {
+      for (let dx = -DRAGONFIRE_RANGE; dx <= DRAGONFIRE_RANGE; dx++) {
+        const x = unit.x + dx, y = unit.y + dy;
+        if (x < 0 || x >= map.width || y < 0 || y >= map.height) continue;
+        if (window.GameEngine.influence.chebyshev(unit.x, unit.y, x, y) > DRAGONFIRE_RANGE) continue;
+        if (!visible.has(y * map.width + x)) continue;
+        const score = scoreDragonfireBlast(x, y, unit, civs, civ.id, gameState);
+        if (score > bestScore) { bestScore = score; best = { x, y }; }
+      }
+    }
+    if (!best || bestScore < DRAGONFIRE_MIN_TARGETS) return false;
+    return performDragonfire(civ, unit, best.x, best.y, gameState, log);
+  }
+
+  // Human Skyship "Barrel Bomb" (2026-09-18, user-directed): a single-tile
+  // ranged strike, on top of the Skyship's ordinary attack -- same overall
+  // shape as Bombardment/Dragonfire (unconditional once a civ owns a
+  // Skyship, tried before the ordinary attack, falls through to it on a
+  // failed/skipped strike), but combat.js's applyBarrelBombBlast hits only
+  // ONE tile, not a 2x2 block, matching the user's own "select a square"
+  // (singular) wording. Range matches the Skyship's own `range: 1`.
+  const BARREL_BOMB_RANGE = 1;
+  const BARREL_BOMB_MIN_TARGETS = 1;
+
+  /** Dry-run scoring for a Barrel Bomb strike -- same shape as
+   *  scoreBombardBlast/scoreDragonfireBlast, but over the single targeted
+   *  tile only (no ally-risk weighting needed -- a 1-tile blast can only
+   *  ever catch exactly what's standing on that one tile, so there's
+   *  nothing to weigh against; the caller only ever considers a tile with
+   *  an enemy on it worth striking at all). */
+  function scoreBarrelBombTarget(x, y, casterCivId, civs, gameState) {
+    for (const otherCiv of Object.values(civs)) {
+      if (otherCiv.eliminated || otherCiv.id === casterCivId) continue;
+      if (otherCiv.units.some((u) => u.x === x && u.y === y && !u.conditions?.hidden)) return 1;
+    }
+    const struct = window.GameEngine.cities.findStructureAt(gameState, x, y);
+    if (struct && struct.civ.id !== casterCivId) return 1;
+    return 0;
+  }
+
+  /** Direct player-invoked Barrel Bomb -- same "manual ring click + tile
+   *  pick already IS the confirmation" shape as performPlayerBombardment. */
+  function performPlayerBarrelBomb(civ, skyship, tx, ty, gameState) {
+    currentTurnNumber = gameState.turnNumber || 0;
+    currentGameStateRef = gameState;
+    const log = [];
+    const ok = performSkyshipBarrelBomb(civ, skyship, tx, ty, gameState, log);
+    if (log.length) appendAIActionLog(gameState, civ.id, log);
+    return ok;
+  }
+
+  /**
+   * Human "Barrel Bomb": same body/bookkeeping as performDwarfBombardment,
+   * over combat.js's single-tile applyBarrelBombBlast instead of the 2x2
+   * applyBombardBlast, and reading the Skyship's own burnChancePct/siegePct
+   * (units.js: 0.5/1.0) via the same caster-agnostic getUnitProperty/
+   * effectiveAttack machinery.
+   */
+  function performSkyshipBarrelBomb(civ, caster, tx, ty, gameState, log) {
+    if (caster.usedThisTurn) return false;
+    const hits = window.GameEngine.combat.applyBarrelBombBlast(caster, civ, tx, ty, gameState);
+    const igniteChance = window.GameEngine.combat.getUnitProperty(caster, civ, "burnChancePct", 0);
+    let ignited = 0;
+    for (const hit of hits) {
+      if (igniteChance > 0 && Math.random() < igniteChance) {
+        ignited++;
+        if (hit.kind === "unit") applyBurning(hit.unit, "unit", gameState);
+        else if (hit.kind === "structure") applyBurning(hit.record, "structure", gameState);
+      }
+      if (hit.kind === "unit" && hit.unit.hp <= 0) otherCivRemoveDeadUnit(gameState.civs, hit.unit, civ.id);
+      if (hit.kind === "structure" && hit.record.hp <= 0) {
+        window.GameEngine.cities.destroyStructure(gameState, hit.x, hit.y);
+      }
+      if (hit.kind === "city") {
+        if (hit.result.counterDamage) {
+          log.push(`Rouse the People: ${hit.civId}'s city struck back at ${civ.id}'s ${describeUnit(caster)} for ${hit.result.counterDamage}`);
+        }
+        if (hit.result.militiaSpawned) {
+          log.push(`Rouse the People: ${hit.civId} raised a Militia to defend at (${hit.result.militiaSpawned.x},${hit.result.militiaSpawned.y})`);
+        }
+        if (hit.result.destroyed) {
+          window.GameEngine.combat.markRival(hit.civ, civ.id);
+          window.GameEngine.cities.destroyCity(gameState, hit.civ, hit.city);
+        }
+      }
+    }
+    window.GameEngine.combat.recordCombatEvent({
+      ax: caster.x, ay: caster.y, atkUnit: caster, dx: tx, dy: ty, defUnit: null,
+    });
+    window.GameEngine.combat.spawnAreaEffect(tx, ty, 0, "fireball");
+    window.SfxSystem.playAction(civ.raceId, caster.typeId, "barrelBomb", tx, ty);
+    log.push(`Barrel Bomb: ${civ.id}'s Skyship blasts (${tx},${ty}), hitting ${hits.length} target(s), igniting ${ignited}`);
+    if (caster.hp <= 0) {
+      log.push(`Barrel Bomb: ${civ.id}'s Skyship is consumed by its own blast`);
+      return true;
+    }
+    caster.usedThisTurn = true;
+    caster.currentMission = `Barrel Bomb (${tx},${ty})`;
+    return true;
+  }
+
+  /** Human Skyship "Barrel Bomb" AI: scans every currently-visible tile
+   *  within BARREL_BOMB_RANGE for one worth striking (scoreBarrelBombTarget
+   *  -- any enemy unit or structure on it), preferring a unit hit over a
+   *  bare structure hit if both are available (score already reflects
+   *  this: both return 1, so the FIRST one found wins -- units are scanned
+   *  before falling back to structures within scoreBarrelBombTarget itself,
+   *  matching attackTargetAt's own "a defender always intercepts" unit-
+   *  before-structure precedence). Returns true if it consumed the turn. */
+  function maybeBarrelBombStrike(civ, unit, gameState, log) {
+    const { map, civs } = gameState;
+    const visible = gameState.visibility[civ.id] || new Set();
+    let best = null, bestScore = 0;
+    for (let dy = -BARREL_BOMB_RANGE; dy <= BARREL_BOMB_RANGE; dy++) {
+      for (let dx = -BARREL_BOMB_RANGE; dx <= BARREL_BOMB_RANGE; dx++) {
+        const x = unit.x + dx, y = unit.y + dy;
+        if (dx === 0 && dy === 0) continue;
+        if (x < 0 || x >= map.width || y < 0 || y >= map.height) continue;
+        if (window.GameEngine.influence.chebyshev(unit.x, unit.y, x, y) > BARREL_BOMB_RANGE) continue;
+        if (!visible.has(y * map.width + x)) continue;
+        const score = scoreBarrelBombTarget(x, y, civ.id, civs, gameState);
+        if (score > bestScore) { bestScore = score; best = { x, y }; }
+      }
+    }
+    if (!best || bestScore < BARREL_BOMB_MIN_TARGETS) return false;
+    return performSkyshipBarrelBomb(civ, unit, best.x, best.y, gameState, log);
   }
 
   const FROZEN_DURATION = 3;
@@ -11609,7 +11886,7 @@ window.GameEngine = window.GameEngine || {};
     if (tryDeepGateOverseas(civ, unit, gameState, log, "invade overseas")) return true;
 
     const emptyGalley = civ.units
-      .filter((u) => u.typeId === "galley" && !u.carries)
+      .filter((u) => isNavalCarrierTypeId(u.typeId) && !u.carries)
       .reduce((best, g) => {
         const d = window.GameEngine.influence.chebyshev(unit.x, unit.y, g.x, g.y);
         return (!best || d < best.d) ? { g, d } : best;
@@ -11661,7 +11938,7 @@ window.GameEngine = window.GameEngine || {};
     if (tryDeepGateOverseas(civ, unit, gameState, log, `reach a ${label}`, spot.landmassId)) return true;
 
     const emptyGalley = civ.units
-      .filter((u) => u.typeId === "galley" && !u.carries)
+      .filter((u) => isNavalCarrierTypeId(u.typeId) && !u.carries)
       .reduce((best, g) => {
         const d = window.GameEngine.influence.chebyshev(unit.x, unit.y, g.x, g.y);
         return (!best || d < best.d) ? { g, d } : best;
@@ -12921,7 +13198,7 @@ window.GameEngine = window.GameEngine || {};
     const TERRAIN = window.GameData.TERRAIN;
     // For each idle pioneer not being carried, move it toward the nearest galley's boarding
     // position (land tile adjacent to galley water tile) when naval expansion is warranted.
-    const galleys = civ.units.filter((u) => u.typeId === "galley" && !u.carries);
+    const galleys = civ.units.filter((u) => isNavalCarrierTypeId(u.typeId) && !u.carries);
     const pioneers = civ.units.filter((u) => u.typeId === "pioneer" && !u.carriedBy && !u.usedThisTurn);
     // Tech-tree city gate awareness (see maybeFoundCity/chooseStrategy) -- a
     // pioneer with a good land site should keep settling locally rather than
@@ -13482,13 +13759,15 @@ window.GameEngine = window.GameEngine || {};
 
         const threshold = minAcceptableWinProbability(civ);
         let score = winProb * 20 * (weights.attack || 1.0);
-        // Galley vs Galley: an uncarried Galley prefers
-        // fighting an enemy Galley over any other target -- sea control
-        // takes priority over land skirmishes when it's actually free to
-        // pursue one. A Galley currently ferrying cargo gets no such bonus
-        // (still defends itself normally via the general scoring above, but
-        // never goes out of its way to pick a galley fight while carrying).
-        if (unit.typeId === "galley" && !unit.carries && enemyUnit.typeId === "galley") {
+        // Galley vs Galley (also covers a Skyship on either side, via
+        // isNavalCarrierTypeId): an uncarried naval carrier prefers
+        // fighting an enemy naval carrier over any other target -- sea
+        // control takes priority over land skirmishes when it's actually
+        // free to pursue one. One currently ferrying cargo gets no such
+        // bonus (still defends itself normally via the general scoring
+        // above, but never goes out of its way to pick that fight while
+        // carrying).
+        if (isNavalCarrierTypeId(unit.typeId) && !unit.carries && isNavalCarrierTypeId(enemyUnit.typeId)) {
           score += GALLEY_VS_GALLEY_BONUS;
         }
         // Elf Ranger volley: prefer a target
@@ -15117,6 +15396,8 @@ window.GameEngine = window.GameEngine || {};
     hasRangedLineOfSight,
     performPlayerFireball,
     performPlayerBombardment,
+    performPlayerDragonfire,
+    performPlayerBarrelBomb,
     performPlayerRiddle,
     performPlayerResourceHeist,
     performPlayerUnlockTheGate,

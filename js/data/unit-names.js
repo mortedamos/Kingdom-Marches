@@ -145,8 +145,15 @@ window.GameData.UNIT_EPITHETS = {
  */
 window.GameData.UNIT_TYPE_PROPER_NAMES = {
   galley: [
-    "The Saltwake", "Windrunner", "Tideclaw", "The Grey Gull", "Farreach", 
+    "The Saltwake", "Windrunner", "Tideclaw", "The Grey Gull", "Farreach",
     "Stormwake", "The Long Crossing",
+  ],
+  // Skyship: same "ship, not a person" naming register as Galley just
+  // above, but sky/cloud-flavored rather than sea-flavored -- it still
+  // sails, just above the waves instead of on them.
+  skyship: [
+    "The Windward Star", "Cloudreach", "Skysalt", "The High Crossing",
+    "Stormsail", "The Gale Runner", "Sunbreaker",
   ],
   catapult: [
     "Old Thunderer", "The Widowmaker", "Skybreaker", "Groundshaker",

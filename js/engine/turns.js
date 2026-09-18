@@ -1273,7 +1273,7 @@ window.GameEngine = window.GameEngine || {};
       // unit fish, not just Galleys -- must mirror orders.js's ring-menu
       // gate exactly, or a unit the menu let start this channel would just
       // have it silently cancelled the next time this block runs.
-      const canFish = unit.typeId === "galley"
+      const canFish = unit.typeId === "galley" || unit.typeId === "skyship"
         || (civ.raceId === "halfellow" && civ.unlockedMechanics && civ.unlockedMechanics.has("forrager"));
       if (!canFish || unit.channeling !== "fishing") continue;
       const tile = map.tiles[unit.y * map.width + unit.x];
