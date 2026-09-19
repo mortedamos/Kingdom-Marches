@@ -4922,17 +4922,22 @@ window.GameEngine = window.GameEngine || {};
     }
   }
 
-  /** Spawns a completed unit at `city` (or the nearest coastal water for
-   *  naval units), pushing it onto civ.units. Returns false if a naval unit
-   *  couldn't find anywhere to spawn yet -- caller should leave the build
-   *  queued and retry next turn rather than losing a completed build.
-   *  Shared by progressBuildQueue's legacy coin-accumulation path and its
-   *  power-based fixed-turn-timer path. */
+  /** Spawns a completed unit at `city` (or the nearest coastal water for a
+   *  naval, non-flying unit), pushing it onto civ.units. Returns false if a
+   *  naval unit couldn't find anywhere to spawn yet -- caller should leave
+   *  the build queued and retry next turn rather than losing a completed
+   *  build. Shared by progressBuildQueue's legacy coin-accumulation path
+   *  and its power-based fixed-turn-timer path. */
   function spawnUnitInCity(civ, city, unitId, gameState, extra = {}) {
     const unitData = window.GameData.getUnit(unitId);
     const { map, civs } = gameState;
     let spawnX = city.x, spawnY = city.y;
-    if (unitData.isNaval) {
+    // A flying naval unit (Human's Skyship, 2026-09-19 user-directed) needs
+    // no water to launch from -- same exemption as availableBuilds' own
+    // coastal-city requirement just above (see that comment) -- so it
+    // spawns like an ordinary land unit, on/adjacent to the city itself,
+    // not wherever the nearest water happens to be.
+    if (unitData.isNaval && !unitData.flying) {
       // Naval units must spawn on a water tile; expand search if nothing is directly adjacent
       const waterSpot = findAdjacentWater(city.x, city.y, map)
         || findNearestCoastalWaterFor(city.x, city.y, map, 10);

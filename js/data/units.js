@@ -295,7 +295,7 @@ window.GameData.UNITS = {
   // a ship that also flies, not a land-capable aircraft.
   skyship: {
     id: "skyship", label: "Skyship", symbol: "⛵", category: "military", raceOnly: "human", range: 1,
-    attack: 1, defense: 3, movement: 4, visionRadius: 4,
+    attack: 3, defense: 3, movement: 4, visionRadius: 4,
     isNaval: true, canCarryUnit: true, flying: true, biggerPct: .5,
     siegePct: 1.0, burnChancePct: 0.5,
     coinCost: 40, attackChars: ["💣", "🔥", "💥"], muzzleSmoke: true, impactSmoke: true,
