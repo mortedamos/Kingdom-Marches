@@ -351,10 +351,13 @@ window.UI = window.UI || {};
     // Dwarf "Bombardment"/Orc "Dragonfire"/Human "Barrel Bomb": each unit's
     // own standalone targeted-blast action, on top of (not instead of) its
     // ordinary attack below -- see units.js's bombard/dragon/skyship
-    // comments.
-    if (unit.typeId === "bombard") actions.push({ label: "Bombardment", actionKey: "bombardment" });
-    if (unit.typeId === "dragon") actions.push({ label: "Dragonfire", actionKey: "dragonfire" });
-    if (unit.typeId === "skyship") actions.push({ label: "Barrel Bomb", actionKey: "barrelBomb" });
+    // comments. `unit` here is a unit DEFINITION (GameData.getUnit), which is
+    // keyed by `id` -- `typeId` only exists on live unit instances, so these
+    // three checks used to compare `unit.typeId`, never matched, and left all
+    // three actions off their unit's profile.
+    if (unit.id === "bombard") actions.push({ label: "Bombardment", actionKey: "bombardment" });
+    if (unit.id === "dragon") actions.push({ label: "Dragonfire", actionKey: "dragonfire" });
+    if (unit.id === "skyship") actions.push({ label: "Barrel Bomb", actionKey: "barrelBomb" });
     if (unit.attack > 0 && !unit.noOrdinaryAttack) actions.push({ label: "Attack", actionKey: "attack" });
     if (unit.movement > 0) actions.push({ label: "Move", actionKey: "moveTo" });
     if (unit.canFoundCity) actions.push({ label: "Found a City", actionKey: "foundCity" });
