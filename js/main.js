@@ -974,6 +974,7 @@
           // See the in-game Load Game handler's own comment
           // (handleLoadGameFile) for why this reads bytes, not text.
           const payload = await window.GameEngine.savegame.deserializeFromArrayBuffer(reader.result);
+          prepareAwayReward(payload, { resave: false });
           startGameFromSave(payload);
         } catch (err) {
           alert(`Failed to load save file: ${err.message}`);
@@ -2151,6 +2152,7 @@
       pendingShowTutorial = false;
       openTutorial();
     }
+    showPendingAwayReward();
   }
 
   function hashStringToSeed(str) {
@@ -2999,6 +3001,7 @@
         // deserializeFromArrayBuffer, which detects gzip vs. an OLD plain-
         // JSON save from its own magic bytes, not the file extension).
         const payload = await window.GameEngine.savegame.deserializeFromArrayBuffer(reader.result);
+        prepareAwayReward(payload, { resave: false });
         applyLoadedPayload(payload);
       } catch (err) {
         alert(`Failed to load save file: ${err.message}`);
@@ -3066,6 +3069,54 @@
     }
   }
 
+  /**
+   * "While you were away" reward (see cities.js's awayRewardFor): credited
+   * to a freshly loaded save's human civ, then announced by
+   * showPendingAwayReward once the load has actually finished swapping state
+   * in. Time away is wall-clock time since the payload's savedAt -- UTC ISO,
+   * so time zone / DST changes can't skew it. A clock set BEFORE savedAt
+   * gives a negative gap (no reward); a save with no usable savedAt at all
+   * (older than the field) is treated as away for the full maxHours. Never
+   * for spectator mode.
+   *
+   * `resave`: quicksave loads write the slot straight back after crediting
+   * (showPendingAwayReward), so the reward isn't repeated by the next Quick
+   * Load and the credited resources survive quitting without a manual save.
+   * File loads can't rewrite the file they came from, so they don't.
+   */
+  let pendingAwayReward = null; // { gain, resave } -- consumed by showPendingAwayReward
+
+  function prepareAwayReward(payload, { resave }) {
+    pendingAwayReward = null;
+    if (payload.spectatorMode || !payload.humanCivId) return;
+    const civ = payload.gameState.civs[payload.humanCivId];
+    if (!civ || civ.eliminated) return;
+    const away = window.GameConfig.city.awayReward;
+    const savedMs = Date.parse(payload.savedAt);
+    const hoursAway = Number.isFinite(savedMs) ? (Date.now() - savedMs) / 3600000 : away.maxHours;
+    const reward = window.GameEngine.cities.awayRewardFor(civ, hoursAway);
+    if (!reward) return;
+    civ.stockpile = civ.stockpile || { harvest: 0, coin: 0, lore: 0 };
+    for (const key of ["harvest", "coin", "lore"]) {
+      civ.stockpile[key] = (civ.stockpile[key] || 0) + reward.gain[key];
+    }
+    pendingAwayReward = { gain: reward.gain, resave };
+  }
+
+  /** Shows the Welcome Back modal (with the treasure chest sound) for a
+   *  reward prepareAwayReward staged, if any. Called at the tail of both
+   *  load paths (finishStartGame / finishApplyLoadedPayload), when gameState
+   *  and viewState are live. */
+  function showPendingAwayReward() {
+    if (!pendingAwayReward) return;
+    const { gain, resave } = pendingAwayReward;
+    pendingAwayReward = null;
+    window.SfxSystem.playTreasureChestOpen();
+    viewState.dialog = { kind: "welcomeBack", gain };
+    redraw();
+    if (resave) quickSave({ silent: true });
+  }
+
   /** Same dual-context branch File > Load Game already needs two SEPARATE
    *  handlers for (title screen vs. in-game, see setupTitleLoadGameControl's
    *  own doc comment) -- one function here instead, since there's no file
@@ -3076,6 +3127,7 @@
     if (!value) { alert("No quicksave found."); return; }
     try {
       const payload = await window.GameEngine.savegame.deserializeFromLocalStorageString(value);
+      prepareAwayReward(payload, { resave: true });
       if (gameState) applyLoadedPayload(payload);
       else startGameFromSave(payload);
     } catch (err) {
@@ -3183,6 +3235,7 @@
     if (spectatorMode) startAutoplay();
     hideLoadingScreen();
     redraw();
+    showPendingAwayReward();
   }
 
   function startAutoplay() {
@@ -5680,7 +5733,7 @@
       };
       if (confirmBtn) confirmBtn.onclick = () => finish(true);
       if (cancelBtn) cancelBtn.onclick = () => finish(false);
-    } else if (dialog.kind === "message") {
+    } else if (dialog.kind === "message" || dialog.kind === "welcomeBack") {
       const okBtn = $("game-dialog-ok-btn");
       if (okBtn) okBtn.onclick = () => {
         viewState.dialog = null;

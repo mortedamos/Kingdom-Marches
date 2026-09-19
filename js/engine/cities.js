@@ -796,6 +796,36 @@ window.GameEngine = window.GameEngine || {};
   }
 
   /**
+   * "WHILE YOU WERE AWAY" REWARD
+   * ----------------------------------------------
+   * Loading a save after time away pays out what the civ's LARGEST city would
+   * have made gathering resources every turn it missed. `hoursAway` is real
+   * wall-clock time since the save's savedAt (main.js works that out, incl.
+   * the 48h-cap / bad-clock cases); it's converted at awayReward.hoursPerTurn
+   * hours per game turn, fractional turns allowed, and each turn is worth the
+   * same share of lastYield a Gather Resources click adds
+   * (resourceProductionPreview). Pure -- credits nothing, returns
+   * { turns, city, gain: {harvest, coin, lore} } (whole numbers), or null
+   * when under minHours away, there's no city, or nothing would be paid.
+   */
+  function awayRewardFor(civ, hoursAway) {
+    const away = window.GameConfig.city.awayReward;
+    if (!civ || !(hoursAway >= away.minHours)) return null;
+    const largest = (civ.cities || []).reduce(
+      (best, c) => (!best || c.population > best.population ? c : best), null);
+    if (!largest) return null;
+    const turns = Math.min(hoursAway, away.maxHours) / away.hoursPerTurn;
+    const perTurn = resourceProductionPreview(largest);
+    const gain = {
+      harvest: Math.round(perTurn.harvest * turns),
+      coin: Math.round(perTurn.coin * turns),
+      lore: Math.round(perTurn.lore * turns),
+    };
+    if (!gain.harvest && !gain.coin && !gain.lore) return null;
+    return { turns, city: largest, gain };
+  }
+
+  /**
    * RESEARCH (city ring action)
    * ---------------------------
    * A fourth thing a city's turn can go into, alongside a unit, a building,
@@ -1827,6 +1857,7 @@ window.GameEngine = window.GameEngine || {};
     isProducingResources,
     resourceProductionPreview,
     applyResourceProduction,
+    awayRewardFor,
     isBoostingResearch,
     researchBoostAmount,
     researchBoostCost,

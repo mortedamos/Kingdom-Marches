@@ -11,6 +11,7 @@
  *   { kind: "confirmEndTurn", items[], onAnswer(bool) }
  *   { kind: "confirm", title, text, confirmLabel, danger, onAnswer(bool) }
  *   { kind: "message", title, text, onDismiss(), onKeepFighting()? }
+ *   { kind: "welcomeBack", gain: {harvest, coin, lore}, onDismiss() }
  *   { kind: "chooseTech", title, text, options: [{id,label,description}], onAnswer(techId) }
  *   { kind: "chooseStarvationDisband", civLabel, candidates: [{label,description}], onAnswer(index) }
  *   { kind: "chooseWispDisband", civLabel, candidates: [{label,description}], onAnswer(index) }
@@ -350,6 +351,21 @@ window.UI = window.UI || {};
           ${info ? `<button class="menu-dropdown-btn" id="game-dialog-view-report-btn">View Influence Report</button>` : ""}
           ${info ? `<button class="menu-dropdown-btn" id="game-dialog-keep-fighting-btn">Keep On Fighting!</button>` : ""}
           <button class="menu-dropdown-btn game-dialog-primary" id="game-dialog-ok-btn">Return to Title Screen</button>
+        </div>`;
+    }
+    if (dialog.kind === "welcomeBack") {
+      // "While you were away" reward, shown right after a Load Game / Quick
+      // Load (see main.js's showPendingAwayReward). One row per resource,
+      // using the same crafted #icon-* glyphs as the sidebar's economy table.
+      const rows = ["harvest", "coin", "lore"].filter((k) => dialog.gain[k]).map((k) =>
+        `<div class="stat-row"><span>${k.charAt(0).toUpperCase() + k.slice(1)}</span>`
+        + `<span><svg class="resource-icon"><use href="#icon-${k}"></use></svg>+${dialog.gain[k]}</span></div>`).join("");
+      return `
+        <h2>Welcome Back!</h2>
+        <p>While you were away, your kingdom has gathered the following resources:</p>
+        ${rows}
+        <div class="game-dialog-actions">
+          <button class="menu-dropdown-btn game-dialog-primary" id="game-dialog-ok-btn">Collect</button>
         </div>`;
     }
     // "message" -- single-button dismiss, e.g. a victory announcement. A

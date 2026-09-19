@@ -63,11 +63,11 @@ window.GameConfig = {
   // stamp, and the only cost of forgetting is being told the wrong thing.
   build: {
     /** Local date this build was cut, YYYY-MM-DD. */
-    date: "2026-09-18",
+    date: "2026-09-19",
     /** Local time this build was cut, 24-hour HH:MM. */
-    time: "21:17",
+    time: "10:07",
     /** Monotonic build counter -- increment it, don't recompute it. */
-    number: 316,
+    number: 317,
   },
 
   // =========================================================================
@@ -385,6 +385,13 @@ window.GameConfig = {
      *  fraction of its own yield a city adds when the player spends THIS
      *  turn's production on resources instead of a unit or building. */
     resourceProductionBonus: 1.0,
+
+    /** "While you were away" reward (see cities.js's awayRewardFor): granted
+     *  on Quick Load / Load Game from real-world time since the save's
+     *  savedAt. Real hours convert to game turns at hoursPerTurn (one game
+     *  "day" is 12 turns = 24 hours), capped at maxHours; less than minHours
+     *  away pays nothing. */
+    awayReward: { minHours: 1, maxHours: 48, hoursPerTurn: 2 },
 
     /** "Spread Culture" (see cities.js's applyCultureSpread): a paid,
      *  one-turn boost to a city's influence spread, independent of what the
