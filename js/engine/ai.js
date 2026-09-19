@@ -6710,7 +6710,7 @@ window.GameEngine = window.GameEngine || {};
       ax: caster.x, ay: caster.y, atkUnit: caster, dx: tx, dy: ty, defUnit: null,
     });
     window.GameEngine.combat.spawnAreaEffect(tx, ty, 0, "fireball");
-    window.SfxSystem.playAction(civ.raceId, caster.typeId, "barrelBomb", tx, ty);
+    window.SfxSystem.playAction(civ.raceId, caster.typeId, "barrel_bomb", tx, ty);
     log.push(`Barrel Bomb: ${civ.id}'s Skyship blasts (${tx},${ty}), hitting ${hits.length} target(s), igniting ${ignited}`);
     if (caster.hp <= 0) {
       log.push(`Barrel Bomb: ${civ.id}'s Skyship is consumed by its own blast`);

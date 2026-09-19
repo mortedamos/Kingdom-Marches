@@ -47,9 +47,13 @@ window.GameData.SFX_SPECIAL_ACTIONS = {
   shadowsteed: ["carry"],
   goblin_miscreant: ["ignite"],
   bog_witch: ["curse", "summon_wisp"],
-  dragon: ["ignite"],
+  // Orc Dragon: ai.js's performDragonfire plays "dragonfire" (this used to say
+  // "ignite", so the tracker expected a clip name no code ever requested).
+  dragon: ["dragonfire"],
   skeleton: ["raise_dead"],
-  wanderer: ["found", "riddle"],
+  // "create_great_bonfire": Halfellow "Banish the Darkness" (ai.js's startWandererBonfireSummon plays it,
+  // also reached from the player-triggered path) -- it was played but never listed.
+  wanderer: ["found", "riddle", "create_great_bonfire"],
   // Halfellow "Riddle"/"Resource Heist"/"Unlock the Gate"/"Set the Trap" --
   // riddle is shared with wanderer above (both can cast it), the other
   // three are Trouble Maker's own.
@@ -66,11 +70,17 @@ window.GameData.SFX_SPECIAL_ACTIONS = {
   // harmless orphan row, same shape Wizard's real "attack" stat has
   // alongside its own Fireball! special action.
   bombard: ["bombardment"],
+  // Human Skyship's Barrel Bomb (see ai.js's performSkyshipBarrelBomb, which plays
+  // this). snake_case like every other multi-word action here -- the call site
+  // used to say "barrelBomb", which no tracker row ever covered. Deliberately
+  // no "carry" entry: galley's/shadowsteed's own "carry" rows above are never
+  // requested by any code, so a skyship one would just be an orphan.
+  skyship: ["barrel_bomb"],
   // Treasure Trow (see ai.js's onTrowStruck / deathfx.js's TROW_TIMELINE):
   // one clip per beat of its reaction sequence. "laugh" is the prank beat --
   // it plays only when the attacker was cursed/blinded/befuddled. It has no
-  // attack stat, so no "attack" row is generated; "death" is never used (it
-  // can't die) but is generated like every unit's.
+  // attack stat, so no "attack" row is generated, and no "death" row either
+  // (it can't die -- see sfxActionsForUnit's harmless check).
   treasure_trow: ["hurt", "panic", "laugh", "teleport"],
 };
 
@@ -81,7 +91,10 @@ window.GameData.sfxActionsForUnit = function (unitId) {
   const unit = window.GameData.getUnit(unitId);
   const actions = [];
   if (unit.attack > 0) actions.push("attack");
-  actions.push("move", "death");
+  actions.push("move");
+  // A harmless unit (the Treasure Trow) can't be killed, so nothing would ever
+  // request its death clip -- don't ask for one.
+  if (!unit.harmless) actions.push("death");
   const specials = window.GameData.SFX_SPECIAL_ACTIONS[unitId];
   if (specials) actions.push(...specials);
   return actions;
