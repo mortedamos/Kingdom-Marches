@@ -963,7 +963,7 @@ window.UI = window.UI || {};
     },
     {
       key: "barrelBomb", label: "Barrel Bomb", icon: "💣", restriction: "Human — Skyship",
-      description: "A single-tile ranged strike anywhere within 1 tile, dealing damage with a 50% chance to inflict Burning and +100% siege damage against structures/cities. On top of, not instead of, the Skyship's ordinary attack.",
+      description: "A single-tile ranged strike anywhere within 2 tiles, dealing damage with a 50% chance to inflict Burning and +150% siege damage against structures/cities. On top of, not instead of, the Skyship's ordinary attack.",
     },
     {
       key: "riddle", label: "Riddle", icon: "❓", restriction: "Halfellow — Trouble Maker or Wanderer",

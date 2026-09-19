@@ -6815,14 +6815,16 @@
   /** Human "Barrel Bomb": same two-stage placement shape as
    *  Bombardment/Dragonfire above, but a single targeted tile -- no corner-
    *  direction logic needed at all (aoeOffsets is just the one tile itself),
-   *  matching combat.js's single-tile applyBarrelBombBlast. Range matches
-   *  the Skyship's own `range: 1`. */
+   *  matching combat.js's single-tile applyBarrelBombBlast. Range is 2
+   *  (2026-09-19, user-directed) -- deliberately decoupled from the
+   *  Skyship's own `range: 1` unit-data field, which still governs its
+   *  ordinary attack. */
   function startBarrelBombPlacement(caster) {
     if (!humanCivId) return;
     const civ = gameState.civs[humanCivId];
     if (!civ) return;
     const { map } = gameState;
-    const range = 1; // BARREL_BOMB_RANGE, ai.js
+    const range = 2; // BARREL_BOMB_RANGE, ai.js
     const slots = [];
     for (let dy = -range; dy <= range; dy++) {
       for (let dx = -range; dx <= range; dx++) {

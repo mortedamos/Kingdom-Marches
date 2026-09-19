@@ -563,7 +563,7 @@ window.GameData.TECHS = {
   sail_the_skies: {
     id: "sail_the_skies", label: "Sail the Skies", category: "military", layer: 4, cost: 60,
     prereqs: ["flight", "make_way"], raceOnly: "human",
-    description: "Unlocks the Skyship, a flying vessel that replaces the Galley -- same attack, vision, and movement (plus Make Way's own +2 movement/+1 vision), a little tougher, and able to cross any terrain, not just water. Gains Barrel Bomb: a single-tile ranged strike with a 50% chance to inflict Burning and +100% siege damage.",
+    description: "Unlocks the Skyship, a flying vessel that replaces the Galley -- same attack, vision, and movement (plus Make Way's own +2 movement/+1 vision), a little tougher, and able to cross any terrain, not just water. Gains Barrel Bomb: a single-tile ranged strike with a 50% chance to inflict Burning and +150% siege damage.",
     costBreakdown: { lore: 40, coin: 20 },
     effects: [
       { type: "replace_unit", from: "galley", to: "skyship" },

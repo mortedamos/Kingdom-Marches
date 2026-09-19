@@ -6635,8 +6635,11 @@ window.GameEngine = window.GameEngine || {};
   // Skyship, tried before the ordinary attack, falls through to it on a
   // failed/skipped strike), but combat.js's applyBarrelBombBlast hits only
   // ONE tile, not a 2x2 block, matching the user's own "select a square"
-  // (singular) wording. Range matches the Skyship's own `range: 1`.
-  const BARREL_BOMB_RANGE = 1;
+  // (singular) wording. Range is 2 (2026-09-19, user-directed; was 1) --
+  // deliberately decoupled from the Skyship's own `range: 1` unit-data
+  // field now, since that still governs its ORDINARY attack (unchanged),
+  // not this action.
+  const BARREL_BOMB_RANGE = 2;
   const BARREL_BOMB_MIN_TARGETS = 1;
 
   /** Dry-run scoring for a Barrel Bomb strike -- same shape as

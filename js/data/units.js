@@ -285,11 +285,15 @@ window.GameData.UNITS = {
   // getMoveCost) and the new "Barrel Bomb" action, not raw stat inflation.
   // Defense gets a modest +1 bump (galley's 2 -> 3), matching the "the
   // replacement is a little tougher too" convention every other replace_unit
-  // pair follows. siegePct/burnChancePct exist here as ordinary unit-level
-  // stats (same convention as Bombard/Dragon) -- Barrel Bomb reads them via
-  // getUnitProperty, and they also apply to this unit's ordinary attacks
-  // against structures, same precedent as Bombard's own siegePct after it
-  // gained an ordinary attack. Still isNaval (built only at a coastal city,
+  // pair follows. siegePct (150%, 2026-09-19 -- was 100%)/burnChancePct
+  // exist here as ordinary unit-level stats (same convention as Bombard/
+  // Dragon) -- Barrel Bomb reads them via getUnitProperty, and they also
+  // apply to this unit's ordinary attacks against structures, same
+  // precedent as Bombard's own siegePct after it gained an ordinary
+  // attack. Barrel Bomb's own RANGE is deliberately decoupled from this
+  // unit's `range: 1` (see ai.js's BARREL_BOMB_RANGE), but siegePct has no
+  // equivalent per-ability seam to decouple through -- it's a single stat
+  // both attack paths read the same way. Still isNaval (built only at a coastal city,
   // categorized as naval fleet everywhere else in ai.js) -- flying overrides
   // isNaval for movement-cost purposes only, so this is still fundamentally
   // a ship that also flies, not a land-capable aircraft.
@@ -297,7 +301,7 @@ window.GameData.UNITS = {
     id: "skyship", label: "Skyship", symbol: "⛵", category: "military", raceOnly: "human", range: 1,
     attack: 3, defense: 3, movement: 4, visionRadius: 4,
     isNaval: true, canCarryUnit: true, flying: true, biggerPct: .5,
-    siegePct: 1.0, burnChancePct: 0.5,
+    siegePct: 1.5, burnChancePct: 0.5,
     coinCost: 40, attackChars: ["💣", "🔥", "💥"], muzzleSmoke: true, impactSmoke: true,
     // A ship, not a person -- see unit-names.js's UNIT_TYPE_PROPER_NAMES doc.
     nameSpecial: true,
