@@ -3849,7 +3849,13 @@ window.GameEngine = window.GameEngine || {};
       // -- hidden rather than greyed out, since it isn't a "save up for it"
       // affordability problem but a "build the structure first" one.
       if (!cityMeetsUnitBuildingPrereq(city, unitId)) continue;
-      if (unitData.isNaval && !(city.isPort || isCoastalTile(map, city.x, city.y))) continue;
+      // Coastal requirement for naval units -- except a FLYING one (Human's
+      // Skyship, 2026-09-19 user-directed): it needs no water to launch
+      // from any more than it needs water to travel over (see
+      // getMoveCost's own flying-overrides-isNaval doc comment), so any
+      // city can build it once Sail the Skies is researched, not just a
+      // coastal one.
+      if (unitData.isNaval && !unitData.flying && !(city.isPort || isCoastalTile(map, city.x, city.y))) continue;
       const option = buildUnitOption(civ, unitId, 0, unitCostMult);
       if (option) {
         out.push({ ...option, label: unitData.label, affordable: true });
