@@ -302,7 +302,7 @@ window.GameData.UNITS = {
     attack: 3, defense: 3, movement: 4, visionRadius: 4,
     isNaval: true, canCarryUnit: true, flying: true, biggerPct: .5,
     siegePct: 1.5, burnChancePct: 0.5,
-    coinCost: 40, attackChars: ["💣", "🔥", "💥"], muzzleSmoke: true, impactSmoke: true,
+    coinCost: 40, attackChars: ["💣", "🔥", "🛢️"], muzzleSmoke: true, impactSmoke: true,
     // A ship, not a person -- see unit-names.js's UNIT_TYPE_PROPER_NAMES doc.
     nameSpecial: true,
     // Opts out of Boomerang's civ-wide Ranged-2 floor, same reasoning as

@@ -65,9 +65,9 @@ window.GameConfig = {
     /** Local date this build was cut, YYYY-MM-DD. */
     date: "2026-09-18",
     /** Local time this build was cut, 24-hour HH:MM. */
-    time: "21:05",
+    time: "21:17",
     /** Monotonic build counter -- increment it, don't recompute it. */
-    number: 315,
+    number: 316,
   },
 
   // =========================================================================

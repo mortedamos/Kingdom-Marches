@@ -948,7 +948,19 @@
     const spec = specFor(spriteKey);
     const sinceTurn = performance.now() - state.turnStartedAt;
     const lit = sourceLitAmount(source, spec, sinceTurn);
-    if (lit <= 0.01) return;
+
+    // A burning structure (2026-09-19, user-requested) is a light source
+    // regardless of its own on/off window schedule -- same "ablaze" override
+    // addUnitLight already applies to a burning unit's OWN lamp, ported here
+    // for a structure's authored lamp instead. Shares that exact config
+    // (cfg().lights.burning: radius/color/intensity/flicker), not the wall/
+    // bridge/building/influence kind defaults, so a burning wall reads the
+    // same warm, flickering orange a burning unit does, not its usual dim
+    // rampart-lantern rate. Bigger-wins, not additive, against whatever the
+    // structure's own kind/authoring would otherwise produce -- a burning
+    // Mage College doesn't get its arcane glow AND a bonfire's glow stacked.
+    const ablaze = !!s.burning;
+    if (!ablaze && lit <= 0.01) return;
 
     const radius = kind === "wall" ? c.wallRadius
       : kind === "bridge" ? c.bridgeRadius
@@ -962,14 +974,16 @@
       : kind === "bridge" ? c.bridgeFlicker
         : kind === "influence" ? c.influenceFlicker
           : c.buildingFlicker;
-    source.flicker = flickerFor(spec, kindFlicker);
+    source.flicker = ablaze ? c.burning.flicker : flickerFor(spec, kindFlicker);
 
     // Per-sprite ambient override. A sprite authored with ambient 0 keeps its
     // window dots and drops the broad pool entirely -- the right answer for
     // art with a couple of lit slits and no reason to wash the ground around
-    // it. The dots are pushed below regardless.
-    const amb = ambientFor(spec);
-    if (amb.mul <= 0 || amb.radiusMul <= 0) {
+    // it. The dots are pushed below regardless. Ablaze forces mul/radiusMul
+    // to 1 (same as addUnitLight): a structure authored with no light at all
+    // still visibly catches fire, rather than burning invisibly.
+    const amb = ablaze ? { mul: 1, radiusMul: 1 } : ambientFor(spec);
+    if (!ablaze && (amb.mul <= 0 || amb.radiusMul <= 0)) {
       if (spec.windows.length) windowSources.push({ source, spec });
       return;
     }
@@ -981,13 +995,17 @@
       // rotation a bridge happened to be drawn with.
       x: drawX + drawW / 2,
       y: drawY + drawH * 0.70,
-      r: radius * ts * (c.radiusScale || 1) * tuning.radiusMul * amb.radiusMul,
-      color: source.color,
-      intensity: intensity * lit * amb.mul,
-      flicker: flickerFor(spec, kindFlicker),
+      r: (ablaze ? c.burning.radius : radius) * ts * (c.radiusScale || 1) * tuning.radiusMul * amb.radiusMul,
+      color: ablaze ? c.burning.color : source.color,
+      intensity: (ablaze ? c.burning.intensity : intensity * lit) * amb.mul,
+      flicker: source.flicker,
       phase: hashInts(s.x, s.y) % 1000,
     });
-    if (spec.windows.length) windowSources.push({ source, spec });
+    // Once ablaze, the fire is not the structure's own lamp -- same reasoning
+    // addUnitLight's own "the dots are dropped" comment gives for a burning
+    // unit -- so its authored window dots (if any) stop drawing in favor of
+    // the fire's own broad pool above.
+    if (!ablaze && spec.windows.length) windowSources.push({ source, spec });
   }
 
   // ---------------------------------------------------------------------
