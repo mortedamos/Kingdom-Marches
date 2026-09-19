@@ -385,6 +385,11 @@ window.GameEngine = window.GameEngine || {};
         }
       }
       for (const unit of civ.units) {
+        // Treasure Trow (units.js `harmless`): contributes no vision at all.
+        // It never hunts, so it has no use for sight, and -- because this same
+        // set is what Elf "Beast Sight" (below) unions into an Elf civ's own
+        // -- skipping it here is what keeps Elves from seeing around a Trow.
+        if (window.GameData.getUnit(unit.typeId).harmless) continue;
         const r = effectiveUnitVisionRadius(unit, civ, gameState);
         for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) {
           const x = unit.x + dx, y = unit.y + dy;
@@ -842,6 +847,9 @@ window.GameEngine = window.GameEngine || {};
     // spawn roll per round. Lazily creates the "MONSTERS" pseudo-civ the
     // first time this runs -- see ai.js's ensureMonsterCiv.
     window.GameEngine.ai.maybeSpawnMonster(gameState);
+    // Treasure Trow: its own, separate spawn roll and cap -- see ai.js's
+    // maybeSpawnTrow.
+    window.GameEngine.ai.maybeSpawnTrow(gameState);
 
     // Dark Ritual (Undead) / Dungeon Delve (Human Wizard): track consecutive
     // turns a qualifying unit has stood still on its anchor tile, evaluated

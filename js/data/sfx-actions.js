@@ -66,6 +66,12 @@ window.GameData.SFX_SPECIAL_ACTIONS = {
   // harmless orphan row, same shape Wizard's real "attack" stat has
   // alongside its own Fireball! special action.
   bombard: ["bombardment"],
+  // Treasure Trow (see ai.js's onTrowStruck / deathfx.js's TROW_TIMELINE):
+  // one clip per beat of its reaction sequence. "laugh" is the prank beat --
+  // it plays only when the attacker was cursed/blinded/befuddled. It has no
+  // attack stat, so no "attack" row is generated; "death" is never used (it
+  // can't die) but is generated like every unit's.
+  treasure_trow: ["hurt", "panic", "laugh", "teleport"],
 };
 
 /** Every action a given unit type should have sfx for: attack (only if the

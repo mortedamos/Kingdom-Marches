@@ -241,6 +241,11 @@ window.GameData.UNIT_TYPE_PROPER_NAMES = {
   frost_lynx: [
     "Rimefang", "The White Stalker", "Frostpaw", "The Silent Drift", "Icewhisker",
   ],
+  // Treasure Trow: harmless folklore spirit (see units.js's treasure_trow).
+  treasure_trow: [
+    "Grey Peerie", "The Mound-Dweller", "Knowe-Keeper", "Old Trowie", "Lantern-Snatcher",
+    "Fiddle-Thief", "The Grey Borrower", "Mossy Hob",
+  ],
 };
 
 /**

@@ -741,6 +741,20 @@ window.GameData.UNITS = {
     coinCost: 14, attackChars: ["𓆩"],
     cityBuildable: false, noUpkeep: true, nameSpecial: true, neverExplores: true,
   },
+  // Treasure Trow: a harmless folklore spirit from Orkney/Shetland tradition.
+  // Never attacks (attack 0, and `harmless` tells ai.js to skip its hunting
+  // loop entirely and just wander) and can't be hurt: any strike on it is
+  // intercepted in combat.js's resolveRound -- it drops a chest and escapes
+  // instead (see ai.js's onTrowStruck). Not in MONSTER_TERRAIN below (that
+  // table spawns HOSTILE monsters per terrain); ai.js's maybeSpawnTrow
+  // places it separately. No restrictedToTerrain, so ordinary ground-unit
+  // rules apply (no mountains, no water).
+  treasure_trow: {
+    id: "treasure_trow", label: "Treasure Trow", symbol: "🧌", category: "military",
+    attack: 0, defense: 1, movement: 2, visionRadius: 3, harmless: true,
+    coinCost: 0,
+    cityBuildable: false, noUpkeep: true, nameSpecial: true, neverExplores: true,
+  },
 };
 
 // Terrain -> monster type id (see ai.js's maybeSpawnMonster). Hills and
@@ -756,7 +770,15 @@ window.GameData.MONSTER_TERRAIN = {
   swamp: "marsh_adder",
   tundra: "frost_lynx",
 };
-window.GameData.MONSTER_UNIT_IDS = new Set(Object.values(window.GameData.MONSTER_TERRAIN));
+// The Treasure Trow (see its units.js entry) is a monster-civ unit too, so it
+// joins MONSTER_UNIT_IDS for every "belongs to the Wandering Monsters roster"
+// consumer (sfx race lookup, sprite loading, knowledge base) -- but it is
+// deliberately NOT in MONSTER_TERRAIN, which drives hostile-monster spawning.
+window.GameData.TROW_UNIT_ID = "treasure_trow";
+window.GameData.MONSTER_UNIT_IDS = new Set([
+  ...Object.values(window.GameData.MONSTER_TERRAIN),
+  window.GameData.TROW_UNIT_ID,
+]);
 
 window.GameData.UNIT_LIST = Object.keys(window.GameData.UNITS);
 

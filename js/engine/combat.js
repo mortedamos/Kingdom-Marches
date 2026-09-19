@@ -489,7 +489,21 @@ window.GameEngine = window.GameEngine || {};
   // above it) rather than staying pure infrastructure.
   const GREAT_BONFIRE_IMMUNE_CONDITIONS = new Set(["burning", "poisoned", "frozen", "curse", "befuddled", "webbed", "blind"]);
 
+  /** Treasure Trow (see units.js's treasure_trow): the harmless folklore
+   *  spirit. Kept here, not in ai.js, so setCondition and resolveRound below
+   *  can both ask it without reaching across files at module-load time. */
+  function isTrow(unit) {
+    return !!unit && unit.typeId === window.GameData.TROW_UNIT_ID;
+  }
+
   function setCondition(unit, key, data) {
+    // Treasure Trow: immune to every status condition (burning, poison,
+    // frozen, curse, blind, befuddled, webbed, ...) -- every one of those is
+    // written through here, so a single guard covers them all, including
+    // any added later. Its OWN stealth is the one exception: hidden (and the
+    // forcedVisible tickConditions adds when hidden expires) are what the
+    // Trow's spawn/flee logic in ai.js sets on itself.
+    if (isTrow(unit) && key !== "hidden" && key !== "forcedVisible") return;
     if (GREAT_BONFIRE_IMMUNE_CONDITIONS.has(key) && unit.conditions?.greatBonfireAura) return;
     unit.conditions = unit.conditions || {};
     unit.conditions[key] = data;
@@ -1012,6 +1026,24 @@ window.GameEngine = window.GameEngine || {};
    * where no counter was ever possible at all.
    */
   function resolveRound(attackerUnit, defenderUnit, civs, context = {}) {
+    // Treasure Trow: a strike on it is never a real exchange -- no damage
+    // either way, no counter -- it drops a chest and escapes instead (see
+    // ai.js's onTrowStruck). Skipped for `context.simulated` (the AI's win-
+    // probability rollouts run on throwaway clones and must not trigger it),
+    // which fight it as an ordinary weak unit. The result is flagged
+    // fullNegated so landedHitCount reads it as "no hit connected" and every
+    // on-hit condition/XP roll downstream skips it, same as an Invulnerability
+    // negation. Caveat for callers: onTrowStruck moves the Trow immediately,
+    // so anything that needs the tile it was hit ON (recordCombatEvent's
+    // dx/dy) must capture it BEFORE this call.
+    if (isTrow(defenderUnit) && !context.simulated) {
+      window.GameEngine.ai.onTrowStruck(defenderUnit, attackerUnit);
+      return { fullDamage: 0, fullNegated: true, fullMissed: false,
+        counterDamage: 0, counterNegated: false, counterDenied: false, counterMissed: false,
+        forwardSkipped: false, returnSkipped: false, counterOutOfRange: false,
+        doubleStruck: false, doubleDamage: 0, doubleNegated: false, doubleMissed: false,
+        forwardFirst: false, returnFirst: false, trowStruck: true };
+    }
     const attackerCiv = civs[attackerUnit.civId];
     const defenderCiv = civs[defenderUnit.civId];
 
@@ -1102,6 +1134,11 @@ window.GameEngine = window.GameEngine || {};
     }
     function dealReturn() {
       if (!isAdjacent) { counterOutOfRange = true; return; }
+      // A harmless unit (the Treasure Trow) never hits back. Only reachable
+      // from AI win-probability simulations -- a real strike on a Trow is
+      // intercepted at the top of resolveRound -- but without it the counter's
+      // hard 1-damage floor (below) would make the AI think a Trow fights back.
+      if (window.GameData.getUnit(defenderUnit.typeId).harmless) return;
       // First Strike counter denial (effect #2, see doc comment above): the
       // ATTACKER's own First Strike % gets an independent, flat chance
       // EVERY round to prevent this counter from happening at all --
@@ -1672,7 +1709,8 @@ window.GameEngine = window.GameEngine || {};
         if (x < 0 || x >= map.width || y < 0 || y >= map.height) continue;
         for (const otherCiv of Object.values(civs)) {
           if (otherCiv.id === attackerUnit.civId || otherCiv.eliminated) continue;
-          const splashUnit = otherCiv.units.find((u) => u.x === x && u.y === y);
+          // Treasure Trow is unhurtable (see isTrow) -- AoE passes it by.
+          const splashUnit = otherCiv.units.find((u) => u.x === x && u.y === y && !isTrow(u));
           if (splashUnit) {
             const dmg = Math.round(damageRoll(atk) * 0.5); // splash hits for half the primary roll
             splashUnit.hp -= dmg;
@@ -1722,7 +1760,7 @@ window.GameEngine = window.GameEngine || {};
         if (x < 0 || x >= map.width || y < 0 || y >= map.height) continue;
         for (const otherCiv of Object.values(civs)) {
           if (otherCiv.eliminated) continue;
-          const hitUnit = otherCiv.units.find((u) => u.x === x && u.y === y);
+          const hitUnit = otherCiv.units.find((u) => u.x === x && u.y === y && !isTrow(u)); // Trow is unhurtable
           if (hitUnit) {
             const dmg = mitigatedDamage(atk, effectiveDefense(hitUnit, otherCiv, {}));
             hitUnit.hp -= dmg;
@@ -1793,7 +1831,7 @@ window.GameEngine = window.GameEngine || {};
       if (x < 0 || x >= map.width || y < 0 || y >= map.height) continue;
       for (const otherCiv of Object.values(civs)) {
         if (otherCiv.eliminated) continue;
-        const hitUnit = otherCiv.units.find((u) => u.x === x && u.y === y);
+        const hitUnit = otherCiv.units.find((u) => u.x === x && u.y === y && !isTrow(u)); // Trow is unhurtable
         if (hitUnit) {
           const dmg = mitigatedDamage(atkUnit, effectiveDefense(hitUnit, otherCiv, {}));
           hitUnit.hp -= dmg;
@@ -1854,6 +1892,7 @@ window.GameEngine = window.GameEngine || {};
   }
 
   window.GameEngine.combat = {
+    isTrow,
     roll3d6,
     damageRoll,
     recordCombatEvent,

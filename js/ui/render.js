@@ -1262,9 +1262,15 @@ window.UI = window.UI || {};
     // overlapping sprites should stack. Ordinary tile-sized units never
     // overlap a neighbor, so this sort is a no-op for them.
     const unitsToDraw = [];
+    // A struck Treasure Trow is drawn as a "ghost" (drawTrowGhosts, right
+    // after this pass) for the length of its reaction sequence, so the live
+    // unit -- already relocated -- must not also show up (only matters in
+    // spectator mode, which draws Hidden units).
+    const trowSequences = overlays.getActiveTrowSequences();
     for (const civ of Object.values(civs)) {
       for (const unit of civ.units) {
         if (unit.carriedBy) continue; // aboard a carrier -- not drawn at its stale tile
+        if (trowSequences.length && trowSequences.some((s) => s.trow === unit)) continue;
         const idx = unit.y * map.width + unit.x;
         if (!visible.has(idx)) continue;
         // An enemy unit's Hidden condition actually hides it from the human
@@ -1377,6 +1383,8 @@ window.UI = window.UI || {};
         floatingTextQueue.push({ unit, screenX, screenY });
       }
     }
+
+    drawTrowGhosts(ctx, gameState, visible, offsetX, offsetY, ts, now);
 
     // Ambient villager figures -- drawn after Cities/Structures/Units so
     // they're never hidden behind a building or wall they're walking past.
@@ -2027,6 +2035,69 @@ window.UI = window.UI || {};
     ctx.beginPath();
     ctx.ellipse(cx, cy, radiusX, radiusY, 0, 0, Math.PI * 2);
     ctx.fill();
+  }
+
+  /**
+   * Treasure Trow reaction sequence, drawn: the ghost of a struck Trow. Game
+   * state already moved it and hid it, so nothing live shows it -- this draws
+   * the sprite where overlays.js's trowPoseAt says it currently is (see that
+   * function and deathfx.js's TROW_TIMELINE for the beats), reusing the live
+   * unit draw's box/shadow maths so it matches the sprite the player saw
+   * beforehand. Also gives overlays.advanceTrowSequences its per-frame
+   * chance to fire the beat-boundary effects (teleport sparkles, the prank).
+   * A tile the human can't see draws nothing, so a Trow running into fog
+   * doesn't leak where it went.
+   */
+  function drawTrowGhosts(ctx, gameState, visible, offsetX, offsetY, ts, now) {
+    const sequences = overlays.getActiveTrowSequences();
+    if (!sequences.length) return;
+    const mapW = gameState.map.width;
+    const isTileVisible = (x, y) => visible.has(y * mapW + x);
+    overlays.advanceTrowSequences(now, isTileVisible);
+    for (const seq of sequences) {
+      const pose = overlays.trowPoseAt(seq, now);
+      if (!pose || pose.alpha <= 0) continue;
+      if (!isTileVisible(Math.round(pose.x), Math.round(pose.y))) continue;
+      const trow = seq.trow;
+      const race = window.GameData.getRace(gameState.civs[trow.civId].raceId);
+      const baseUnit = window.GameData.getUnit(trow.typeId);
+      const unitSprite = window.UI.sprites.pickUnit(trow.typeId, race.id, trow);
+      const pad = ts * 0.11;
+      const boxSize = ts - pad * 2;
+      const screenX = pose.x * ts + offsetX;
+      const screenY = pose.y * ts + offsetY;
+      const boxX = screenX + ts / 2 - boxSize / 2;
+      const boxY = screenY + pad - pose.lift * ts;
+      ctx.save();
+      ctx.globalAlpha = pose.alpha;
+      drawUnitShadow(ctx, screenX, screenY, ts, race.color, 1);
+      // Squash/stretch about the sprite's bottom-centre, so hops read as
+      // feet landing and lifting rather than the whole box breathing.
+      const pivotX = boxX + boxSize / 2, pivotY = boxY + boxSize;
+      ctx.translate(pivotX, pivotY);
+      ctx.scale(pose.scaleX, pose.scaleY);
+      ctx.translate(-pivotX, -pivotY);
+      if (unitSprite) {
+        // The panic beat is the only place the reserved "panic" frame is ever
+        // requested (a missing animation falls back to idle). Its single frame
+        // needs no per-instance state, so it takes no seed.
+        const f = pose.anim === "panic"
+          ? window.UI.sprites.currentFrame(unitSprite.manifest, "panic", null)
+          : window.UI.sprites.currentFrame(unitSprite.manifest, "idle", trow);
+        ctx.drawImage(unitSprite.image, f.sx, f.sy, f.sw, f.sh, boxX, boxY, boxSize, boxSize);
+      } else {
+        const initial = (baseUnit.label || "?").charAt(0).toUpperCase();
+        ctx.fillStyle = "#fff";
+        ctx.font = `bold ${Math.max(7, ts * 0.32)}px sans-serif`;
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.strokeStyle = "rgba(0,0,0,0.6)";
+        ctx.lineWidth = Math.max(1, ts * 0.05);
+        ctx.strokeText(initial, boxX + boxSize / 2, boxY + boxSize / 2);
+        ctx.fillText(initial, boxX + boxSize / 2, boxY + boxSize / 2);
+      }
+      ctx.restore();
+    }
   }
 
   // --- Road overlay: draw-time compositing of rotatable stubs -------------

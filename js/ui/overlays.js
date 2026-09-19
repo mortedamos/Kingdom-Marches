@@ -210,6 +210,8 @@ window.UI = window.UI || {};
     summon: "210,200,255", // creature/object summon poof (Raptor/Shadowsteed/Wisp/Trap)
     zombie_raise: "150,110,180", // Undead raise-dead -- necrotic purple
     curse: "140,60,190", // Orc Bog Witch curse -- matches CURSE_TINT_COLOR
+    blind: "150,150,165", // Treasure Trow prank: dimmed sight -- soft grey
+    befuddle: "255,214,102", // Treasure Trow prank: dizzy stars -- warm yellow
     dire_bear_transform: "110,75,45", // Elf Druid -> Dire Bear -- earthy brown fur/claws
     druid_revert: "120,205,95", // Elf Dire Bear -> Druid -- matches natures_grace's living green
     // Halfellow "Throw a Party" (see cities.js's applyThrowAParty): warm
@@ -238,6 +240,8 @@ window.UI = window.UI || {};
     summon: { chars: ["💫", "⭐", "✨"], drift: -0.6 },
     zombie_raise: { chars: ["💀", "👻", "✨"], drift: -0.5 },
     curse: { chars: ["💀", "🌀", "💜"], drift: -0.3 },
+    blind: { chars: ["🌑", "🌫️", "🌑"], drift: -0.3 },
+    befuddle: { chars: ["💫", "❓", "💫"], drift: -0.5 },
     dire_bear_transform: { chars: ["🐾", "🍂", "🐾"], drift: -0.3 },
     druid_revert: { chars: ["🍃", "✨", "🍃"], drift: -0.5 },
     // Halfellow "Throw a Party" confetti poof at the city tile -- fired a
@@ -479,6 +483,117 @@ window.UI = window.UI || {};
     return { yOffsetFrac, scaleX, scaleY };
   }
 
+  /**
+   * Treasure Trow reaction sequence: the UI half of ai.js's onTrowStruck (see
+   * deathfx.js's TROW_TIMELINE for the beat boundaries both halves share).
+   * Game state already changed the instant the Trow was struck -- it has moved
+   * and is Hidden, so nothing live shows it -- so what the player watches is a
+   * "ghost" of it that render.js draws from trowPoseAt, one beat at a time:
+   *   hurt   (flinch where it was hit; the chest is already dropping),
+   *   panic  (hopping in place, on the sheet's reserved `panic` frame),
+   *   escape (a hopping run that fades out, or a teleport vanish),
+   *   prank  (only if rolled: the laugh plays and the attacker's condition
+   *           finally shows up).
+   * All easing is smooth -- no flashing. Reduced motion draws no ghost at
+   * all (the end state is simply "it's gone"); the chest drop, sfx and
+   * sparkle effects are unaffected.
+   */
+  let activeTrowSequences = [];
+  // How long a teleporting Trow takes to fade out at its old spot.
+  const TROW_TELEPORT_VANISH_MS = 320;
+
+  function updateTrowSequences(now) {
+    const fx = window.GameEngine.deathFx;
+    const T = fx.TROW_TIMELINE;
+    for (const evt of fx.drainTrowSequenceEvents()) {
+      // The prank is already in game state, but its visuals wait for their
+      // beat: drawConditionVisualEffects/drawConditionBadges hold the
+      // attacker's condition back until this timestamp passes.
+      if (evt.prank) evt.prank.attacker._prankRevealAt = now + T.prankStart;
+      activeTrowSequences.push({ ...evt, start: now, fired: {} });
+    }
+    if (activeTrowSequences.length) {
+      activeTrowSequences = activeTrowSequences.filter((s) => {
+        const alive = now - s.start < (s.prank ? T.endWithPrank : T.end);
+        if (!alive && s.prank) delete s.prank.attacker._prankRevealAt; // don't leave it in the save
+        return alive;
+      });
+    }
+  }
+
+  /** True while any Trow reaction is still playing -- main.js's enemy-turn
+   *  pacing waits on this so the next AI unit doesn't act mid-sequence. */
+  function isTrowSequenceActive() {
+    return activeTrowSequences.length > 0;
+  }
+
+  function trowEaseInOut(t) { return t * t * (3 - 2 * t); }
+
+  /** Where/how to draw the ghost of `seq`'s Trow right now, or null when it
+   *  shouldn't be drawn (vanished, reduced motion, or the prank beat).
+   *  { x, y } are float tile coordinates; `lift` is in tiles; anim is the
+   *  sprite animation to request ("panic" only ever during the panic beat). */
+  function trowPoseAt(seq, now) {
+    if (window.UI.motion && window.UI.motion.isReduced()) return null;
+    const T = window.GameEngine.deathFx.TROW_TIMELINE;
+    const el = now - seq.start;
+    const { from, to } = seq;
+    if (el < T.panicStart) {
+      const flinch = Math.sin((el / (T.panicStart - T.hurtStart)) * Math.PI);
+      return { x: from.x, y: from.y, lift: 0, scaleX: 1 + 0.10 * flinch, scaleY: 1 - 0.16 * flinch, alpha: 1, anim: "idle" };
+    }
+    if (el < T.escapeStart) {
+      const t = (el - T.panicStart) / (T.escapeStart - T.panicStart);
+      const hop = Math.abs(Math.sin(t * Math.PI * 3)); // 3 hops: 0 on the ground, 1 at the peak
+      return { x: from.x, y: from.y, lift: 0.26 * hop, scaleX: 1.10 - 0.14 * hop, scaleY: 0.88 + 0.22 * hop, alpha: 1, anim: "panic" };
+    }
+    if (el >= T.end) return null; // prank beat: the Trow is long gone
+    if (seq.escape === "teleport") {
+      const t = (el - T.escapeStart) / TROW_TELEPORT_VANISH_MS;
+      if (t >= 1) return null;
+      const k = trowEaseInOut(t);
+      return { x: from.x, y: from.y, lift: 0, scaleX: 1 - 0.4 * k, scaleY: 1 - 0.4 * k, alpha: 1 - k, anim: "idle" };
+    }
+    const t = (el - T.escapeStart) / (T.end - T.escapeStart);
+    const k = trowEaseInOut(t);
+    return {
+      x: from.x + (to.x - from.x) * k, y: from.y + (to.y - from.y) * k,
+      lift: 0.12 * Math.abs(Math.sin(t * Math.PI * 4)), scaleX: 1, scaleY: 1,
+      alpha: t < 0.7 ? 1 : 1 - (t - 0.7) / 0.3, anim: "idle",
+    };
+  }
+
+  /** Fires the once-per-sequence effects that belong to a beat boundary (the
+   *  teleport sparkles, the prank's effect), each only if its tile is on
+   *  screen for the human. render.js calls this every frame with a tile
+   *  visibility test, right before it draws the ghosts. */
+  function advanceTrowSequences(now, isTileVisible) {
+    const T = window.GameEngine.deathFx.TROW_TIMELINE;
+    const spawn = window.GameEngine.combat.spawnAreaEffect;
+    for (const s of activeTrowSequences) {
+      const el = now - s.start;
+      if (s.escape === "teleport") {
+        if (!s.fired.depart && el >= T.escapeStart) {
+          s.fired.depart = true;
+          if (isTileVisible(s.from.x, s.from.y)) spawn(s.from.x, s.from.y, 0, "teleport");
+        }
+        if (!s.fired.land && el >= T.escapeStart + TROW_TELEPORT_VANISH_MS) {
+          s.fired.land = true;
+          if (isTileVisible(s.to.x, s.to.y)) spawn(s.to.x, s.to.y, 0, "teleport");
+        }
+      }
+      if (s.prank && !s.fired.prank && el >= T.prankStart) {
+        s.fired.prank = true;
+        const a = s.prank.attacker;
+        if (isTileVisible(a.x, a.y)) spawn(a.x, a.y, 0, s.prank.kind === "befuddled" ? "befuddle" : s.prank.kind);
+      }
+    }
+  }
+
+  function getActiveTrowSequences() {
+    return activeTrowSequences;
+  }
+
   /** Read-only access to the live combat-anim/area-effect/death-effect
    *  queues, for a caller (render3d.js's HUD pass) that needs to iterate
    *  them itself with its own per-tile projection instead of the affine
@@ -513,6 +628,7 @@ window.UI = window.UI || {};
     updateFloatingTexts(now);
     updateDeathEffects(now);
     updateChestDropEffects(now);
+    updateTrowSequences(now);
   }
 
   /** Color/weight per floating-text `kind` (see engine/floatingtext.js's
@@ -1017,6 +1133,9 @@ window.UI = window.UI || {};
 
   function drawConditionVisualEffects(ctx, unit, unitSprite, boxX, boxY, boxSize, now) {
     if (!unit.conditions) return;
+    // A Treasure Trow's prank is already in game state, but its visuals wait
+    // for their own beat in the reaction sequence (see updateTrowSequences).
+    if (unit._prankRevealAt != null && now < unit._prankRevealAt) return;
     const hasEffect = unit.conditions.zombie || unit.conditions.burning || unit.conditions.frozen || unit.conditions.webbed || unit.conditions.poisoned || unit.conditions.curse;
     if (!hasEffect) return;
     const phase = conditionEffectPhase(unit);
@@ -1512,7 +1631,12 @@ window.UI = window.UI || {};
     // condition alongside it and still shows its own lone badge as before.
     if (unit.resting && !unit.conditions?.defending) icons.push(CONDITION_ICONS.resting);
     if (unit.conditions) {
+      // Held back until the Treasure Trow prank's own beat -- see
+      // updateTrowSequences. Only the three prank conditions wait; anything
+      // else the unit already had shows as usual.
+      const holdPrank = unit._prankRevealAt != null && performance.now() < unit._prankRevealAt;
       for (const key of Object.keys(unit.conditions)) {
+        if (holdPrank && (key === "curse" || key === "blind" || key === "befuddled")) continue;
         if (CONDITION_ICONS[key]) icons.push(CONDITION_ICONS[key]);
       }
     }
@@ -2204,6 +2328,7 @@ window.UI = window.UI || {};
     tick,
     updateCombatAnims, updateAreaEffects, updateQuipBubbles, updateFloatingTexts, updateDeathEffects,
     updateChestDropEffects, chestDropOffsetFor,
+    isTrowSequenceActive, trowPoseAt, advanceTrowSequences, getActiveTrowSequences,
     drawAreaEffects, drawAreaEffectBox, drawCombatSlashes, drawCombatSlashAt,
     drawQuipBubble, drawFloatingTexts, drawDeathEffects, drawDeathEffectAt,
     drawMuzzleSmoke, drawMuzzleSmokeAt, drawImpactSmoke, drawImpactSmokeAt,

@@ -165,6 +165,7 @@ window.GameEngine = window.GameEngine || {};
         if (other.id === civ.id || other.eliminated) continue;
         for (const u of other.units) {
           if (!visible.has(u.y * map.width + u.x) || u.conditions?.hidden) continue;
+          if (window.GameData.getUnit(u.typeId).harmless) continue; // a Treasure Trow is no threat
           if (window.GameEngine.influence.chebyshev(u.x, u.y, city.x, city.y) <= RADIUS) return true;
         }
       }
@@ -535,7 +536,8 @@ window.GameEngine = window.GameEngine || {};
     for (const other of Object.values(civs)) {
       if (other.id === civ.id || other.eliminated) continue;
       for (const u of other.units) {
-        if (visible.has(u.y * map.width + u.x) && !u.conditions?.hidden) nearbyEnemies++;
+        if (visible.has(u.y * map.width + u.x) && !u.conditions?.hidden
+            && !window.GameData.getUnit(u.typeId).harmless) nearbyEnemies++; // a Treasure Trow is no threat
       }
     }
 
@@ -8037,6 +8039,10 @@ window.GameEngine = window.GameEngine || {};
    *  death) that don't meaningfully apply to Elf's own kit. Returns true if
    *  it hit at least one target. */
   function performBladeSweep(civ, unit, gameState, log, { label, radius, attackMult, counterMult }) {
+    // A sweep can strike a Treasure Trow (combat.js's resolveRound ->
+    // onTrowStruck), which reads these -- see considerAttackOrGarrison.
+    currentTurnNumber = gameState.turnNumber || 0;
+    currentGameStateRef = gameState;
     const { map, civs } = gameState;
     const visible = gameState.visibility[civ.id] || new Set();
     const targets = [];
@@ -8078,9 +8084,12 @@ window.GameEngine = window.GameEngine || {};
         defenderInForest: map.tiles[target.y * map.width + target.x].terrain === "forest",
         attackDamageMult: attackMult, counterDamageMult: counterMult,
       };
+      // Position captured before the round -- see considerAttackOrGarrison's
+      // matching comment (a struck Treasure Trow relocates inside it).
+      const hitX = target.x, hitY = target.y;
       const result = window.GameEngine.combat.resolveRound(unit, target, civs, combatContext);
       window.GameEngine.combat.recordCombatEvent({
-        ax: unit.x, ay: unit.y, atkUnit: unit, dx: target.x, dy: target.y, defUnit: target,
+        ax: unit.x, ay: unit.y, atkUnit: unit, dx: hitX, dy: hitY, defUnit: target,
       });
       markCombatEngaged(civ);
       markCombatEngaged(defenderCiv);
@@ -9091,6 +9100,7 @@ window.GameEngine = window.GameEngine || {};
    *  this move" contract the Hidden-enemy-reveal check right above it in
    *  spendMovement already follows). */
   function checkTrapSpring(civs, mover, turnNumber) {
+    if (window.GameEngine.combat.isTrow(mover)) return false; // Treasure Trow is unhurtable
     for (const ownerCiv of Object.values(civs)) {
       if (ownerCiv.id === mover.civId || ownerCiv.eliminated) continue;
       const trap = ownerCiv.units.find((u) =>
@@ -9706,6 +9716,13 @@ window.GameEngine = window.GameEngine || {};
     if (unit.hp <= 0 || unit.usedThisTurn) return;
     const { civs, map } = gameState;
     const baseUnit = window.GameData.getUnit(unit.typeId);
+    // Harmless monsters (the Treasure Trow) never hunt -- skip the whole
+    // target search and just wander. A Hidden one's movement is already
+    // halved by computeMovementBudget.
+    if (baseUnit.harmless) {
+      wanderMonsterUnit(unit, map, civs);
+      return;
+    }
     const visionRadius = baseUnit.visionRadius || 3;
 
     let target = null, targetDist = Infinity;
@@ -9742,12 +9759,7 @@ window.GameEngine = window.GameEngine || {};
     // moveUnitToward's own pathing/movement-cost logic (which already
     // respects restrictedToTerrain -- same mechanism Wisp's Swamp lock
     // relies on) rather than hand-rolling single-step tile validation here.
-    const WANDER_RADIUS = 4;
-    const tx = Math.max(0, Math.min(map.width - 1, unit.x + Math.floor(Math.random() * (WANDER_RADIUS * 2 + 1)) - WANDER_RADIUS));
-    const ty = Math.max(0, Math.min(map.height - 1, unit.y + Math.floor(Math.random() * (WANDER_RADIUS * 2 + 1)) - WANDER_RADIUS));
-    moveUnitToward(unit, tx, ty, map, civs);
-    unit.usedThisTurn = true;
-    unit.currentMission = "Wandering";
+    wanderMonsterUnit(unit, map, civs);
   }
 
   // World encounters: Swamp tiles produce a Marsh Adder 75% less often than
@@ -9824,7 +9836,7 @@ window.GameEngine = window.GameEngine || {};
     // gameState that predates this field (old saves, headless __sim tests).
     const capPerKingdom = gameState.monsterCapPerKingdom ?? cfg.perKingdomCap;
     const cap = capPerKingdom * activeKingdoms;
-    if (civ.units.length >= cap) return;
+    if (hostileMonsterCount(civ) >= cap) return; // Treasure Trows have their own cap
 
     // Single pass: tallies totalLand/exploredLand for the spawn-chance
     // fraction AND collects this round's spawn candidates (land tiles with a
@@ -9871,6 +9883,235 @@ window.GameEngine = window.GameEngine || {};
     const newUnit = { typeId, civId: MONSTER_CIV_ID, x, y, isCivilian: false };
     window.GameEngine.combat.initUnitHP(newUnit, civ);
     civ.units.push(newUnit);
+  }
+
+  // =========================================================================
+  // TREASURE TROW (see units.js's treasure_trow)
+  // -------------------------------------------------------------------------
+  // A harmless folklore spirit that shares the Monsters pseudo-civ but is NOT
+  // one of its hostile monsters: its own spawn roll/cap (maybeSpawnTrow), no
+  // hunting (runMonsterUnitTurn's `harmless` branch), and it can't be hurt --
+  // combat.js's resolveRound hands any strike on it to onTrowStruck instead,
+  // which drops a chest, makes it escape (run, or sometimes teleport), hides
+  // it, and occasionally lets it prank the attacker. All of that resolves in
+  // game state INSTANTLY; deathFx.queueTrowSequence hands the UI an ordered
+  // description so overlays.js/render.js can play it back one beat at a time.
+  // =========================================================================
+
+  /** Hostile monsters only -- the Trow has its own cap, so it must never
+   *  count against (or be counted toward) the Max Monsters slider. */
+  function hostileMonsterCount(monsterCiv) {
+    let n = 0;
+    for (const u of monsterCiv.units) if (!window.GameData.getUnit(u.typeId).harmless) n++;
+    return n;
+  }
+
+  /** Every land tile a Trow may occupy: passable ground (no water, no
+   *  mountains), no unit already there, no city/enemy structure, and
+   *  STRICTLY MORE than cfg.minCityDistance tiles (chebyshev) from every
+   *  city of every civ. `opts.awayFrom` + `opts.minAwayDistance` additionally
+   *  require a minimum distance from a point (a teleporting Trow's attacker).
+   *  Deliberately NOT restricted to unwatched tiles: the Trow is Hidden the
+   *  moment it appears anywhere, so nobody sees it arrive. */
+  function collectTrowTiles(gameState, opts = {}) {
+    const { map, civs } = gameState;
+    const cfg = window.GameConfig.worldEncounters.treasureTrow;
+    const IMPASSABLE = window.GameData.IMPASSABLE;
+    const chebyshev = window.GameEngine.influence.chebyshev;
+    const cities = [];
+    const occupied = new Set();
+    for (const c of Object.values(civs)) {
+      for (const city of c.cities) cities.push(city);
+      for (const u of c.units) occupied.add(u.y * map.width + u.x);
+    }
+    const tiles = [];
+    for (let i = 0; i < map.tiles.length; i++) {
+      const tile = map.tiles[i];
+      if (!window.GameEngine.worldgen.isLand(tile)) continue;
+      if (window.GameData.TERRAIN[tile.terrain].moveCostLand === IMPASSABLE) continue;
+      if (occupied.has(i)) continue;
+      if (hasEnemyStructure(tile, MONSTER_CIV_ID)) continue;
+      const x = i % map.width, y = Math.floor(i / map.width);
+      if (cities.some((c) => chebyshev(x, y, c.x, c.y) <= cfg.minCityDistance)) continue;
+      if (opts.awayFrom && chebyshev(x, y, opts.awayFrom.x, opts.awayFrom.y) < opts.minAwayDistance) continue;
+      tiles.push({ x, y });
+    }
+    return tiles;
+  }
+
+  /** Treasure Trow spawning -- called once per round from turns.js right
+   *  after maybeSpawnMonster. Independent of that function's cap and roll:
+   *  its own config.js treasureTrow.spawnChance / capPerKingdom (Trows are
+   *  counted by type, never against the hostile-monster cap). The new Trow
+   *  starts Hidden for hiddenTurns; combat.js's tickConditions then forces it
+   *  visible for a turn when that runs out, after which it wanders openly
+   *  until something strikes it. */
+  function maybeSpawnTrow(gameState) {
+    const cfg = window.GameConfig.worldEncounters.treasureTrow;
+    const civ = ensureMonsterCiv(gameState);
+    const activeKingdoms = Object.values(gameState.civs).filter((c) => c.id !== MONSTER_CIV_ID && !c.eliminated).length;
+    const cap = cfg.capPerKingdom * activeKingdoms;
+    const alive = civ.units.filter((u) => u.typeId === window.GameData.TROW_UNIT_ID).length;
+    if (alive >= cap) return;
+    if (Math.random() >= cfg.spawnChance) return;
+    const tiles = collectTrowTiles(gameState);
+    if (!tiles.length) return;
+    const spot = tiles[Math.floor(Math.random() * tiles.length)];
+    const trow = { typeId: window.GameData.TROW_UNIT_ID, civId: MONSTER_CIV_ID, x: spot.x, y: spot.y, isCivilian: false };
+    window.GameEngine.combat.initUnitHP(trow, civ);
+    window.GameEngine.combat.setCondition(trow, "hidden", { expiresAtTurn: (gameState.turnNumber || 0) + cfg.hiddenTurns });
+    civ.units.push(trow);
+  }
+
+  /** Drops a guaranteed Treasure Chest at (x, y), or -- if that tile already
+   *  holds a resource or is the wrong terrain -- on the nearest free valid
+   *  tile within 2 tiles. Same "valid terrain, no existing resource" test
+   *  maybeSpawnDeathChest uses. Queues the shared chest-drop animation.
+   *  Returns the tile it landed on, or null if nowhere nearby was free. */
+  function dropTrowChest(x, y, gameState) {
+    const { map } = gameState;
+    const validTerrain = window.GameData.RESOURCES.chest.validTerrain;
+    const isFree = (tx, ty) => {
+      if (tx < 0 || tx >= map.width || ty < 0 || ty >= map.height) return false;
+      const t = map.tiles[ty * map.width + tx];
+      return !t.resource && validTerrain.includes(t.terrain);
+    };
+    for (let r = 0; r <= 2; r++) {
+      const ring = [];
+      for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) {
+        if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue;
+        if (isFree(x + dx, y + dy)) ring.push({ x: x + dx, y: y + dy });
+      }
+      if (!ring.length) continue;
+      const spot = ring[Math.floor(Math.random() * ring.length)];
+      map.tiles[spot.y * map.width + spot.x].resource = "chest";
+      window.GameEngine.deathFx.spawnChestDrop(spot.x, spot.y);
+      return spot;
+    }
+    return null;
+  }
+
+  /** Where a RUNNING Trow ends up: flood-fills passable, unoccupied ground up
+   *  to cfg.fleeDistance steps from where it stood, and takes whichever
+   *  reachable tile is farthest (chebyshev) from its attacker, ties broken at
+   *  random. Null if it's boxed in with nowhere to go. */
+  function pickTrowFleeTile(trow, attacker, gameState) {
+    const { map } = gameState;
+    const cfg = window.GameConfig.worldEncounters.treasureTrow;
+    const IMPASSABLE = window.GameData.IMPASSABLE;
+    const chebyshev = window.GameEngine.influence.chebyshev;
+    const seen = new Set([`${trow.x},${trow.y}`]);
+    const queue = [{ x: trow.x, y: trow.y, d: 0 }];
+    let bestDist = chebyshev(trow.x, trow.y, attacker.x, attacker.y), ties = [];
+    while (queue.length) {
+      const cur = queue.shift();
+      if (cur.d >= cfg.fleeDistance) continue;
+      for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+        if (!dx && !dy) continue;
+        const nx = cur.x + dx, ny = cur.y + dy;
+        const key = `${nx},${ny}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        // Bounds, water, another unit, an enemy structure/city -- the same
+        // legality the Wizard's teleport landing already checks.
+        if (!isValidTeleportTile(gameState, nx, ny, trow)) continue;
+        if (window.GameData.TERRAIN[map.tiles[ny * map.width + nx].terrain].moveCostLand === IMPASSABLE) continue;
+        queue.push({ x: nx, y: ny, d: cur.d + 1 });
+        const dist = chebyshev(nx, ny, attacker.x, attacker.y);
+        if (dist > bestDist) { bestDist = dist; ties = [{ x: nx, y: ny }]; }
+        else if (dist === bestDist && ties.length) ties.push({ x: nx, y: ny });
+      }
+    }
+    return ties.length ? ties[Math.floor(Math.random() * ties.length)] : null;
+  }
+
+  const TROW_PRANKS = ["curse", "blind", "befuddled"];
+
+  /** Called by combat.js's resolveRound the instant a (non-simulated) strike
+   *  lands on a Treasure Trow, from any attacker -- human, AI, or a sweep.
+   *  Resolves EVERYTHING in game state right now (nothing waits on the
+   *  animation): the chest, the escape, going Hidden, and the prank on the
+   *  attacker. What the player SEES is sequenced separately -- see
+   *  deathFx.queueTrowSequence / TROW_TIMELINE, whose beats the sfx below are
+   *  timed against too. Anything that needs the tile the Trow was hit ON
+   *  (recordCombatEvent's dx/dy) must read it BEFORE calling resolveRound,
+   *  since the Trow is already gone from it by the time that returns. */
+  function onTrowStruck(trow, attacker) {
+    const gameState = currentGameStateRef;
+    if (!gameState) return;
+    const combat = window.GameEngine.combat;
+    const cfg = window.GameConfig.worldEncounters.treasureTrow;
+    const timeline = window.GameEngine.deathFx.TROW_TIMELINE;
+    const turn = gameState.turnNumber || 0;
+    const from = { x: trow.x, y: trow.y };
+    const raceId = gameState.civs[trow.civId].raceId;
+    const sfx = (action, delayMs, x, y) =>
+      window.SfxSystem.playAction(raceId, window.GameData.TROW_UNIT_ID, action, x, y, delayMs);
+
+    // 1. The chest. Guaranteed on every strike.
+    const chest = dropTrowChest(from.x, from.y, gameState);
+
+    // 2. Escape: teleport (cfg.teleportChance) if a landing spot exists,
+    //    otherwise run. Either way the move is instant in state.
+    let escape = "run", to = null;
+    if (Math.random() < cfg.teleportChance) {
+      const landings = collectTrowTiles(gameState, { awayFrom: attacker, minAwayDistance: cfg.teleportMinDistance });
+      if (landings.length) { to = landings[Math.floor(Math.random() * landings.length)]; escape = "teleport"; }
+    }
+    if (!to) to = pickTrowFleeTile(trow, attacker, gameState);
+    if (to) {
+      trow.x = to.x;
+      trow.y = to.y;
+      // Suppress render.js's move-glide -- the sequence draws its own motion.
+      trow._lastLogicalX = to.x;
+      trow._lastLogicalY = to.y;
+      trow._renderX = to.x;
+      trow._renderY = to.y;
+      trow._animStart = 0;
+    }
+    to = to || from;
+
+    // 3. Hidden from now on (the game's ordinary Hidden expiry later forces it
+    //    visible for a turn -- see combat.js's tickConditions).
+    combat.clearCondition(trow, "forcedVisible");
+    combat.setCondition(trow, "hidden", { expiresAtTurn: turn + cfg.hiddenTurns });
+    trow.currentMission = "Hiding";
+
+    // 4. The prank: a chance to curse, blind, or befuddle whoever struck it.
+    //    Applied to state now (so saves/turn logic stay consistent); the
+    //    visual is held back until its beat -- see overlays.js's
+    //    _prankRevealAt handling.
+    let prank = null;
+    if (attacker.hp > 0 && Math.random() < cfg.prankChance) {
+      const kind = TROW_PRANKS[Math.floor(Math.random() * TROW_PRANKS.length)];
+      if (kind === "curse") combat.setCondition(attacker, "curse", { attackMult: 0.5, moveMult: 0.5, expiresAtTurn: turn + CURSE_DURATION });
+      else if (kind === "blind") combat.setCondition(attacker, "blind", { expiresAtTurn: turn + BLIND_DURATION });
+      else combat.applyBefuddled(attacker, turn);
+      // setCondition can decline (e.g. a Great Bonfire aura's immunity) --
+      // no laugh for a prank that didn't take.
+      const key = kind === "befuddled" ? "befuddled" : kind;
+      if (combat.hasCondition(attacker, key)) prank = { kind, attacker };
+    }
+
+    // Sound, timed to the same beats the visual sequence uses.
+    sfx("hurt", 0, from.x, from.y);
+    sfx("panic", timeline.panicStart, from.x, from.y);
+    if (escape === "teleport") sfx("teleport", timeline.escapeStart, from.x, from.y);
+    if (prank) sfx("laugh", timeline.prankStart, attacker.x, attacker.y);
+
+    window.GameEngine.deathFx.queueTrowSequence({ trow, from, to, escape, chest, prank });
+  }
+
+  /** Random nearby wander shared by every monster: picks a point within
+   *  WANDER_RADIUS and lets moveUnitToward's own pathing/terrain rules
+   *  (incl. restrictedToTerrain) decide how far it actually gets. */
+  function wanderMonsterUnit(unit, map, civs) {
+    const WANDER_RADIUS = 4;
+    const tx = Math.max(0, Math.min(map.width - 1, unit.x + Math.floor(Math.random() * (WANDER_RADIUS * 2 + 1)) - WANDER_RADIUS));
+    const ty = Math.max(0, Math.min(map.height - 1, unit.y + Math.floor(Math.random() * (WANDER_RADIUS * 2 + 1)) - WANDER_RADIUS));
+    moveUnitToward(unit, tx, ty, map, civs);
+    unit.usedThisTurn = true;
+    unit.currentMission = "Wandering";
   }
 
   // Chebyshev distance every initial placement must clear from every civ's
@@ -9960,7 +10201,7 @@ window.GameEngine = window.GameEngine || {};
     const activeKingdoms = Object.values(civs).filter((c) => c.id !== MONSTER_CIV_ID && !c.eliminated).length;
     const capPerKingdom = gameState.monsterCapPerKingdom ?? cfg.perKingdomCap;
     const cap = capPerKingdom * activeKingdoms;
-    if (monsterCiv.units.length >= cap) return;
+    if (hostileMonsterCount(monsterCiv) >= cap) return; // Treasure Trows have their own cap
 
     const tile = map.tiles[unit.y * map.width + unit.x];
     const monsterTypeId = window.GameData.MONSTER_TERRAIN[tile.terrain];
@@ -13727,6 +13968,12 @@ window.GameEngine = window.GameEngine || {};
     // too so no other call site can accidentally walk it into a normal
     // attack.
     if (window.GameData.getUnit(unit.typeId).noOrdinaryAttack) return false;
+    // A player-ordered attack (orders.js's attack()) reaches here without
+    // passing through any civ-turn entry point that stamps these, and a
+    // strike on a Treasure Trow (combat.js's resolveRound -> onTrowStruck)
+    // reads them -- so refresh them here rather than trust a stale copy.
+    currentTurnNumber = gameState.turnNumber || 0;
+    currentGameStateRef = gameState;
     const { map, civs } = gameState;
     const visible = gameState.visibility[civ.id] || new Set();
     const range = window.GameEngine.combat.effectiveRange(unit, civ);
@@ -13871,10 +14118,14 @@ window.GameEngine = window.GameEngine || {};
       };
       window.GameEngine.quips.maybeQuip(unit, civ, "attack", gameState);
     window.SfxSystem.playAction(civ.raceId, unit.typeId, "attack", unit.x, unit.y);
+      // Captured BEFORE the round: a struck Treasure Trow relocates inside
+      // resolveRound, and the attack animation must still fly to the tile it
+      // was actually hit on.
+      const hitX = bestTarget.x, hitY = bestTarget.y;
       const result = window.GameEngine.combat.resolveRound(unit, bestTarget, civs, combatContext);
       window.GameEngine.combat.recordCombatEvent({
         ax: unit.x, ay: unit.y, atkUnit: unit,
-        dx: bestTarget.x, dy: bestTarget.y, defUnit: bestTarget,
+        dx: hitX, dy: hitY, defUnit: bestTarget,
       });
       // Double Strike (see combat.js's resolveRound): the follow-up hit gets
       // its own animation, callout and (delayed) attack sfx, so a second blow
@@ -14727,7 +14978,7 @@ window.GameEngine = window.GameEngine || {};
         for (const otherCiv of Object.values(civs)) {
           if (otherCiv.id === civ.id || otherCiv.eliminated) continue;
           for (const eu of otherCiv.units) {
-            if (eu.conditions?.hidden) continue;
+            if (eu.conditions?.hidden || window.GameEngine.combat.isTrow(eu)) continue; // Trow is unhurtable
             const dist = window.GameEngine.influence.chebyshev(s.x, s.y, eu.x, eu.y);
             if (dist > tier.range) continue;
             if (dist < bestDist) { bestDist = dist; target = eu; targetCiv = otherCiv; }
@@ -14815,7 +15066,7 @@ window.GameEngine = window.GameEngine || {};
         for (const otherCiv of Object.values(civs)) {
           if (otherCiv.id === civ.id || otherCiv.eliminated) continue;
           for (const eu of otherCiv.units) {
-            if (eu.conditions?.hidden) continue;
+            if (eu.conditions?.hidden || window.GameEngine.combat.isTrow(eu)) continue; // Trow is unhurtable
             const dist = window.GameEngine.influence.chebyshev(s.x, s.y, eu.x, eu.y);
             if (dist > MAGE_TOWER_RANGE) continue;
             if (dist < bestDist) { bestDist = dist; target = eu; targetCiv = otherCiv; }
@@ -15376,6 +15627,8 @@ window.GameEngine = window.GameEngine || {};
     maybeBattlefieldPromotionPlay,
     ensureMonsterCiv,
     maybeSpawnMonster,
+    maybeSpawnTrow,
+    onTrowStruck,
     seedInitialMonsters,
     runMonsterUnitTurn,
     resolveMonsterAttack,

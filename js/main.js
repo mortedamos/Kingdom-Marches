@@ -4902,7 +4902,28 @@
       if (civ.id === humanCivId) continue;
       for (const unit of civ.units) enemyUnitStartPos.set(unit, { x: unit.x, y: unit.y });
     }
+    // Treasure Trow: while a struck Trow's reaction is still playing on
+    // screen, hold the enemy turn so the next AI unit doesn't act in the
+    // middle of it. Off-screen reactions (fog) draw nothing, so they never
+    // hold anything up. Covers both a sequence already playing and one an AI
+    // unit just queued this very step, before the next frame has picked it up.
+    // Capped at TROW_HOLD_CAP_MS so the turn can never stall if frames aren't
+    // being drawn (a hidden tab pauses requestAnimationFrame, so the sequence
+    // would never be picked up or expire).
+    const TROW_HOLD_CAP_MS = 4000;
+    let trowHoldSince = null;
+    function trowSequenceHoldingTurn() {
+      const seen = gameState.visibility[humanCivId];
+      const { map } = gameState;
+      const onScreen = (s) => humanCivId == null || (seen && seen.has(s.from.y * map.width + s.from.x));
+      const holding = window.GameEngine.deathFx.peekTrowSequenceEvents().some(onScreen)
+        || window.UI.overlays.getActiveTrowSequences().some(onScreen);
+      if (!holding) { trowHoldSince = null; return false; }
+      if (trowHoldSince == null) trowHoldSince = Date.now();
+      return Date.now() - trowHoldSince < TROW_HOLD_CAP_MS;
+    }
     function processBatch() {
+      if (trowSequenceHoldingTurn()) { setTimeout(processBatch, 250); return; }
       let stepResult;
       do {
         // Off-screen attack notice: checked
@@ -5038,6 +5059,13 @@
               return;
             }
           }
+        }
+        // An AI unit just struck a Treasure Trow: stop stepping until its
+        // reaction has finished playing (see trowSequenceHoldingTurn).
+        if (trowSequenceHoldingTurn()) {
+          redraw();
+          setTimeout(processBatch, 250);
+          return;
         }
       } while (!stepResult.steppedCivId || stepResult.steppedCivId === announcedCivId || stepResult.steppedCivId === humanCivId);
       announcedCivId = stepResult.steppedCivId;

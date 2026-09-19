@@ -92,6 +92,18 @@ window.GameData.SPRITE_MANIFESTS = {
     frameWidth: 128, frameHeight: 128, layout: "horizontal",
     animations: { idle: { frames: [0, 1, 2, 3], fps: 1 } },
   },
+  // Treasure Trow: 3 idle frames, plus frame 3 RESERVED as the panic pose --
+  // only ever requested by render.js's drawTrowGhosts during the panic beat
+  // of a struck Trow's reaction sequence, never by the ordinary unit draw
+  // (which always asks for "idle"). currentFrame() falls back to idle if this
+  // entry or the frame is missing, so the sheet can land after the code.
+  "unit/treasure_trow": {
+    frameWidth: 128, frameHeight: 128, layout: "horizontal",
+    animations: {
+      idle: { frames: [0, 1, 2], fps: 1 },
+      panic: { frames: [3], fps: 1 },
+    },
+  },
   "unit/dire_wolf": {
     frameWidth: 128, frameHeight: 128, layout: "horizontal",
     animations: { idle: { frames: [0, 1, 2, 3], fps: 1 } },

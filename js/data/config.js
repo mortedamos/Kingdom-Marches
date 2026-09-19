@@ -65,9 +65,9 @@ window.GameConfig = {
     /** Local date this build was cut, YYYY-MM-DD. */
     date: "2026-09-19",
     /** Local time this build was cut, 24-hour HH:MM. */
-    time: "10:07",
+    time: "11:30",
     /** Monotonic build counter -- increment it, don't recompute it. */
-    number: 317,
+    number: 318,
   },
 
   // =========================================================================
@@ -1042,6 +1042,34 @@ window.GameConfig = {
        *  the two can only ever fire once per Ruin, ever. */
       monsterEncounterChance: 0.08,
       treasureFindChance: 0.08,
+    },
+    /** Treasure Trow (see units.js's treasure_trow, ai.js's maybeSpawnTrow/
+     *  onTrowStruck): a harmless wandering spirit that drops a chest, then
+     *  escapes and hides when attacked. Its spawn roll and population cap are
+     *  entirely separate from `monsters` below -- Trows never use up hostile-
+     *  monster slots and the Max Monsters slider doesn't affect them. */
+    treasureTrow: {
+      /** Chance per round (while under the cap) that one Trow spawns. */
+      spawnChance: 0.08,
+      /** Population cap = this * number of civs still alive. */
+      capPerKingdom: 1,
+      /** A Trow only spawns / teleports onto land STRICTLY MORE than this many
+       *  tiles (chebyshev) from every city. */
+      minCityDistance: 5,
+      /** How long a Trow stays Hidden, both when it first spawns and after
+       *  being struck. When this runs out the game's ordinary Hidden expiry
+       *  forces it visible for one turn (combat.js's tickConditions). */
+      hiddenTurns: 3,
+      /** When struck: chance it teleports away (the Wizard's teleport look)
+       *  rather than running. */
+      teleportChance: 0.30,
+      /** A teleporting Trow lands at least this many tiles from its attacker. */
+      teleportMinDistance: 8,
+      /** A running Trow flees up to this many tiles away from its attacker. */
+      fleeDistance: 4,
+      /** When struck: chance it also plays a trick on the attacker (curse,
+       *  blind, or befuddle, chosen evenly) and laughs. */
+      prankChance: 0.35,
     },
     monsters: {
       /** Id of the pseudo-civ every Wandering Monster unit belongs to (see
