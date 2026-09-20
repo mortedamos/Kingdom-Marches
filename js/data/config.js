@@ -63,11 +63,11 @@ window.GameConfig = {
   // stamp, and the only cost of forgetting is being told the wrong thing.
   build: {
     /** Local date this build was cut, YYYY-MM-DD. */
-    date: "2026-09-19",
+    date: "2026-09-20",
     /** Local time this build was cut, 24-hour HH:MM. */
-    time: "16:23",
+    time: "00:33",
     /** Monotonic build counter -- increment it, don't recompute it. */
-    number: 320,
+    number: 321,
   },
 
   // =========================================================================

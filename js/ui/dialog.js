@@ -364,7 +364,7 @@ window.UI = window.UI || {};
         <h2>Welcome Back!</h2>
         <p>While you were away, your kingdom has gathered the following resources:</p>
         ${rows}
-        <div class="game-dialog-actions">
+        <div class="game-dialog-actions game-dialog-actions-centered">
           <button class="menu-dropdown-btn game-dialog-primary" id="game-dialog-ok-btn">Collect</button>
         </div>`;
     }
