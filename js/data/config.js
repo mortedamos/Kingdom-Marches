@@ -65,9 +65,9 @@ window.GameConfig = {
     /** Local date this build was cut, YYYY-MM-DD. */
     date: "2026-09-21",
     /** Local time this build was cut, 24-hour HH:MM. */
-    time: "18:34",
+    time: "18:58",
     /** Monotonic build counter -- increment it, don't recompute it. */
-    number: 323,
+    number: 324,
   },
 
   // =========================================================================
@@ -1078,6 +1078,10 @@ window.GameConfig = {
      *  `treasureFindMult` x as often, its treasure is `uniqueChanceMult` x as likely to
      *  include a unique item, and the delve pays `loreMult` x the lore (turns.js). */
     arcaneStudies: { treasureFindMult: 1.25, uniqueChanceMult: 1.15, loreMult: 1.5 },
+    /** Dwarf "Vault-Finder" (techs.js): ANY dwarf unit delving a Ruin -- same two boosts as Arcane Studies, no lore bonus. */
+    vaultFinder: { treasureFindMult: 1.25, uniqueChanceMult: 1.15 },
+    /** Dwarf "Wealth of the Earth" (dwarf_dwarven_mining): coin AND lore from ordinary mining are multiplied by this. */
+    wealthOfTheEarthMiningMult: 1.5,
     weatherHazards: {
       lightningDamage: 3,
       extinguishChance: 0.25,

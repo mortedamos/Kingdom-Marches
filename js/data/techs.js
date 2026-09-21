@@ -1061,7 +1061,7 @@ window.GameData.TECHS = {
   dwarf_dwarven_mining: {
     id: "dwarf_dwarven_mining", label: "Wealth of the Earth", category: "civic", layer: 1, cost: 16,
     prereqs: [], raceOnly: "dwarf",
-    description: "Any Dwarf unit, not just Pioneers and Trackers, can mine Gold Veins and Iron Veins.",
+    description: "Any Dwarf unit, not just Pioneers and Trackers, can mine Gold Veins and Iron Veins. Mining also pays 50% more coin and lore.",
     costBreakdown: { coin: 10, lore: 6 },
     effects: [{ type: "unlock_mechanic", mechanic: "dwarven_mining" }],
   },
@@ -1071,6 +1071,13 @@ window.GameData.TECHS = {
     description: "+0.5 lore from Mountains.",
     costBreakdown: { lore: 12, coin: 8 },
     effects: [{ type: "unlock_tile_bonus", terrain: "mountains", bonus: { lore: 0.5 } }],
+  },
+  dwarf_vault_finder: {
+    id: "dwarf_vault_finder", label: "Vault-Finder", category: "mystic", layer: 2, cost: 34,
+    prereqs: ["dwarf_deep_lore"], raceOnly: "dwarf",
+    description: "A Dwarf unit delving a Ruin has a 25% higher chance to find treasure, and that treasure has a 15% higher chance to contain a unique magic item.",
+    costBreakdown: { lore: 24, coin: 10 },
+    effects: [{ type: "unlock_mechanic", mechanic: "vault_finder" }],
   },
   dwarf_mountains_on_the_horizon: {
     id: "dwarf_mountains_on_the_horizon", label: "Mountains on the Horizon", category: "civic", layer: 2, cost: 20,
@@ -1330,17 +1337,17 @@ window.GameData.TECHS = {
     costBreakdown: { lore: 14 },
     effects: [{ type: "unlock_mechanic", mechanic: "violent_momentum" }],
   },
-  // "plunder" is read directly by ai.js's openTreasureChest (2026-08-26,
-  // user-directed) -- a chest that would've paid something other than coin
-  // also pays a bonus coin haul on top, and any coin a chest DOES pay
-  // (primary or the bonus) is tripled. Deliberately scoped to actually
-  // opening a Treasure Chest only, not Ruin Delve finds or Wandering
-  // Monster kills -- those reuse the same reward table through a separate
-  // function, grantMonsterKillReward, which this doesn't touch.
+  // "plunder" is read by ai.js's rollChestTreasures (2026-08-26, user-directed; widened by
+  // the 2026-09-21 loot overhaul) -- a treasure haul that would've paid something other than
+  // coin also pays a bonus coin haul on top, and any coin it DOES pay (primary or the bonus)
+  // is tripled. That roll is shared, so it covers Treasure Chests (incl. Giltmaw/Trow chests),
+  // Ruin Delve finds and Wandering Monster kill rewards alike. The mechanic is also read by
+  // maybeSpawnDeathChest: items dropped by units this kingdom kills drop 75% of the time
+  // instead of 50% (config.js treasureChest.plunderDropChance).
   orc_plunder: {
     id: "orc_plunder", label: "Plunder", category: "civic", layer: 1, cost: 16,
     prereqs: [], raceOnly: "orc",
-    description: "Opening a Treasure Chest always finds coin, on top of whatever else was found, and any coin found is tripled.",
+    description: "Treasure from chests, Ruin delves and monster kills always includes coin, on top of whatever else is found, and any coin found is tripled. Items carried by units your kingdom kills are 75% likely to drop, instead of 50%.",
     costBreakdown: { coin: 10, lore: 6 },
     effects: [{ type: "unlock_mechanic", mechanic: "plunder" }],
   },

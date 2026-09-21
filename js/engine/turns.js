@@ -1324,8 +1324,11 @@ window.GameEngine = window.GameEngine || {};
         }
         // Arcane Studies (Human wizard): 25% better odds of a treasure find, and that find is
         // 15% likelier to include a unique item (both multiplicative, like Lucky Rock).
-        const findMult = arcane ? arcaneCfg.treasureFindMult : 1;
-        const uniqueMult = arcane ? arcaneCfg.uniqueChanceMult : 1;
+        // Dwarf "Vault-Finder": ANY dwarf unit delving gets the same two boosts.
+        const vault = civ.raceId === "dwarf" && civ.unlockedMechanics.has("vault_finder");
+        const vaultCfg = window.GameConfig.worldEncounters.vaultFinder;
+        const findMult = (arcane ? arcaneCfg.treasureFindMult : 1) * (vault ? vaultCfg.treasureFindMult : 1);
+        const uniqueMult = (arcane ? arcaneCfg.uniqueChanceMult : 1) * (vault ? vaultCfg.uniqueChanceMult : 1);
         if (!tile._delveTreasureRolled && Math.random() < ruinCfg.treasureFindChance * window.GameEngine.items.itemLuck(unit).delveMult * findMult) {
           tile._delveTreasureRolled = true;
           ruinLog.push(`Ruin: ${civ.id}'s ${unit.name || unit.typeId} finds treasure while delving at (${unit.x},${unit.y})`);
@@ -1505,7 +1508,11 @@ window.GameEngine = window.GameEngine || {};
         + (civ.mechanicValues?.prospectors_claim_yield || 0)
         + (civ.mechanicValues?.deep_mines_yield || 0);
       // 3x payout plus the withProspectingLore kicker (2026-08-17, user-directed).
-      accumulateChannelStash(unit, withProspectingLore({ coin: 9 * yieldMult * marketcraftMult }));
+      // Dwarf "Wealth of the Earth" (any dwarf may mine): +50% coin AND lore from mining.
+      const wealth = civ.raceId === "dwarf" && civ.unlockedMechanics.has("dwarven_mining")
+        ? window.GameConfig.worldEncounters.wealthOfTheEarthMiningMult : 1;
+      const mined = withProspectingLore({ coin: 9 * yieldMult * marketcraftMult });
+      accumulateChannelStash(unit, { ...mined, coin: mined.coin * wealth, lore: mined.lore * wealth });
       // Gathering XP -- see the Dungeon Delve block above.
       window.GameEngine.ai.grantXPAndAutoLevel(unit, civ, window.GameConfig.leveling.xpPerGatheringRound);
       if (Math.random() < resourceExhaustionChanceFor(civ)) {
