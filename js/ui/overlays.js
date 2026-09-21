@@ -1729,6 +1729,8 @@ window.UI = window.UI || {};
    */
   function drawConditionBadges(ctx, unit, boxX, boxY, boxSize, ts) {
     const icons = [];
+    // A unit carrying a UNIQUE (legendary) item wears a crown badge, first (so always in the same corner).
+    if (window.GameEngine.items.hasUniqueItem(unit)) icons.push("👑");
     if (unit.carries) icons.push(CARRYING_ICON);
     // Rest and Defend sets BOTH unit.resting and
     // conditions.defending together -- only one badge should show for that

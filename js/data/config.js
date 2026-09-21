@@ -65,9 +65,9 @@ window.GameConfig = {
     /** Local date this build was cut, YYYY-MM-DD. */
     date: "2026-09-21",
     /** Local time this build was cut, 24-hour HH:MM. */
-    time: "18:58",
+    time: "19:20",
     /** Monotonic build counter -- increment it, don't recompute it. */
-    number: 324,
+    number: 325,
   },
 
   // =========================================================================
@@ -1173,6 +1173,8 @@ window.GameConfig = {
   // Presentation only -- no gameplay effect.
   // =========================================================================
   view: {
+    /** A unit carrying a UNIQUE (legendary) item is drawn this much larger (render.js). */
+    legendaryUnitScale: 0.15,
     /** Base tile size in px. Rendered size is this * zoomLevel, so this is
      *  effectively the default zoom: raising it starts the map more zoomed
      *  in while keeping the zoom readout meaningful (100% == the intended

@@ -58,8 +58,8 @@ window.GameData.UNIT_FIRST_NAMES = {
     female: ["Cadaverine", "Sepulchra", "Nightshade", "Cerys", "Ossalind", "Vesper", "Doloria", "Grave", "Elowyn", "Corvina"],
   },
   halfellow: {
-    male: ["Tobin", "Bramble", "Pip", "Fennel", "Barley", "Basil", "Wren", "Bramwell", "Nutmeg", "Thistle", "Shawn", "Willow"],
-    female: ["Willow", "Clover", "Hazel", "Rosie", "Marigold", "Sorrel", "Poppy", "Daisy", "Honey", "Buttercup", "Blossom", "Marigold"],
+    male: ["Tobin", "Bramble", "Pip", "Fennel", "Barley", "Basil", "Wren", "Bramwell", "Nutmeg", "Thistle", "Shawn", "Willow", "Peekstock"],
+    female: ["Willow", "Clover", "Hazel", "Rosie", "Marigold", "Sorrel", "Poppy", "Daisy", "Honey", "Buttercup", "Blossom", "Marigold", "Aja"],
   },
 };
 

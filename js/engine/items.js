@@ -108,6 +108,11 @@
     return value;
   }
 
+  /** Does the bearer carry a UNIQUE (legendary) item? Drives its "epic" look (render.js). */
+  function hasUniqueItem(unit) {
+    return heldDefs(unit).some((d) => d.unique);
+  }
+
   /** The largest night light the bearer carries ({radius, color, flicker?}) or null. */
   function nightLightOf(unit) {
     let best = null;
@@ -244,6 +249,7 @@
   window.GameEngine.items = {
     itemsOf, hasItem, itemStat, hasItemEffect, canUseItems,
     itemStatMax, itemBolt,
+    hasUniqueItem,
     heldDefs, hasImmunity, onHitEffects, grantsAction, itemAuras, itemFlag, nightLightOf, itemLuck,
     canReceiveItem, giveItem, dropItemAt, pickableItemsAt, pickUpItem,
     isItemInPlay, pickUniqueItemFor,

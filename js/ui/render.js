@@ -1354,7 +1354,9 @@ window.UI = window.UI || {};
       // the tile's normal bottom-inset stays fixed, extra size grows upward
       // and sideways (see units.js's biggerPct doc comment).
       // Much Room Mushroom (data/items.js flags.grow): +50% on top, per instance.
-      const scale = 1 + (baseUnit.biggerPct || 0) + (window.GameEngine.items.itemFlag(unit, "grow") || 0);
+      // A unit carrying a UNIQUE (legendary) item stands 15% larger, on top of any of the above.
+      const scale = 1 + (baseUnit.biggerPct || 0) + (window.GameEngine.items.itemFlag(unit, "grow") || 0)
+        + (window.GameEngine.items.hasUniqueItem(unit) ? window.GameConfig.view.legendaryUnitScale : 0);
       const normalSize = ts - pad * 2;
       const boxSize = normalSize * scale;
       const boxX = screenX + ts / 2 - boxSize / 2;
@@ -1388,12 +1390,12 @@ window.UI = window.UI || {};
         unitFrameIndex = unitSprite.manifest.layout === "vertical"
           ? Math.round(f.sy / f.sh)
           : Math.round(f.sx / f.sw);
-        drawUnitShadow(ctx, screenX, screenY, ts, race.color, scale);
+        drawUnitShadow(ctx, screenX, screenY, ts, race.color, scale, window.GameEngine.items.hasUniqueItem(unit));
         ctx.drawImage(unitSprite.image, f.sx, f.sy, f.sw, f.sh, boxX, boxY, boxSize, boxSize);
       } else {
         // Fallback: race-colored shadow + unicode symbol, outlined for
         // contrast now that there's no solid tile behind it to guarantee that.
-        drawUnitShadow(ctx, screenX, screenY, ts, race.color, scale);
+        drawUnitShadow(ctx, screenX, screenY, ts, race.color, scale, window.GameEngine.items.hasUniqueItem(unit));
         ctx.fillStyle = "#fff";
         ctx.font = `bold ${Math.max(7, ts * 0.32 * scale)}px sans-serif`;
         ctx.textAlign = "center";
@@ -2088,7 +2090,7 @@ window.UI = window.UI || {};
    * the civ identifiable at a glance without obscuring the terrain or the
    * sprite drawn on top of it.
    */
-  function drawUnitShadow(ctx, screenX, screenY, ts, color, scale = 1) {
+  function drawUnitShadow(ctx, screenX, screenY, ts, color, scale = 1, legendary = false) {
     const cx = screenX + ts / 2;
     const cy = screenY + ts * 0.80;
     const radiusX = ts * 0.42 * scale;
@@ -2097,6 +2099,14 @@ window.UI = window.UI || {};
     ctx.beginPath();
     ctx.ellipse(cx, cy, radiusX, radiusY, 0, 0, Math.PI * 2);
     ctx.fill();
+    // Legendary (unique-item) carriers: a thin gilded rim around the base disc -- static, steady.
+    if (legendary) {
+      ctx.strokeStyle = "rgba(232,196,96,0.95)";
+      ctx.lineWidth = Math.max(1.5, ts * 0.035);
+      ctx.beginPath();
+      ctx.ellipse(cx, cy, radiusX, radiusY, 0, 0, Math.PI * 2);
+      ctx.stroke();
+    }
   }
 
   /**
