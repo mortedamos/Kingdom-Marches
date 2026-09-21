@@ -39,6 +39,12 @@ window.GameData.IMPASSABLE = Infinity;
 window.GameData.TERRAIN = {
   ocean: {
     id: "ocean", label: "Ocean", color: "#1c3f5e",
+    // waterColor: the sea's real surface color, what render.js's procedural
+    // waves are drawn over (drawWaterTile) and what the coast/ocean blend
+    // fringe fades toward. Sampled from the retired ocean sprite's average,
+    // so the water kept its hue when the art went away -- `color` above is
+    // only the seam-hiding backing swatch and reads noticeably darker.
+    waterColor: "#235675",
     isWater: true, isDeepWater: true, blendPriority: 0,
     yield: { harvest: 1, coin: 0, lore: 0 },
     moveCostLand: window.GameData.IMPASSABLE,
@@ -46,6 +52,7 @@ window.GameData.TERRAIN = {
   },
   coast: {
     id: "coast", label: "Shallow Water / Coast", color: "#3a6f8f",
+    waterColor: "#3486a3", // see ocean's waterColor
     isWater: true, isDeepWater: false, blendPriority: 1,
     yield: { harvest: 2, coin: 0, lore: 0 },
     moveCostLand: window.GameData.IMPASSABLE,

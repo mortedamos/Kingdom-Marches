@@ -208,7 +208,7 @@ window.UI = window.UI || {};
   //
   // Checked against the manifest's per-FRAME dimensions, not the raw
   // image's naturalWidth/naturalHeight -- animated terrain (plains, hills,
-  // forest, swamp, coast, ocean; see sprite-manifests.js) ships as a wide
+  // forest, swamp; see sprite-manifests.js) ships as a wide
   // horizontal strip of 2-4 square frames, so the raw sheet itself is far
   // from square and would otherwise get wrongly flagged "tall," sending the
   // whole strip through the bottom-anchored overhang path and squeezing it
@@ -385,6 +385,7 @@ window.UI = window.UI || {};
     // rounding it once here keeps the whole frame's tile grid pixel-aligned.
     const ts = Math.round(TILE_SIZE * (viewState.zoomLevel || 1));
     const now = performance.now();
+    const waterFx = waterFrame(now); // once per frame -- see drawWaterTile
     overlays.tick(now);
     // Advance the eased day/night sky and clear last frame's light list
     // before any pass can push into it. Must run before the Cities pass,
@@ -563,20 +564,28 @@ window.UI = window.UI || {};
         // behind the canvas and show as a faint line at every tile edge. The
         // backing fill (also the sprite-missing fallback) hides it regardless
         // of which terrain PNGs still have the defect.
-        ctx.fillStyle = window.GameData.TERRAIN[tile.terrain].color;
-        ctx.fillRect(screenX, screenY, ts, ts);
-        const terrainSprite = window.UI.sprites.pick(terrainSpriteKey(tile, x, y, gameState.seed), tile);
-        if (terrainSprite) {
-          if (isTallTerrainSprite(terrainSprite.manifest)) {
-            // Deferred (not drawn immediately here) for the same clipping
-            // reason as resource/ruin icons below -- an overhang into the
-            // tile above must not be able to get painted over by that
-            // tile's own deferred icons, which flush after the whole grid.
-            const img = terrainSprite.image;
-            deferredIcons.push(() => drawTallTerrainSprite(ctx, img, screenX, screenY, ts));
-          } else {
-            const f = window.UI.sprites.currentFrame(terrainSprite.manifest, "idle", tile);
-            ctx.drawImage(terrainSprite.image, f.sx, f.sy, f.sw, f.sh, screenX, screenY, ts, ts);
+        //
+        // Water is the exception: ocean and coast are drawn procedurally
+        // (see drawWaterTile) rather than from their sprite strips, so the
+        // waves can run unbroken across tile borders and animate smoothly.
+        if (window.GameData.TERRAIN[tile.terrain].isWater) {
+          drawWaterTile(ctx, screenX, screenY, ts, tile.terrain, x, y, waterFx);
+        } else {
+          ctx.fillStyle = window.GameData.TERRAIN[tile.terrain].color;
+          ctx.fillRect(screenX, screenY, ts, ts);
+          const terrainSprite = window.UI.sprites.pick(terrainSpriteKey(tile, x, y, gameState.seed), tile);
+          if (terrainSprite) {
+            if (isTallTerrainSprite(terrainSprite.manifest)) {
+              // Deferred (not drawn immediately here) for the same clipping
+              // reason as resource/ruin icons below -- an overhang into the
+              // tile above must not be able to get painted over by that
+              // tile's own deferred icons, which flush after the whole grid.
+              const img = terrainSprite.image;
+              deferredIcons.push(() => drawTallTerrainSprite(ctx, img, screenX, screenY, ts));
+            } else {
+              const f = window.UI.sprites.currentFrame(terrainSprite.manifest, "idle", tile);
+              ctx.drawImage(terrainSprite.image, f.sx, f.sy, f.sw, f.sh, screenX, screenY, ts, ts);
+            }
           }
         }
 
@@ -2466,8 +2475,8 @@ window.UI = window.UI || {};
    *  it automatically and needed no separate change. RIVER_TEXTURE_WIDTH
    *  below was halved alongside it to hold its own proportion to the band. */
   const RIVER_BAND_WIDTH = 0.0525;
-  /** Sampled from the retired art, which in turn sampled assets/terrain/
-   *  coast_1.png -- a river's blue must match the coast it empties into, or
+  /** Sampled from the retired art, which in turn sampled the (since deleted)
+   *  assets/terrain/coast_1.png -- a river's blue must match the coast it empties into, or
    *  the mouth reads as two different substances meeting. See art guide S10.
    *  (#2c7694 was 91 of that PNG's 254 opaque pixels; the flecks below are
    *  its next most common tone.) */
@@ -3013,9 +3022,9 @@ window.UI = window.UI || {};
 
   // --- Flowing water --------------------------------------------------
   // Rivers were, before this, the only water on the map that didn't move at
-  // all: ocean and coast tiles have animated since they were authored (see
-  // sprite-manifests.js's terrain/ocean and terrain/coast idle frames). A
-  // faint highlight slides downstream along each tile's own curve.
+  // all: ocean and coast tiles animated (first as sprite frames, now as the
+  // procedural waves of drawWaterTile). A faint highlight slides downstream
+  // along each tile's own curve.
   //
   // On the project's no-flashing rule (photosensitivity), the same reasoning
   // daynight.js's flickerWave sets out applies here:
@@ -3079,6 +3088,252 @@ window.UI = window.UI || {};
       ctx.stroke();
     }
     ctx.restore();
+  }
+
+  // --- Procedural ocean / coast waves ---------------------------------
+  // Water used to be a 64px sprite strip (2-4 frames at 2-4fps), which read
+  // as choppy and artificial: a handful of pre-drawn squiggles hopping from
+  // frame to frame, repeating identically on every tile. Now a flat base
+  // fill (TERRAIN[...].waterColor, sampled from that sprite's average so the
+  // water kept the hue it always had) with drifting wave lines drawn over
+  // it. The sprites themselves have been deleted.
+  //
+  // Every wave line is a pure function of WORLD position and time, never of
+  // the tile it happens to be drawn in -- so a crest running off one tile's
+  // edge picks up exactly where its neighbor's begins, and a whole sea reads
+  // as one surface instead of a grid of stamps. Each tile draws N horizontal
+  // lines (global line index R = y*N + k). A line's height is two summed sine
+  // swells; how much of it is visible at any point along its length is a
+  // separate, slower envelope, so a line shows as drifting crest streaks that
+  // swell and fade rather than as an unbroken stripe. Each line gets its own
+  // hashed phase and speed, so no two rows move in lockstep.
+  //
+  // Lines stay inside their own tile's vertical extent (spacing 1/N, with the
+  // total sine amplitude below half of that), so there is no clipping and no
+  // cross-tile draw-order to worry about.
+  //
+  // No-flashing rule (photosensitivity): nothing here ever switches on. Every
+  // brightness change is a sin() envelope with a period of ~10s or more
+  // (well under 0.1Hz), phases are hashed per line, and the peak alpha is
+  // low -- there is no synchronized or rapid luminance change anywhere.
+  //
+  // Each wave layer is drawn as N*SEGMENTS short segments whose alpha is
+  // quantized to WAVE_LEVELS steps and batched into one stroke per level, so
+  // a tile costs a handful of stroke() calls rather than one per segment.
+  const TAU = Math.PI * 2;
+  const WATER_WAVE_SEGMENTS = 8;
+  const WATER_WAVE_LEVELS = 8;
+  /** Below this tile size a wave line is sub-pixel thin and only shimmers;
+   *  the flat base fill alone reads better, and it is also where the most
+   *  water tiles are on screen at once. */
+  const WATER_WAVE_MIN_TS = 10;
+  const WATER_MAX_LINES = 5;
+  const WATER_CREST_TARGET = [224, 241, 250];
+  const WATER_SHADE_TARGET = [3, 14, 30];
+  const WATER_STYLES = {
+    // Open sea: long, low swells. Broad slow crests.
+    ocean: {
+      lines: 3,
+      // Gentle, long swell -- big amplitude over a short wavelength is what
+      // made the lines read as writhing snakes.
+      ampA: 0.028, freqA: 0.55, speedA: 0.085,
+      ampB: 0.007, freqB: 1.40, speedB: 0.120,
+      envFreq: 0.42, envSpeed: 0.070, envThreshold: 0.60,
+      crestMix: 0.42, crestAlpha: 0.34, crestWidth: 0.018,
+      shadeMix: 0.50, shadeAlpha: 0.16, shadeWidth: 0.030, shadeDrop: 0.028,
+      // The occasional breaking crest: only where a streak peaks.
+      whiteMix: 0.85, whiteAlpha: 0.55, whiteWidth: 0.030, whiteThreshold: 0.72,
+    },
+    // Shallows: shorter, tighter, lower ripples, a touch brighter.
+    coast: {
+      lines: 4,
+      ampA: 0.020, freqA: 0.80, speedA: 0.100,
+      ampB: 0.005, freqB: 1.90, speedB: 0.140,
+      envFreq: 0.55, envSpeed: 0.080, envThreshold: 0.58,
+      crestMix: 0.55, crestAlpha: 0.32, crestWidth: 0.016,
+      shadeMix: 0.40, shadeAlpha: 0.12, shadeWidth: 0.026, shadeDrop: 0.024,
+      whiteMix: 0.90, whiteAlpha: 0.50, whiteWidth: 0.026, whiteThreshold: 0.75,
+    },
+  };
+
+  // Scratch buffers, reused across tiles -- water is the most common tile
+  // on most maps, so this is hot enough to be worth not allocating per call.
+  const waterYs = new Float32Array(WATER_MAX_LINES * (WATER_WAVE_SEGMENTS + 1));
+  const waterLevels = new Uint8Array(WATER_MAX_LINES * WATER_WAVE_SEGMENTS);
+  const waterWhiteLevels = new Uint8Array(WATER_MAX_LINES * WATER_WAVE_SEGMENTS);
+  const waterPaletteCache = new Map();
+
+  function mixRgb(a, b, k) {
+    return `rgb(${Math.round(a[0] + (b[0] - a[0]) * k)},${Math.round(a[1] + (b[1] - a[1]) * k)},${Math.round(a[2] + (b[2] - a[2]) * k)})`;
+  }
+
+  /** Base / crest / shade colors for a water terrain, derived from
+   *  TERRAIN[...].waterColor (terrain.js) -- the sea's real surface color,
+   *  which is the hue the old sprite art had. Cached: terrain data never
+   *  changes mid-game. */
+  function waterPalette(terrainId) {
+    const cached = waterPaletteCache.get(terrainId);
+    if (cached) return cached;
+    const style = WATER_STYLES[terrainId] || WATER_STYLES.coast;
+    const hex = window.GameData.TERRAIN[terrainId].waterColor;
+    const rgb = [parseInt(hex.slice(1, 3), 16), parseInt(hex.slice(3, 5), 16), parseInt(hex.slice(5, 7), 16)];
+    const palette = {
+      base: `rgb(${rgb[0]},${rgb[1]},${rgb[2]})`,
+      crest: mixRgb(rgb, WATER_CREST_TARGET, style.crestMix),
+      shade: mixRgb(rgb, WATER_SHADE_TARGET, style.shadeMix),
+      white: mixRgb(rgb, WATER_CREST_TARGET, style.whiteMix),
+    };
+    waterPaletteCache.set(terrainId, palette);
+    return palette;
+  }
+
+  /** Strokes one layer of the wave lines already sampled into waterYs and
+   *  the given per-segment `levels` array: one batched stroke per alpha
+   *  level. `dropY` shifts the whole layer down (in tile units) -- how the
+   *  shade layer sits just under the crest layer. */
+  function strokeWaveLayer(ctx, screenX, screenY, ts, lines, levels, color, width, alphaMax, dropY) {
+    const S = WATER_WAVE_SEGMENTS, L = WATER_WAVE_LEVELS;
+    ctx.strokeStyle = color;
+    ctx.lineWidth = width;
+    for (let level = 1; level <= L; level++) {
+      let any = false;
+      ctx.beginPath();
+      for (let k = 0; k < lines; k++) {
+        let prev = -2;
+        for (let i = 0; i < S; i++) {
+          if (levels[k * S + i] !== level) continue;
+          const x0 = screenX + (i / S) * ts;
+          const x1 = screenX + ((i + 1) / S) * ts;
+          const y0 = screenY + (waterYs[k * (S + 1) + i] + dropY) * ts;
+          const y1 = screenY + (waterYs[k * (S + 1) + i + 1] + dropY) * ts;
+          // Continue the subpath when the previous segment was also drawn at
+          // this level, so a run of them joins instead of leaving a gap at
+          // each vertex.
+          if (prev !== i - 1) ctx.moveTo(x0, y0);
+          ctx.lineTo(x1, y1);
+          prev = i;
+          any = true;
+        }
+      }
+      if (any) {
+        ctx.globalAlpha = alphaMax * (level / L);
+        ctx.stroke();
+      }
+    }
+  }
+
+  // --- Weather's push on the sea ---------------------------------------
+  // Rain, and above all a storm, lean on the water: taller, choppier swell,
+  // more of every line showing, many more breaking crests, and everything
+  // moving faster. `wind` (0-1) is derived from weather.js's already-eased
+  // rain/storm values, so a squall builds and dies away over the same couple
+  // of seconds the rain itself does -- never a switch.
+  //
+  // Speed is applied to a wave clock that is INTEGRATED frame by frame
+  // (waterClock += dt * speedFactor), not to wall time. Scaling absolute
+  // time by a changing factor would shift every wave's phase by the whole
+  // elapsed session the instant the factor moved, i.e. every line on the
+  // map would jump at once as the weather changed. Integrating the rate
+  // keeps positions continuous: only the speed changes.
+  //
+  // Same no-flashing reasoning as the calm waves: every effect of wind is a
+  // continuous function of an eased 0-1 value, and the fastest things in the
+  // scene (the crest streaks, at full storm) still cross a tile in a second
+  // or more, with per-line phases so nothing brightens in unison.
+  /** Rain's share of wind; a storm supplies the rest. A drizzle stirs the
+   *  sea a little, a thunderstorm whips it. */
+  const WATER_WIND_FROM_RAIN = 0.35;
+  /** Extra wave-clock speed at full wind (1 + this). */
+  const WATER_WIND_SPEED_GAIN = 1.0;
+  let waterClock = 0;
+  let waterLastMs = null;
+
+  /** Once per frame: advances the wave clock and reads the wind. Returns
+   *  the `{ t, wind }` drawWaterTile takes, or a calm frozen frame under
+   *  reduced motion. */
+  function waterFrame(now) {
+    if (window.UI.motion && window.UI.motion.isReduced()) {
+      waterLastMs = null; // don't bank the paused time as one big step on resume
+      return { t: 0, wind: 0 };
+    }
+    const dt = waterLastMs === null ? 0 : Math.min(0.1, Math.max(0, (now - waterLastMs) / 1000));
+    waterLastMs = now;
+    const wx = window.UI.weather ? window.UI.weather.current() : null;
+    const wind = wx
+      ? Math.min(1, WATER_WIND_FROM_RAIN * (wx.rain || 0) + (1 - WATER_WIND_FROM_RAIN) * (wx.storm || 0))
+      : 0;
+    waterClock += dt * (1 + WATER_WIND_SPEED_GAIN * wind);
+    return { t: waterClock, wind };
+  }
+
+  /** Paints one ocean/coast tile: base fill plus wave lines. `fx` is the
+   *  frame's `{ t, wind }` from waterFrame, or null for a remembered
+   *  (fogged) tile, which shows the waves frozen and calm. */
+  function drawWaterTile(ctx, screenX, screenY, ts, terrainId, x, y, fx) {
+    const palette = waterPalette(terrainId);
+    ctx.fillStyle = palette.base;
+    // One px of overscan right/bottom. Water has no sprite over its fill to
+    // hide the antialiased edge a fractional device-pixel tile boundary
+    // (devicePixelRatio 1.25 etc.) leaves, which otherwise shows as a
+    // hairline between every water tile. Tiles draw left-to-right,
+    // top-to-bottom, so the neighbor's own fill covers the overscan.
+    ctx.fillRect(screenX, screenY, ts + 1, ts + 1);
+    if (ts < WATER_WAVE_MIN_TS) return;
+
+    const st = WATER_STYLES[terrainId] || WATER_STYLES.coast;
+    const N = st.lines, S = WATER_WAVE_SEGMENTS, L = WATER_WAVE_LEVELS;
+    const t = fx ? fx.t : 0;
+    const wind = fx ? fx.wind : 0;
+    // What wind does to each knob. Swell height is kept well inside half a
+    // line spacing (see the block comment above), so even the roughest sea
+    // never leaves its tile or crosses a neighboring line.
+    const ampA = st.ampA * (1 + 1.6 * wind);
+    const ampB = st.ampB * (1 + 3.5 * wind); // the fast short chop grows most
+    const envThreshold = st.envThreshold - 0.24 * wind; // more of each line shows
+    const whiteThreshold = st.whiteThreshold - 0.34 * wind; // far more breaking crests
+    const crestAlpha = st.crestAlpha * (1 + 0.5 * wind);
+    const shadeAlpha = st.shadeAlpha * (1 + 0.5 * wind);
+    const whiteAlpha = Math.min(0.85, st.whiteAlpha * (1 + 0.4 * wind));
+    const widthMul = 1 + 0.7 * wind;
+
+    for (let k = 0; k < N; k++) {
+      const R = y * N + k; // global line index -- what makes phases world-space
+      const pA = riverHash(R, 0, 101) * TAU;
+      const pB = riverHash(R, 0, 102) * TAU;
+      const pE = riverHash(R, 0, 103) * TAU;
+      const pE2 = riverHash(R, 0, 105) * TAU;
+      const rate = 0.75 + riverHash(R, 0, 104) * 0.5; // per-line speed, so rows never move in lockstep
+      const yBase = (k + 0.5) / N;
+      for (let i = 0; i <= S; i++) {
+        const wx = x + i / S;
+        waterYs[k * (S + 1) + i] = yBase
+          + ampA * Math.sin(TAU * (wx * st.freqA - t * st.speedA * rate) + pA)
+          + ampB * Math.sin(TAU * (wx * st.freqB + t * st.speedB * rate) + pB);
+      }
+      for (let i = 0; i < S; i++) {
+        const wxm = x + (i + 0.5) / S;
+        const env = 0.5 + 0.5 * (
+          0.72 * Math.sin(TAU * (wxm * st.envFreq - t * st.envSpeed * rate) + pE)
+          + 0.28 * Math.sin(TAU * (wxm * st.envFreq * 2.3 + t * st.envSpeed * 0.7) + pE2));
+        const e = (env - envThreshold) / (1 - envThreshold);
+        waterLevels[k * S + i] = e <= 0 ? 0 : Math.min(L, Math.ceil(e * L));
+        // Breaking crest: only the peak of a streak, so in calm water it is
+        // a rare, short, brighter dash -- not a property of every line.
+        const cr = (e - whiteThreshold) / (1 - whiteThreshold);
+        waterWhiteLevels[k * S + i] = cr <= 0 ? 0 : Math.min(L, Math.ceil(cr * L));
+      }
+    }
+
+    const prevAlpha = ctx.globalAlpha;
+    ctx.lineCap = "butt";
+    ctx.lineJoin = "round";
+    strokeWaveLayer(ctx, screenX, screenY, ts, N, waterLevels, palette.shade,
+      Math.max(1, ts * st.shadeWidth * widthMul), shadeAlpha * prevAlpha, st.shadeDrop);
+    strokeWaveLayer(ctx, screenX, screenY, ts, N, waterLevels, palette.crest,
+      Math.max(0.75, ts * st.crestWidth * widthMul), crestAlpha * prevAlpha, 0);
+    strokeWaveLayer(ctx, screenX, screenY, ts, N, waterWhiteLevels, palette.white,
+      Math.max(1, ts * st.whiteWidth * widthMul), whiteAlpha * prevAlpha, 0);
+    ctx.globalAlpha = prevAlpha;
   }
 
   // --- Shoreline overlay: same layer/rotate-at-draw-time technique as
@@ -3426,6 +3681,12 @@ window.UI = window.UI || {};
   const TERRAIN_AVERAGE_COLOR_CROP_FRACTION = 0.5;
 
   function getTerrainAverageColor(terrainId) {
+    // Water has no sprite any more (see drawWaterTile) -- its surface color
+    // is data, and is exactly what the old sprite average was sampled to.
+    const waterHex = window.GameData.TERRAIN[terrainId] && window.GameData.TERRAIN[terrainId].waterColor;
+    if (waterHex) {
+      return `rgb(${parseInt(waterHex.slice(1, 3), 16)}, ${parseInt(waterHex.slice(3, 5), 16)}, ${parseInt(waterHex.slice(5, 7), 16)})`;
+    }
     if (terrainAverageColorCache.has(terrainId)) return terrainAverageColorCache.get(terrainId);
     // No seed argument (not `null` -- pick()'s seed check is `typeof seed
     // === "object"`, which is true for null too, and would then try to
@@ -3680,25 +3941,31 @@ window.UI = window.UI || {};
 
     // Flat backing fill under the sprite, same seam-hiding reasoning as the
     // live render() terrain block above.
-    ctx.fillStyle = window.GameData.TERRAIN[snapshot.terrain].color;
-    ctx.fillRect(screenX, screenY, ts, ts);
-    const terrainSprite = window.UI.sprites.pick(terrainSpriteKey(snapshot, x, y, mapSeed), snapshot);
-    if (terrainSprite) {
-      if (isTallTerrainSprite(terrainSprite.manifest)) {
-        // Deferred + dimmed inline, same reasoning as the resource/ruin
-        // icons just below: deferring avoids the clipping problem, but
-        // skips the post-return dimming scrim, so the "stale memory" dim
-        // is applied by hand inside the closure instead.
-        const img = terrainSprite.image;
-        deferredIcons.push(() => {
-          const prevAlpha = ctx.globalAlpha;
-          ctx.globalAlpha = prevAlpha * 0.6;
-          drawTallTerrainSprite(ctx, img, screenX, screenY, ts);
-          ctx.globalAlpha = prevAlpha;
-        });
-      } else {
-        const f = window.UI.sprites.currentFrame(terrainSprite.manifest, "idle", snapshot);
-        ctx.drawImage(terrainSprite.image, f.sx, f.sy, f.sw, f.sh, screenX, screenY, ts, ts);
+    if (window.GameData.TERRAIN[snapshot.terrain].isWater) {
+      // No `now`: a remembered tile shows the waves frozen, same
+      // live-tiles-only motion rule as the river above.
+      drawWaterTile(ctx, screenX, screenY, ts, snapshot.terrain, x, y, null);
+    } else {
+      ctx.fillStyle = window.GameData.TERRAIN[snapshot.terrain].color;
+      ctx.fillRect(screenX, screenY, ts, ts);
+      const terrainSprite = window.UI.sprites.pick(terrainSpriteKey(snapshot, x, y, mapSeed), snapshot);
+      if (terrainSprite) {
+        if (isTallTerrainSprite(terrainSprite.manifest)) {
+          // Deferred + dimmed inline, same reasoning as the resource/ruin
+          // icons just below: deferring avoids the clipping problem, but
+          // skips the post-return dimming scrim, so the "stale memory" dim
+          // is applied by hand inside the closure instead.
+          const img = terrainSprite.image;
+          deferredIcons.push(() => {
+            const prevAlpha = ctx.globalAlpha;
+            ctx.globalAlpha = prevAlpha * 0.6;
+            drawTallTerrainSprite(ctx, img, screenX, screenY, ts);
+            ctx.globalAlpha = prevAlpha;
+          });
+        } else {
+          const f = window.UI.sprites.currentFrame(terrainSprite.manifest, "idle", snapshot);
+          ctx.drawImage(terrainSprite.image, f.sx, f.sy, f.sw, f.sh, screenX, screenY, ts, ts);
+        }
       }
     }
 
@@ -3909,7 +4176,7 @@ window.UI = window.UI || {};
 
   window.UI.render = {
     render, screenToTile, isTileOnScreen, tileCenterOnMap, fullVisibilitySet, getVisualPos,
-    drawRiverPreview,
+    drawRiverPreview, drawWaterTile,
     get TILE_SIZE() { return TILE_SIZE; },
     MIN_ZOOM, MAX_ZOOM,
   };

@@ -562,8 +562,11 @@ window.UI = window.UI || {};
       const startingUnitId = window.GameData.raceStartingUnitId(raceId);
       if (startingUnitId) criticalUnitIds.add(startingUnitId);
     }
+    // Water (ocean, coast) has no sprite -- it is drawn procedurally, see
+    // render.js's drawWaterTile.
     for (const id of Object.keys(window.GameData.TERRAIN))
-      critical.push(() => loadVariants(`terrain/${id}`, `assets/terrain/${id}`));
+      if (!window.GameData.TERRAIN[id].isWater)
+        critical.push(() => loadVariants(`terrain/${id}`, `assets/terrain/${id}`));
     // Dramatic tall/overhanging mountain peak art -- a separate pool from
     // terrain/mountains' flat tiles, only ever selected by render.js's own
     // eligibility+rarity roll for interior tiles of a large range (see
@@ -754,6 +757,7 @@ window.UI = window.UI || {};
   async function ensureTerrainArtLoaded() {
     const jobs = [];
     for (const id of Object.keys(window.GameData.TERRAIN)) {
+      if (window.GameData.TERRAIN[id].isWater) continue; // procedural, see preloadAll
       jobs.push(loadVariants(`terrain/${id}`, `assets/terrain/${id}`));
     }
     for (const id of window.GameData.RESOURCE_LIST) {

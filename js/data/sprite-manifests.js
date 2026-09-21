@@ -40,14 +40,9 @@ window.GameData.SPRITE_MANIFESTS = {
   },
   // terrain/desert, terrain/tundra: no entry — static single-frame tiles,
   // same fallback as mountains.
-  "terrain/coast": {
-    frameWidth: 64, frameHeight: 64, layout: "horizontal",
-    animations: { idle: { frames: [0, 1], fps: 2 } },
-  },
-  "terrain/ocean": {
-    frameWidth: 64, frameHeight: 64, layout: "horizontal",
-    animations: { idle: { frames: [0, 1, 2, 3], fps: 4 } },
-  },
+  // terrain/coast, terrain/ocean: no sprites -- water is procedural (see
+  // render.js's drawWaterTile), and its colors live in terrain.js's
+  // waterColor.
 
   // --- Units ---
   "unit/skeleton": {

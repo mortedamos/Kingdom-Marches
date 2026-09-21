@@ -1459,8 +1459,15 @@ window.UI = window.UI || {};
     // Flat color first, always -- it's what shows while the art loads, and
     // it's the same value render.js paints the tile with.
     if (baseTerrain) {
-      ctx.fillStyle = baseTerrain.color;
+      ctx.fillStyle = baseTerrain.waterColor || baseTerrain.color;
       ctx.fillRect(0, 0, canvas.width, canvas.height);
+    }
+    // Water has no sprite (it's drawn procedurally, see render.js's
+    // drawWaterTile), so it is painted here directly -- frozen calm, and
+    // synchronous, so there is no art to wait for or retry below.
+    const baseIsWater = !!(baseTerrain && baseTerrain.isWater);
+    if (baseIsWater) {
+      window.UI.render.drawWaterTile(ctx, 0, 0, Math.min(canvas.width, canvas.height), entry.baseTerrain, 0, 0, null);
     }
     const draw = (sprite) => {
       const f = window.UI.sprites.currentFrame(sprite.manifest, "idle", null);
@@ -1469,7 +1476,7 @@ window.UI = window.UI || {};
     // Ground layer. For a terrain entry this IS the entry; for an overlay
     // it's the tile underneath, without which the overlay would preview as
     // floating fragments on a flat color instead of on real ground.
-    const baseSprite = entry.baseTerrain ? window.UI.sprites.pick(`terrain/${entry.baseTerrain}`, null) : null;
+    const baseSprite = (entry.baseTerrain && !baseIsWater) ? window.UI.sprites.pick(`terrain/${entry.baseTerrain}`, null) : null;
     if (baseSprite) draw(baseSprite);
     // Overlay layer, when this entry is one (resource/ruin/cave/river/road).
     // An entry may supply either a spriteKey (a PNG to stamp) or an
@@ -1483,7 +1490,7 @@ window.UI = window.UI || {};
     // Retry only while something this entry actually wants is still absent
     // -- an entry with no overlay art at all (Bridge) must not schedule a
     // reload forever.
-    const stillMissing = !baseSprite || (isOverlay && !overlaySprite);
+    const stillMissing = (!baseSprite && !baseIsWater) || (isOverlay && !overlaySprite);
     // `terrainArtRetried` makes the reload strictly one-shot per canvas.
     // Without it, art that genuinely 404s would spin: the load settles,
     // this redraws, the sprite is STILL missing, and it schedules another
