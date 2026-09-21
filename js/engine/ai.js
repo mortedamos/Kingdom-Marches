@@ -10188,7 +10188,7 @@ window.GameEngine = window.GameEngine || {};
     // target search and just wander. A Hidden one's movement is already
     // halved by computeMovementBudget.
     if (baseUnit.harmless) {
-      wanderMonsterUnit(unit, map, civs);
+      if (!maybeTrowWanderTeleport(unit, gameState)) wanderMonsterUnit(unit, map, civs);
       return;
     }
     const visionRadius = baseUnit.visionRadius || 3;
@@ -10574,6 +10574,32 @@ window.GameEngine = window.GameEngine || {};
     if (prank) sfx("laugh", timeline.prankStart, attacker.x, attacker.y);
 
     window.GameEngine.deathFx.queueTrowSequence({ trow, from, to, escape, chest, prank });
+  }
+
+  /** An unbothered Trow's per-turn chance (cfg.wanderTeleportChance) to hop to
+   *  a random legal land tile anywhere on the map instead of wandering --
+   *  same tile rules as its spawn/escape teleport (collectTrowTiles). Instant
+   *  in state; render.js's move-glide is suppressed the same way onTrowStruck
+   *  does it, so a visible Trow just vanishes and reappears rather than
+   *  sliding across the map. Returns true if it teleported (its turn is
+   *  spent), false if the roll failed or no tile was free. */
+  function maybeTrowWanderTeleport(trow, gameState) {
+    if (!window.GameEngine.combat.isTrow(trow)) return false;
+    const cfg = window.GameConfig.worldEncounters.treasureTrow;
+    if (Math.random() >= cfg.wanderTeleportChance) return false;
+    const tiles = collectTrowTiles(gameState);
+    if (!tiles.length) return false;
+    const to = tiles[Math.floor(Math.random() * tiles.length)];
+    trow.x = to.x;
+    trow.y = to.y;
+    trow._lastLogicalX = to.x;
+    trow._lastLogicalY = to.y;
+    trow._renderX = to.x;
+    trow._renderY = to.y;
+    trow._animStart = 0;
+    trow.usedThisTurn = true;
+    trow.currentMission = "Teleporting";
+    return true;
   }
 
   /** Random nearby wander shared by every monster: picks a point within

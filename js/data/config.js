@@ -65,9 +65,9 @@ window.GameConfig = {
     /** Local date this build was cut, YYYY-MM-DD. */
     date: "2026-09-21",
     /** Local time this build was cut, 24-hour HH:MM. */
-    time: "19:44",
+    time: "19:57",
     /** Monotonic build counter -- increment it, don't recompute it. */
-    number: 326,
+    number: 327,
   },
 
   // =========================================================================
@@ -1126,6 +1126,9 @@ window.GameConfig = {
       teleportChance: 0.30,
       /** A teleporting Trow lands at least this many tiles from its attacker. */
       teleportMinDistance: 8,
+      /** Chance each turn that an unbothered, wandering Trow instead teleports
+       *  to a random legal land tile anywhere on the map (2026-09-21). */
+      wanderTeleportChance: 0.03,
       /** A running Trow flees up to this many tiles away from its attacker. */
       fleeDistance: 4,
       /** When struck: chance it also plays a trick on the attacker (curse,
