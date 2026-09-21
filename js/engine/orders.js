@@ -897,10 +897,12 @@ window.GameEngine = window.GameEngine || {};
   function naturesGraceTargets(unit, gameState, humanCivId) {
     const civ = gameState.civs[unit.civId];
     if (!civ || unit.usedThisTurn) return [];
-    if (!civ.unlockedMechanics?.has("natures_grace")) return [];
+    // Items (The Amulet of Aesia): the bearer casts Nature's Grace whatever its type or tech.
+    const itemGrace = window.GameEngine.items.grantsAction(unit, "naturesGrace");
+    if (!itemGrace && !civ.unlockedMechanics?.has("natures_grace")) return [];
     // Shadowsteed carrying a Druid rider casts through the steed -- same
     // dispatch ai.js's runUnitTurn uses.
-    const casts = unit.typeId === "druid"
+    const casts = itemGrace || unit.typeId === "druid"
       || (unit.typeId === "shadowsteed" && unit.carries?.typeId === "druid");
     if (!casts) return [];
     const range = window.GameEngine.combat.effectiveRange(unit, civ);

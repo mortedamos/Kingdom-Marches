@@ -36,6 +36,7 @@ window.UI = window.UI || {};
   // hold/fade shape.
   const AREA_EFFECT_TIMING_OVERRIDES = {
     throw_a_party: { durationMs: 6000, flashInMs: 200 },
+    lightning: { durationMs: 850 }, // see drawLightningStrike
   };
   /** Total lifetime for one area effect -- its own override if it has one,
    *  else the shared default. */
@@ -192,7 +193,17 @@ window.UI = window.UI || {};
 
   function updateAreaEffects(now) {
     const newEvents = window.GameEngine.combat.drainAreaEffectEvents();
-    for (const evt of newEvents) activeAreaEffects.push({ ...evt, start: now });
+    for (const evt of newEvents) {
+      const effect = { ...evt, start: now };
+      if (evt.kind === "lightning") {
+        // Own fixed bolt shape per strike, and a strike that lands on a tile already being struck
+        // (a double strike) waits its turn so two flashes never overlap.
+        effect.seed = Math.random();
+        const queued = activeAreaEffects.filter((o) => o.kind === "lightning" && o.x === evt.x && o.y === evt.y).length;
+        effect.start = now + queued * LIGHTNING_STAGGER_MS;
+      }
+      activeAreaEffects.push(effect);
+    }
     if (activeAreaEffects.length) {
       activeAreaEffects = activeAreaEffects.filter((a) => now - a.start < areaEffectDuration(a));
     }
@@ -243,7 +254,6 @@ window.UI = window.UI || {};
     curse: { chars: ["💀", "🌀", "💜"], drift: -0.3 },
     blind: { chars: ["🌑", "🌫️", "🌑"], drift: -0.3 },
     befuddle: { chars: ["💫", "❓", "💫"], drift: -0.5 },
-    lightning: { chars: ["⚡", "✨", "⚡"], drift: -0.4 },
     dire_bear_transform: { chars: ["🐾", "🍂", "🐾"], drift: -0.3 },
     druid_revert: { chars: ["🍃", "✨", "🍃"], drift: -0.5 },
     // Halfellow "Throw a Party" confetti poof at the city tile -- fired a
@@ -318,7 +328,103 @@ window.UI = window.UI || {};
    *  screen itself and passes the resulting box straight in here. `lineW`
    *  is the effect's own local pixel scale (2D: real ts; 3D: localPixelScale
    *  at the effect's position) used to size the stroke consistently. */
+  // --- Lightning strike (The Arc of Lightning) ------------------------------
+  // A bright, jagged bolt that slams down from the sky into the target's tile, with a
+  // short local flash of light where it lands. SAFETY (see the no-flashing rule): the
+  // "flash" is one soft, local event, not a strobe -- the bolt's path is fixed for its
+  // whole life (a per-frame re-jitter would flicker), light fades IN over ~90ms and OUT
+  // over ~450ms, nothing covers the screen, peak opacity stays under 1 (the impact glow
+  // peaks at 0.55), and a second bolt on the same tile (a double strike) is delayed a
+  // clear quarter-second behind the first so two flashes are never on top of each other.
+  // Under reduced motion only the bolt line shows, dimmer, with no impact glow.
+  const LIGHTNING_MS = 850;
+  const LIGHTNING_STAGGER_MS = 260;
+  function lightningRand(seed) {
+    let s = (Math.floor(seed * 4294967295) >>> 0) || 1;
+    return () => { s = (Math.imul(s, 1664525) + 1013904223) >>> 0; return s / 4294967296; };
+  }
+  function drawLightningStrike(ctx, a, minX, minY, maxX, maxY, ts, now) {
+    const t = now - a.start;
+    if (t < 0 || t >= LIGHTNING_MS) return;
+    const reduced = !!(window.UI.motion && window.UI.motion.isReduced());
+    const cx = (minX + maxX) / 2;
+    const groundY = minY + (maxY - minY) * 0.62;
+    const skyY = groundY - ts * 6.5;
+    // Build the (fixed) jagged path from the sky down to the target.
+    const rand = lightningRand(a.seed || 0.5);
+    const pts = [{ x: cx + (rand() - 0.5) * ts * 0.9, y: skyY }];
+    const SEGS = 10;
+    for (let i = 1; i < SEGS; i++) {
+      const f = i / SEGS;
+      const spread = ts * 0.55 * (1 - f * 0.65);
+      pts.push({ x: cx + (rand() - 0.5) * 2 * spread, y: skyY + (groundY - skyY) * f });
+    }
+    pts.push({ x: cx, y: groundY });
+    // A couple of short forks that peel off the main path.
+    const forks = [];
+    for (const idx of [3, 6]) {
+      const p = pts[idx];
+      const dir = rand() < 0.5 ? -1 : 1;
+      forks.push([p, { x: p.x + dir * ts * (0.25 + rand() * 0.25), y: p.y + ts * (0.5 + rand() * 0.4) },
+        { x: p.x + dir * ts * (0.35 + rand() * 0.3), y: p.y + ts * (1.0 + rand() * 0.5) }]);
+    }
+    // Timeline: the bolt races down (0-90ms), holds bright, then fades out.
+    const strikeMs = 90, holdMs = 130;
+    const reveal = Math.min(1, t / strikeMs);
+    let bright = 1;
+    if (t > strikeMs + holdMs) {
+      const u = (t - strikeMs - holdMs) / (LIGHTNING_MS - strikeMs - holdMs);
+      bright = Math.max(0, 1 - u) ** 1.6;
+    }
+    const peak = reduced ? 0.45 : 0.95;
+    const trace = (path, upTo) => {
+      ctx.beginPath();
+      ctx.moveTo(path[0].x, path[0].y);
+      const last = path.length - 1;
+      const lim = upTo * last;
+      for (let i = 1; i <= last; i++) {
+        if (i <= lim) { ctx.lineTo(path[i].x, path[i].y); continue; }
+        const frac = lim - (i - 1);
+        if (frac > 0) ctx.lineTo(path[i - 1].x + (path[i].x - path[i - 1].x) * frac, path[i - 1].y + (path[i].y - path[i - 1].y) * frac);
+        break;
+      }
+    };
+    ctx.save();
+    ctx.lineJoin = "round";
+    ctx.lineCap = "round";
+    // Impact glow: a soft local bloom, eased in quickly and out slowly.
+    if (!reduced && reveal >= 1) {
+      const gt = t - strikeMs;
+      const glow = gt < 90 ? gt / 90 : Math.max(0, 1 - (gt - 90) / 450);
+      if (glow > 0) {
+        const r = ts * 1.15;
+        const g = ctx.createRadialGradient(cx, groundY, 0, cx, groundY, r);
+        g.addColorStop(0, `rgba(235,244,255,${(0.55 * glow).toFixed(3)})`);
+        g.addColorStop(0.45, `rgba(170,205,255,${(0.28 * glow).toFixed(3)})`);
+        g.addColorStop(1, "rgba(150,190,255,0)");
+        ctx.fillStyle = g;
+        ctx.fillRect(cx - r, groundY - r, r * 2, r * 2);
+      }
+    }
+    // Three passes: wide cool halo, bright mid-line, thin white core.
+    const passes = [
+      { w: ts * 0.20, color: "rgba(140,185,255,", a: 0.28 },
+      { w: ts * 0.085, color: "rgba(205,225,255,", a: 0.75 },
+      { w: Math.max(1.5, ts * 0.035), color: "rgba(255,255,255,", a: 1 },
+    ];
+    for (const pass of passes) {
+      ctx.strokeStyle = `${pass.color}${(pass.a * bright * peak).toFixed(3)})`;
+      ctx.lineWidth = pass.w;
+      trace(pts, reveal);
+      ctx.stroke();
+      ctx.lineWidth = pass.w * 0.6;
+      for (const f of forks) { trace(f, Math.max(0, (reveal * 1.4) - 0.4)); ctx.stroke(); }
+    }
+    ctx.restore();
+  }
+
   function drawAreaEffectBox(ctx, a, minX, minY, maxX, maxY, lineW, now) {
+    if (a.kind === "lightning") { drawLightningStrike(ctx, a, minX, minY, maxX, maxY, lineW, now); return; }
     const alpha = areaEffectAlpha(a, now);
     if (alpha == null) return;
     const color = AREA_EFFECT_COLORS[a.kind] || AREA_EFFECT_COLORS.default;

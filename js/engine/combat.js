@@ -801,7 +801,11 @@ window.GameEngine = window.GameEngine || {};
     // time -- see ai.js's BUILDING_UNIT_STAMPS.
     // itemStat: carried gear (Dwarven/Mythril Armor) -- see engine/items.js.
     let def = (baseUnit.defense + (ov.defense || 0) + (unit.levelBonuses?.defense || 0)
-      + (unit.buildingBonuses?.defense || 0) + window.GameEngine.items.itemStat(unit, "defense")) * (race.defenseMult || 1.0);
+      + (unit.buildingBonuses?.defense || 0) + window.GameEngine.items.itemStat(unit, "defense")
+      // Dwarf "Covetous Attunement": +defense while carrying any item (once, not per item).
+      + (civ.raceId === "dwarf" && civ.unlockedMechanics && civ.unlockedMechanics.has("covetous_attunement")
+          && Object.keys(window.GameEngine.items.itemsOf(unit)).length
+        ? window.GameConfig.combat.covetousAttunementDefense : 0)) * (race.defenseMult || 1.0);
 
     // Undead "Zombie": same reduced-stats condition as effectiveAttack above.
     if (unit.conditions?.zombie) def *= unit.conditions.zombie.statMult;

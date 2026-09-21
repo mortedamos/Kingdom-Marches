@@ -1407,6 +1407,10 @@
           renderKnowledgeOverlay();
         };
       }
+      // "Open the Items article" link on the Treasure page's Items entry.
+      for (const link of content.querySelectorAll("[data-kb-goto]")) {
+        link.onclick = () => openKnowledge(link.dataset.kbGoto);
+      }
     } else if (knowledgeView === "terrain") {
       // Terrain page (2026-08-31, user-directed): every terrain type plus
       // the resource/ruin/cave/river/road/bridge layers that sit on one.

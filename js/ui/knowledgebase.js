@@ -953,7 +953,7 @@ window.UI = window.UI || {};
       description: "Instantly moves the Wizard itself, or a currently-adjacent ally, to any unoccupied, already-explored tile of any terrain. The teleported unit has a 50% chance to land Befuddled for 1 turn from the disorientation. Costs the Wizard's whole turn; the target's turn is also spent if it isn't the Wizard itself.",
     },
     {
-      key: "naturesGrace", label: "Nature's Grace", icon: "💚", restriction: "Elf — Druid",
+      key: "naturesGrace", label: "Nature's Grace", icon: "💚", restriction: "Elf — Druid (or an item: The Amulet of Aesia)",
       description: "Heals a chosen ally within the Druid's own attack range for a random 30%-60% of that ally's max HP (minimum 1). Costs the Druid's whole turn, no exhaustion afterward.",
     },
     {
@@ -1518,13 +1518,16 @@ window.UI = window.UI || {};
     masterBuilder: { label: "Master Builder's Plans", icon: "📐", description: "Halves the remaining turns (minimum 1) on the nearest of your cities that is building something. Only appears when a city has a build in progress with more than 1 turn left." },
     banner: { label: "Banner of the Kingdom", icon: "🚩", description: "Permanently grows the influence radius of the nearest city by 1. Each city can only ever have one Banner." },
     trowFiddle: { label: "Trow's Fiddle", icon: "🎻", description: "For 3 turns, shows where every Treasure Trow on the map is, even through fog. Only appears while a Trow exists, and only for a human player." },
-    feather: { label: "Feather of Flying", icon: "🪶", description: "An item: the bearer can fly, crossing water and mountains and dodging melee attacks like any flying unit. Not offered to a unit that can already fly, or to machines. If its bearer dies in battle it may be dropped for anyone to Pick Up." },
-    cloak: { label: "Cloak of Hiding", icon: "🧥", description: "An item: the bearer can go Hidden under the usual Hidden rules. Not offered to a unit that can already hide, or to machines. May be dropped if its bearer dies in battle." },
-    boots: { label: "Boots of Sprinting", icon: "🥾", description: "An item: +1 movement for the bearer. A unit carries at most one pair, and machines cannot wear them. May be dropped if its bearer dies in battle." },
-    lucky_rock: { label: "Lucky Rock", icon: "🪨", description: "An item: the bearer opens chests with a 20% better chance of an extra treasure and 50% more resources, finds treasure in Ruin delves 20% more often, meets a trapped chest half as often, and has a 50% chance to shrug off each negative condition. A unit carries at most one, and machines cannot hold it." },
     tome: { label: "Veteran's Tome", icon: "🎓", description: "An instant level-up for the unit that found it. Not offered to a unit at maximum level." },
     lostKnowledge: { label: "Lost Knowledge", icon: "📚", description: "Completes your current research at once; with nothing being researched, grants a random available advancement for free." },
-    giltmaw: { label: "Giltmaw", icon: "🧰", description: "A mimic! The chest sprouts teeth and a Giltmaw attacks from an adjacent tile, replacing the chest's whole contents. Slay it and it always drops a chest holding double the treasure. Only appears where the Max Monsters limit allows another monster." },
+    giltmaw: { label: "Giltmaw", icon: "🧰", description: "The chest sprouts teeth and a Giltmaw attacks from an adjacent tile, replacing the chest's whole contents. Slay it and it always drops a chest holding double the treasure. Only appears where the Max Monsters limit allows another monster." },
+  };
+  // Gear a chest can hold is not listed one by one here -- it has its own Items page. One
+  // "Items" entry stands in for every item-type treasure (the config ids that are also
+  // in GameData.ITEMS), shown in the tier those items are drawn from.
+  const TREASURE_ITEMS_ENTRY = {
+    label: "Items", icon: "🎒",
+    description: "Some treasure is a piece of gear. A chest can hold an item, and so can the treasure found in a Ruin delve or the chest a Giltmaw or Treasure Trow drops (those can even hold a Unique Item, of which only one exists in the world at a time). The unit that finds it carries it for good: it gives bonuses or new abilities, can be dropped when its bearer falls in battle, and can be picked up by any unit. Machines cannot carry items. See the Items article for every item.",
   };
   const TREASURE_TIER_LABEL = { common: "Common", uncommon: "Uncommon", rare: "Rare" };
 
@@ -1533,11 +1536,13 @@ window.UI = window.UI || {};
   function renderTreasureListHtml(selectedKey) {
     const cfg = treasureCfg();
     return ["common", "uncommon", "rare"].map((tier) => {
-      const ids = Object.keys(cfg.treasures).filter((id) => cfg.treasures[id] === tier && TREASURE_INFO[id]);
+      const tierIds = Object.keys(cfg.treasures).filter((id) => cfg.treasures[id] === tier);
+      const ids = tierIds.filter((id) => TREASURE_INFO[id] && !window.GameData.ITEMS[id]);
+      if (tierIds.some((id) => window.GameData.ITEMS[id])) ids.push("items");
       return `<div class="kb-list-group">
         <div class="kb-list-group-label">${TREASURE_TIER_LABEL[tier]}</div>
         ${ids.map((id) => {
-          const t = TREASURE_INFO[id];
+          const t = id === "items" ? TREASURE_ITEMS_ENTRY : TREASURE_INFO[id];
           const selected = id === selectedKey ? " kb-list-btn-selected" : "";
           return `<button class="kb-list-btn${selected}" data-treasure-id="${escapeHtml(id)}">
             <span class="kb-list-btn-symbol">${t.icon}</span><span>${escapeHtml(t.label)}</span></button>`;
@@ -1547,9 +1552,19 @@ window.UI = window.UI || {};
   }
 
   function renderTreasureProfileHtml(selectedKey) {
+    if (selectedKey === "items") {
+      return `
+      <div class="kb-profile-header">
+        <div class="kb-condition-profile-icon">${TREASURE_ITEMS_ENTRY.icon}</div>
+        <div><h2>${escapeHtml(TREASURE_ITEMS_ENTRY.label)}</h2></div>
+      </div>
+      <div class="kb-chip-row"><span class="kb-chip">Rare</span></div>
+      <div class="kb-condition-profile-desc">${escapeHtml(TREASURE_ITEMS_ENTRY.description)}</div>
+      <p><button class="tile-link" data-kb-goto="items">Open the Items article</button></p>`;
+    }
     const t = TREASURE_INFO[selectedKey];
     const cfg = treasureCfg();
-    if (!t || !cfg.treasures[selectedKey]) {
+    if (!t || !cfg.treasures[selectedKey] || window.GameData.ITEMS[selectedKey]) {
       return `<div class="kb-profile-empty">Select a treasure on the left to see what it does. A chest holds 1 treasure (65%), 2 (27%) or 3 (8%), drawn by rarity; a trap may spring first, but the treasure is still yours. Ruin delves and the chests of a Giltmaw or Treasure Trow can also yield a Unique Item -- see the Items page.</div>`;
     }
     return `
@@ -1576,16 +1591,23 @@ window.UI = window.UI || {};
   // table the game reads its bonuses from). Shows the item's picture (the same
   // sprite it has on the ground), what it does, where it comes from and the
   // rules that apply to all of them.
+  // Rarity headers for the Items page: unique items are "Legendary"; everything else
+  // declares its own `rarity` in data/items.js.
+  const ITEM_RARITY_ORDER = ["uncommon", "rare", "legendary"];
+  const ITEM_RARITY_LABEL = { common: "Common", uncommon: "Uncommon", rare: "Rare", legendary: "Legendary" };
+  function itemRarity(d) { return d.unique ? "legendary" : (d.rarity || "common"); }
+
   function renderItemListHtml(selectedKey) {
     const defs = window.GameData.ITEMS;
-    return `<div class="kb-list-group">
-      <div class="kb-list-group-label">Items</div>
-      ${Object.entries(defs).map(([id, d]) => {
+    const rarities = ["common", ...ITEM_RARITY_ORDER].filter((r) => Object.values(defs).some((d) => itemRarity(d) === r));
+    return rarities.map((rarity) => `<div class="kb-list-group">
+      <div class="kb-list-group-label">${ITEM_RARITY_LABEL[rarity]}</div>
+      ${Object.entries(defs).filter(([, d]) => itemRarity(d) === rarity).map(([id, d]) => {
         const selected = id === selectedKey ? " kb-list-btn-selected" : "";
         return `<button class="kb-list-btn${selected}" data-item-id="${escapeHtml(id)}">
           <span class="kb-list-btn-symbol">${d.icon}</span><span>${escapeHtml(d.label)}</span></button>`;
       }).join("")}
-    </div>`;
+    </div>`).join("");
   }
 
   function renderItemProfileHtml(selectedKey) {
@@ -1601,7 +1623,7 @@ window.UI = window.UI || {};
           alt="" onerror="this.replaceWith(Object.assign(document.createElement('div'),{className:'kb-condition-profile-icon',textContent:'${d.icon}'}))">
         <div><h2>${escapeHtml(d.label)}</h2></div>
       </div>
-      <div class="kb-chip-row"><span class="kb-chip">${d.unique ? "Unique Item" : "Item"}</span></div>
+      <div class="kb-chip-row"><span class="kb-chip">${ITEM_RARITY_LABEL[itemRarity(d)]}</span>${d.unique ? `<span class="kb-chip">Unique</span>` : ""}</div>
       <div class="kb-condition-profile-desc">${escapeHtml(d.text)}</div>
       <h3>Where it comes from</h3>
       <div class="kb-condition-profile-desc">${escapeHtml(d.source)}.</div>

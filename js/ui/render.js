@@ -15,6 +15,8 @@ window.UI = window.UI || {};
   // meant to read as 100% zoom, so the intended default is baked into
   // TILE_SIZE itself rather than shipped as a zoomLevel > 1 default.
   const TILE_SIZE = window.GameConfig.view.tileSize;
+  // Unit types whose art has been requested lazily (see the unit draw loop) -- once each.
+  const requestedUnitArt = new Set();
   const MIN_ZOOM = window.GameConfig.view.minZoom;
   const MAX_ZOOM = window.GameConfig.view.maxZoom;
   const RUIN_ICON_SCALE = .75; // ruins read as a little bigger than a tile-fill resource icon (see per-resource iconScale in terrain.js)
@@ -1340,6 +1342,13 @@ window.UI = window.UI || {};
       const initial = (baseUnit.label || "?").charAt(0).toUpperCase();
       const pad = ts * 0.11;
       const unitSprite = window.UI.sprites.pickUnit(unit.typeId, race.id, unit);
+      // A unit wearing another creature's body (an item shapeshift, e.g. a Human turned
+      // Dire Wolf) can be a type whose art was never preloaded for this game's races --
+      // load it on first sight; the next frames pick it up instead of the letter tile.
+      if (!unitSprite && window.UI.sprites.ensureUnitLoaded && !requestedUnitArt.has(unit.typeId)) {
+        requestedUnitArt.add(unit.typeId);
+        window.UI.sprites.ensureUnitLoaded(unit.typeId, race.id);
+      }
 
       // "bigger" scales the drawn box up around its bottom-center anchor --
       // the tile's normal bottom-inset stays fixed, extra size grows upward

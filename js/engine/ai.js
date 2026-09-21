@@ -4921,14 +4921,15 @@ window.GameEngine = window.GameEngine || {};
     //   Dwarf Deep Forge ("Forgecraft")            -> Dwarven Hammer (+1 attack),
     //                                                 military units only
     //   Elf Silverleaf Atelier                     -> Mythril Armor (+1 defense)
-    //   Dwarf "Runeforged Armory", any city        -> Dwarven Armor (+1 defense, +1 attack),
+    //   Dwarf "Runeforged Armory" + a Deep Forge   -> Dwarven Armor (+1 defense, +1 attack),
     //                                                 military units only
     if (civ) {
       const isMilitary = window.GameData.getUnit(newUnit.typeId).category === "military";
       if (isMilitary && cities.cityHasStructure(city, "deep_forge")) window.GameEngine.items.giveItem(newUnit, civ, "dwarven_hammer");
       if (cities.cityHasStructure(city, "silverleaf_atelier")) window.GameEngine.items.giveItem(newUnit, civ, "mythril_armor");
+      // Runeforged Armory (a building-category tech) only works through a Deep Forge.
       if (civ.raceId === "dwarf" && civ.unlockedMechanics && civ.unlockedMechanics.has("runeforged_armory")
-          && isMilitary) {
+          && isMilitary && cities.cityHasStructure(city, "deep_forge")) {
         window.GameEngine.items.giveItem(newUnit, civ, "dwarven_armor");
       }
     }
@@ -6809,6 +6810,62 @@ window.GameEngine = window.GameEngine || {};
     }
   }
 
+  /**
+   * WEATHER HAZARDS (turns.js beginRound, once per round; tuning in config.js's
+   * worldEncounters.weatherHazards). Weather is the seed-derived forecast plus any forced
+   * Thunderstorm (turns.currentWeather):
+   *   - RAIN or STORM: every burning unit, building, wall and bridge has a chance
+   *     (extinguishChance, 25%) to be doused and lose Burning. Done first, so a fire a
+   *     bolt is about to start isn't put out the same round.
+   *   - STORM: one random tile anywhere on the map is struck by lightning (the same bolt
+   *     the Arc of Lightning draws). Every unit on it takes flat damage, ignoring defense;
+   *     any building/wall/bridge on it is set Burning. Cities themselves are unaffected
+   *     (Burning never applies to a city -- see turns.js's tickBurningDamage).
+   */
+  function tickStormAndRain(gameState) {
+    const weather = window.GameEngine.turns.currentWeather(gameState);
+    if (!weather.raining && !weather.storming) return;
+    currentTurnNumber = gameState.turnNumber || 0;
+    currentGameStateRef = gameState;
+    const cfg = window.GameConfig.worldEncounters.weatherHazards;
+    const { map, civs } = gameState;
+    const floating = window.GameEngine.floatingText;
+
+    // 1. Rain douses fires.
+    for (const civ of Object.values(civs)) {
+      for (const unit of civ.units) {
+        if (unit.conditions && unit.conditions.burning && Math.random() < cfg.extinguishChance) {
+          delete unit.conditions.burning;
+          floating.spawnFloatingText(unit, "Fire doused", "aura");
+        }
+      }
+      const structures = civ.cities.flatMap((c) => c.structures).concat(civ.bridges || []);
+      for (const s of structures) {
+        if (s.burning && Math.random() < cfg.extinguishChance) {
+          delete s.burning;
+          floating.spawnFloatingText(s, "Fire doused", "aura");
+        }
+      }
+    }
+
+    // 2. A storm throws one bolt at a random tile.
+    if (!weather.storming) return;
+    const x = Math.floor(Math.random() * map.width), y = Math.floor(Math.random() * map.height);
+    window.GameEngine.combat.spawnAreaEffect(x, y, 0, "lightning");
+    for (const civ of Object.values(civs)) {
+      for (const unit of civ.units.slice()) {
+        if (unit.x !== x || unit.y !== y || unit.carriedBy) continue;
+        unit.hp -= cfg.lightningDamage;
+        floating.spawnFloatingText(unit, `-${cfg.lightningDamage} (Lightning)`, "warning");
+        if (unit.hp <= 0) otherCivRemoveDeadUnit(civs, unit, null);
+      }
+      const structures = civ.cities.flatMap((c) => c.structures).concat(civ.bridges || []);
+      for (const s of structures) {
+        if (s.x === x && s.y === y && s.hp > 0) applyBurning(s, "structure", gameState);
+      }
+    }
+  }
+
   const FLIGHT_DURATION = 5;
   const FLIGHT_MOVE_BONUS = 3;
   const FLIGHT_VISION_BONUS = 3;
@@ -8240,7 +8297,7 @@ window.GameEngine = window.GameEngine || {};
     // see overlays.js's AREA_EFFECT_GLYPHS. sfx is keyed to "druid"
     // regardless of caster.typeId -- it's the Druid's own magic even when
     // channeled through a mounted Shadowsteed (see describeUnit(caster) above).
-    window.SfxSystem.playAction(civ.raceId, "druid", "heal", target.x, target.y);
+    window.SfxSystem.playAction("elf", "druid", "heal", target.x, target.y); // the Druid's clip, even when an item grants the spell to another race
     window.GameEngine.combat.spawnAreaEffect(target.x, target.y, 0, "natures_grace");
     caster.usedThisTurn = true;
     caster.currentMission = `Restored health to ${describeUnit(target)} at (${target.x},${target.y})`;
@@ -10973,6 +11030,8 @@ window.GameEngine = window.GameEngine || {};
       if (has("teleport") && attemptWizardTeleport(civ, unit, gameState, log)) return true;
       if (has("goHidden") && attemptWizardInvisibility(civ, unit, gameState, log)) return true;
     }
+    // Support: heal the most hurt ally in reach (The Amulet of Aesia).
+    if (has("naturesGrace") && maybeNaturesGrace(civ, unit, gameState, log)) return true;
     // Offensive spells.
     if (has("fireball") && maybeFireballStrike(civ, unit, gameState, log)) return true;
     if (has("whirlwindStrike")
@@ -16442,6 +16501,7 @@ window.GameEngine = window.GameEngine || {};
     openTreasureChest,
     rollChestTreasures,
     applyItemCombatEffects,
+    tickStormAndRain,
     maybeSpawnDeathChest,
     shapeshift, revertShape, tickForms, cancelForm, raptorFlyTargets, castRaptorFly, performPlayerCastRaptorFly,
     performItemBearForm, performItemWolfForm, performItemWolfSummon, performItemShadowsteedSummon, performItemSummon, liveItemSummon, performItemThunderstorm, performPlayerItemAction, liveItemWolf,

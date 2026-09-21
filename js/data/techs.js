@@ -492,6 +492,13 @@ window.GameData.TECHS = {
     costBreakdown: { lore: 38, coin: 17 },
     effects: [{ type: "replace_unit", from: "catapult", to: "trebuchet" }],
   },
+  arcane_studies: {
+    id: "arcane_studies", label: "Arcane Studies", category: "mystic", layer: 3, cost: 52,
+    prereqs: ["mage_college_tech"], raceOnly: "human",
+    description: "A Wizard delving a Ruin has a 25% higher chance to find treasure, and that treasure has a 15% higher chance to contain a unique magic item. The Wizard also earns 50% more lore from the delve.",
+    costBreakdown: { lore: 36, coin: 16 },
+    effects: [{ type: "unlock_mechanic", mechanic: "arcane_studies" }],
+  },
   battle_mage: {
     id: "battle_mage", label: "Battle Mage", category: "mystic", layer: 3, cost: 55,
     prereqs: ["mage_college_tech"], raceOnly: "human",
@@ -1245,13 +1252,20 @@ window.GameData.TECHS = {
     effects: [{ type: "unlock_mechanic", mechanic: "shieldwall" }],
   },
   dwarf_runeforged_armory: {
-    id: "dwarf_runeforged_armory", label: "Runeforged Armory", category: "military", layer: 3, cost: 52,
+    id: "dwarf_runeforged_armory", label: "Runeforged Armory", category: "building", layer: 3, cost: 52,
     prereqs: ["dwarf_runecraft"], raceOnly: "dwarf",
-    description: "All new Dwarf military units are issued Dwarven Armor (+1 defense, +1 attack), an item they carry and can lose or pass on. Machines such as the Runeforged Titan cannot wear it.",
+    description: "Dwarf military units built in a city with a Deep Forge are also issued Dwarven Armor (+1 defense, +1 attack), an item they carry and can lose or pass on. Machines such as the Runeforged Titan cannot wear it.",
     costBreakdown: { coin: 34, lore: 18 },
     // 2026-09-21, user-directed: was a flat unit_stat_upgrade on every Dwarf unit. Now a
     // mechanic read by ai.js's applyBuildingUnitStamps, which hands each NEW unit the item.
     effects: [{ type: "unlock_mechanic", mechanic: "runeforged_armory" }],
+  },
+  dwarf_covetous_attunement: {
+    id: "dwarf_covetous_attunement", label: "Covetous Attunement", category: "mystic", layer: 3, cost: 50,
+    prereqs: ["dwarf_runeforged_armory"], raceOnly: "dwarf",
+    description: "A Dwarf unit carrying an item gains +1 defense (once, however many items it carries).",
+    costBreakdown: { lore: 34, coin: 16 },
+    effects: [{ type: "unlock_mechanic", mechanic: "covetous_attunement" }],
   },
   dwarf_stonebreaker: {
     id: "dwarf_stonebreaker", label: "Stonebreaker", category: "military", layer: 3, cost: 42,

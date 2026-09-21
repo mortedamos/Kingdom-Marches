@@ -919,6 +919,9 @@ window.GameEngine = window.GameEngine || {};
     // Same idea, separate queue -- see scheduleRuinRespawn/
     // processRuinRespawns's own doc comment for why.
     processRuinRespawns(gameState);
+    // Rain douses fires; a storm strikes one random tile with lightning -- see ai.js's
+    // tickStormAndRain.
+    window.GameEngine.ai.tickStormAndRain(gameState);
 
     // Wandering Monsters (see doc/world_encounters_design.md): at most one
     // spawn roll per round. Lazily creates the "MONSTERS" pseudo-civ the
@@ -1298,7 +1301,10 @@ window.GameEngine = window.GameEngine || {};
         // Accumulates instead of paying out directly -- see
         // accumulateChannelStash's doc comment above. 3x payout (2026-08-17,
         // user-directed, applies to every prospecting/gathering action).
-        accumulateChannelStash(unit, { coin: 9 * marketcraftMult, lore: 9 * marketcraftMult });
+        // Human "Arcane Studies": a WIZARD's delve pays 50% more lore (coin unchanged).
+        const arcane = unit.typeId === "wizard" && civ.unlockedMechanics.has("arcane_studies");
+        const arcaneCfg = window.GameConfig.worldEncounters.arcaneStudies;
+        accumulateChannelStash(unit, { coin: 9 * marketcraftMult, lore: 9 * marketcraftMult * (arcane ? arcaneCfg.loreMult : 1) });
         // Gathering XP (2026-08-31, user-directed): 1 per round for every
         // gathering channel, not just this one -- see config.js's
         // leveling.xpPerGatheringRound doc comment.
@@ -1316,10 +1322,14 @@ window.GameEngine = window.GameEngine || {};
           tile._delveMonsterRolled = true;
           window.GameEngine.ai.triggerRuinMonsterEncounter(civ, unit, gameState, ruinLog);
         }
-        if (!tile._delveTreasureRolled && Math.random() < ruinCfg.treasureFindChance * window.GameEngine.items.itemLuck(unit).delveMult) {
+        // Arcane Studies (Human wizard): 25% better odds of a treasure find, and that find is
+        // 15% likelier to include a unique item (both multiplicative, like Lucky Rock).
+        const findMult = arcane ? arcaneCfg.treasureFindMult : 1;
+        const uniqueMult = arcane ? arcaneCfg.uniqueChanceMult : 1;
+        if (!tile._delveTreasureRolled && Math.random() < ruinCfg.treasureFindChance * window.GameEngine.items.itemLuck(unit).delveMult * findMult) {
           tile._delveTreasureRolled = true;
           ruinLog.push(`Ruin: ${civ.id}'s ${unit.name || unit.typeId} finds treasure while delving at (${unit.x},${unit.y})`);
-          const treasureResult = window.GameEngine.ai.grantMonsterKillReward(civ, unit, gameState, { uniqueChance: ruinCfg.uniqueItemChance });
+          const treasureResult = window.GameEngine.ai.grantMonsterKillReward(civ, unit, gameState, { uniqueChance: ruinCfg.uniqueItemChance * uniqueMult });
           // Modal for the human player -- see main.js's
           // offerNextTreasureNotice/queueTreasureNotice's own doc comment
           // for why this is set unconditionally for every civ.

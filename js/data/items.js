@@ -26,7 +26,7 @@
  *            (`when: "dark"` = only in the dark window); onCounter is the same
  *            for the bearer's landed counterattacks (ai.js applyItemCombatEffects)
  *   actions  [action ids] ring actions the bearer gets regardless of unit type or
- *            tech: fireball, whirlwindStrike, teleport, goHidden, thunderstorm,
+ *            tech: fireball, whirlwindStrike, teleport, goHidden, thunderstorm, naturesGrace,
  *            direBearForm, castRaptorFly, wolfForm, summonDireWolf, summonShadowsteed, riddle
  *            (GameEngine.items.grantsAction)
  *   bolt     { damageMult, min } extra lightning damage after every landed hit the
@@ -38,6 +38,8 @@
  *   flags    { fullCounter, flames, grow, umbral, seesHidden, riddleStrike } one-off rules
  *   luck     { extraTreasureChance, delveMult, trapMult, conditionResist,
  *            resourceMult } treasure/affliction modifiers (Lucky Rock)
+ *   rarity   "common" | "uncommon" | "rare" -- the Knowledge Base groups items under it. Unique
+ *            items need none: they are always "Legendary".
  *   unique   optional. true = only ONE copy of this item may exist in the world at
  *            a time (carried, on the ground or in a chest). Unique items are never
  *            given by tech grants or ordinary chests; they turn up only as a bonus
@@ -60,17 +62,17 @@ window.GameData = window.GameData || {};
 const UNIQUE_SOURCE = "Unique -- Ruin delve treasure, or the chest of a Giltmaw or Treasure Trow";
 
 window.GameData.ITEMS = {
-  feather: { label: "Feather of Flying", icon: "🪶", effect: "flight", bonuses: {},
+  feather: { rarity: "rare", label: "Feather of Flying", icon: "🪶", effect: "flight", bonuses: {},
     text: "The bearer can fly: it crosses water and mountains and dodges melee attacks.", source: "Treasure Chest (rare)" },
-  cloak: { label: "Cloak of Hiding", icon: "🧥", effect: "hide", bonuses: {},
+  cloak: { rarity: "rare", label: "Cloak of Hiding", icon: "🧥", effect: "hide", bonuses: {},
     text: "The bearer can go Hidden, under the usual Hidden rules.", source: "Treasure Chest (rare)" },
-  boots: { label: "Boots of Sprinting", icon: "🥾", bonuses: { movement: 1 },
+  boots: { rarity: "rare", label: "Boots of Sprinting", icon: "🥾", bonuses: { movement: 1 },
     text: "+1 movement.", source: "Treasure Chest (rare)" },
-  dwarven_hammer: { label: "Dwarven Hammer", icon: "🔨", bonuses: { attack: 1 },
+  dwarven_hammer: { rarity: "uncommon", label: "Dwarven Hammer", icon: "🔨", bonuses: { attack: 1 },
     text: "+1 attack.", source: "Dwarf military units built in a city with a Deep Forge (Forgecraft)" },
-  dwarven_armor: { label: "Dwarven Armor", icon: "🛡️", bonuses: { attack: 1, defense: 1 },
-    text: "+1 defense, +1 attack.", source: "New Dwarf military units once Runeforged Armory is researched" },
-  mythril_armor: { label: "Mythril Armor", icon: "🥋", bonuses: { defense: 1 },
+  dwarven_armor: { rarity: "uncommon", label: "Dwarven Armor", icon: "🛡️", bonuses: { attack: 1, defense: 1 },
+    text: "+1 defense, +1 attack.", source: "Dwarf military units built in a city with a Deep Forge, once Runeforged Armory is researched" },
+  mythril_armor: { rarity: "uncommon", label: "Mythril Armor", icon: "🥋", bonuses: { defense: 1 },
     text: "+1 defense.", source: "Elf units built in a city with a Silverleaf Atelier" },
 
   // ---- Rare and unique items -------------------------------------------------
@@ -147,12 +149,17 @@ window.GameData.ITEMS = {
     actions: ["riddle"], flags: { riddleStrike: true },
     text: "A magic dagger. The bearer can pose a Riddle, like a Halfellow Wanderer -- and every enemy it riddles also takes a hit as if the bearer had attacked it, using the bearer's attack (that hit can't be answered by a counterattack).",
     source: UNIQUE_SOURCE },
+  amulet_of_aesia: { unique: true, label: "The Amulet of Aesia", icon: "☀️",
+    bonuses: { defense: 2 }, actions: ["naturesGrace"],
+    nightLight: { radius: 3, color: "#ffd27a" },
+    text: "A golden amulet in the shape of a starburst. +2 defense. The bearer can cast Nature's Grace, like an Elf Druid (heal an ally in reach for 30-60% of its max HP), and glows with warm light at night.",
+    source: UNIQUE_SOURCE },
   arc_of_lightning: { unique: true, label: "The Arc of Lightning", icon: "🏹",
     bonuses: { vision: 1, movement: 1, rangeFloor: 3, doubleStrikePct: 0.2 },
     bolt: { damageMult: 0.5, min: 2 },
     text: "A magic bow. +1 vision, +1 movement, range 3 (if the bearer had less), and 20% double strike. Every hit the bearer lands is followed by a bolt of lightning that strikes the target for extra damage, ignoring its defense -- a double strike's second hit strikes too.",
     source: UNIQUE_SOURCE },
-  lucky_rock: { label: "Lucky Rock", icon: "🪨",
+  lucky_rock: { rarity: "rare", label: "Lucky Rock", icon: "🪨",
     luck: { extraTreasureChance: 0.2, delveMult: 1.2, trapMult: 0.5, conditionResist: 0.5, resourceMult: 1.5 },
     text: "The bearer opens chests with +20% chance of an extra treasure and 50% more resources, finds delve treasure 20% more often, meets a trapped chest half as often, and has a 50% chance to shrug off each negative condition.",
     source: "Treasure Chest (rare)" },

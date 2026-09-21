@@ -338,6 +338,7 @@ window.GameData.SPRITE_MANIFESTS = {
   "enhancement/item_lucky_rock": { frameWidth: 128, frameHeight: 128, layout: "horizontal", animations: { idle: { frames: [0], fps: 1 } } },
   "enhancement/item_riddle_of_steel": { frameWidth: 128, frameHeight: 128, layout: "horizontal", animations: { idle: { frames: [0], fps: 1 } } },
   "enhancement/item_arc_of_lightning": { frameWidth: 128, frameHeight: 128, layout: "horizontal", animations: { idle: { frames: [0], fps: 1 } } },
+  "enhancement/item_amulet_of_aesia": { frameWidth: 128, frameHeight: 128, layout: "horizontal", animations: { idle: { frames: [0], fps: 1 } } },
   "enhancement/resource_iron": {
     frameWidth: 128, frameHeight: 128, layout: "horizontal",
     animations: { idle: { frames: [0, 1, 2, 3], fps: 2 } },

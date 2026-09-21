@@ -65,9 +65,9 @@ window.GameConfig = {
     /** Local date this build was cut, YYYY-MM-DD. */
     date: "2026-09-21",
     /** Local time this build was cut, 24-hour HH:MM. */
-    time: "17:53",
+    time: "18:34",
     /** Monotonic build counter -- increment it, don't recompute it. */
-    number: 322,
+    number: 323,
   },
 
   // =========================================================================
@@ -729,6 +729,9 @@ window.GameConfig = {
   // COMBAT  (js/engine/combat.js)
   // =========================================================================
   combat: {
+    /** Dwarf "Covetous Attunement" (techs.js): a Dwarf unit carrying any item gains this much defense. */
+    covetousAttunementDefense: 1,
+
     /** Flat chance a non-Ranged attacker (effective range < 2) simply misses
      *  a Flying target outright. Symmetric: it applies to a melee defender's
      *  counter against a Flying attacker just as much as to a melee
@@ -1066,6 +1069,18 @@ window.GameConfig = {
        *  unique item (only one not already in the world). Ordinary chests never do. */
       giltmawUniqueChance: 0.25,
       trowUniqueChance: 0.10,
+    },
+    /** Weather hazards (ai.js tickStormAndRain, once per round): during a STORM one random
+     *  tile on the map is struck by lightning -- units there take `lightningDamage` (flat,
+     *  ignores defense), buildings/walls/bridges there catch fire. During RAIN or a storm
+     *  every burning unit/structure has `extinguishChance` to lose Burning that round. */
+    /** Human "Arcane Studies" (techs.js): a WIZARD delving a Ruin finds treasure
+     *  `treasureFindMult` x as often, its treasure is `uniqueChanceMult` x as likely to
+     *  include a unique item, and the delve pays `loreMult` x the lore (turns.js). */
+    arcaneStudies: { treasureFindMult: 1.25, uniqueChanceMult: 1.15, loreMult: 1.5 },
+    weatherHazards: {
+      lightningDamage: 3,
+      extinguishChance: 0.25,
     },
     ruin: {
       /** Delay range (turns) before an exhausted Ruin reappears elsewhere --

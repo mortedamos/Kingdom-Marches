@@ -315,6 +315,7 @@ window.GameData.SPRITE_FILES = [
   "enhancements/influence_water_undead.png",
   "enhancements/item_agasou_1.png",
   "enhancements/item_alunaria_1.png",
+  "enhancements/item_amulet_of_aesia_1.png",
   "enhancements/item_arangil_1.png",
   "enhancements/item_arc_of_lightning_1.png",
   "enhancements/item_axe_of_doom_1.png",
