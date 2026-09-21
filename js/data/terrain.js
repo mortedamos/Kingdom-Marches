@@ -138,7 +138,18 @@ window.GameData.RESOURCES = {
   // unlike a competitive weight, which would only approximate 20% (and
   // unevenly per terrain, since it depends how many other resources
   // happen to be valid on that same tile).
-  chest:   { id: "chest",   label: "Treasure Chest", validTerrain: ["plains", "forest", "hills", "desert", "swamp", "tundra"], bonus: {}, iconScale: 0.55, spawnRejectChance: 0.1 },
+  //
+  // 2026-09-21, user-directed: "reduce the number of treasure chests that
+  // naturally spawn by 25%" -- measured against the current rate, so the
+  // initial-placement reject chance goes from 0.1 (keep 90%) to 0.325 (keep
+  // 90% x 75% = 67.5%). Respawns (turns.js's processResourceRespawns, which
+  // replaces an opened chest) had no reject chance at all, so they get
+  // respawnRejectChance 0.25 (keep 100% x 75%): a dropped respawn is simply
+  // not retried. Chests that drop from defeated units (ai.js's
+  // maybeSpawnDeathChest) and from a struck Treasure Trow (dropTrowChest) set
+  // tile.resource directly and never pass through either roll, so they are
+  // deliberately unchanged.
+  chest:   { id: "chest",   label: "Treasure Chest", validTerrain: ["plains", "forest", "hills", "desert", "swamp", "tundra"], bonus: {}, iconScale: 0.55, spawnRejectChance: 0.325, respawnRejectChance: 0.25 },
 };
 window.GameData.RESOURCE_LIST = Object.keys(window.GameData.RESOURCES);
 

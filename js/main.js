@@ -29,6 +29,8 @@
   // ids, and the feature keys ruin/cave/river/road/bridge) -- see
   // knowledgebase.js's terrainCatalog, which the page resolves through.
   let knowledgeSelectedTerrainKey = null;
+  let knowledgeSelectedTreasureKey = null;
+  let knowledgeSelectedItemKey = null;
   // Tech Trees page (2026-08-26, user-directed): which race's tree is
   // showing. Reference-only, gameplay-free -- see buildReferenceCiv --
   // unlike the sidebar's "View Tech Tree" (a specific LIVE civ's actual
@@ -1387,6 +1389,24 @@
           renderKnowledgeOverlay();
         };
       }
+    } else if (knowledgeView === "items") {
+      // Items page (2026-09-21): gear a unit carries, from config.js's item table.
+      content.innerHTML = window.UI.knowledgebase.renderItems(knowledgeSelectedItemKey);
+      for (const btn of content.querySelectorAll(".kb-list-btn[data-item-id]")) {
+        btn.onclick = () => {
+          knowledgeSelectedItemKey = btn.dataset.itemId;
+          renderKnowledgeOverlay();
+        };
+      }
+    } else if (knowledgeView === "treasure") {
+      // Treasure page (2026-09-21): everything a Treasure Chest can hold, by rarity.
+      content.innerHTML = window.UI.knowledgebase.renderTreasure(knowledgeSelectedTreasureKey);
+      for (const btn of content.querySelectorAll(".kb-list-btn[data-treasure-id]")) {
+        btn.onclick = () => {
+          knowledgeSelectedTreasureKey = btn.dataset.treasureId;
+          renderKnowledgeOverlay();
+        };
+      }
     } else if (knowledgeView === "terrain") {
       // Terrain page (2026-08-31, user-directed): every terrain type plus
       // the resource/ruin/cave/river/road/bridge layers that sit on one.
@@ -1445,6 +1465,8 @@
     knowledgeSelectedStatKey = null;
     knowledgeSelectedActionKey = null;
     knowledgeSelectedTerrainKey = null;
+    knowledgeSelectedTreasureKey = null;
+    knowledgeSelectedItemKey = null;
     knowledgeSelectedRaceId = null;
     knowledgeBackTarget = null;
     renderKnowledgeOverlay();
@@ -1592,6 +1614,10 @@
     if (unitsBtn) unitsBtn.addEventListener("click", () => openKnowledge("units"));
     const structuresBtn = $("kb-structures-btn");
     if (structuresBtn) structuresBtn.addEventListener("click", () => openKnowledge("structures"));
+    const itemsBtn = $("kb-items-btn");
+    if (itemsBtn) itemsBtn.addEventListener("click", () => openKnowledge("items"));
+    const treasureBtn = $("kb-treasure-btn");
+    if (treasureBtn) treasureBtn.addEventListener("click", () => openKnowledge("treasure"));
     const terrainBtn = $("kb-terrain-btn");
     if (terrainBtn) terrainBtn.addEventListener("click", () => openKnowledge("terrain"));
     const actionsBtn = $("kb-actions-btn");
@@ -1606,6 +1632,10 @@
     if (titleUnitsBtn) titleUnitsBtn.addEventListener("click", () => openKnowledge("units"));
     const titleStructuresBtn = $("title-kb-structures-btn");
     if (titleStructuresBtn) titleStructuresBtn.addEventListener("click", () => openKnowledge("structures"));
+    const titleItemsBtn = $("title-kb-items-btn");
+    if (titleItemsBtn) titleItemsBtn.addEventListener("click", () => openKnowledge("items"));
+    const titleTreasureBtn = $("title-kb-treasure-btn");
+    if (titleTreasureBtn) titleTreasureBtn.addEventListener("click", () => openKnowledge("treasure"));
     const titleTerrainBtn = $("title-kb-terrain-btn");
     if (titleTerrainBtn) titleTerrainBtn.addEventListener("click", () => openKnowledge("terrain"));
     const titleActionsBtn = $("title-kb-actions-btn");
@@ -1743,6 +1773,8 @@
     if (view === "units") knowledgeSelectedUnitId = id;
     else if (view === "structures") knowledgeSelectedStructureId = id;
     else if (view === "terrain") knowledgeSelectedTerrainKey = id;
+    else if (view === "treasure") knowledgeSelectedTreasureKey = id;
+    else if (view === "items") knowledgeSelectedItemKey = id;
     else if (view === "conditions") knowledgeSelectedConditionKey = id;
     else if (view === "stats") knowledgeSelectedStatKey = id;
     else if (view === "actions") knowledgeSelectedActionKey = id;
@@ -4478,41 +4510,41 @@
     redraw();
   }
 
-  /** Treasure find flavor text: names the
-   *  object found, then its effect -- shared by the immediate "openChest"
-   *  ring action below and offerNextTreasureNotice's deferred Ruin Delve
-   *  notices, so both read identically. Trap results aren't routed through
-   *  here -- nothing was "found," so they keep their own dedicated text. */
-  function describeTreasureFind(unitLabel, result) {
-    let found;
-    if (result.rewardType === "mapFragment") {
-      found = {
-        title: "Map Fragment!",
-        text: `${unitLabel} finds a map fragment -- unrolling it reveals a swath of unexplored land around (${result.revealed.x},${result.revealed.y}) for the rest of this turn.`,
-      };
-    } else if (result.rewardType === "xp") {
-      found = {
-        title: "Treasure Found!",
-        text: `${unitLabel} finds an experience crystal -- absorbing it grants +${result.amount} XP.`,
-      };
-    } else if (result.rewardType === "lore") {
-      found = {
-        title: "Treasure Found!",
-        text: `${unitLabel} finds an ancient tome -- its knowledge is worth +${result.amount} lore.`,
-      };
-    } else {
-      found = {
-        title: "Treasure Found!",
-        text: `${unitLabel} finds a pile of gold coins -- worth +${result.amount} coin.`,
-      };
+  /** Builds the "treasureFound" dialog for a chest open (or Ruin Delve find):
+   *  one row per treasure, with the trap (if any) on top. Shared by the
+   *  immediate "openChest" ring action and offerNextTreasureNotice's deferred
+   *  Ruin Delve notices, so both read identically. `result` is
+   *  openTreasureChest's shape: { trap, disarmed, treasures[], giltmaw } (see
+   *  ai.js) -- each treasure line is already fully worded there. */
+  function treasureDialogFor(unit, unitLabel, result, onDismiss, introText) {
+    const lines = [];
+    let title = "Treasure Found!";
+    if (result.giltmaw) {
+      title = "It's a Giltmaw!";
+    } else if (result.disarmed) {
+      title = "Trap Disarmed!";
+      lines.push({ icon: "🛡️", text: `${unitLabel} finds a trap, but disarms it.` });
+    } else if (result.trap) {
+      title = result.treasures.length ? "A Trap -- and Treasure!" : "It's a Trap!";
+      const t = result.trap;
+      const dmg = t.damage ? `-${t.damage} HP and ` : "";
+      lines.push({ icon: "⚠️", text: `${unitLabel} springs a ${t.kind} trap: ${dmg}${t.label}.` + (unit && unit.hp <= 0 ? ` ${unitLabel} did not survive.` : "") });
     }
-    // Orc's Plunder tech (2026-08-26, user-directed): a chest that paid
-    // something other than coin also pays a bonus coin haul, tacked on
-    // as a second sentence rather than its own branch above.
-    if (result.bonusCoin) {
-      found.text += ` Plunder turns up an extra ${result.bonusCoin} coin besides.`;
-    }
-    return found;
+    for (const t of result.treasures || []) lines.push({ icon: t.icon, resource: t.resource, text: t.text, link: t.link, unique: t.unique });
+    // A unique item (data/items.js `unique`) is the headline of the find.
+    if (title === "Treasure Found!" && lines.some((l) => l.unique)) title = "A Unique Item!";
+    return {
+      kind: "treasureFound", title,
+      intro: result.giltmaw ? null : (lines.length ? (introText || `${unitLabel} opens the chest:`) : null),
+      lines, onDismiss,
+    };
+  }
+
+  /** The sting for a treasure modal: a find that includes a UNIQUE item gets its own
+   *  sound (js/audio/sfx.js playUniqueItemFound), everything else the chest sting. */
+  function playTreasureSting(result) {
+    if ((result.treasures || []).some((t) => t.unique)) window.SfxSystem.playUniqueItemFound();
+    else window.SfxSystem.playTreasureChestOpen();
   }
 
   /** Ruin Delve treasure-find announcements:
@@ -4526,9 +4558,9 @@
     const notices = civ.pendingTreasureNotices;
     if (!notices || !notices.length) { if (onDone) onDone(); return; }
     const { unitLabel, result } = notices.shift();
-    const { title, text } = describeTreasureFind(unitLabel, result);
-    window.SfxSystem.playTreasureChestOpen();
-    viewState.dialog = { kind: "message", title, text, onDismiss: () => offerNextTreasureNotice(civ, onDone) };
+    playTreasureSting(result);
+    viewState.dialog = treasureDialogFor(null, unitLabel, result, () => offerNextTreasureNotice(civ, onDone),
+      `${unitLabel} finds treasure while delving:`);
     redraw();
   }
 
@@ -5761,7 +5793,21 @@
       };
       if (confirmBtn) confirmBtn.onclick = () => finish(true);
       if (cancelBtn) cancelBtn.onclick = () => finish(false);
-    } else if (dialog.kind === "message" || dialog.kind === "welcomeBack") {
+    } else if (dialog.kind === "message" || dialog.kind === "welcomeBack" || dialog.kind === "treasureFound") {
+      // Treasure Map / Map Fragment rows carry a "Show me" jump link: close the
+      // dialog, then centre on that tile.
+      if (dialog.kind === "treasureFound") {
+        for (const btn of document.querySelectorAll("#game-dialog-modal [data-treasure-goto-x]")) {
+          btn.onclick = () => {
+            const x = Number(btn.dataset.treasureGotoX), y = Number(btn.dataset.treasureGotoY);
+            viewState.dialog = null;
+            lastRenderedDialog = null;
+            if (dialog.onDismiss) dialog.onDismiss();
+            goToTile(x, y);
+            redraw();
+          };
+        }
+      }
       const okBtn = $("game-dialog-ok-btn");
       if (okBtn) okBtn.onclick = () => {
         viewState.dialog = null;
@@ -6487,34 +6533,29 @@
         break;
       case "openChest": {
         // See doc/world_encounters_design.md -- ai.js's openTreasureChest
-        // does the actual resolution (trap vs. reward) and returns a result
-        // object with no UI dependency of its own; this is the one place
-        // that turns it into a modal, same "message" dialog shape as the
-        // "Can't Found a City Here" popup above.
+        // does the actual resolution (trap, then the chest's treasures) and
+        // returns a result object with no UI dependency of its own; this is
+        // the one place that turns it into a modal (see treasureDialogFor).
         const civ = gameState.civs[humanCivId];
         if (civ) {
           const result = window.GameEngine.ai.openTreasureChest(civ, unit, gameState);
           if (result) {
             const unitLabel = unit.name || window.GameData.getUnit(unit.typeId).label;
-            let title, text;
-            if (result.disarmed) {
-              // Halfellow "Making Trouble": a
-              // Trouble Maker disarms a chest trap instead of springing it --
-              // no damage, no condition.
-              title = "Trap Disarmed!";
-              text = `${unitLabel} finds a trap, but disarms it.`;
-            } else if (result.trapped) {
-              title = "It's a Trap!";
-              const trapEffectLabel = { fire: "Burning", frost: "Frozen", poison: "Poisoned", befuddle: "Befuddled" }[result.kind];
-              text = `${unitLabel} springs a ${result.kind} trap: -${result.damage} HP and ${trapEffectLabel}.`;
-            } else {
-              ({ title, text } = describeTreasureFind(unitLabel, result));
-              window.SfxSystem.playTreasureChestOpen();
-            }
-            viewState.dialog = { kind: "message", title, text };
+            if (result.treasures.length) playTreasureSting(result);
+            viewState.dialog = treasureDialogFor(unit, unitLabel, result);
             redraw();
           }
         }
+        break;
+      }
+      case "pickUpItem": {
+        // items.js pickUpItem re-validates (the item could have been taken since
+        // the ring was drawn), grants the item and spends the unit's action.
+        const civ = gameState.civs[humanCivId];
+        if (civ && window.GameEngine.items.pickUpItem(civ, unit, gameState)) {
+          window.SfxSystem.playTreasureChestOpen();
+        }
+        redraw();
         break;
       }
       case "battlefieldPromotion": {
@@ -6622,6 +6663,24 @@
           // World/Teleportation just below.
           const civ = gameState.civs[humanCivId];
           if (civ) window.GameEngine.ai.performDireBearTransform(civ, unit, gameState);
+        } else if (kind === "thunderstorm" || kind === "itemBearForm" || kind === "wolfForm"
+            || kind === "summonDireWolf" || kind === "itemSummonShadowsteed" || kind === "cancelForm") {
+          // Item-granted single-click actions (data/items.js `actions`) -- see ai.js's
+          // performPlayerItemAction. A summon/form can change what is visible.
+          const civ = gameState.civs[humanCivId];
+          if (civ) {
+            window.GameEngine.ai.performPlayerItemAction(civ, unit, kind, gameState);
+            window.GameEngine.turns.refreshVisibility(gameState);
+          }
+        } else if (kind === "castRaptorFly") {
+          // Spear of Agasou: pick the ally, which becomes a raptor for 3 turns.
+          const civ = gameState.civs[humanCivId];
+          startTargetSelection("Cast Raptor Fly",
+            window.GameEngine.ai.raptorFlyTargets(unit, gameState),
+            (target) => {
+              window.GameEngine.ai.performPlayerCastRaptorFly(civ, unit, target, gameState);
+              window.GameEngine.turns.refreshVisibility(gameState);
+            });
         } else if (kind === "teleport") {
           // The only TWO-stage targeted action: pick who moves, then (via
           // startTeleportPlacement) where they land.
@@ -6735,7 +6794,9 @@
     if (!civ) return;
     const explored = gameState.explored[civ.id] || new Set();
     const { map } = gameState;
-    const isWizard = caster.typeId === "wizard";
+    // Anything that isn't a Druid teleports the Wizard way -- including a unit that got
+    // Teleportation from an item (Alunaria, Arangil's Vision Glass).
+    const isWizard = caster.typeId !== "druid";
     // Elf "Roots of the World" is Forest-only --
     // Human "Teleportation" isn't restricted by terrain.
     const isValidSlot = isWizard ? window.GameEngine.ai.isValidTeleportTile : window.GameEngine.ai.isValidForestTeleportTile;

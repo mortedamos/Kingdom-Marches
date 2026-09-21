@@ -101,6 +101,16 @@
   let lastTickMs = null;
   let lastRenderMs = null;
 
+  // A Thunderstorm action can start or lapse without the turn number changing (the
+  // turn is already 5 when it is cast), so tick also watches the override itself.
+  let lastStormOverride = false;
+  function stormOverrideActive(gameState) {
+    return !!gameState && window.GameEngine.turns.stormActive(gameState);
+  }
+  function stormOverrideChanged(gameState) {
+    return stormOverrideActive(gameState) !== lastStormOverride;
+  }
+
   /**
    * Read the turn's weather and ease toward it. Called once per frame from
    * main.js's redraw, before render.
@@ -123,9 +133,13 @@
         : tuning.force === "rain"
           ? { raining: true, storming: false, rain: 1, storm: 0, turnsLeft: 99 }
           : { raining: false, storming: false, rain: 0, storm: 0, turnsLeft: 0 };
-    } else if (turn !== lastTurn) {
-      state.target = window.GameEngine.turns.weatherForTurn(turn, seed);
+    } else if (turn !== lastTurn || stormOverrideChanged(gameState)) {
+      // currentWeather = the forecast plus any Thunderstorm item action (see turns.js).
+      state.target = gameState
+        ? window.GameEngine.turns.currentWeather(gameState)
+        : window.GameEngine.turns.weatherForTurn(turn, seed);
       lastTurn = turn;
+      lastStormOverride = stormOverrideActive(gameState);
     }
 
     // Ease in real time toward the target. A fixed per-second rate rather

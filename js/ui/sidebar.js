@@ -459,11 +459,7 @@ window.UI = window.UI || {};
       visionRadius: "Vision", movement: "Movement",
     };
     const baseUnit = window.GameData.getUnit(unit.typeId);
-    const rawVision = (baseUnit.visionRadius || 3) + (civ.unitOverrides?.[unit.typeId]?.visionRadius || 0)
-      + (unit.conditions?.flying?.visionBonus || 0) + (unit.conditions?.keepingWatch?.visionBonus || 0)
-      + (unit.levelBonuses?.visionRadius || 0);
-    const effVision = unit.conditions?.blind ? 0 : Math.max(window.GameEngine.turns.MIN_VISION_RADIUS,
-      rawVision - window.GameEngine.turns.dayNightVisionPenaltyFor(civ, gameState));
+    const effVision = window.GameEngine.turns.effectiveUnitVisionRadius(unit, civ, gameState);
     const currentValue = {
       attack: combat.effectiveAttack(unit, civ),
       defense: combat.effectiveDefense(unit, civ),
@@ -593,11 +589,11 @@ window.UI = window.UI || {};
     guild_hall: ["units built here get a free level-up"],
     mage_college: ["75% chance/turn to strike an enemy within 5 for 3 attack"],
     // Elf
-    silverleaf_atelier: ["+1 defense for units built here"],
+    silverleaf_atelier: ["Units built here are issued Mythril Armor (+1 defense)"],
     altar_of_ages: ["+25% XP for units built here"],
     wellspring_grove: ["allies in this city's radius heal 5%/turn (kingdom-wide)"],
     // Dwarf
-    deep_forge: ["+1 attack for units built here"],
+    deep_forge: ["Military units built here are issued a Dwarven Hammer (+1 attack)"],
     great_hall: ["+10% defense per Great Hall built while Resting on any of your holdings (kingdom-wide)"],
     runewall: ["walls heal 5% of max HP per turn (kingdom-wide)"],
     deep_gate: ["Dwarf units may travel between Deep Gates (kingdom-wide)"],
@@ -678,6 +674,20 @@ window.UI = window.UI || {};
     const remaining = condition.expiresAtTurn - (gameState.turnNumber || 0);
     if (remaining <= 0) return "";
     return `, ${remaining} turn${remaining === 1 ? "" : "s"} left`;
+  }
+
+  // Conditions that hurt the unit (everything else in the Conditions list is a
+  // benefit, e.g. an aura, Hidden or granted flight) -- tints each row.
+  const CONDITION_BAD = /^(Cursed|Frozen|Forced Visible|Befuddled|Webbed|Poisoned|Burning|Blind)/;
+
+  /** A labelled, stacked list inside the unit panel (2026-09-21, user-directed:
+   *  conditions, veteran bonuses and items used to share comma-separated
+   *  "Properties"/"Veteran Bonuses" rows). `rows` = [{ text, tone? }]; empty
+   *  list renders nothing. */
+  function unitBlockHtml(title, rows) {
+    if (!rows.length) return "";
+    const items = rows.map((r) => `<li class="unit-block-row${r.tone ? ` unit-block-${r.tone}` : ""}">${escapeHtml(r.text)}</li>`).join("");
+    return `<div class="unit-block"><div class="unit-block-title">${escapeHtml(title)}</div><ul class="unit-block-list">${items}</ul></div>`;
   }
 
   function renderUnitPanel(unit, civs, viewState, gameState) {
@@ -804,11 +814,9 @@ window.UI = window.UI || {};
 
     const isFlying = window.GameEngine.combat.isFlying(unit);
     const canCarry = window.GameEngine.combat.getUnitProperty(unit, civ, "canCarryUnit", false);
-    const rawVision = (baseUnit.visionRadius || 3) + (civ.unitOverrides?.[unit.typeId]?.visionRadius || 0)
-      + (unit.conditions?.flying?.visionBonus || 0);
-    const effVision = unit.conditions?.blind ? 0 : Math.max(window.GameEngine.turns.MIN_VISION_RADIUS,
-      rawVision - window.GameEngine.turns.dayNightVisionPenaltyFor(civ, gameState));
-    const properties = [];
+    const effVision = window.GameEngine.turns.effectiveUnitVisionRadius(unit, civ, gameState);
+    const properties = []; // abilities (permanent, unit-type/tech derived)
+    const conditions = []; // temporary, timed effects -- shown as their own list
     if (firstStrikePct > 0) properties.push(`First Strike ${Math.round(firstStrikePct * 100)}%`);
     if (doubleStrikePct > 0) properties.push(`Double Strike ${Math.round(doubleStrikePct * 100)}%`);
     if (siegePct > 0) properties.push(`Siege ${Math.round(siegePct * 100)}%`);
@@ -818,19 +826,19 @@ window.UI = window.UI || {};
     // tickConditions. Shown alongside properties since both answer "what can
     // this unit currently do," just with different lifetimes.
     const curse = unit.conditions?.curse;
-    if (curse) properties.push(`Cursed (${Math.round((1 - curse.attackMult) * 100)}% attack, ${Math.round((1 - curse.moveMult) * 100)}% move${turnsLeftSuffix(curse, gameState)})`);
+    if (curse) conditions.push(`Cursed (${Math.round((1 - curse.attackMult) * 100)}% attack, ${Math.round((1 - curse.moveMult) * 100)}% move${turnsLeftSuffix(curse, gameState)})`);
     const frozen = unit.conditions?.frozen;
-    if (frozen) properties.push(`Frozen (0 movement, ${Math.round((1 - frozen.attackMult) * 100)}% attack${turnsLeftSuffix(frozen, gameState)})`);
+    if (frozen) conditions.push(`Frozen (0 movement, ${Math.round((1 - frozen.attackMult) * 100)}% attack${turnsLeftSuffix(frozen, gameState)})`);
     const killMomentum = unit.conditions?.killMomentum;
     if (killMomentum) {
-      properties.push(`Violent Momentum (+${killMomentum.moveBonus} movement`
+      conditions.push(`Violent Momentum (+${killMomentum.moveBonus} movement`
         + (killMomentum.firstStrikePctBonus ? `, +${Math.round(killMomentum.firstStrikePctBonus * 100)}% first strike` : '')
         + (killMomentum.doubleStrikePctBonus ? `, +${Math.round(killMomentum.doubleStrikePctBonus * 100)}% double strike` : '')
         + turnsLeftSuffix(killMomentum, gameState)
         + ')');
     }
     const flightGrant = unit.conditions?.flying;
-    if (flightGrant && flightGrant.moveBonus) properties.push(`Granted Flight (+${flightGrant.moveBonus} movement, +${flightGrant.visionBonus} vision${turnsLeftSuffix(flightGrant, gameState)})`);
+    if (flightGrant && flightGrant.moveBonus) conditions.push(`Granted Flight (+${flightGrant.moveBonus} movement, +${flightGrant.visionBonus} vision${turnsLeftSuffix(flightGrant, gameState)})`);
     const hiddenCond = unit.conditions?.hidden;
     if (hiddenCond) {
       // No surrounding parens elsewhere in this string (unlike every other
@@ -838,37 +846,43 @@ window.UI = window.UI || {};
       // stuck directly onto "Hidden" with nothing before it, so this wraps
       // it in its own parens instead: "Hidden (3 turns left)".
       const suffix = turnsLeftSuffix(hiddenCond, gameState);
-      properties.push(`Hidden${suffix ? ` (${suffix.slice(2)})` : ''}`);
+      conditions.push(`Hidden${suffix ? ` (${suffix.slice(2)})` : ''}`);
+    }
+    // Item shapeshifts (Spear of Agasou): a unit wearing another body, and how long it lasts.
+    if (unit.form) {
+      const formName = { bear: "Dire Bear form", wolf: "Dire Wolf form", raptorFly: "Raptor form (Cast Fly)" }[unit.form.kind] || "Shapeshifted";
+      const suffix = turnsLeftSuffix(unit.form, gameState);
+      conditions.push(`${formName}${suffix ? ` (${suffix.slice(2)})` : ""}`);
     }
     const forcedVisibleCond = unit.conditions?.forcedVisible;
-    if (forcedVisibleCond) properties.push(`Forced Visible (cannot re-Hide yet${turnsLeftSuffix(forcedVisibleCond, gameState)})`);
+    if (forcedVisibleCond) conditions.push(`Forced Visible (cannot re-Hide yet${turnsLeftSuffix(forcedVisibleCond, gameState)})`);
     const crusadeAura = unit.conditions?.crusadeAura;
-    if (crusadeAura) properties.push(`Crusade Aura (+${crusadeAura.attackBonus} attack, +${crusadeAura.defenseBonus} defense, +${Math.round(crusadeAura.siegePctBonus * 100)}% siege${turnsLeftSuffix(crusadeAura, gameState)})`);
+    if (crusadeAura) conditions.push(`Crusade Aura (+${crusadeAura.attackBonus} attack, +${crusadeAura.defenseBonus} defense, +${Math.round(crusadeAura.siegePctBonus * 100)}% siege${turnsLeftSuffix(crusadeAura, gameState)})`);
     const heavyMetalAura = unit.conditions?.heavyMetalAura;
-    if (heavyMetalAura) properties.push(`Heavy Metal Aura (+${heavyMetalAura.defenseBonus} defense, +${Math.round(heavyMetalAura.siegePctBonus * 100)}% siege, 5% heal/turn${turnsLeftSuffix(heavyMetalAura, gameState)})`);
+    if (heavyMetalAura) conditions.push(`Heavy Metal Aura (+${heavyMetalAura.defenseBonus} defense, +${Math.round(heavyMetalAura.siegePctBonus * 100)}% siege, 5% heal/turn${turnsLeftSuffix(heavyMetalAura, gameState)})`);
     const powerMetalAura = unit.conditions?.powerMetalAura;
-    if (powerMetalAura) properties.push(`Power Metal Aura (+${powerMetalAura.attackBonus} attack, +${Math.round(powerMetalAura.firstStrikePctBonus * 100)}% first strike${turnsLeftSuffix(powerMetalAura, gameState)})`);
+    if (powerMetalAura) conditions.push(`Power Metal Aura (+${powerMetalAura.attackBonus} attack, +${Math.round(powerMetalAura.firstStrikePctBonus * 100)}% first strike${turnsLeftSuffix(powerMetalAura, gameState)})`);
     // Befuddled/Webbed/Poisoned/Burning (2026-08-19): these four previously
     // had a map-tile badge (overlays.js's CONDITION_ICONS) but no sidebar
     // text at all -- same turnsLeftSuffix treatment as every condition
     // above now applies here too.
     const befuddled = unit.conditions?.befuddled;
-    if (befuddled) properties.push(`Befuddled (${Math.round((1 - befuddled.attackMult) * 100)}% attack, ${Math.round((1 - befuddled.defenseMult) * 100)}% defense, ${Math.round((1 - befuddled.movementMult) * 100)}% movement${turnsLeftSuffix(befuddled, gameState)})`);
+    if (befuddled) conditions.push(`Befuddled (${Math.round((1 - befuddled.attackMult) * 100)}% attack, ${Math.round((1 - befuddled.defenseMult) * 100)}% defense, ${Math.round((1 - befuddled.movementMult) * 100)}% movement${turnsLeftSuffix(befuddled, gameState)})`);
     const webbed = unit.conditions?.webbed;
-    if (webbed) properties.push(`Webbed (0 movement${turnsLeftSuffix(webbed, gameState)})`);
+    if (webbed) conditions.push(`Webbed (0 movement${turnsLeftSuffix(webbed, gameState)})`);
     const poisoned = unit.conditions?.poisoned;
-    if (poisoned) properties.push(`Poisoned (-1 HP/turn${turnsLeftSuffix(poisoned, gameState)})`);
+    if (poisoned) conditions.push(`Poisoned (-1 HP/turn${turnsLeftSuffix(poisoned, gameState)})`);
     const burning = unit.conditions?.burning;
-    if (burning) properties.push(`Burning (-1 HP/turn${turnsLeftSuffix(burning, gameState)})`);
+    if (burning) conditions.push(`Burning (-1 HP/turn${turnsLeftSuffix(burning, gameState)})`);
     const blind = unit.conditions?.blind;
-    if (blind) properties.push(`Blind (0 vision${turnsLeftSuffix(blind, gameState)})`);
+    if (blind) conditions.push(`Blind (0 vision${turnsLeftSuffix(blind, gameState)})`);
     // A channeled Rest and Defend reads the label differently even though
     // it's the SAME "defending" condition underneath as a plain one-off
     // Defend (ai.js's performDefend, AI-only) -- Rest and Defend's whole
     // point is that it does NOT lapse "until next turn" the way a one-off
     // Defend does; it persists until cancelled or superseded.
     if (unit.conditions?.defending) {
-      properties.push(unit.channeling === "restAndDefend" ? 'Resting and Defending (x2 defense)' : 'Defending (x2 defense until next turn)');
+      conditions.push(unit.channeling === "restAndDefend" ? 'Resting and Defending (x2 defense)' : 'Defending (x2 defense until next turn)');
     }
 
     // Veteran leveling (see combat.js's LEVELING section) -- permanent,
@@ -881,6 +895,14 @@ window.UI = window.UI || {};
     if (levelBonuses.siegePct) bonusParts.push(`+${Math.round(levelBonuses.siegePct * 100)}% siege`);
     if (levelBonuses.firstStrikePct) bonusParts.push(`+${Math.round(levelBonuses.firstStrikePct * 100)}% first strike`);
     if (levelBonuses.doubleStrikePct) bonusParts.push(`+${Math.round(levelBonuses.doubleStrikePct * 100)}% double strike`);
+
+    // Permanent Treasure Chest items (ai.js's TREASURE_TABLE): kept in unit.items,
+    // listed in their own block rather than mixed in with conditions.
+    const itemDefs = window.GameData.ITEMS;
+    const bootsBonus = window.GameEngine.items.itemStat(unit, "movement");
+    const itemLines = Object.keys(window.GameEngine.items.itemsOf(unit))
+      .filter((id) => itemDefs[id])
+      .map((id) => ({ text: `${itemDefs[id].icon} ${itemDefs[id].label}${itemDefs[id].unique ? " (Unique)" : ""} -- ${itemDefs[id].text}` }));
 
     // Veteran leveling: level 0-MAX_UNIT_LEVEL, progress toward the next
     // level shown as raw XP / the next cumulative threshold (see combat.js's
@@ -902,7 +924,7 @@ window.UI = window.UI || {};
         ? unit.movesRemaining
         : window.GameEngine.ai.computeMovementBudget(unit, gameState.map, gameState.civs);
       const budgetRounded = Math.round(budget * 10) / 10;
-      const moveText = unit.channeling ? "Channeling" : `${budgetRounded} / ${baseUnit.movement}`;
+      const moveText = unit.channeling ? "Channeling" : `${budgetRounded} / ${baseUnit.movement + bootsBonus}`;
       const actionText = unit.usedThisTurn ? "Used" : "Available";
       turnStatus = `
         <div class="stat-row"><span>Movement Left</span><span>${escapeHtml(moveText)}</span></div>
@@ -967,11 +989,13 @@ window.UI = window.UI || {};
         <div class="stat-row"><span>Level</span><span>${levelLabel}</span></div>
         <div class="stat-row"><span>Attack</span><span>${Math.round(effAttack)}</span></div>
         <div class="stat-row"><span>Defense</span><span>${Math.round(effDefense)}</span></div>
-        <div class="stat-row"><span>Movement</span><span>${baseUnit.movement}</span></div>
+        <div class="stat-row"><span>Movement</span><span>${baseUnit.movement}${bootsBonus ? ` (+${bootsBonus} items)` : ''}</span></div>
         <div class="stat-row"><span>Vision</span><span>${effVision}</span></div>
         <div class="stat-row"><span>Upkeep</span><span>${upkeep}</span></div>
-        ${properties.length ? `<div class="stat-row"><span>Properties</span><span>${escapeHtml(properties.join(', '))}</span></div>` : ''}
-        ${bonusParts.length ? `<div class="stat-row"><span>Veteran Bonuses</span><span>${escapeHtml(bonusParts.join(', '))}</span></div>` : ''}
+        ${properties.length ? `<div class="stat-row"><span>Abilities</span><span>${escapeHtml(properties.join(', '))}</span></div>` : ''}
+        ${unitBlockHtml("Conditions", conditions.map((c) => ({ text: c, tone: CONDITION_BAD.test(c) ? "bad" : "good" })))}
+        ${unitBlockHtml("Veteran Bonuses", bonusParts.map((b) => ({ text: b })))}
+        ${unitBlockHtml("Items", itemLines)}
         <div class="stat-row"><span>Position</span><span>(${unit.x}, ${unit.y})</span></div>
         ${carriedByTag}${carriesTag}
         ${turnStatus}

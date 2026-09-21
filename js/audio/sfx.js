@@ -293,6 +293,10 @@ window.SfxSystem = (function () {
   const SYSTEM_BUTTON_CLICK_KEY = "system_button_click";
   const SYSTEM_CONFIRM_ACTION_KEY = "system_confirm_action";
   const SYSTEM_TREASURE_CHEST_OPEN_KEY = "system_treasure_chest_open_1";
+  // A UNIQUE item find (data/items.js `unique`) gets its own sting. Optional: until the
+  // clip exists in assets/sfx (js/data/sfx-manifest.js), the ordinary chest sting plays.
+  const SYSTEM_UNIQUE_ITEM_FOUND_KEY = "system_unique_item_found_1";
+  function hasSystemClip(key) { return (window.GameData.SFX_FILES || []).includes(`${key}.mp3`); }
   const SYSTEM_RESEARCH_COMPLETE_VARIANTS = 3;
   let lastResearchCompleteVariant = null;
   // Halfellow "Throw a Party" (see cities.js's applyThrowAParty) -- a single
@@ -304,6 +308,7 @@ window.SfxSystem = (function () {
 
   function systemKeys() {
     const keys = [SYSTEM_BUTTON_CLICK_KEY, SYSTEM_CONFIRM_ACTION_KEY, SYSTEM_TREASURE_CHEST_OPEN_KEY, SYSTEM_HALFELLOW_PARTY_KEY];
+    if (hasSystemClip(SYSTEM_UNIQUE_ITEM_FOUND_KEY)) keys.push(SYSTEM_UNIQUE_ITEM_FOUND_KEY);
     for (let n = 1; n <= SYSTEM_RESEARCH_COMPLETE_VARIANTS; n++) keys.push(`system_research_complete_${n}`);
     return keys;
   }
@@ -349,6 +354,12 @@ window.SfxSystem = (function () {
    *  dialog. */
   function playTreasureChestOpen() {
     playSystemKey(SYSTEM_TREASURE_CHEST_OPEN_KEY);
+  }
+
+  /** Public: a UNIQUE item was just found (see main.js's treasure modals) -- plays its own
+   *  sting instead of the chest one, or the chest one if that clip isn't recorded yet. */
+  function playUniqueItemFound() {
+    playSystemKey(hasSystemClip(SYSTEM_UNIQUE_ITEM_FOUND_KEY) ? SYSTEM_UNIQUE_ITEM_FOUND_KEY : SYSTEM_TREASURE_CHEST_OPEN_KEY);
   }
 
   /** Public: Halfellow "Throw a Party" fires (see cities.js's
@@ -445,6 +456,7 @@ window.SfxSystem = (function () {
     playConfirmAction,
     playResearchComplete,
     playTreasureChestOpen,
+    playUniqueItemFound,
     playHalfellowParty,
     setMasterVolume,
     setSfxVolume,

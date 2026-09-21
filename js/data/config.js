@@ -63,11 +63,11 @@ window.GameConfig = {
   // stamp, and the only cost of forgetting is being told the wrong thing.
   build: {
     /** Local date this build was cut, YYYY-MM-DD. */
-    date: "2026-09-20",
+    date: "2026-09-21",
     /** Local time this build was cut, 24-hour HH:MM. */
-    time: "00:33",
+    time: "17:53",
     /** Monotonic build counter -- increment it, don't recompute it. */
-    number: 321,
+    number: 322,
   },
 
   // =========================================================================
@@ -1007,27 +1007,65 @@ window.GameConfig = {
   // =========================================================================
   worldEncounters: {
     treasureChest: {
-      /** Chance an opened chest is trapped instead of paying out. */
+      /** Chance an opened chest is trapped (2026-09-21: the trap no longer
+       *  replaces the loot -- the chest's treasures are still granted; see
+       *  trapKinds below for the six kinds and their damage). */
       trapChance: 0.20,
-      /** Flat damage a sprung trap deals, on top of its Frozen/Burning
-       *  status -- same shape as Halfellow's Set the Trap (see
-       *  checkTrapSpring in ai.js). */
-      trapDamage: 2,
-      /** A non-trapped chest pays out one reward, picked with equal weight
-       *  from this list. "mapFragment" ignores `rewardAmount` entirely --
-       *  see turns.js's revealMapFragment -- everything else banks
-       *  `rewardAmount` of that resource (or grants it as XP). "reduceResearch"
-       *  also ignores `rewardAmount`: it cuts 1-3 rounds off the civ's
-       *  in-progress research instead (see tech.js's reduceResearchTurns) --
-       *  both it and mapFragment fall back to a flat coin payout when there's
-       *  nothing for them to do (no research in progress / map fully
-       *  explored), same as a reward that does nothing would be a worse
-       *  outcome than the trap. Equal
-       *  weighting is a placeholder same as everything else here -- a
-       *  temporary map reveal and a flat resource payout aren't obviously
-       *  worth the same amount, that's a balancing-pass question. */
-      rewardTypes: ["coin", "lore", "xp", "mapFragment", "reduceResearch"],
-      rewardAmount: 15,
+      /** 2026-09-21, user-directed: +25% (was 15). Deliberately not a whole
+       *  number: the coin/XP payouts jitter this by +/-25% and round (ai.js's
+       *  jitterChestReward), so they average exactly 25% more, while the flat
+       *  payouts (Lore, and the monster-kill reward) round it via ai.js's
+       *  chestFlatReward -- 19 -- since they show/bank it as-is. */
+      rewardAmount: 18.75,
+
+      /** ---- Loot table (2026-09-21, user-directed) ------------------------
+       *  A chest no longer holds exactly one thing. ai.js's
+       *  rollChestTreasures draws `countWeights` (1, 2 or 3 treasures --
+       *  multiplied by a chest's own rollMult, which is 2 for the chest a
+       *  Giltmaw drops), and for each slot draws a rarity tier by
+       *  `tierWeights`, then an equal-weight treasure from that tier (no
+       *  duplicates within one chest). A treasure that can't apply to this
+       *  opener re-rolls inside its tier, then falls to the next tier down --
+       *  see each entry's eligibility check in ai.js's TREASURE_TABLE, which
+       *  is keyed by the ids below. Resource treasures are always eligible,
+       *  so every roll terminates. */
+      countWeights: [65, 27, 8],
+      tierWeights: { common: 65, uncommon: 27, rare: 8 },
+      /** Id -> tier. Display text/effects live with the effect code in ai.js
+       *  and the Knowledge Base's Treasure page (both read this table for the
+       *  id list and rarity, so a tier change is one edit here). */
+      treasures: {
+        coin: "common", lore: "common", harvest: "common", xp: "common",
+        mapFragment: "uncommon", reduceResearch: "uncommon", treasureMap: "uncommon",
+        elixir: "uncommon", masterBuilder: "uncommon", banner: "uncommon", trowFiddle: "uncommon",
+        feather: "rare", cloak: "rare", boots: "rare", lucky_rock: "rare", tome: "rare", lostKnowledge: "rare",
+        giltmaw: "rare",
+      },
+      /** Damage a sprung trap deals, by kind. Curse, web and befuddle are
+       *  pure status traps (no damage); fire/frost/poison keep the original
+       *  flat 2. */
+      trapKinds: { fire: 2, frost: 2, poison: 2, befuddle: 0, curse: 0, web: 0 },
+      /** Items (definitions: data/items.js; rules: engine/items.js). When a unit carrying items dies in combat WITHOUT dropping a chest,
+       *  one carried item is picked at random and drops on the ground with this
+       *  chance -- raised to plunderDropChance when the KILLER's kingdom has
+       *  Orc "Plunder". (If it does drop a chest, every item goes in the chest.) */
+      itemDropChance: 0.5,
+      plunderDropChance: 0.75,
+      /** Elixir: full heal for the opener and allied units within this many
+       *  tiles (chebyshev). */
+      elixirRadius: 2,
+      /** Banner of the Kingdom: permanent influence-radius bonus for the
+       *  nearest city that doesn't already have one. */
+      bannerRadiusBonus: 1,
+      /** Trow's Fiddle: how many turns every Treasure Trow's location shows. */
+      fiddleTurns: 3,
+      /** The chest a slain Giltmaw always drops holds this many times the
+       *  usual number of treasure rolls. */
+      giltmawRollMult: 2,
+      /** Chance that a slain Giltmaw's chest / a struck Treasure Trow's chest also holds a
+       *  unique item (only one not already in the world). Ordinary chests never do. */
+      giltmawUniqueChance: 0.25,
+      trowUniqueChance: 0.10,
     },
     ruin: {
       /** Delay range (turns) before an exhausted Ruin reappears elsewhere --
@@ -1042,6 +1080,10 @@ window.GameConfig = {
        *  the two can only ever fire once per Ruin, ever. */
       monsterEncounterChance: 0.08,
       treasureFindChance: 0.08,
+      /** Chance that a delve's treasure find (the roll above) ALSO includes a unique
+       *  item -- see data/items.js `unique` and engine/items.js. A bonus on top of the
+       *  normal treasures, and only if some unique item is not already in the world. */
+      uniqueItemChance: 0.15,
     },
     /** Treasure Trow (see units.js's treasure_trow, ai.js's maybeSpawnTrow/
      *  onTrowStruck): a harmless wandering spirit that drops a chest, then

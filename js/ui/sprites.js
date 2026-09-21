@@ -669,6 +669,9 @@ window.UI = window.UI || {};
     }
     for (const id of window.GameData.RESOURCE_LIST)
       critical.push(() => loadVariants(`enhancement/resource_${id}`, `assets/enhancements/resource_${id}`));
+    // Item icons (dropped gear on the ground) -- static, one per item; see render.js drawGroundItems.
+    for (const id of Object.keys(window.GameData.ITEMS))
+      critical.push(() => loadVariants(`enhancement/item_${id}`, `assets/enhancements/item_${id}`));
     critical.push(() => loadVariants("enhancement/ruin", "assets/enhancements/ruin"));
     critical.push(() => loadVariants("enhancement/cave", "assets/enhancements/cave"));
     // Civ-influence ambient tile overlay -- small non-animated per-race
@@ -755,6 +758,9 @@ window.UI = window.UI || {};
     }
     for (const id of window.GameData.RESOURCE_LIST) {
       jobs.push(loadVariants(`enhancement/resource_${id}`, `assets/enhancements/resource_${id}`));
+    }
+    for (const id of Object.keys(window.GameData.ITEMS)) {
+      jobs.push(loadVariants(`enhancement/item_${id}`, `assets/enhancements/item_${id}`));
     }
     jobs.push(loadVariants("enhancement/ruin", "assets/enhancements/ruin"));
     jobs.push(loadVariants("enhancement/cave", "assets/enhancements/cave"));

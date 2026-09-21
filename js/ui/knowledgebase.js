@@ -884,7 +884,11 @@ window.UI = window.UI || {};
     },
     {
       key: "openChest", label: "Open Chest", icon: "🎁",
-      description: "Spends the unit's turn opening a chest resource tile. An 80% chance it pays out -- Coin, Lore, XP, a temporary map reveal, or a research-turn discount, one picked at random -- and a 20% chance it's trapped instead, dealing flat damage plus a status effect and no reward.",
+      description: "Spends the unit's turn opening a chest resource tile. A chest holds one to three treasures (see the Treasure page), and there is a 20% chance a trap springs first -- one of six kinds, some damaging, some purely a status effect. The treasure is yours either way.",
+    },
+    {
+      key: "pickUpItem", label: "Pick Up", icon: "🎒",
+      description: "Spends the unit's turn taking an item lying on its tile (see the Items page). Available to any kingdom's unit, but only if the unit can carry items (machines can't) and doesn't already hold that kind of item.",
     },
     {
       key: "restAndDefend", label: "Rest and Defend", icon: "🏕️",
@@ -912,7 +916,7 @@ window.UI = window.UI || {};
     },
     {
       key: "goHidden", label: "Go Hidden", icon: "🌙",
-      description: "Offered to any unit whose kingdom has unlocked stealth, once eligible. Conceals the unit from enemy vision -- see the Hidden condition's own page for the full mechanical effect, including the extra movement cost and the +50% Defense if it's attacked anyway.",
+      description: "Offered to any unit whose kingdom has unlocked stealth, once eligible. (Also granted by an item: Alunaria.) Conceals the unit from enemy vision -- see the Hidden condition's own page for the full mechanical effect, including the extra movement cost and the +50% Defense if it's attacked anyway.",
     },
     {
       key: "stopOrder", label: "Stop Order", icon: "🛑",
@@ -945,7 +949,7 @@ window.UI = window.UI || {};
       description: "Instantly moves the Druid itself, or a currently-adjacent ally, to any unoccupied, already-explored Forest tile -- no travel time, but Forest-only (compare Human's Teleportation, which can land anywhere). Costs the Druid's whole turn; the target's turn is also spent if it isn't the Druid itself.",
     },
     {
-      key: "teleportation", label: "Teleportation", icon: "✨", restriction: "Human — Wizard",
+      key: "teleportation", label: "Teleportation", icon: "✨", restriction: "Human — Wizard (or an item: Alunaria, Arangil's Vision Glass)",
       description: "Instantly moves the Wizard itself, or a currently-adjacent ally, to any unoccupied, already-explored tile of any terrain. The teleported unit has a 50% chance to land Befuddled for 1 turn from the disorientation. Costs the Wizard's whole turn; the target's turn is also spent if it isn't the Wizard itself.",
     },
     {
@@ -953,7 +957,7 @@ window.UI = window.UI || {};
       description: "Heals a chosen ally within the Druid's own attack range for a random 30%-60% of that ally's max HP (minimum 1). Costs the Druid's whole turn, no exhaustion afterward.",
     },
     {
-      key: "fireball", label: "Fireball!", icon: "🔥", restriction: "Human — Wizard",
+      key: "fireball", label: "Fireball!", icon: "🔥", restriction: "Human — Wizard (or an item: Kurganos)",
       description: "Blasts a 3x3 area anywhere within 3 tiles -- no target required inside it, the whole block is hit -- dealing damage to every unit and structure caught there, each independently rolling a 50% chance to also catch fire. Costs the Wizard's whole turn.",
     },
     {
@@ -969,7 +973,7 @@ window.UI = window.UI || {};
       description: "A single-tile ranged strike anywhere within 2 tiles, dealing damage with a 50% chance to inflict Burning and +150% siege damage against structures/cities. On top of, not instead of, the Skyship's ordinary attack.",
     },
     {
-      key: "riddle", label: "Riddle", icon: "❓", restriction: "Halfellow — Trouble Maker or Wanderer",
+      key: "riddle", label: "Riddle", icon: "❓", restriction: "Halfellow — Trouble Maker or Wanderer (or an item: The Riddle of Steel)",
       description: "A ranged debuff (reaches as far as the caster's own attack range) -- poses a riddle to the nearest enemy in range, which resists (nothing happens) with a chance equal to its race's own Curiosity trait × 0.75, or otherwise becomes Befuddled for 2 turns. Using it reveals the caster if it was Hidden. A 3-round cooldown applies per caster afterward, win or lose.",
     },
     {
@@ -1009,8 +1013,36 @@ window.UI = window.UI || {};
       description: "Summons a Mushroom on an open adjacent tile, replacing this kingdom's existing one if it already has one. For 4 turns, every allied unit within 1 tile heals 5% of its max HP per turn (minimum 1) and gains Toadstool Tranquility, while any enemy unit in that same tile has a 50% chance per turn to become Poisoned. The Mushroom itself has no attack or defense -- any unit, including a Ranged one, can destroy it outright.",
     },
     {
-      key: "whirlwindStrike", label: "Whirlwind Strike", icon: "🌪️", restriction: "Elf — Blade Dancer",
+      key: "whirlwindStrike", label: "Whirlwind Strike", icon: "🌪️", restriction: "Elf — Blade Dancer (or an item: Kurganos)",
       description: "Attacks every visible enemy within 1 tile simultaneously, at 75% of this unit's normal attack power against each, while itself taking only 37.5% of the normal counter-damage back from each of them.",
+    },
+    {
+      key: "thunderstorm", label: "Thunderstorm", icon: "⛈️", restriction: "Item — Kurganos, Crown of Elements",
+      description: "Calls down a thunderstorm for 3 turns -- the storm, lightning and thunder show for everyone, and every unit in the world sees 1 tile less while it lasts. Costs the bearer's whole turn, and can't be cast again while a storm is running.",
+    },
+    {
+      key: "itemBearForm", label: "Become Dire Bear / Change Back", icon: "🐻", restriction: "Item — Spear of Agasou",
+      description: "The bearer turns into a Dire Bear -- with no time limit -- and can change back the same way. HP carries over proportionally. Costs the bearer's whole turn each way.",
+    },
+    {
+      key: "wolfForm", label: "Become Dire Wolf", icon: "🐺", restriction: "Item — Spear of Agasou",
+      description: "The bearer turns into a Dire Wolf for 3 turns, gaining +4 movement. It can end the shapeshift early with Cancel Shapeshift. Costs the bearer's whole turn.",
+    },
+    {
+      key: "castRaptorFly", label: "Cast Raptor Fly", icon: "🦅", restriction: "Item — Spear of Agasou",
+      description: "Turns an allied military unit within reach into a raptor for 3 turns. The unit may end the spell early with Cancel Flight; if it ends over open water the unit is set down on the nearest free land within 2 tiles, or lost if there is none. Costs the bearer's whole turn.",
+    },
+    {
+      key: "cancelForm", label: "Cancel Flight / Cancel Shapeshift", icon: "↩️", restriction: "A unit turned into a raptor or Dire Wolf by an item",
+      description: "Ends the shapeshift at once and returns the unit to its own form (HP carries over proportionally). Free -- it doesn't use the unit's turn. If a raptor's flight ends over open water, the unit is set down on the nearest free land within 2 tiles, or lost if there is none.",
+    },
+    {
+      key: "itemSummonShadowsteed", label: "Call Shadowsteed", icon: "🐴", restriction: "Item — Eyrhild's Fury",
+      description: "Summons a Shadowsteed under the bearer's control on an open adjacent tile -- one at a time; once it dies, another can be called. No resource cost; uses the bearer's whole turn.",
+    },
+    {
+      key: "summonDireWolf", label: "Summon Dire Wolf", icon: "🐺", restriction: "Item — Mhorgrim's Hunt",
+      description: "Summons a Dire Wolf under the bearer's control on an open adjacent tile -- one at a time; once it dies, another can be summoned. No resource cost; uses the bearer's whole turn.",
     },
     {
       key: "bladeStorm", label: "Blade Storm", icon: "🗡️", restriction: "Elf — Blade Dancer",
@@ -1469,6 +1501,133 @@ window.UI = window.UI || {};
     });
   }
 
+  // --- Treasure page (2026-09-21, user-directed loot overhaul) -------------
+  // Everything a Treasure Chest can hold, grouped by rarity. The id list and
+  // each treasure's tier come from config.js's treasureChest.treasures (so a
+  // rarity change there shows up here automatically); the wording lives here,
+  // next to the other reference text, and mirrors ai.js's TREASURE_TABLE.
+  const TREASURE_INFO = {
+    coin: { label: "Coin", icon: "🪙", description: "A pile of gold coins: about 19 coin (varies +/-25%). Orc Plunder triples it." },
+    lore: { label: "Lore", icon: "📖", description: "An ancient tome: 19 lore." },
+    harvest: { label: "Harvest", icon: "🌾", description: "A hoard of preserved food: 19 harvest." },
+    xp: { label: "Experience", icon: "✨", description: "An experience crystal: about 19 XP (varies +/-25%) for the unit that opened the chest." },
+    mapFragment: { label: "Map Fragment", icon: "🗺️", description: "Reveals a random swath of unexplored land for the rest of the turn. Only appears while there is still map to explore." },
+    reduceResearch: { label: "Scholars' Notes", icon: "📜", description: "Cuts 1-3 rounds off the research in progress. Only appears while something is being researched." },
+    treasureMap: { label: "Treasure Map", icon: "🧭", description: "Marks the nearest other Treasure Chest that you can't currently see, whether or not you have explored that spot, as a remembered chest on your map. Only appears while such a chest exists." },
+    elixir: { label: "Elixir", icon: "🧪", description: "Fully heals the unit that found it and every allied unit within 2 tiles. Only appears when someone in range is hurt." },
+    masterBuilder: { label: "Master Builder's Plans", icon: "📐", description: "Halves the remaining turns (minimum 1) on the nearest of your cities that is building something. Only appears when a city has a build in progress with more than 1 turn left." },
+    banner: { label: "Banner of the Kingdom", icon: "🚩", description: "Permanently grows the influence radius of the nearest city by 1. Each city can only ever have one Banner." },
+    trowFiddle: { label: "Trow's Fiddle", icon: "🎻", description: "For 3 turns, shows where every Treasure Trow on the map is, even through fog. Only appears while a Trow exists, and only for a human player." },
+    feather: { label: "Feather of Flying", icon: "🪶", description: "An item: the bearer can fly, crossing water and mountains and dodging melee attacks like any flying unit. Not offered to a unit that can already fly, or to machines. If its bearer dies in battle it may be dropped for anyone to Pick Up." },
+    cloak: { label: "Cloak of Hiding", icon: "🧥", description: "An item: the bearer can go Hidden under the usual Hidden rules. Not offered to a unit that can already hide, or to machines. May be dropped if its bearer dies in battle." },
+    boots: { label: "Boots of Sprinting", icon: "🥾", description: "An item: +1 movement for the bearer. A unit carries at most one pair, and machines cannot wear them. May be dropped if its bearer dies in battle." },
+    lucky_rock: { label: "Lucky Rock", icon: "🪨", description: "An item: the bearer opens chests with a 20% better chance of an extra treasure and 50% more resources, finds treasure in Ruin delves 20% more often, meets a trapped chest half as often, and has a 50% chance to shrug off each negative condition. A unit carries at most one, and machines cannot hold it." },
+    tome: { label: "Veteran's Tome", icon: "🎓", description: "An instant level-up for the unit that found it. Not offered to a unit at maximum level." },
+    lostKnowledge: { label: "Lost Knowledge", icon: "📚", description: "Completes your current research at once; with nothing being researched, grants a random available advancement for free." },
+    giltmaw: { label: "Giltmaw", icon: "🧰", description: "A mimic! The chest sprouts teeth and a Giltmaw attacks from an adjacent tile, replacing the chest's whole contents. Slay it and it always drops a chest holding double the treasure. Only appears where the Max Monsters limit allows another monster." },
+  };
+  const TREASURE_TIER_LABEL = { common: "Common", uncommon: "Uncommon", rare: "Rare" };
+
+  function treasureCfg() { return window.GameConfig.worldEncounters.treasureChest; }
+
+  function renderTreasureListHtml(selectedKey) {
+    const cfg = treasureCfg();
+    return ["common", "uncommon", "rare"].map((tier) => {
+      const ids = Object.keys(cfg.treasures).filter((id) => cfg.treasures[id] === tier && TREASURE_INFO[id]);
+      return `<div class="kb-list-group">
+        <div class="kb-list-group-label">${TREASURE_TIER_LABEL[tier]}</div>
+        ${ids.map((id) => {
+          const t = TREASURE_INFO[id];
+          const selected = id === selectedKey ? " kb-list-btn-selected" : "";
+          return `<button class="kb-list-btn${selected}" data-treasure-id="${escapeHtml(id)}">
+            <span class="kb-list-btn-symbol">${t.icon}</span><span>${escapeHtml(t.label)}</span></button>`;
+        }).join("")}
+      </div>`;
+    }).join("");
+  }
+
+  function renderTreasureProfileHtml(selectedKey) {
+    const t = TREASURE_INFO[selectedKey];
+    const cfg = treasureCfg();
+    if (!t || !cfg.treasures[selectedKey]) {
+      return `<div class="kb-profile-empty">Select a treasure on the left to see what it does. A chest holds 1 treasure (65%), 2 (27%) or 3 (8%), drawn by rarity; a trap may spring first, but the treasure is still yours. Ruin delves and the chests of a Giltmaw or Treasure Trow can also yield a Unique Item -- see the Items page.</div>`;
+    }
+    return `
+      <div class="kb-profile-header">
+        <div class="kb-condition-profile-icon">${t.icon}</div>
+        <div><h2>${escapeHtml(t.label)}</h2></div>
+      </div>
+      <div class="kb-chip-row"><span class="kb-chip">${TREASURE_TIER_LABEL[cfg.treasures[selectedKey]]}</span></div>
+      <div class="kb-condition-profile-desc">${escapeHtml(t.description)}</div>`;
+  }
+
+  /** Full HTML for the Treasure page -- same list+profile layout as Actions. */
+  function renderTreasure(selectedKey) {
+    return `
+      <div class="kb-header"><h2>Treasure</h2></div>
+      <div class="kb-body">
+        <div class="kb-list-pane">${renderTreasureListHtml(selectedKey)}</div>
+        <div class="kb-profile-pane">${renderTreasureProfileHtml(selectedKey)}</div>
+      </div>`;
+  }
+
+  // --- Items page (2026-09-21) ----------------------------------------------
+  // Every item a unit can carry (data/items.js -- the same
+  // table the game reads its bonuses from). Shows the item's picture (the same
+  // sprite it has on the ground), what it does, where it comes from and the
+  // rules that apply to all of them.
+  function renderItemListHtml(selectedKey) {
+    const defs = window.GameData.ITEMS;
+    return `<div class="kb-list-group">
+      <div class="kb-list-group-label">Items</div>
+      ${Object.entries(defs).map(([id, d]) => {
+        const selected = id === selectedKey ? " kb-list-btn-selected" : "";
+        return `<button class="kb-list-btn${selected}" data-item-id="${escapeHtml(id)}">
+          <span class="kb-list-btn-symbol">${d.icon}</span><span>${escapeHtml(d.label)}</span></button>`;
+      }).join("")}
+    </div>`;
+  }
+
+  function renderItemProfileHtml(selectedKey) {
+    const d = window.GameData.ITEMS[selectedKey];
+    const cfg = window.GameConfig.worldEncounters.treasureChest;
+    if (!d) {
+      return `<div class="kb-profile-empty">Select an item on the left. Items are gear a unit carries: they give it a bonus, may be dropped when it dies in battle, and can be picked up by any unit.</div>`;
+    }
+    const drop = Math.round(cfg.itemDropChance * 100), plunder = Math.round(cfg.plunderDropChance * 100);
+    return `
+      <div class="kb-profile-header">
+        <img class="kb-item-sprite" src="assets/enhancements/item_${escapeHtml(selectedKey)}_1.png" width="96" height="96"
+          alt="" onerror="this.replaceWith(Object.assign(document.createElement('div'),{className:'kb-condition-profile-icon',textContent:'${d.icon}'}))">
+        <div><h2>${escapeHtml(d.label)}</h2></div>
+      </div>
+      <div class="kb-chip-row"><span class="kb-chip">${d.unique ? "Unique Item" : "Item"}</span></div>
+      <div class="kb-condition-profile-desc">${escapeHtml(d.text)}</div>
+      <h3>Where it comes from</h3>
+      <div class="kb-condition-profile-desc">${escapeHtml(d.source)}.</div>
+      ${d.unique ? `<h3>Unique</h3>
+      <div class="kb-condition-profile-desc">Only one ${escapeHtml(d.label)} can exist in the world at a time. While anyone carries it,
+        or it lies on the ground or in a chest, it cannot be found again. If it is lost (its bearer dies and it does not drop),
+        it can turn up again. Unique items are found in Ruin delves and in the chests dropped by a Giltmaw or a Treasure Trow.</div>` : ""}
+      <h3>How items work</h3>
+      <div class="kb-condition-profile-desc">
+        A unit carries at most one of each item. Machines (siege engines, ships, traps and the like) cannot carry items.
+        When a unit carrying items is killed in battle: if it drops a chest, all its items are inside that chest; otherwise
+        one of its items is picked at random and has a ${drop}% chance (${plunder}% if the killer's kingdom has Plunder) of
+        dropping where it fell. Any kingdom's unit standing on a dropped item can use the Pick Up action to take it.
+      </div>`;
+  }
+
+  /** Full HTML for the Items page -- same list+profile layout as Actions/Treasure. */
+  function renderItems(selectedKey) {
+    return `
+      <div class="kb-header"><h2>Items</h2></div>
+      <div class="kb-body">
+        <div class="kb-list-pane">${renderItemListHtml(selectedKey)}</div>
+        <div class="kb-profile-pane">${renderItemProfileHtml(selectedKey)}</div>
+      </div>`;
+  }
+
   function renderTerrainListHtml(selectedKey) {
     return terrainCatalog().map((g) => `
       <div class="kb-list-group">
@@ -1525,7 +1684,7 @@ window.UI = window.UI || {};
   // this page's own list does, rather than a second hand-copied version
   // that could drift.
   window.UI.knowledgebase = {
-    renderUnits, renderConditions, renderStats, renderStructures, renderActions, renderTerrain,
+    renderUnits, renderConditions, renderStats, renderStructures, renderActions, renderTerrain, renderTreasure, renderItems,
     drawUnitPortrait, drawStructurePortrait, drawTerrainPortrait, wireCombatSimulator, conditionDisplayName,
   };
 })();

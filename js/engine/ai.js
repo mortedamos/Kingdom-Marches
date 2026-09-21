@@ -2632,6 +2632,13 @@ window.GameEngine = window.GameEngine || {};
     // Violent Momentum above.
     if (unit.conditions?.flying) movement += unit.conditions.flying.moveBonus || 0;
 
+    // Items (Boots of Sprinting, ...): permanent movement bonuses, see
+    // engine/items.js. Additive, before every multiplicative modifier
+    // below (curse/hidden/...).
+    movement += window.GameEngine.items.itemStat(unit, "movement");
+    // Spear of Agasou's Dire Wolf form: +movement while it lasts (see shapeshift).
+    movement += (unit.form && unit.form.moveBonus) || 0;
+
     // Tech: Orc "Raiding Party" -- +1 movement while within range 2 of
     // another Orc military unit, same range-2 ally check the tech's +1
     // attack bonus uses (see combat.js's effectiveAttack/
@@ -4890,8 +4897,8 @@ window.GameEngine = window.GameEngine || {};
   }
 
   const BUILDING_UNIT_STAMPS = [
-    { buildingId: "deep_forge", stat: "attack", amount: 1 },        // Dwarf "Forged Arms"
-    { buildingId: "silverleaf_atelier", stat: "defense", amount: 1 }, // Elf "Silversteel Mail"
+    // (Deep Forge / Silverleaf Atelier no longer stamp a stat -- 2026-09-21, they hand new units
+    // a Dwarven Hammer / Mythril Armor ITEM instead; see applyBuildingUnitStamps.)
     { buildingId: "war_camp", stat: "movement", amount: 1 },        // Orc War Camp
     { buildingId: "war_camp", stat: "firstStrikePct", amount: 0.05 }, // Orc War Camp (2026-09-02)
     { buildingId: "butchery", stat: "healOnKillPct", amount: 15 },  // Orc Butchery (2026-09-02)
@@ -4907,8 +4914,24 @@ window.GameEngine = window.GameEngine || {};
    *  bonus) that `city` currently qualifies for onto a freshly-spawned unit.
    *  Must run AFTER combat.initUnitHP, since the HP bonus stacks on top of
    *  the base maxHp that call establishes. */
-  function applyBuildingUnitStamps(newUnit, city) {
+  function applyBuildingUnitStamps(newUnit, city, civ) {
     const cities = window.GameEngine.cities;
+    // Gear handed to new units (2026-09-21, user-directed; machines can't use
+    // items -- items.giveItem refuses them):
+    //   Dwarf Deep Forge ("Forgecraft")            -> Dwarven Hammer (+1 attack),
+    //                                                 military units only
+    //   Elf Silverleaf Atelier                     -> Mythril Armor (+1 defense)
+    //   Dwarf "Runeforged Armory", any city        -> Dwarven Armor (+1 defense, +1 attack),
+    //                                                 military units only
+    if (civ) {
+      const isMilitary = window.GameData.getUnit(newUnit.typeId).category === "military";
+      if (isMilitary && cities.cityHasStructure(city, "deep_forge")) window.GameEngine.items.giveItem(newUnit, civ, "dwarven_hammer");
+      if (cities.cityHasStructure(city, "silverleaf_atelier")) window.GameEngine.items.giveItem(newUnit, civ, "mythril_armor");
+      if (civ.raceId === "dwarf" && civ.unlockedMechanics && civ.unlockedMechanics.has("runeforged_armory")
+          && isMilitary) {
+        window.GameEngine.items.giveItem(newUnit, civ, "dwarven_armor");
+      }
+    }
     for (const stamp of BUILDING_UNIT_STAMPS) {
       if (!cities.cityHasStructure(city, stamp.buildingId)) continue;
       newUnit.buildingBonuses = newUnit.buildingBonuses || {};
@@ -4967,7 +4990,7 @@ window.GameEngine = window.GameEngine || {};
     // never silently override typeId/civId/position.
     const newUnit = { typeId: unitId, civId: civ.id, x: spawnX, y: spawnY, isCivilian: ["pioneer", "scout"].includes(unitId), homeCityName: city.name, ...extra };
     window.GameEngine.combat.initUnitHP(newUnit, civ);
-    applyBuildingUnitStamps(newUnit, city);
+    applyBuildingUnitStamps(newUnit, city, civ);
     civ.units.push(newUnit);
     // Human "Guild Charter": every new unit built in a city with a Guild
     // Hall receives a free level-up -- granted as XP equal to the first
@@ -4993,7 +5016,7 @@ window.GameEngine = window.GameEngine || {};
         || { x: city.x, y: city.y };
       const bonusUnit = { typeId: unitId, civId: civ.id, x: bonusSpot.x, y: bonusSpot.y, homeCityName: city.name };
       window.GameEngine.combat.initUnitHP(bonusUnit, civ);
-      applyBuildingUnitStamps(bonusUnit, city);
+      applyBuildingUnitStamps(bonusUnit, city, civ);
       civ.units.push(bonusUnit);
       if (window.GameEngine.cities.cityHasStructure(city, "guild_hall")) {
         applyComputedXP(bonusUnit, civ, window.GameEngine.combat.XP_LEVEL_THRESHOLDS[0]);
@@ -5525,6 +5548,10 @@ window.GameEngine = window.GameEngine || {};
       // plays actually applies; otherwise falls through to the normal cascade.
       if (maybeHumanWizardPlay(civ, unit, gameState, weights, difficulty, log)) continue;
 
+      // Item-granted actions (Kurganos, Spear of Agasou, Alunaria, Arangil's
+      // Vision Glass, Mhorgrim's Hunt) -- see maybeItemActionsPlay.
+      if (maybeItemActionsPlay(civ, unit, gameState, log)) continue;
+
       // Halfellow Trouble Maker: proactive use of Resource Heist/Unlock the
       // Gate/Riddle -- see maybeTroubleMakerPlay's doc comment.
       if (maybeTroubleMakerPlay(civ, unit, gameState, log)) continue;
@@ -5724,6 +5751,8 @@ window.GameEngine = window.GameEngine || {};
       // otherwise curiosity-weighted pursuit of the nearest known chest.
       // Race-agnostic, tech-free -- see openTreasureChest above.
       if (!gatheringVeto && maybeOpenChestPlay(civ, unit, gameState, log)) continue;
+      // Dropped gear (items): pick up / march to the nearest one.
+      if (!gatheringVeto && maybePickUpItemPlay(civ, unit, gameState, log)) continue;
 
       // Caves: jumps through one on the spot if it's a real shortcut toward
       // the front line, otherwise pursues a known cave when doing so would
@@ -6180,7 +6209,9 @@ window.GameEngine = window.GameEngine || {};
     targetUnit._renderY = landing.y;
     targetUnit._animStart = 0;
 
-    window.SfxSystem.playAction(civ.raceId, caster.typeId, "teleport", landing.x, landing.y);
+    // An item-granted teleport (a non-Wizard caster) borrows the Human Wizard's clip.
+    if (caster.typeId === "wizard") window.SfxSystem.playAction(civ.raceId, "wizard", "teleport", landing.x, landing.y);
+    else window.SfxSystem.playAction("human", "wizard", "teleport", landing.x, landing.y);
     window.GameEngine.combat.spawnAreaEffect(landing.x, landing.y, 0, "teleport");
     if (Math.random() < TELEPORT_BEFUDDLE_CHANCE) {
       window.GameEngine.combat.applyBefuddled(targetUnit, currentTurnNumber, 1);
@@ -6191,10 +6222,10 @@ window.GameEngine = window.GameEngine || {};
 
     if (targetUnit === caster) {
       caster.currentMission = "Blinked away";
-      log.push(`Teleport: ${civ.id}'s Wizard blinked to (${landing.x},${landing.y})`);
+      log.push(`Teleport: ${civ.id}'s ${describeUnit(caster)} blinked to (${landing.x},${landing.y})`);
     } else {
       caster.currentMission = `Teleported a ${describeUnit(targetUnit)} to (${landing.x},${landing.y})`;
-      log.push(`Teleport: ${civ.id}'s Wizard teleported a ${describeUnit(targetUnit)} to (${landing.x},${landing.y})`);
+      log.push(`Teleport: ${civ.id}'s ${describeUnit(caster)} teleported a ${describeUnit(targetUnit)} to (${landing.x},${landing.y})`);
     }
     return true;
   }
@@ -7514,12 +7545,15 @@ window.GameEngine = window.GameEngine || {};
     const riddle = window.GameData.getRandomRiddle();
     window.GameEngine.quips.spawnQuipText(unit, riddle.question);
     window.GameEngine.quips.spawnQuipText(target, resisted ? riddle.answer : window.GameData.getRandomStumpedResponse());
+    // The Riddle of Steel: the riddled enemy is also struck, resisted or not.
+    if (window.GameEngine.items.itemFlag(unit, "riddleStrike") && target.hp > 0) riddleSteelStrike(civ, unit, target, gameState, log);
     return true;
   }
 
   function maybeRiddlePlay(civ, unit, gameState, log) {
-    if ((unit.typeId !== "trouble_maker" && unit.typeId !== "wanderer")
-        || !civ.unlockedMechanics || !civ.unlockedMechanics.has("riddle")) return false;
+    const nativeRiddler = (unit.typeId === "trouble_maker" || unit.typeId === "wanderer")
+      && civ.unlockedMechanics && civ.unlockedMechanics.has("riddle");
+    if (!nativeRiddler && !window.GameEngine.items.grantsAction(unit, "riddle")) return false;
     if ((unit._riddleCooldownUntilTurn || 0) > currentTurnNumber) return false;
     const radius = window.GameEngine.combat.effectiveRange(unit, civ);
     const target = findRiddleTarget(civ, unit, gameState, radius);
@@ -8095,6 +8129,7 @@ window.GameEngine = window.GameEngine || {};
       markCombatEngaged(defenderCiv);
       window.GameEngine.combat.revealHidden(target, currentTurnNumber);
       applyElfCombatMechanics(unit, civ, target, defenderCiv, result, gameState);
+      applyItemCombatEffects(unit, civ, target, defenderCiv, result, gameState);
       applyMycomancerCounterPoison(unit, target, defenderCiv, result, gameState);
       hitCount++;
 
@@ -9129,26 +9164,6 @@ window.GameEngine = window.GameEngine || {};
     return false;
   }
 
-  /** Treasure Chest open action (see doc/world_encounters_design.md) -- a
-   *  universal one-shot ring-menu action any unit standing on a "chest"
-   *  resource tile can take, consuming its turn. Removes the chest (same
-   *  scheduleResourceRespawn pattern every other resource uses on
-   *  exhaustion -- a chest is spent the instant it's opened, not via the
-   *  per-turn RESOURCE_EXHAUSTION_CHANCE roll every worked-channel resource
-   *  uses), then resolves either a trap (one of CHEST_TRAP_KINDS below,
-   *  each just the chest's own flat damage plus a condition that already
-   *  exists elsewhere in the game -- Frozen/Burning reuse Halfellow's Set
-   *  the Trap's own FROZEN_DURATION/applyBurning, Poisoned/Befuddled reuse
-   *  the Marsh Adder's applyPoisoned and Halfellow Riddle's applyBefuddled)
-   *  or a reward (coin/lore banked to civ.stockpile, or XP granted straight
-   *  to the opening unit via applyComputedXP -- same path real combat XP
-   *  takes, so any pending level-up queues normally). Returns a result
-   *  object; the caller (main.js's handleContextMenuAction) is responsible
-   *  for showing a modal with it -- this file has no UI dependency
-   *  anywhere else and shouldn't gain one here. Returns null if `unit`
-   *  isn't actually standing on a chest (stale ring-menu click, e.g. the
-   *  tile's chest was claimed by someone else the same turn). */
-  const CHEST_TRAP_KINDS = ["fire", "frost", "poison", "befuddle"];
   /** Coin/XP chest rewards (2026-08-17, user-directed): +/-25% variance on
    *  cfg.rewardAmount, freshly rolled per chest, rounded to the nearest
    *  whole number -- makes every chest open feel a little less like a
@@ -9158,109 +9173,482 @@ window.GameEngine = window.GameEngine || {};
   function jitterChestReward(amount) {
     return Math.round(amount * (1 + (Math.random() * 0.5 - 0.25)));
   }
-  /** Orc's Plunder tech (2026-08-26, user-directed): a chest that would've
-   *  paid something other than coin also pays this bonus coin haul on top
-   *  -- always jittered and tripled, same as a normal coin payout's own
-   *  3x multiplier below, just granted unconditionally rather than only
-   *  when the rewardType roll happens to land on "coin". */
+  /** The chest reward for payouts that use cfg.rewardAmount as-is rather than
+   *  jittering it (Lore, Harvest): whole numbers only, since they're shown as
+   *  "+N lore" and banked straight into the stockpile. rewardAmount itself is
+   *  fractional (18.75 -- see config.js) so the jittered payouts average an
+   *  exact +25%. */
+  function chestFlatReward(cfg) {
+    return Math.round(cfg.rewardAmount);
+  }
+  /** Orc's Plunder tech (2026-08-26, user-directed): a chest that holds no
+   *  coin also pays this bonus coin haul on top -- always jittered and
+   *  tripled, same as a coin treasure's own 3x multiplier under Plunder. */
+  /** Lucky Rock (data/items.js `luck.resourceMult`): the opener's multiplier on every
+   *  resource treasure a chest pays out (coin, lore, harvest). */
+  function chestResourceLuck(unit) {
+    return window.GameEngine.items.itemLuck(unit).resourceMult;
+  }
+
   function grantPlunderBonus(civ, unit, cfg) {
-    const amount = jitterChestReward(cfg.rewardAmount) * 3;
+    const amount = Math.round(jitterChestReward(cfg.rewardAmount) * 3 * chestResourceLuck(unit));
     civ.stockpile.coin = (civ.stockpile.coin || 0) + amount;
     window.GameEngine.floatingText.spawnFloatingText(unit, `+${amount} coin (Plunder)`, "resource");
     return amount;
   }
+
+  /**
+   * TREASURE TABLE (2026-09-21, user-directed loot overhaul -- see
+   * config.js's treasureChest.treasures for the id -> rarity list, and
+   * doc/world_encounters_design.md).
+   *
+   * One entry per treasure id: `eligible(ctx)` says whether it can do anything
+   * for this opener right now (a treasure that can't -- already flying, boots
+   * at the cap, nothing to build -- is skipped and the slot re-rolls, see
+   * rollChestTreasures), and `apply(ctx)` performs it and returns a display
+   * line { id, text, resource?, icon?, link? } for the modal (or null if it
+   * turned out it couldn't after all, which the roller backfills with coin).
+   * `ctx` = { civ, unit, gameState, cfg, openerAlive, plunder }.
+   *
+   * Permanent per-unit items live in `unit.items` (an optional plain object,
+   * so old saves need no migration): flight (bool), cloak (bool), boots (0-2).
+   */
+  const TREASURE_TABLE = {
+    coin: {
+      eligible: () => true,
+      apply: ({ civ, unit, cfg, plunder }) => {
+        const amount = Math.round(jitterChestReward(cfg.rewardAmount) * (plunder ? 3 : 1) * chestResourceLuck(unit));
+        civ.stockpile.coin = (civ.stockpile.coin || 0) + amount;
+        window.GameEngine.floatingText.spawnFloatingText(unit, `+${amount} coin`, "resource");
+        return { id: "coin", resource: "coin", text: `A pile of gold coins -- +${amount} coin.` };
+      },
+    },
+    lore: {
+      eligible: () => true,
+      apply: ({ civ, unit, cfg }) => {
+        const amount = Math.round(chestFlatReward(cfg) * chestResourceLuck(unit));
+        civ.stockpile.lore = (civ.stockpile.lore || 0) + amount;
+        window.GameEngine.floatingText.spawnFloatingText(unit, `+${amount} lore`, "resource");
+        return { id: "lore", resource: "lore", text: `An ancient tome -- +${amount} lore.` };
+      },
+    },
+    harvest: {
+      eligible: () => true,
+      apply: ({ civ, unit, cfg }) => {
+        const amount = Math.round(chestFlatReward(cfg) * chestResourceLuck(unit));
+        civ.stockpile.harvest = (civ.stockpile.harvest || 0) + amount;
+        window.GameEngine.floatingText.spawnFloatingText(unit, `+${amount} harvest`, "resource");
+        return { id: "harvest", resource: "harvest", text: `A hoard of preserved grain and fruit -- +${amount} harvest.` };
+      },
+    },
+    xp: {
+      eligible: ({ openerAlive }) => openerAlive,
+      apply: ({ civ, unit, cfg }) => {
+        const amount = jitterChestReward(cfg.rewardAmount);
+        applyComputedXP(unit, civ, amount);
+        return { id: "xp", icon: "✨", text: `An experience crystal -- +${amount} XP.` };
+      },
+    },
+    mapFragment: {
+      // Only useful while there's still unexplored map left.
+      eligible: ({ civ, gameState }) => {
+        const explored = gameState.explored[civ.id];
+        return !explored || explored.size < gameState.map.tiles.length;
+      },
+      apply: ({ civ, unit, gameState }) => {
+        const revealed = window.GameEngine.turns.revealMapFragment(civ, gameState);
+        if (!revealed) return null;
+        window.GameEngine.floatingText.spawnFloatingText(unit, "Map Fragment!", "resource");
+        return { id: "mapFragment", icon: "🗺️", link: { x: revealed.x, y: revealed.y },
+          text: `A map fragment -- unrolling it reveals a swath of unexplored land around (${revealed.x},${revealed.y}) for the rest of this turn.` };
+      },
+    },
+    reduceResearch: {
+      eligible: ({ civ }) => !!civ.currentResearch,
+      apply: ({ civ, unit }) => {
+        if (!civ.currentResearch) return null;
+        const amount = 1 + Math.floor(Math.random() * 3); // 1-3 rounds
+        const r = window.GameEngine.tech.reduceResearchTurns(civ, amount);
+        window.GameEngine.floatingText.spawnFloatingText(unit, `Research -${amount} rounds!`, "resource");
+        return { id: "reduceResearch", icon: "📜",
+          text: r && r.completed ? `Scholars' notes -- ${r.techLabel} is completed!` : `Scholars' notes -- research is ${amount} round${amount === 1 ? "" : "s"} shorter.` };
+      },
+    },
+    treasureMap: {
+      eligible: (ctx) => !!findUnseenChest(ctx.civ, ctx.unit, ctx.gameState),
+      apply: ({ civ, unit, gameState }) => {
+        const spot = findUnseenChest(civ, unit, gameState);
+        if (!spot) return null;
+        window.GameEngine.turns.rememberTile(civ, gameState, spot.y * gameState.map.width + spot.x);
+        window.GameEngine.floatingText.spawnFloatingText(unit, "Treasure Map!", "resource");
+        return { id: "treasureMap", icon: "🧭", link: { x: spot.x, y: spot.y },
+          text: `A treasure map -- another chest is marked at (${spot.x},${spot.y}).` };
+      },
+    },
+    elixir: {
+      eligible: (ctx) => elixirTargets(ctx).length > 0,
+      apply: (ctx) => {
+        const targets = elixirTargets(ctx);
+        if (!targets.length) return null;
+        for (const u of targets) {
+          u.hp = u.maxHp;
+          window.GameEngine.floatingText.spawnFloatingText(u, "Healed!", "heal");
+        }
+        return { id: "elixir", icon: "🧪", text: `A shimmering elixir -- ${targets.length === 1 ? "fully heals its finder" : `fully heals ${targets.length} nearby units`}.` };
+      },
+    },
+    masterBuilder: {
+      eligible: (ctx) => !!nearestCityWhere(ctx, (c) => c.buildQueue && c.buildQueue.turnsRemaining > 1),
+      apply: (ctx) => {
+        const city = nearestCityWhere(ctx, (c) => c.buildQueue && c.buildQueue.turnsRemaining > 1);
+        if (!city) return null;
+        const before = city.buildQueue.turnsRemaining;
+        city.buildQueue.turnsRemaining = Math.max(1, Math.ceil(before / 2));
+        window.GameEngine.floatingText.spawnFloatingText(city, "Plans found!", "resource");
+        return { id: "masterBuilder", icon: "📐", text: `Master Builder's Plans -- ${city.name}'s current build drops from ${before} to ${city.buildQueue.turnsRemaining} turns.` };
+      },
+    },
+    banner: {
+      eligible: (ctx) => !!nearestCityWhere(ctx, (c) => !c.hasBanner),
+      apply: (ctx) => {
+        const city = nearestCityWhere(ctx, (c) => !c.hasBanner);
+        if (!city) return null;
+        const bonus = ctx.cfg.bannerRadiusBonus;
+        city.extraRadiusBonus = (city.extraRadiusBonus || 0) + bonus;
+        city.hasBanner = true;
+        window.GameEngine.floatingText.spawnFloatingText(city, "Banner raised!", "aura");
+        return { id: "banner", icon: "🚩", text: `Banner of the Kingdom -- ${city.name}'s influence radius grows by ${bonus}, permanently.` };
+      },
+    },
+    trowFiddle: {
+      // Only a human player can look at the map, so this is wasted on an AI.
+      eligible: ({ civ, gameState }) => !!civ.isHuman && trowsAlive(gameState).length > 0,
+      apply: ({ civ, unit, gameState, cfg }) => {
+        if (!trowsAlive(gameState).length) return null;
+        civ.trowSightUntil = (gameState.turnNumber || 0) + cfg.fiddleTurns;
+        window.GameEngine.floatingText.spawnFloatingText(unit, "Trow's Fiddle!", "aura");
+        return { id: "trowFiddle", icon: "🎻", text: `A trow's fiddle -- its tune shows where every Treasure Trow hides for the next ${cfg.fiddleTurns} turns.` };
+      },
+    },
+    lostKnowledge: {
+      eligible: ({ civ }) => !!civ.currentResearch || window.GameEngine.tech.availableTechs(civ).length > 0,
+      apply: ({ civ, unit }) => {
+        const tech = window.GameEngine.tech;
+        let label = null;
+        if (civ.currentResearch) {
+          const r = tech.reduceResearchTurns(civ, Math.max(1, civ.researchTurnsRemaining || 1));
+          label = r && r.techLabel;
+        } else {
+          const pool = tech.availableTechs(civ);
+          if (!pool.length) return null;
+          const id = pool[Math.floor(Math.random() * pool.length)];
+          tech.grantFreeTech(civ, id);
+          label = window.GameData.getTech(id).label;
+        }
+        window.GameEngine.floatingText.spawnFloatingText(unit, "Lost Knowledge!", "resource");
+        return { id: "lostKnowledge", icon: "📚", text: `Lost Knowledge -- ${label} is learned at once.` };
+      },
+    },
+    // The three chest-found items (see data/items.js) share
+    // one shape: eligible if this opener can use and doesn't already hold it,
+    // apply via items.giveItem -- the single place item rules live.
+    feather: {
+      eligible: ({ unit, civ, openerAlive }) => openerAlive && window.GameEngine.items.canReceiveItem(unit, civ, "feather"),
+      apply: ({ unit, civ }) => grantItemTreasure(unit, civ, "feather", `${chestUnitLabel(unit)} can fly, permanently.`),
+    },
+    cloak: {
+      eligible: ({ unit, civ, openerAlive }) => openerAlive && window.GameEngine.items.canReceiveItem(unit, civ, "cloak"),
+      apply: ({ unit, civ }) => grantItemTreasure(unit, civ, "cloak", `${chestUnitLabel(unit)} can go Hidden.`),
+    },
+    boots: {
+      eligible: ({ unit, civ, openerAlive }) => openerAlive && window.GameEngine.items.canReceiveItem(unit, civ, "boots"),
+      apply: ({ unit, civ }) => grantItemTreasure(unit, civ, "boots", `${chestUnitLabel(unit)} gains +1 movement, permanently.`),
+    },
+    lucky_rock: {
+      eligible: ({ unit, civ, openerAlive }) => openerAlive && window.GameEngine.items.canReceiveItem(unit, civ, "lucky_rock"),
+      apply: ({ unit, civ }) => grantItemTreasure(unit, civ, "lucky_rock", `${chestUnitLabel(unit)} is blessed with luck.`),
+    },
+    tome: {
+      eligible: ({ unit, openerAlive }) => openerAlive && nextLevelXp(unit) != null && !(unit.conditions && unit.conditions.zombie),
+      apply: ({ civ, unit }) => {
+        const need = nextLevelXp(unit);
+        if (need == null) return null;
+        applyComputedXP(unit, civ, Math.max(1, need - (unit.xp || 0)));
+        return { id: "tome", icon: "🎓", text: `Veteran's Tome -- ${chestUnitLabel(unit)} earns a level-up${civ.isHuman ? " (choose it from the unit's menu)" : ""}.` };
+      },
+    },
+    giltmaw: {
+      // A chest that BITES BACK -- handled specially in rollChestTreasures
+      // (it replaces the whole chest). Only where a hostile monster has room.
+      eligible: (ctx) => !ctx.noGiltmaw && !!giltmawSpawnSpot(ctx),
+      apply: (ctx) => {
+        const spot = giltmawSpawnSpot(ctx);
+        if (!spot) return null;
+        const monsterCiv = ensureMonsterCiv(ctx.gameState);
+        const g = { typeId: "giltmaw", civId: MONSTER_CIV_ID, x: spot.x, y: spot.y, isCivilian: false };
+        window.GameEngine.combat.initUnitHP(g, monsterCiv);
+        monsterCiv.units.push(g);
+        window.GameEngine.floatingText.spawnFloatingText(ctx.unit, "It's a Giltmaw!", "warning");
+        return { id: "giltmaw", icon: "👹", text: "It's a Giltmaw! The chest sprouts teeth and lunges -- slay it and it will drop a chest with double the treasure." };
+      },
+    },
+  };
+
+  function chestUnitLabel(unit) {
+    return unit.name || window.GameData.getUnit(unit.typeId).label;
+  }
+
+  // ---------------------------------------------------------------------------
+  // ITEMS (2026-09-21, user-directed) -- the data is data/items.js and the rules
+  // (give / drop / pick up / stats) are engine/items.js. Only the chest-specific
+  // wrapper lives here.
+  // ---------------------------------------------------------------------------
+  /** Chest-treasure wrapper: gives the item, shows the floating text, and
+   *  returns the display line (null if the unit couldn't take it after all). */
+  function grantItemTreasure(unit, civ, id, detail) {
+    if (!window.GameEngine.items.giveItem(unit, civ, id)) return null;
+    const def = window.GameData.getItem(id);
+    window.GameEngine.floatingText.spawnFloatingText(unit, `${def.label}!`, "aura");
+    return { id, icon: def.icon, text: `${def.label} -- ${detail}` };
+  }
+
+  function trowsAlive(gameState) {
+    const mc = gameState.civs[MONSTER_CIV_ID];
+    return mc ? mc.units.filter((u) => u.typeId === window.GameData.TROW_UNIT_ID && u.hp > 0) : [];
+  }
+  /** XP needed to reach the unit's next unearned level, or null at max level
+   *  (counting level-ups it has already earned but not yet spent). */
+  function nextLevelXp(unit) {
+    const combat = window.GameEngine.combat;
+    const target = (unit.level || 0) + combat.pendingLevelUps(unit);
+    if (target >= combat.MAX_UNIT_LEVEL) return null;
+    return combat.XP_LEVEL_THRESHOLDS[target];
+  }
+  /** The opener plus every allied unit within cfg.elixirRadius that's hurt. */
+  function elixirTargets({ civ, unit, cfg, openerAlive }) {
+    const chebyshev = window.GameEngine.influence.chebyshev;
+    return civ.units.filter((u) => u.hp > 0 && u.hp < u.maxHp && !u.carriedBy
+      && (u === unit ? openerAlive : chebyshev(unit.x, unit.y, u.x, u.y) <= cfg.elixirRadius));
+  }
+  function nearestCityWhere({ civ, unit }, pred) {
+    const chebyshev = window.GameEngine.influence.chebyshev;
+    let best = null, bestD = Infinity;
+    for (const c of civ.cities) {
+      if (!pred(c)) continue;
+      const d = chebyshev(unit.x, unit.y, c.x, c.y);
+      if (d < bestD) { best = c; bestD = d; }
+    }
+    return best;
+  }
+  /** Nearest Treasure Chest (from `unit`) on a tile this civ can't currently
+   *  see -- never-explored OR explored-but-out-of-sight -- or null. */
+  function findUnseenChest(civ, unit, gameState) {
+    const { map } = gameState;
+    const visible = gameState.visibility[civ.id] || new Set();
+    const chebyshev = window.GameEngine.influence.chebyshev;
+    let best = null, bestD = Infinity;
+    for (let i = 0; i < map.tiles.length; i++) {
+      if (map.tiles[i].resource !== "chest" || visible.has(i)) continue;
+      const x = i % map.width, y = Math.floor(i / map.width);
+      const d = chebyshev(unit.x, unit.y, x, y);
+      if (d < bestD) { best = { x, y }; bestD = d; }
+    }
+    return best;
+  }
+  /** A free land tile next to the opener for a Giltmaw, or null -- also null
+   *  when the hostile-monster cap (the Max Monsters slider; 0 = off) is full,
+   *  so a chest can't spawn a monster the game has been told not to have. */
+  function giltmawSpawnSpot({ unit, gameState }) {
+    const { map, civs } = gameState;
+    const monsterCiv = ensureMonsterCiv(gameState);
+    const mcfg = window.GameConfig.worldEncounters.monsters;
+    const activeKingdoms = Object.values(civs).filter((c) => c.id !== MONSTER_CIV_ID && !c.eliminated).length;
+    const capPerKingdom = gameState.monsterCapPerKingdom ?? mcfg.perKingdomCap;
+    if (hostileMonsterCount(monsterCiv) >= capPerKingdom * activeKingdoms) return null;
+    const T = window.GameData.TERRAIN;
+    const open = [];
+    for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+      if (!dx && !dy) continue;
+      const x = unit.x + dx, y = unit.y + dy;
+      if (x < 0 || x >= map.width || y < 0 || y >= map.height) continue;
+      const t = map.tiles[y * map.width + x];
+      if (T[t.terrain].isWater || T[t.terrain].moveCostLand === window.GameData.IMPASSABLE) continue;
+      if (Object.values(civs).some((c) => c.units.some((u) => u.x === x && u.y === y))) continue;
+      open.push({ x, y });
+    }
+    return open.length ? open[Math.floor(Math.random() * open.length)] : null;
+  }
+
+  /** Picks an index from an array of weights. */
+  function pickWeightedIndex(weights) {
+    const total = weights.reduce((a, b) => a + b, 0);
+    let roll = Math.random() * total;
+    for (let i = 0; i < weights.length; i++) { roll -= weights[i]; if (roll <= 0) return i; }
+    return weights.length - 1;
+  }
+
+  /**
+   * Rolls a chest's contents (or a monster-kill / Ruin-delve reward, which
+   * share the table). How many treasures: countWeights, times `opts.rollMult`
+   * (the chest a Giltmaw drops holds double). Each slot draws a tier by
+   * tierWeights, then an equal-weight, not-yet-chosen, ELIGIBLE treasure from
+   * that tier; if none qualifies it falls to the next tier down, and finally
+   * to any common (allowing a repeat only if all four are already taken --
+   * possible only in a double chest). Selection happens first, then effects
+   * are applied in order, so eligibility always reflects the pre-chest state.
+   * A Giltmaw anywhere in the selection REPLACES the whole chest. Returns
+   * { treasures: [lines], giltmaw: bool }.
+   *
+   * `opts.noGiltmaw` (monster-kill / Ruin loot has no chest to bite),
+   * `opts.openerAlive` (false when a trap just killed the opener: its
+   * personal treasures re-roll into resources), `opts.rollMult`,
+   * `opts.uniqueChance` (chance of an extra unique item -- see below).
+   */
+  function rollChestTreasures(civ, unit, gameState, opts = {}) {
+    const cfg = window.GameConfig.worldEncounters.treasureChest;
+    const ctx = {
+      civ, unit, gameState, cfg,
+      openerAlive: opts.openerAlive !== false && unit.hp > 0,
+      plunder: !!(civ.unlockedMechanics && civ.unlockedMechanics.has("plunder")),
+      noGiltmaw: !!opts.noGiltmaw,
+    };
+    const tierOrder = ["rare", "uncommon", "common"];
+    const byTier = { common: [], uncommon: [], rare: [] };
+    for (const [id, tier] of Object.entries(cfg.treasures)) byTier[tier].push(id);
+
+    // Lucky Rock: a chance of one extra treasure roll on top.
+    const luckyExtra = Math.random() < window.GameEngine.items.itemLuck(unit).extraTreasureChance ? 1 : 0;
+    const count = (pickWeightedIndex(cfg.countWeights) + 1) * (opts.rollMult || 1) + luckyExtra;
+    const chosen = [];
+    for (let slot = 0; slot < count; slot++) {
+      const tier = tierOrder[pickWeightedIndex([cfg.tierWeights.rare, cfg.tierWeights.uncommon, cfg.tierWeights.common])];
+      let picked = null;
+      for (let t = tierOrder.indexOf(tier); t < tierOrder.length && !picked; t++) {
+        const pool = byTier[tierOrder[t]].filter((id) => !chosen.includes(id) && TREASURE_TABLE[id].eligible(ctx));
+        if (pool.length) picked = pool[Math.floor(Math.random() * pool.length)];
+      }
+      if (!picked) picked = byTier.common[Math.floor(Math.random() * byTier.common.length)]; // repeat allowed
+      chosen.push(picked);
+    }
+
+    if (chosen.includes("giltmaw")) {
+      const line = TREASURE_TABLE.giltmaw.apply(ctx);
+      if (line) return { treasures: [line], giltmaw: true };
+      chosen.splice(chosen.indexOf("giltmaw"), 1, "coin");
+    }
+    const treasures = [];
+    for (const id of chosen) {
+      const line = TREASURE_TABLE[id].apply(ctx) || TREASURE_TABLE.coin.apply(ctx);
+      treasures.push(line);
+    }
+    // Orc Plunder: a chest with no coin in it still pays the tripled haul.
+    if (ctx.plunder && !treasures.some((l) => l.id === "coin")) {
+      treasures.push({ id: "plunder", resource: "coin", text: `Plunder turns up an extra ${grantPlunderBonus(civ, unit, cfg)} coin besides.` });
+    }
+    // Unique items (data/items.js `unique: true`): a bonus on top of the normal
+    // haul, only where the caller asks for it (Ruin delves, Giltmaw/Trow chests).
+    // At most one per find, and only one that isn't already somewhere in the
+    // world -- see engine/items.js pickUniqueItemFor.
+    if (opts.uniqueChance && ctx.openerAlive && Math.random() < opts.uniqueChance) {
+      const uniqueId = window.GameEngine.items.pickUniqueItemFor(unit, civ, gameState);
+      if (uniqueId) {
+        const def = window.GameData.getItem(uniqueId);
+        const line = grantItemTreasure(unit, civ, uniqueId, def.text);
+        if (line) treasures.push(Object.assign(line, { unique: true }));
+      }
+    }
+    return { treasures, giltmaw: false };
+  }
+
+  const CHEST_TRAP_KINDS = Object.keys(window.GameConfig.worldEncounters.treasureChest.trapKinds);
+  const CHEST_TRAP_LABELS = {
+    fire: "Burning", frost: "Frozen", poison: "Poisoned", befuddle: "Befuddled", curse: "Cursed", web: "Webbed",
+  };
+
+  /**
+   * Opens the Treasure Chest `unit` is standing on (see doc/world_encounters_
+   * design.md). A universal one-shot action, consuming the unit's turn; the
+   * chest is removed and a replacement scheduled (scheduleResourceRespawn).
+   *
+   * Result: { trap: { kind, damage, label } | null, disarmed, treasures:
+   * [ {id, text, resource?, icon?, link?} ], giltmaw } -- or null if `unit`
+   * isn't actually on a chest (a stale ring-menu click). A trap (20%: one of
+   * six kinds, see config.js's trapKinds) fires FIRST and no longer replaces
+   * the loot -- the chest's treasures are still granted afterward, except that
+   * a trap which kills the opener turns its personal treasures into
+   * resources. A Halfellow Trouble Maker disarms the trap instead. Returns no
+   * UI: main.js turns the result into a modal.
+   */
   function openTreasureChest(civ, unit, gameState) {
     const { map } = gameState;
     const tile = map.tiles[unit.y * map.width + unit.x];
     if (!tile || tile.resource !== "chest") return null;
     const cfg = window.GameConfig.worldEncounters.treasureChest;
-    const plunder = civ.unlockedMechanics && civ.unlockedMechanics.has("plunder");
+    const rollMult = tile.chestRollMult || 1;
+    const uniqueChance = tile.chestUniqueChance || 0;
+    // Items a fallen unit's death chest holds (see maybeSpawnDeathChest) --
+    // granted after the rolled treasures below.
+    const chestItems = tile.chestItems || [];
 
     tile.resource = null;
+    delete tile.chestRollMult;
+    delete tile.chestUniqueChance;
+    delete tile.chestItems;
     window.GameEngine.turns.scheduleResourceRespawn(gameState, "chest");
     unit.usedThisTurn = true;
 
-    if (Math.random() < cfg.trapChance) {
-      // Halfellow "Making Trouble": a Trouble
-      // Maker disarms the trap instead of springing it -- no damage, no
-      // condition, and the caller shows a "found a trap, but disarmed it"
-      // message rather than the ordinary trap notice.
+    const result = { trap: null, disarmed: false, treasures: [], giltmaw: false };
+    if (Math.random() < cfg.trapChance * window.GameEngine.items.itemLuck(unit).trapMult) {
       if (unit.typeId === "trouble_maker") {
-        return { trapped: true, disarmed: true };
-      }
-      // 2026-08-17, user-directed: 4 equally-likely trap kinds, each just
-      // slapping the chest's existing flat damage/status shape onto a
-      // condition that already exists elsewhere in the game (Marsh Adder's
-      // Poisoned, Halfellow's Riddle-inflicted Befuddled) rather than
-      // inventing anything new.
-      const trapKind = CHEST_TRAP_KINDS[Math.floor(Math.random() * CHEST_TRAP_KINDS.length)];
-      unit.hp = Math.max(0, unit.hp - cfg.trapDamage);
-      window.GameEngine.floatingText.spawnFloatingText(unit, `-${cfg.trapDamage} (Trapped!)`, "warning");
-      if (trapKind === "fire") {
-        applyBurning(unit, "unit", gameState);
-      } else if (trapKind === "frost") {
-        window.GameEngine.combat.setCondition(unit, "frozen", { attackMult: 0.75, expiresAtTurn: (gameState.turnNumber || 0) + FROZEN_DURATION });
-      } else if (trapKind === "poison") {
-        applyPoisoned(unit, gameState);
+        // Halfellow "Making Trouble": disarms the trap -- no damage, no condition.
+        result.disarmed = true;
       } else {
-        window.GameEngine.combat.applyBefuddled(unit, gameState.turnNumber || 0);
+        const kind = CHEST_TRAP_KINDS[Math.floor(Math.random() * CHEST_TRAP_KINDS.length)];
+        const damage = cfg.trapKinds[kind] || 0;
+        const turn = gameState.turnNumber || 0;
+        const combat = window.GameEngine.combat;
+        if (damage) {
+          unit.hp = Math.max(0, unit.hp - damage);
+          window.GameEngine.floatingText.spawnFloatingText(unit, `-${damage} (Trapped!)`, "warning");
+        } else {
+          window.GameEngine.floatingText.spawnFloatingText(unit, "Trapped!", "warning");
+        }
+        if (kind === "fire") applyBurning(unit, "unit", gameState);
+        else if (kind === "frost") combat.setCondition(unit, "frozen", { attackMult: 0.75, expiresAtTurn: turn + FROZEN_DURATION });
+        else if (kind === "poison") applyPoisoned(unit, gameState);
+        else if (kind === "befuddle") combat.applyBefuddled(unit, turn);
+        else if (kind === "curse") combat.setCondition(unit, "curse", { attackMult: 0.5, moveMult: 0.5, expiresAtTurn: turn + CURSE_DURATION });
+        else if (kind === "web") applyWebbed(unit, gameState);
+        result.trap = { kind, damage, label: CHEST_TRAP_LABELS[kind] };
+        civ.units = civ.units.filter((u) => u.hp > 0);
       }
-      civ.units = civ.units.filter((u) => u.hp > 0);
-      return { trapped: true, kind: trapKind, damage: cfg.trapDamage };
     }
 
-    const rewardType = cfg.rewardTypes[Math.floor(Math.random() * cfg.rewardTypes.length)];
-    if (rewardType === "xp") {
-      const amount = jitterChestReward(cfg.rewardAmount);
-      applyComputedXP(unit, civ, amount);
-      const result = { trapped: false, rewardType, amount };
-      if (plunder) result.bonusCoin = grantPlunderBonus(civ, unit, cfg);
-      return result;
+    const rolled = rollChestTreasures(civ, unit, gameState, { rollMult, openerAlive: unit.hp > 0, uniqueChance });
+    result.treasures = rolled.treasures;
+    result.giltmaw = rolled.giltmaw;
+    // The fallen unit's carried items: the opener takes what it can use; anything
+    // it can't (already holds that kind, a machine, dead of a trap) stays on the
+    // ground at this tile.
+    for (const id of chestItems) {
+      const def = window.GameData.getItem(id);
+      if (!def) continue;
+      const line = unit.hp > 0 ? grantItemTreasure(unit, civ, id, def.text) : null;
+      if (line) { result.treasures.push(line); continue; }
+      window.GameEngine.items.dropItemAt(unit.x, unit.y, id, gameState);
+      result.treasures.push({ id, icon: def.icon, text: `${def.label} -- left on the ground (${chestUnitLabel(unit)} can't take it).` });
     }
-    if (rewardType === "mapFragment") {
-      // See turns.js's revealMapFragment. Falls back to a coin payout if
-      // this civ has already explored the entire map -- a reward that does
-      // nothing would be a worse outcome than the trap.
-      const revealed = window.GameEngine.turns.revealMapFragment(civ, gameState);
-      if (!revealed) {
-        const amount = jitterChestReward(cfg.rewardAmount) * (plunder ? 3 : 1);
-        civ.stockpile.coin = (civ.stockpile.coin || 0) + amount;
-        window.GameEngine.floatingText.spawnFloatingText(unit, `+${amount} coin`, "resource");
-        return { trapped: false, rewardType: "coin", amount };
-      }
-      window.GameEngine.floatingText.spawnFloatingText(unit, "Map Fragment!", "resource");
-      const result = { trapped: false, rewardType: "mapFragment", revealed };
-      if (plunder) result.bonusCoin = grantPlunderBonus(civ, unit, cfg);
-      return result;
-    }
-    if (rewardType === "coin") {
-      const amount = jitterChestReward(cfg.rewardAmount) * (plunder ? 3 : 1);
-      civ.stockpile.coin = (civ.stockpile.coin || 0) + amount;
-      window.GameEngine.floatingText.spawnFloatingText(unit, `+${amount} coin`, "resource");
-      return { trapped: false, rewardType, amount };
-    }
-    if (rewardType === "reduceResearch") {
-      // Falls back to a coin payout if nothing's currently being
-      // researched -- same "a reward that does nothing would be a worse
-      // outcome than the trap" reasoning as the mapFragment branch above.
-      if (civ.currentResearch) {
-        const amount = 1 + Math.floor(Math.random() * 3); // 1-3 rounds
-        const result = window.GameEngine.tech.reduceResearchTurns(civ, amount);
-        window.GameEngine.floatingText.spawnFloatingText(unit, `Research -${amount} rounds!`, "resource");
-        const out = { trapped: false, rewardType, amount, researchResult: result };
-        if (plunder) out.bonusCoin = grantPlunderBonus(civ, unit, cfg);
-        return out;
-      }
-      const amount = jitterChestReward(cfg.rewardAmount) * (plunder ? 3 : 1);
-      civ.stockpile.coin = (civ.stockpile.coin || 0) + amount;
-      window.GameEngine.floatingText.spawnFloatingText(unit, `+${amount} coin`, "resource");
-      return { trapped: false, rewardType: "coin", amount };
-    }
-    civ.stockpile[rewardType] = (civ.stockpile[rewardType] || 0) + cfg.rewardAmount;
-    window.GameEngine.floatingText.spawnFloatingText(unit, `+${cfg.rewardAmount} ${rewardType}`, "resource");
-    const result = { trapped: false, rewardType, amount: cfg.rewardAmount };
-    if (plunder) result.bonusCoin = grantPlunderBonus(civ, unit, cfg);
     return result;
+  }
+
+  /** One-line plain-text summary of an openTreasureChest / monster-kill result,
+   *  for AI action logs and mission strings. */
+  function summarizeChestResult(result) {
+    const parts = [];
+    if (result.disarmed) parts.push("trap disarmed");
+    if (result.trap) parts.push(`${result.trap.kind} trap`);
+    for (const t of result.treasures || []) parts.push(t.id);
+    return parts.join(", ") || "nothing";
   }
 
   /** Finds the nearest known Treasure Chest tile (currently visible OR
@@ -9304,18 +9692,8 @@ window.GameEngine = window.GameEngine || {};
     if (tile && tile.resource === "chest") {
       const result = openTreasureChest(civ, unit, gameState);
       if (!result) return false;
-      unit.currentMission = result.disarmed ? "Opened a chest -- found a trap, disarmed it"
-        : result.trapped ? "Opened a chest -- it was trapped!"
-        : `Opened a chest -- found ${result.rewardType}`;
-      // mapFragment has no `.amount` (see openTreasureChest) -- was logging
-      // "finds undefined mapFragment" before this special case, confirmed live
-      // via a headless playtest.
-      let outcome;
-      if (result.disarmed) outcome = " and disarms a trap inside it";
-      else if (result.trapped) outcome = " and springs a trap";
-      else if (result.rewardType === "mapFragment") outcome = " and finds a Map Fragment";
-      else outcome = ` and finds ${result.amount} ${result.rewardType}`;
-      log.push(`Treasure Chest: ${civ.id}'s ${describeUnit(unit)} opens a chest at (${unit.x},${unit.y})${outcome}`);
+      unit.currentMission = `Opened a chest -- found ${summarizeChestResult(result)}`;
+      log.push(`Treasure Chest: ${civ.id}'s ${describeUnit(unit)} opens a chest at (${unit.x},${unit.y}) and finds: ${summarizeChestResult(result)}`);
       return true;
     }
 
@@ -9331,20 +9709,77 @@ window.GameEngine = window.GameEngine || {};
       // instead of always burning a separate arrival turn.
       const result = openTreasureChest(civ, unit, gameState);
       if (!result) return false;
-      unit.currentMission = result.disarmed ? "Opened a chest -- found a trap, disarmed it"
-        : result.trapped ? "Opened a chest -- it was trapped!"
-        : `Opened a chest -- found ${result.rewardType}`;
-      let outcome;
-      if (result.disarmed) outcome = " and disarms a trap inside it";
-      else if (result.trapped) outcome = " and springs a trap";
-      else if (result.rewardType === "mapFragment") outcome = " and finds a Map Fragment";
-      else outcome = ` and finds ${result.amount} ${result.rewardType}`;
-      log.push(`Treasure Chest: ${civ.id}'s ${describeUnit(unit)} opens a chest at (${unit.x},${unit.y})${outcome}`);
+      unit.currentMission = `Opened a chest -- found ${summarizeChestResult(result)}`;
+      log.push(`Treasure Chest: ${civ.id}'s ${describeUnit(unit)} opens a chest at (${unit.x},${unit.y}) and finds: ${summarizeChestResult(result)}`);
       return true;
     }
     unit.usedThisTurn = true;
     unit.currentMission = `Marching to a Treasure Chest at (${chestSpot.x},${chestSpot.y})`;
     log.push(`Treasure Chest: ${civ.id}'s ${describeUnit(unit)} heading to a chest at (${chestSpot.x},${chestSpot.y})`);
+    return true;
+  }
+
+  /** Nearest ground item that `unit` could pick up, within a reasonable search
+   *  radius, counting only tiles the kingdom can see RIGHT NOW (2026-09-21,
+   *  user-directed: an AI goes for items it sees, not ones it remembers or
+   *  knows about omnisciently). Returns {x,y} or null. */
+  function findNearbyGroundItem(civ, unit, gameState, options = {}) {
+    const { map } = gameState;
+    const SEARCH_RADIUS = 20;
+    const visible = gameState.visibility[civ.id] || new Set();
+    const unitTile = map.tiles[unit.y * map.width + unit.x];
+    const unitLandmassId = unitTile ? unitTile.landmassId : -1;
+    let best = null, bestDist = Infinity;
+    for (let dy = -SEARCH_RADIUS; dy <= SEARCH_RADIUS; dy++) {
+      for (let dx = -SEARCH_RADIUS; dx <= SEARCH_RADIUS; dx++) {
+        const x = unit.x + dx, y = unit.y + dy;
+        if (x < 0 || x >= map.width || y < 0 || y >= map.height) continue;
+        const idx = y * map.width + x;
+        if (!visible.has(idx)) continue;
+        const ids = map.tiles[idx].groundItems;
+        if (!ids || !ids.some((id) => window.GameEngine.items.canReceiveItem(unit, civ, id))) continue;
+        if (options.sameLandmassOnly && unitLandmassId >= 0 && map.tiles[idx].landmassId !== unitLandmassId) continue;
+        const dist = window.GameEngine.influence.chebyshev(unit.x, unit.y, x, y);
+        if (dist < bestDist) { bestDist = dist; best = { x, y }; }
+      }
+    }
+    return best;
+  }
+
+  /** Ground items (2026-09-21): picks one up if the unit is standing on
+   *  something it can hold; otherwise marches toward the nearest one the
+   *  kingdom can currently see -- the same shape as maybeOpenChestPlay,
+   *  minus its curiosity roll. */
+  function maybePickUpItemPlay(civ, unit, gameState, log) {
+    if (unit.usedThisTurn || unit.channeling) return false;
+    if (!window.GameEngine.items.canUseItems(unit)) return false;
+    const { map } = gameState;
+    if (window.GameEngine.items.pickableItemsAt(civ, unit, gameState).length) {
+      const id = window.GameEngine.items.pickUpItem(civ, unit, gameState);
+      if (!id) return false;
+      unit.currentMission = `Picked up ${window.GameData.getItem(id).label}`;
+      log.push(`Item: ${civ.id}'s ${describeUnit(unit)} picks up ${window.GameData.getItem(id).label} at (${unit.x},${unit.y})`);
+      return true;
+    }
+    // Walking to an item it sees (not merely one it remembers) is
+    // unconditional -- no curiosity roll -- but never mid-fight: any visible
+    // enemy close enough to be a threat, including an adjacent one, keeps
+    // the unit on its combat cascade instead.
+    const threat = findNearestVisibleEnemy(civ, unit.x, unit.y, gameState);
+    if (threat && window.GameEngine.influence.chebyshev(unit.x, unit.y, threat.x, threat.y) <= GATHER_THREAT_RADIUS) return false;
+    const spot = findNearbyGroundItem(civ, unit, gameState, { sameLandmassOnly: true });
+    if (!spot) return false;
+    moveUnitToward(unit, spot.x, spot.y, map, gameState.civs);
+    if (spot.x === unit.x && spot.y === unit.y && window.GameEngine.items.pickableItemsAt(civ, unit, gameState).length) {
+      const id = window.GameEngine.items.pickUpItem(civ, unit, gameState);
+      if (id) {
+        unit.currentMission = `Picked up ${window.GameData.getItem(id).label}`;
+        log.push(`Item: ${civ.id}'s ${describeUnit(unit)} picks up ${window.GameData.getItem(id).label} at (${unit.x},${unit.y})`);
+        return true;
+      }
+    }
+    unit.usedThisTurn = true;
+    unit.currentMission = `Marching to an item at (${spot.x},${spot.y})`;
     return true;
   }
 
@@ -9560,37 +9995,12 @@ window.GameEngine = window.GameEngine || {};
    *  shape openTreasureChest's non-trapped branch does (2026-08-17, user-
    *  directed), so callers that want a "you found X" modal (Ruin Delve) can
    *  build one the same way main.js's openChest handler already does. */
-  function grantMonsterKillReward(civ, unit, gameState) {
-    const cfg = window.GameConfig.worldEncounters.treasureChest;
-    const rewardType = cfg.rewardTypes[Math.floor(Math.random() * cfg.rewardTypes.length)];
-    if (rewardType === "xp") {
-      applyComputedXP(unit, civ, cfg.rewardAmount);
-      return { trapped: false, rewardType, amount: cfg.rewardAmount };
-    }
-    if (rewardType === "mapFragment") {
-      const revealed = window.GameEngine.turns.revealMapFragment(civ, gameState);
-      if (!revealed) {
-        civ.stockpile.coin = (civ.stockpile.coin || 0) + cfg.rewardAmount;
-        window.GameEngine.floatingText.spawnFloatingText(unit, `+${cfg.rewardAmount} coin`, "resource");
-        return { trapped: false, rewardType: "coin", amount: cfg.rewardAmount };
-      }
-      window.GameEngine.floatingText.spawnFloatingText(unit, "Map Fragment!", "resource");
-      return { trapped: false, rewardType: "mapFragment", revealed };
-    }
-    if (rewardType === "reduceResearch") {
-      if (civ.currentResearch) {
-        const amount = 1 + Math.floor(Math.random() * 3); // 1-3 rounds
-        const result = window.GameEngine.tech.reduceResearchTurns(civ, amount);
-        window.GameEngine.floatingText.spawnFloatingText(unit, `Research -${amount} rounds!`, "resource");
-        return { trapped: false, rewardType, amount, researchResult: result };
-      }
-      civ.stockpile.coin = (civ.stockpile.coin || 0) + cfg.rewardAmount;
-      window.GameEngine.floatingText.spawnFloatingText(unit, `+${cfg.rewardAmount} coin`, "resource");
-      return { trapped: false, rewardType: "coin", amount: cfg.rewardAmount };
-    }
-    civ.stockpile[rewardType] = (civ.stockpile[rewardType] || 0) + cfg.rewardAmount;
-    window.GameEngine.floatingText.spawnFloatingText(unit, `+${cfg.rewardAmount} ${rewardType}`, "resource");
-    return { trapped: false, rewardType, amount: cfg.rewardAmount };
+  function grantMonsterKillReward(civ, unit, gameState, opts = {}) {
+    // 2026-09-21: same multi-treasure table as a chest (see rollChestTreasures),
+    // minus the two chest-only outcomes -- there's no trap to spring and no
+    // chest to bite. Result shape matches openTreasureChest's.
+    const rolled = rollChestTreasures(civ, unit, gameState, { noGiltmaw: true, uniqueChance: opts.uniqueChance });
+    return { trap: null, disarmed: false, treasures: rolled.treasures, giltmaw: false };
   }
 
   /** Queues a Ruin Delve treasure-find modal for main.js's
@@ -9688,6 +10098,7 @@ window.GameEngine = window.GameEngine || {};
 
     // Halfellow "Poisonous Puff": target's own successful counter against the monster.
     applyMycomancerCounterPoison(monster, target, targetCiv, result, gameState);
+    applyItemCombatEffects(monster, monsterCiv, target, targetCiv, result, gameState);
 
     if (target.hp <= 0) {
       otherCivRemoveDeadUnit(civs, target, monsterCiv.id);
@@ -9968,7 +10379,7 @@ window.GameEngine = window.GameEngine || {};
    *  tile within 2 tiles. Same "valid terrain, no existing resource" test
    *  maybeSpawnDeathChest uses. Queues the shared chest-drop animation.
    *  Returns the tile it landed on, or null if nowhere nearby was free. */
-  function dropTrowChest(x, y, gameState) {
+  function dropTrowChest(x, y, gameState, opts = {}) {
     const { map } = gameState;
     const validTerrain = window.GameData.RESOURCES.chest.validTerrain;
     const isFree = (tx, ty) => {
@@ -9984,7 +10395,13 @@ window.GameEngine = window.GameEngine || {};
       }
       if (!ring.length) continue;
       const spot = ring[Math.floor(Math.random() * ring.length)];
-      map.tiles[spot.y * map.width + spot.x].resource = "chest";
+      const dropTile = map.tiles[spot.y * map.width + spot.x];
+      dropTile.resource = "chest";
+      // A Giltmaw's chest holds extra treasure rolls -- read (and cleared) by
+      // openTreasureChest. Deliberately a plain tile field, like tile.resource.
+      if (opts.rollMult > 1) dropTile.chestRollMult = opts.rollMult;
+      // Chance of a unique item in this chest -- read (and cleared) by openTreasureChest.
+      if (opts.uniqueChance > 0) dropTile.chestUniqueChance = opts.uniqueChance;
       window.GameEngine.deathFx.spawnChestDrop(spot.x, spot.y);
       return spot;
     }
@@ -10049,7 +10466,7 @@ window.GameEngine = window.GameEngine || {};
       window.SfxSystem.playAction(raceId, window.GameData.TROW_UNIT_ID, action, x, y, delayMs);
 
     // 1. The chest. Guaranteed on every strike.
-    const chest = dropTrowChest(from.x, from.y, gameState);
+    const chest = dropTrowChest(from.x, from.y, gameState, { uniqueChance: window.GameConfig.worldEncounters.treasureChest.trowUniqueChance });
 
     // 2. Escape: teleport (cfg.teleportChance) if a landing spot exists,
     //    otherwise run. Either way the move is instant in state.
@@ -10276,6 +10693,331 @@ window.GameEngine = window.GameEngine || {};
     unit.usedThisTurn = true;
     if (log) log.push(`${describeUnit(unit)} ${fromDruid ? "becomes a Dire Bear" : "reverts to Druid form"}.`);
     return true;
+  }
+
+  // ---------------------------------------------------------------------------
+  // ITEM-GRANTED ACTIONS (data/items.js `actions`: Spear of Agasou, Kurganos,
+  // Mhorgrim's Hunt). Fireball, Whirlwind Strike, Teleportation and Go Hidden are
+  // the existing performers with their unit-type gates relaxed (orders.js /
+  // combat.js); the ones below are new.
+  //
+  // FORMS: a unit temporarily wearing another unit's body -- a Dire Bear, Dire Wolf
+  // or Raptor -- is the same instance with `unit.form = { origin, kind, expiresAtTurn,
+  // moveBonus? }` and its typeId swapped, exactly the swap performDireBearTransform
+  // does for a Druid (name, xp, level, items and conditions carry over; HP keeps its
+  // fraction). Plain JSON, so it saves. A unit already in a form can't take another.
+  // ---------------------------------------------------------------------------
+  const ITEM_FLIGHT_FORM_TURNS = 3;   // Spear of Agasou: raptor form (and Cast Fly)
+  const ITEM_WOLF_FORM_TURNS = 3;     // Spear of Agasou: Dire Wolf form
+  const ITEM_WOLF_MOVE_BONUS = 4;     // ... and its extra movement
+  const ITEM_STORM_TURNS = 3;         // Kurganos: Thunderstorm length
+
+  function shapeshift(unit, toTypeId, { kind, expiresAtTurn = null, moveBonus = 0 }) {
+    if (unit.form) return false;
+    const toBase = window.GameData.getUnit(toTypeId);
+    const hpFrac = unit.maxHp > 0 ? unit.hp / unit.maxHp : 1;
+    unit.form = { origin: unit.typeId, kind, expiresAtTurn, moveBonus };
+    unit.typeId = toTypeId;
+    unit.maxHp = window.GameData.unitMaxHP(toBase.attack || 0, toBase.defense || 0, toTypeId);
+    unit.hp = Math.max(1, Math.round(unit.maxHp * hpFrac));
+    window.GameEngine.combat.spawnAreaEffect(unit.x, unit.y, 0, "dire_bear_transform");
+    return true;
+  }
+
+  /** Puts a shapeshifted unit back in its own body. A unit whose original form
+   *  can't stand where it now is (a raptor's flight ending over open water) does
+   *  not survive it -- same rule an expiring Fly spell already follows. */
+  function revertShape(unit, gameState) {
+    const form = unit.form;
+    if (!form) return false;
+    const origin = window.GameData.getUnit(form.origin);
+    const hpFrac = unit.maxHp > 0 ? unit.hp / unit.maxHp : 1;
+    unit.typeId = form.origin;
+    delete unit.form;
+    unit.maxHp = window.GameData.unitMaxHP(origin.attack || 0, origin.defense || 0, unit.typeId);
+    unit.hp = Math.max(1, Math.round(unit.maxHp * hpFrac));
+    window.GameEngine.combat.spawnAreaEffect(unit.x, unit.y, 0, "druid_revert");
+    const tile = gameState.map.tiles[unit.y * gameState.map.width + unit.x];
+    const water = window.GameData.TERRAIN[tile.terrain].isWater;
+    if (water && !origin.naval && !origin.flying && !window.GameEngine.combat.isFlying(unit)) {
+      // Back over open water: set down on the nearest free land within 2 tiles if there
+      // is any; otherwise the unit is lost.
+      const occupied = buildOccupancySet(gameState.civs, null);
+      const T = window.GameData.TERRAIN;
+      let landing = null;
+      for (let r = 1; r <= 2 && !landing; r++) {
+        for (let dy = -r; dy <= r && !landing; dy++) for (let dx = -r; dx <= r && !landing; dx++) {
+          if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue;
+          const nx = unit.x + dx, ny = unit.y + dy;
+          if (nx < 0 || ny < 0 || nx >= gameState.map.width || ny >= gameState.map.height) continue;
+          if (T[gameState.map.tiles[ny * gameState.map.width + nx].terrain].isWater) continue;
+          if (isOpenPlacementTile(nx, ny, gameState.map, gameState.civs, occupied, unit.civId)) landing = { x: nx, y: ny };
+        }
+      }
+      if (landing) {
+        unit.x = landing.x; unit.y = landing.y;
+        snapVisualPos(unit, landing.x, landing.y);
+      } else {
+        window.GameEngine.floatingText.spawnFloatingText(unit, "Lost at sea!", "warning");
+        otherCivRemoveDeadUnit(gameState.civs, unit);
+      }
+    }
+    return true;
+  }
+
+  /** Once per civ-turn (turns.js beginCivTurn): timed forms run out. */
+  function tickForms(gameState, civ) {
+    const turn = gameState.turnNumber || 0;
+    for (const unit of civ.units.slice()) {
+      if (unit.form && unit.form.expiresAtTurn != null && turn >= unit.form.expiresAtTurn) revertShape(unit, gameState);
+    }
+  }
+
+  /** Ring "Cancel Flight" / "Cancel Shapeshift" / "Revert ...": ends the unit's form now. Free. */
+  function cancelForm(civ, unit, gameState) {
+    if (!unit.form) return false;
+    return revertShape(unit, gameState);
+  }
+
+  /** Spear of Agasou: become a Dire Bear (no time limit), or -- already one by the
+   *  item -- change back. Costs the bearer's action. */
+  function performItemBearForm(civ, unit, gameState, log) {
+    if (unit.usedThisTurn) return false;
+    if (unit.form) { if (unit.form.kind !== "bear") return false; revertShape(unit, gameState); }
+    else if (!shapeshift(unit, "dire_bear", { kind: "bear" })) return false;
+    unit.usedThisTurn = true;
+    if (log) log.push(`${describeUnit(unit)} ${unit.form ? "becomes a Dire Bear" : "changes back"}.`);
+    return true;
+  }
+
+  /** Spear of Agasou: become a Dire Wolf for 3 turns, +4 movement. Costs the action. */
+  function performItemWolfForm(civ, unit, gameState, log) {
+    if (unit.usedThisTurn || unit.form) return false;
+    const turn = gameState.turnNumber || 0;
+    if (!shapeshift(unit, "dire_wolf", { kind: "wolf", expiresAtTurn: turn + ITEM_WOLF_FORM_TURNS, moveBonus: ITEM_WOLF_MOVE_BONUS })) return false;
+    unit.usedThisTurn = true;
+    if (log) log.push(`${describeUnit(unit)} becomes a Dire Wolf.`);
+    return true;
+  }
+
+  /** Allies a Spear of Agasou bearer can Cast Fly on: any allied military,
+   *  non-machine unit within its reach that isn't already flying, carried or in a form. */
+  function raptorFlyTargets(unit, gameState) {
+    const civ = gameState.civs[unit.civId];
+    if (!civ || unit.usedThisTurn || !window.GameEngine.items.grantsAction(unit, "castRaptorFly")) return [];
+    const reach = 1 + (unit.movesRemaining ?? computeMovementBudget(unit, gameState.map, gameState.civs));
+    const out = [];
+    for (const ally of civ.units) {
+      if (ally === unit || ally.carriedBy || ally.form || ally.carries) continue;
+      const base = window.GameData.getUnit(ally.typeId);
+      if (base.category !== "military" || base.noItems) continue;
+      if (window.GameEngine.influence.chebyshev(unit.x, unit.y, ally.x, ally.y) > reach) continue;
+      if (window.GameEngine.combat.isFlying(ally)) continue;
+      out.push(ally);
+    }
+    return out;
+  }
+
+  /** Spear of Agasou "Cast Fly": the target becomes a raptor for 3 turns (it can end
+   *  the spell early with Cancel Flight). Walks the caster into adjacency first, like
+   *  castFlightOnAlly. Costs the caster's action. */
+  function castRaptorFly(civ, caster, target, gameState, log) {
+    if (!raptorFlyTargets(caster, gameState).includes(target)) return false;
+    const { map, civs } = gameState;
+    if (window.GameEngine.influence.chebyshev(caster.x, caster.y, target.x, target.y) > 1) {
+      moveTowardWithStandoff(civ, caster, target.x, target.y, map, civs, 1);
+      if (window.GameEngine.influence.chebyshev(caster.x, caster.y, target.x, target.y) > 1) return false;
+    }
+    const turn = gameState.turnNumber || 0;
+    if (!shapeshift(target, "raptor", { kind: "raptorFly", expiresAtTurn: turn + ITEM_FLIGHT_FORM_TURNS })) return false;
+    caster.usedThisTurn = true;
+    caster.currentMission = `Turned ${describeUnit(target)} into a raptor`;
+    if (log) log.push(`Flight: ${civ.id}'s ${describeUnit(caster)} turns their ${describeUnit(target)} into a raptor at (${target.x},${target.y})`);
+    return true;
+  }
+  function performPlayerCastRaptorFly(civ, caster, target, gameState) {
+    currentTurnNumber = gameState.turnNumber || 0;
+    currentGameStateRef = gameState;
+    const log = [];
+    const ok = castRaptorFly(civ, caster, target, gameState, log);
+    if (log.length) appendAIActionLog(gameState, civ.id, log);
+    return ok;
+  }
+
+
+  /** Item summons (Mhorgrim's Hunt -> Dire Wolf, Eyrhild's Fury -> Shadowsteed): a live
+   *  creature of `unitId` this bearer summoned. Tagged by a plain-string token per unit
+   *  type on both the bearer and the creature (JSON-safe, unlike the unit reference
+   *  _summonedByDruid uses), so "one at a time" holds per bearer and per creature type. */
+  function liveItemSummon(civ, holder, unitId) {
+    const token = holder._summonTokens && holder._summonTokens[unitId];
+    return !!token && civ.units.some((u) => u.typeId === unitId && u._itemSummonerToken === token);
+  }
+  function liveItemWolf(civ, holder) { return liveItemSummon(civ, holder, "dire_wolf"); }
+
+  /** Summons one `unitId` under the bearer's control on an adjacent open tile; one at a
+   *  time. Costs the bearer's action, no resources. */
+  function performItemSummon(civ, holder, unitId, gameState, log) {
+    if (holder.usedThisTurn || liveItemSummon(civ, holder, unitId)) return false;
+    const spawned = spawnUnitAdjacentToUnit(civ, holder, unitId, gameState);
+    if (!spawned) return false;
+    delete spawned._summonedByDruid;
+    holder._summonTokens = holder._summonTokens || {};
+    holder._summonTokens[unitId] = holder._summonTokens[unitId] || `s${Math.random().toString(36).slice(2, 10)}`;
+    spawned._itemSummonerToken = holder._summonTokens[unitId];
+    const label = window.GameData.getUnit(unitId).label;
+    holder.usedThisTurn = true;
+    holder.currentMission = `Summoned a ${label} at (${spawned.x},${spawned.y})`;
+    window.GameEngine.combat.spawnAreaEffect(spawned.x, spawned.y, 0, "summon");
+    if (log) log.push(`Summon: ${civ.id}'s ${describeUnit(holder)} summons a ${label} at (${spawned.x},${spawned.y})`);
+    return true;
+  }
+  function performItemWolfSummon(civ, holder, gameState, log) { return performItemSummon(civ, holder, "dire_wolf", gameState, log); }
+  function performItemShadowsteedSummon(civ, holder, gameState, log) { return performItemSummon(civ, holder, "shadowsteed", gameState, log); }
+
+  /** The Riddle of Steel: the riddled enemy also takes a hit as if the bearer had attacked
+   *  it (the bearer's own attack, defense and terrain modifiers, first strike and double
+   *  strike all apply), but the target can't hit back. Item on-hit effects and lightning
+   *  fire as they would on any attack; a kill is handled like any other. */
+  function riddleSteelStrike(civ, unit, target, gameState, log) {
+    const { map, civs } = gameState;
+    const targetCiv = civs[target.civId];
+    const combatContext = {
+      noCounter: true,
+      attackerGarrisoned: isGarrisoned(unit, civ),
+      defenderGarrisoned: isGarrisoned(target, targetCiv),
+      attackerOnHills: map.tiles[unit.y * map.width + unit.x].terrain === "hills",
+      defenderOnHills: map.tiles[target.y * map.width + target.x].terrain === "hills",
+      attackerInForest: map.tiles[unit.y * map.width + unit.x].terrain === "forest",
+      defenderInForest: map.tiles[target.y * map.width + target.x].terrain === "forest",
+    };
+    const hitX = target.x, hitY = target.y;
+    const result = window.GameEngine.combat.resolveRound(unit, target, civs, combatContext);
+    window.GameEngine.combat.recordCombatEvent({ ax: unit.x, ay: unit.y, atkUnit: unit, dx: hitX, dy: hitY, defUnit: target });
+    markCombatEngaged(civ);
+    markCombatEngaged(targetCiv);
+    applyItemCombatEffects(unit, civ, target, targetCiv, result, gameState);
+    if (target.hp <= 0) {
+      otherCivRemoveDeadUnit(civs, target, civ.id);
+      if (target.carries) { dropCargoOrKill(target.carries, target.x, target.y, gameState, log); target.carries = null; }
+    }
+    if (unit.hp > 0) {
+      grantXPAndAutoLevel(unit, civ, window.GameEngine.combat.xpForCombatAction(
+        { damage: result.fullDamage + result.doubleDamage, killedUnitTypeId: target.hp <= 0 ? target.typeId : null }));
+    }
+    log.push(`Riddle of Steel: ${civ.id}'s ${describeUnit(unit)} strikes ${targetCiv.id}'s ${describeUnit(target)}${target.hp <= 0 ? " -- killed" : ""}`);
+  }
+
+  /** Kurganos "Thunderstorm": forces a storm for 3 turns (visuals/audio, and -1 vision
+   *  for everyone -- see turns.js stormActive / effectiveUnitVisionRadius). Not
+   *  re-castable while one is running. Costs the bearer's action. */
+  function performItemThunderstorm(civ, unit, gameState, log) {
+    if (unit.usedThisTurn || window.GameEngine.turns.stormActive(gameState)) return false;
+    const turn = gameState.turnNumber || 0;
+    gameState.weatherOverride = { storm: true, untilTurn: turn + ITEM_STORM_TURNS - 1 };
+    unit.usedThisTurn = true;
+    unit.currentMission = "Called down a thunderstorm";
+    window.GameEngine.floatingText.spawnFloatingText(unit, "Thunderstorm!", "aura");
+    window.GameEngine.turns.refreshVisibility(gameState);
+    if (log) log.push(`Storm: ${civ.id}'s ${describeUnit(unit)} calls down a thunderstorm`);
+    return true;
+  }
+  function performPlayerItemAction(civ, unit, kind, gameState) {
+    currentTurnNumber = gameState.turnNumber || 0;
+    currentGameStateRef = gameState;
+    const log = [];
+    let ok = false;
+    if (kind === "thunderstorm") ok = performItemThunderstorm(civ, unit, gameState, log);
+    else if (kind === "wolfForm") ok = performItemWolfForm(civ, unit, gameState, log);
+    else if (kind === "itemBearForm") ok = performItemBearForm(civ, unit, gameState, log);
+    else if (kind === "summonDireWolf") ok = performItemWolfSummon(civ, unit, gameState, log);
+    else if (kind === "itemSummonShadowsteed") ok = performItemShadowsteedSummon(civ, unit, gameState, log);
+    else if (kind === "cancelForm") ok = cancelForm(civ, unit, gameState);
+    if (log.length) appendAIActionLog(gameState, civ.id, log);
+    return ok;
+  }
+
+  /**
+   * AI use of item-granted actions (data/items.js `actions`) -- one dispatcher, run
+   * from the runUnitTurn cascade just before the Human Wizard's own plays. It reuses
+   * the existing AI behaviours for the borrowed actions (attemptWizardTeleport,
+   * attemptWizardInvisibility, maybeFireballStrike, maybeTeleportStrike, the blade
+   * sweep) -- those only ever gated on unit type in their DISPATCHERS -- and adds
+   * small decisions for the new ones:
+   *   - Dire Bear form when a fight is about to start (and back when it's over),
+   *   - Dire Wolf form to close on a far-off enemy,
+   *   - Summon Dire Wolf when an enemy is in sight and no wolf is alive,
+   *   - Cast Raptor Fly on an ally to cross a long distance,
+   *   - Thunderstorm when a real clash is on.
+   * A unit turned into a raptor by such a spell drops it (free) as soon as an enemy
+   * is close, since a raptor can't fight. Returns true if the unit's turn is used.
+   */
+  function maybeItemActionsPlay(civ, unit, gameState, log) {
+    const items = window.GameEngine.items;
+    const raptorRecipient = !!(unit.form && unit.form.kind === "raptorFly");
+    if (!raptorRecipient && !items.heldDefs(unit).some((d) => d.actions && d.actions.length)) return false;
+    const cheb = window.GameEngine.influence.chebyshev;
+    const threat = findNearestVisibleEnemy(civ, unit.x, unit.y, gameState);
+    const dist = threat ? cheb(unit.x, unit.y, threat.x, threat.y) : Infinity;
+
+    if (raptorRecipient) {
+      if (dist <= 2) cancelForm(civ, unit, gameState); // free -- the turn carries on as a normal unit
+      return false;
+    }
+    if (unit.usedThisTurn || unit.carriedBy) return false;
+    const has = (id) => items.grantsAction(unit, id);
+    const turn = gameState.turnNumber || 0;
+
+    // Defensive: badly hurt -> blink away / vanish (same trigger as the Wizard's).
+    if (unit.hp < unit.maxHp * 0.4) {
+      if (has("teleport") && attemptWizardTeleport(civ, unit, gameState, log)) return true;
+      if (has("goHidden") && attemptWizardInvisibility(civ, unit, gameState, log)) return true;
+    }
+    // Offensive spells.
+    if (has("fireball") && maybeFireballStrike(civ, unit, gameState, log)) return true;
+    if (has("whirlwindStrike")
+        && countEnemiesInRadius(civ, unit.x, unit.y, WHIRLWIND_STRIKE_RADIUS, gameState) >= BLADE_SWEEP_MIN_TARGETS
+        && performBladeSweep(civ, unit, gameState, log,
+          { label: "Whirlwind Strike", radius: WHIRLWIND_STRIKE_RADIUS, attackMult: WHIRLWIND_ATTACK_MULT, counterMult: WHIRLWIND_COUNTER_MULT })) return true;
+    if (has("teleport") && maybeTeleportStrike(civ, unit, gameState, log)) return true;
+    // A real clash (2+ enemies close) -> a thunderstorm now and then.
+    if (has("thunderstorm") && !window.GameEngine.turns.stormActive(gameState)
+        && countEnemiesInRadius(civ, unit.x, unit.y, 5, gameState) >= 2 && Math.random() < 0.3
+        && performItemThunderstorm(civ, unit, gameState, log)) return true;
+    // The Riddle of Steel: pose a riddle (and strike) at an enemy already in range.
+    if (has("riddle") && (unit._riddleCooldownUntilTurn || 0) <= turn) {
+      const radius = window.GameEngine.combat.effectiveRange(unit, civ);
+      const target = findRiddleTarget(civ, unit, gameState, radius);
+      if (target && cheb(unit.x, unit.y, target.x, target.y) <= radius
+          && performRiddle(civ, unit, target, gameState, log)) return true;
+    }
+    // Summon a Shadowsteed when there's an enemy in sight (Eyrhild's Fury).
+    if (has("summonShadowsteed") && dist <= 10 && !liveItemSummon(civ, unit, "shadowsteed")
+        && performItemShadowsteedSummon(civ, unit, gameState, log)) return true;
+    // Summon a Dire Wolf when there's an enemy in sight.
+    if (has("summonDireWolf") && dist <= 10 && !liveItemWolf(civ, unit)
+        && performItemWolfSummon(civ, unit, gameState, log)) return true;
+    // Dire Bear: transform into a fight, change back when it's over.
+    if (has("direBearForm")
+        && !((unit.typeId === "druid" || unit.typeId === "dire_bear") && civ.unlockedMechanics?.has("natures_fury"))) {
+      if (!unit.form && dist <= 3 && unit.hp >= unit.maxHp * 0.5 && performItemBearForm(civ, unit, gameState, log)) return true;
+      if (unit.form && unit.form.kind === "bear" && dist > 8 && performItemBearForm(civ, unit, gameState, log)) return true;
+    }
+    // Dire Wolf form: close on an enemy that's a good run away.
+    if (has("wolfForm") && !unit.form && dist >= 6 && dist <= 14 && performItemWolfForm(civ, unit, gameState, log)) return true;
+    // Cast Raptor Fly on the strongest ally when the front is far and nothing is close.
+    if (has("castRaptorFly") && dist > 6 && Math.random() < 0.25) {
+      const frontier = nearestEnemyLandmark(civ, gameState, unit.x, unit.y);
+      if (frontier && cheb(unit.x, unit.y, frontier.x, frontier.y) > 10) {
+        let best = null, bestPower = -1;
+        for (const ally of raptorFlyTargets(unit, gameState)) {
+          const power = unitCombatPower(ally, civ);
+          if (power > bestPower) { bestPower = power; best = ally; }
+        }
+        if (best && castRaptorFly(civ, unit, best, gameState, log)) return true;
+      }
+    }
+    return false;
   }
 
   /**
@@ -14250,6 +14992,9 @@ window.GameEngine = window.GameEngine || {};
       // Elf "First Frost of Autumn": passive chance to Freeze on any landed hit.
       applyElfCombatMechanics(unit, civ, bestTarget, defenderCiv, result, gameState);
 
+      // Items: on-hit / on-counter conditions (Kurganos, Mortedamos, Xorthalos, ...).
+      applyItemCombatEffects(unit, civ, bestTarget, defenderCiv, result, gameState);
+
       // Halfellow "Poisonous Puff": a Mycomancer defender's own successful counter.
       applyMycomancerCounterPoison(unit, bestTarget, defenderCiv, result, gameState);
 
@@ -15117,18 +15862,44 @@ window.GameEngine = window.GameEngine || {};
    *  happen -- currentGameStateRef is stamped at the top of every civ-turn
    *  entry point before any combat can resolve -- but this is cosmetic
    *  loot, not worth a hard failure over). */
-  function maybeSpawnDeathChest(deadUnit, gameState) {
+  function maybeSpawnDeathChest(deadUnit, gameState, killerCiv) {
     if (!gameState) return;
-    if (Math.random() >= DEATH_CHEST_SPAWN_CHANCE) return;
+    const combat = window.GameEngine.combat;
+    const tcfg = window.GameConfig.worldEncounters.treasureChest;
+    // Items the dead unit carried (2026-09-21): if it drops a chest they all go
+    // IN the chest; otherwise ONE of them, chosen at random, may drop on the
+    // ground (itemDropChance, or plunderDropChance if the KILLER's kingdom has
+    // Orc "Plunder").
+    const carried = Object.keys(window.GameEngine.items.itemsOf(deadUnit));
+    let chestTile = null;
     const { map } = gameState;
-    const tile = map.tiles[deadUnit.y * map.width + deadUnit.x];
-    if (!tile || tile.resource) return;
-    if (!window.GameData.RESOURCES.chest.validTerrain.includes(tile.terrain)) return;
-    tile.resource = "chest";
-    // Cosmetic-only (2026-09-02, user-directed): queues the brief "just
-    // fell to the ground" animation -- see deathfx.js/overlays.js's
-    // chestDropOffsetFor. Fires only on an actual spawn, not every death.
-    window.GameEngine.deathFx.spawnChestDrop(deadUnit.x, deadUnit.y);
+    if (deadUnit.typeId === "giltmaw") {
+      // A slain Giltmaw ALWAYS drops a chest, holding double the treasure rolls
+      // (2026-09-21, user-directed) -- placed by the same helper the Treasure
+      // Trow uses, so it lands on the nearest free valid tile if its own is taken.
+      const spot = dropTrowChest(deadUnit.x, deadUnit.y, gameState, { rollMult: tcfg.giltmawRollMult, uniqueChance: tcfg.giltmawUniqueChance });
+      if (spot) chestTile = map.tiles[spot.y * map.width + spot.x];
+    } else if (Math.random() < DEATH_CHEST_SPAWN_CHANCE) {
+      const tile = map.tiles[deadUnit.y * map.width + deadUnit.x];
+      if (tile && !tile.resource && window.GameData.RESOURCES.chest.validTerrain.includes(tile.terrain)) {
+        tile.resource = "chest";
+        // Cosmetic-only (2026-09-02, user-directed): queues the brief "just
+        // fell to the ground" animation -- see deathfx.js/overlays.js's
+        // chestDropOffsetFor. Fires only on an actual spawn, not every death.
+        window.GameEngine.deathFx.spawnChestDrop(deadUnit.x, deadUnit.y);
+        chestTile = tile;
+      }
+    }
+    if (chestTile) {
+      if (carried.length) chestTile.chestItems = (chestTile.chestItems || []).concat(carried);
+      return;
+    }
+    if (!carried.length) return;
+    const dropChance = killerCiv && killerCiv.unlockedMechanics && killerCiv.unlockedMechanics.has("plunder")
+      ? tcfg.plunderDropChance : tcfg.itemDropChance;
+    if (Math.random() < dropChance) {
+      window.GameEngine.items.dropItemAt(deadUnit.x, deadUnit.y, carried[Math.floor(Math.random() * carried.length)], gameState);
+    }
   }
 
   /** Single chokepoint every combat-kill path in this file funnels a dead
@@ -15180,7 +15951,7 @@ window.GameEngine = window.GameEngine || {};
       // Runs AFTER the filter above, so the fallen unit can't rage at its
       // own death -- see maybeAncestralRage.
       maybeAncestralRage(civ, deadUnit);
-      maybeSpawnDeathChest(deadUnit, currentGameStateRef);
+      maybeSpawnDeathChest(deadUnit, currentGameStateRef, killerCivId ? civs[killerCivId] : null);
       // Victory-stats tallies (2026-08-19, user-directed): every combat
       // death in the game funnels through this one chokepoint (see this
       // function's own doc comment), so it's also the one place that can
@@ -15396,6 +16167,54 @@ window.GameEngine = window.GameEngine || {};
         }
       }
     }
+  }
+
+  /**
+   * Item-granted on-hit and on-counter conditions (data/items.js `onHit` /
+   * `onCounter`: Kurganos, Mortedamos' Manuscript, Alunaria, Xorthalos, Mhorgrim's
+   * Hunt). Same shape as applyElfCombatMechanics above: rolled once per LANDED HIT
+   * (landedHitCount), each entry its own Math.random(), so several conditions can
+   * land off one hit. `when: "dark"` entries only fire in the dark window. The
+   * counter half reads the DEFENDER's items and needs a real landed counter
+   * (`result.counterDamage > 0`, same test applyMycomancerCounterPoison uses).
+   * All conditions still go through combat.setCondition, so immunities apply.
+   */
+  function applyItemCondition(target, key, gameState) {
+    const combat = window.GameEngine.combat;
+    const turn = gameState.turnNumber || 0;
+    if (key === "burning") applyBurning(target, "unit", gameState);
+    else if (key === "poisoned") applyPoisoned(target, gameState);
+    else if (key === "webbed") applyWebbed(target, gameState);
+    else if (key === "befuddled") combat.applyBefuddled(target, turn);
+    else if (key === "curse") combat.setCondition(target, "curse", { attackMult: 0.5, moveMult: 0.5, expiresAtTurn: turn + CURSE_DURATION });
+    else if (key === "frozen") combat.setCondition(target, "frozen", { attackMult: 0.75, expiresAtTurn: turn + FROZEN_DURATION });
+    else if (key === "blind") combat.setCondition(target, "blind", { expiresAtTurn: turn + BLIND_DURATION });
+  }
+  function applyItemCombatEffects(attackerUnit, attackerCiv, defenderUnit, defenderCiv, result, gameState) {
+    const items = window.GameEngine.items;
+    const dark = window.GameEngine.turns.isDarkWindow(gameState.turnNumber || 0);
+    const roll = (effects, target, hits) => {
+      for (let i = 0; i < hits; i++) {
+        for (const e of effects) {
+          if (e.when === "dark" && !dark) continue;
+          if (Math.random() < e.chance) applyItemCondition(target, e.condition, gameState);
+        }
+      }
+    };
+    // The Arc of Lightning: after every landed hit the target is struck by a bolt of extra
+    // damage that ignores its defense (a double strike's second hit strikes too).
+    const bolt = items.itemBolt(attackerUnit);
+    if (bolt) {
+      const boltDamage = Math.max(bolt.min || 1,
+        Math.round(window.GameEngine.combat.effectiveAttack(attackerUnit, attackerCiv) * bolt.damageMult));
+      for (let i = 0; i < landedHitCount(result) && defenderUnit.hp > 0; i++) {
+        defenderUnit.hp -= boltDamage;
+        window.GameEngine.floatingText.spawnFloatingText(defenderUnit, `-${boltDamage} (Lightning)`, "warning");
+        window.GameEngine.combat.spawnAreaEffect(defenderUnit.x, defenderUnit.y, 0, "lightning");
+      }
+    }
+    if (defenderUnit.hp > 0) roll(items.onHitEffects(attackerUnit, "hit"), defenderUnit, landedHitCount(result));
+    if (attackerUnit.hp > 0 && result.counterDamage > 0) roll(items.onHitEffects(defenderUnit, "counter"), attackerUnit, 1);
   }
 
   // Halfellow "Poisonous Puff": a Mycomancer that successfully
@@ -15621,6 +16440,12 @@ window.GameEngine = window.GameEngine || {};
     maybeProspectorsClaimPlay,
     maybeDungeonDelvePlay,
     openTreasureChest,
+    rollChestTreasures,
+    applyItemCombatEffects,
+    maybeSpawnDeathChest,
+    shapeshift, revertShape, tickForms, cancelForm, raptorFlyTargets, castRaptorFly, performPlayerCastRaptorFly,
+    performItemBearForm, performItemWolfForm, performItemWolfSummon, performItemShadowsteedSummon, performItemSummon, liveItemSummon, performItemThunderstorm, performPlayerItemAction, liveItemWolf,
+    TREASURE_TABLE,
     maybeOpenChestPlay,
     battlefieldPromotionCost,
     resolveBattlefieldPromotion,

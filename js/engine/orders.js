@@ -727,7 +727,7 @@ window.GameEngine = window.GameEngine || {};
       // A Galley (or any future naval carrier) doesn't ferry another boat,
       // or a flier that doesn't need ferrying -- mirrors ai.js's own
       // militaryAtTile boarding filter (!ud.isNaval).
-      if (passengerBase.isNaval || passengerBase.flying) return false;
+      if (passengerBase.isNaval || window.GameEngine.combat.isFlying(passengerUnit)) return false;
     }
     return true;
   }
@@ -878,7 +878,9 @@ window.GameEngine = window.GameEngine || {};
     if (!civ || unit.usedThisTurn) return [];
     const isWizard = unit.typeId === "wizard" && civ.unlockedMechanics?.has("teleportation");
     const isDruid = unit.typeId === "druid" && civ.unlockedMechanics?.has("roots_of_the_world");
-    if (!isWizard && !isDruid) return [];
+    // Items (Alunaria, Arangil's Vision Glass): the bearer teleports like a Human Wizard.
+    const isItem = window.GameEngine.items.grantsAction(unit, "teleport");
+    if (!isWizard && !isDruid && !isItem) return [];
     const out = [unit];
     for (const ally of civ.units) {
       if (ally === unit || ally.carriedBy) continue;
@@ -938,8 +940,10 @@ window.GameEngine = window.GameEngine || {};
   function riddleTargets(unit, gameState, humanCivId) {
     const civ = gameState.civs[unit.civId];
     if (!civ || unit.usedThisTurn) return [];
-    if (unit.typeId !== "trouble_maker" && unit.typeId !== "wanderer") return [];
-    if (!civ.unlockedMechanics?.has("riddle")) return [];
+    // Items (The Riddle of Steel): the bearer can pose a Riddle whatever its type or tech.
+    const nativeRiddler = (unit.typeId === "trouble_maker" || unit.typeId === "wanderer")
+      && civ.unlockedMechanics?.has("riddle");
+    if (!nativeRiddler && !window.GameEngine.items.grantsAction(unit, "riddle")) return [];
     if ((unit._riddleCooldownUntilTurn || 0) > (gameState.turnNumber || 0)) return [];
     const range = window.GameEngine.combat.effectiveRange(unit, civ);
     const out = [];
@@ -1175,6 +1179,14 @@ window.GameEngine = window.GameEngine || {};
         options.push({ kind: "openChest", label: "Open Chest" });
       }
 
+      // Pick Up (items, 2026-09-21): a one-shot action, like Open Chest -- only
+      // offered when this tile holds an item this unit could actually carry
+      // (machines can't; one of each kind per unit -- see engine/items.js canReceiveItem).
+      if (!unit.usedThisTurn && !unit.channeling
+          && window.GameEngine.items.pickableItemsAt(civ, unit, gameState).length) {
+        options.push({ kind: "pickUpItem", label: "Pick Up" });
+      }
+
       // Human "Battlefield Promotion": an existing unit of an obsoleted
       // type (Archer, Cavalry, Knight, Catapult -- any `replace_unit`
       // `from`) can spend the turn converting itself into its own
@@ -1284,7 +1296,9 @@ window.GameEngine = window.GameEngine || {};
       // mode (main.js's startFireballPlacement) over every in-bounds tile
       // within FIREBALL_RANGE -- no visibility requirement, same as
       // Teleportation's "anywhere explored" reach.
-      if (unit.typeId === "wizard" && !unit.usedThisTurn && civ.unlockedMechanics?.has("fireball_splash")) {
+      // Items (Kurganos): the bearer casts Fireball! whatever its type.
+      if (!unit.usedThisTurn && ((unit.typeId === "wizard" && civ.unlockedMechanics?.has("fireball_splash"))
+          || window.GameEngine.items.grantsAction(unit, "fireball"))) {
         options.push({ kind: "fireball", label: "Fireball!" });
       }
 
@@ -1412,6 +1426,8 @@ window.GameEngine = window.GameEngine || {};
       // enemy in range to make the pill worth showing. Two separate pills
       // (not one auto-pick-the-bigger-one like the AI) so the player chooses
       // which radius to use.
+      // Items (Kurganos): the bearer gets Whirlwind Strike whatever its type (not Blade Storm).
+      const itemWhirlwind = !unit.usedThisTurn && window.GameEngine.items.grantsAction(unit, "whirlwindStrike");
       if (unit.typeId === "blade_dancer" && !unit.usedThisTurn) {
         if (civ.unlockedMechanics?.has("whirlwind_strike")
             && window.GameEngine.ai.countEnemiesInRadius(civ, unit.x, unit.y, window.GameEngine.ai.WHIRLWIND_STRIKE_RADIUS, gameState) >= 1) {
@@ -1422,9 +1438,52 @@ window.GameEngine = window.GameEngine || {};
           options.push({ kind: "bladeStorm", label: "Blade Storm" });
         }
       }
+      if (itemWhirlwind && !options.some((o) => o.kind === "whirlwindStrike")
+          && window.GameEngine.ai.countEnemiesInRadius(civ, unit.x, unit.y, window.GameEngine.ai.WHIRLWIND_STRIKE_RADIUS, gameState) >= 1) {
+        options.push({ kind: "whirlwindStrike", label: "Whirlwind Strike" });
+      }
+
+      // Item-granted actions (data/items.js `actions`; ai.js's "ITEM-GRANTED
+      // ACTIONS" section holds the performers): Kurganos' Thunderstorm, the Spear
+      // of Agasou's Dire Bear/Dire Wolf forms and Cast Fly, Mhorgrim's Dire Wolf
+      // summon. Fireball, Whirlwind Strike, Teleportation and Go Hidden are the
+      // native actions above with their unit-type gate widened.
+      {
+        const itemsApi = window.GameEngine.items;
+        if (!unit.usedThisTurn) {
+          if (itemsApi.grantsAction(unit, "thunderstorm") && !window.GameEngine.turns.stormActive(gameState)) {
+            options.push({ kind: "thunderstorm", label: "Thunderstorm" });
+          }
+          if (itemsApi.grantsAction(unit, "direBearForm")) {
+            const nativeDruid = (unit.typeId === "druid" || unit.typeId === "dire_bear")
+              && civ.unlockedMechanics?.has("natures_fury");
+            if (!nativeDruid && (!unit.form || unit.form.kind === "bear")) {
+              options.push({ kind: "itemBearForm", label: unit.form ? "Change Back" : "Become Dire Bear" });
+            }
+          }
+          if (itemsApi.grantsAction(unit, "wolfForm") && !unit.form) {
+            options.push({ kind: "wolfForm", label: "Become Dire Wolf" });
+          }
+          if (itemsApi.grantsAction(unit, "summonDireWolf") && !window.GameEngine.ai.liveItemWolf(civ, unit)) {
+            options.push({ kind: "summonDireWolf", label: "Summon Dire Wolf" });
+          }
+          if (itemsApi.grantsAction(unit, "summonShadowsteed") && !window.GameEngine.ai.liveItemSummon(civ, unit, "shadowsteed")) {
+            options.push({ kind: "itemSummonShadowsteed", label: "Call Shadowsteed" });
+          }
+          if (window.GameEngine.ai.raptorFlyTargets(unit, gameState).length) {
+            options.push({ kind: "castRaptorFly", label: "Cast Raptor Fly" });
+          }
+        }
+        // The recipient of a raptor Cast Fly, or a Dire Wolf-formed bearer, may end it early.
+        if (unit.form && (unit.form.kind === "raptorFly" || unit.form.kind === "wolf")) {
+          options.push({ kind: "cancelForm", label: unit.form.kind === "raptorFly" ? "Cancel Flight" : "Cancel Shapeshift", danger: true });
+        }
+      }
 
       // Hidden/stealth -- sidebar.js's stealthActions.
-      if (unit.conditions?.hidden) {
+      if (unit.conditions?.hidden?.unrevealable) {
+        // The Umbral Ring's hiding can't be cancelled (nor, in combat.revealHidden, broken).
+      } else if (unit.conditions?.hidden) {
         options.push({ kind: "cancelHidden", label: "Cancel Hidden" });
       } else if (!unit.usedThisTurn && window.GameEngine.combat.canGoHidden(unit, civ, gameState.civs)) {
         options.push({ kind: "goHidden", label: "Go Hidden" });

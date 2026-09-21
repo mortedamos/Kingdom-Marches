@@ -266,6 +266,35 @@ window.GameEngine = window.GameEngine || {};
     };
   }
 
+  /** Is `turnNumber` inside the dark window -- every slot the world is tinted dark
+   *  (dusk through dawn: slots 6-11 of the 12-turn cycle, six turns)? This is what
+   *  "night" means for item effects (Umbral Ring, Alunaria); the unit-LIGHT window is
+   *  the narrower `lightsActive` of phaseForTurn. Derived from the slot table, so it
+   *  follows a retune of the cycle. */
+  function isDarkWindow(turnNumber) {
+    const cfg = window.GameConfig.view.dayNight;
+    const { slot } = phaseForTurn(turnNumber);
+    return ((cfg.slots[slot] || {}).alpha || 0) > 0;
+  }
+
+  /** Kurganos' Thunderstorm: gameState.weatherOverride = { storm: true, untilTurn }
+   *  forces a storm through `untilTurn` inclusive. Plain JSON, so it saves. */
+  function stormActive(gameState) {
+    const o = gameState && gameState.weatherOverride;
+    return !!(o && o.storm && (gameState.turnNumber || 0) <= o.untilTurn);
+  }
+
+  /** The weather right now: the seed-derived forecast, unless a Thunderstorm
+   *  action has forced a storm. UI code (weather.js) reads this instead of
+   *  calling weatherForTurn directly. */
+  function currentWeather(gameState) {
+    const turn = gameState.turnNumber || 0;
+    if (stormActive(gameState)) {
+      return { raining: true, storming: true, rain: 1, storm: 1, turnsLeft: gameState.weatherOverride.untilTurn - turn + 1 };
+    }
+    return weatherForTurn(turn, gameState.seed || 0);
+  }
+
   /**
    * Racial day/night vision penalty: -1 to a civ's vision radius (city and
    * unit alike) during the specific cycle slots its race sees worst in --
@@ -316,7 +345,11 @@ window.GameEngine = window.GameEngine || {};
     // attack/defense, see combat.js's LEVEL_BONUS_VALUES.
     const levelVision = unit.levelBonuses?.visionRadius || 0;
     const dayNightPenalty = dayNightVisionPenaltyFor(civ, gameState);
-    return Math.max(MIN_VISION_RADIUS, (baseUnit.visionRadius || 3) + overrideVision + flightVision + watchVision + bonfireVision + levelVision - dayNightPenalty);
+    // Items (Rosepearl, Arangil's Vision Glass, Much Room Mushroom, Eyrhild's Fury): +vision.
+    const itemVision = window.GameEngine.items.itemStat(unit, "vision");
+    // Kurganos' Thunderstorm: -1 vision for every unit while the storm lasts.
+    const stormPenalty = stormActive(gameState) ? 1 : 0;
+    return Math.max(MIN_VISION_RADIUS, (baseUnit.visionRadius || 3) + overrideVision + flightVision + watchVision + bonfireVision + levelVision + itemVision - dayNightPenalty - stormPenalty);
   }
 
   /** Computes each civ's currently-visible tile set (own territory + vision radius around units/cities) */
@@ -523,6 +556,7 @@ window.GameEngine = window.GameEngine || {};
             e: !!tile.hasRiver?.e, w: !!tile.hasRiver?.w,
           },
           resource: tile.resource || null,
+          items: tile.groundItems ? tile.groundItems.slice() : null, // dropped gear (items.js dropItemAt)
           isRuin: !!tile.isRuin,
           isCave: !!tile.isCave,
           city: cityAt.get(idx) || null,
@@ -602,6 +636,7 @@ window.GameEngine = window.GameEngine || {};
             e: !!tile.hasRiver?.e, w: !!tile.hasRiver?.w,
           },
           resource: tile.resource || null,
+          items: tile.groundItems ? tile.groundItems.slice() : null, // dropped gear (items.js dropItemAt)
           isRuin: !!tile.isRuin,
           isCave: !!tile.isCave,
           city: cityAt.get(idx) || null,
@@ -615,6 +650,44 @@ window.GameEngine = window.GameEngine || {};
     gameState.visibility[civ.id] = visible;
     gameState.tileMemory[civ.id] = memory;
     return { x: cx, y: cy, radius };
+  }
+
+  /** Treasure Chest "Treasure Map" (see ai.js's TREASURE_TABLE): marks ONE tile
+   *  as explored and remembered for `civ`, exactly as if it had once been seen
+   *  -- but NOT live-visible, so it appears on the map as a remembered tile
+   *  (chest icon and all) and expires nothing. Same tileMemory entry shape
+   *  revealMapFragment/refreshVisibility write, for a single tile. */
+  function rememberTile(civ, gameState, idx) {
+    const { map } = gameState;
+    const explored = gameState.explored[civ.id] || new Set();
+    const memory = gameState.tileMemory[civ.id] || {};
+    const x = idx % map.width, y = Math.floor(idx / map.width);
+    const tile = map.tiles[idx];
+    let city = null, structure = null;
+    for (const c of Object.values(gameState.civs)) {
+      for (const ct of c.cities) {
+        if (ct.x === x && ct.y === y) city = { raceId: c.raceId, population: Math.floor(ct.population), isPort: !!ct.isPort };
+        for (const s of ct.structures) if (s.x === x && s.y === y) structure = { id: s.id, raceId: c.raceId };
+      }
+      for (const s of c.bridges || []) if (s.x === x && s.y === y) structure = { id: s.id, raceId: c.raceId };
+    }
+    const rawCityScore = window.GameEngine.ai.computeTileCityScore(civ, gameState, x, y);
+    explored.add(idx);
+    memory[idx] = {
+      terrain: tile.terrain,
+      tallMountainEligible: !!tile.tallMountainEligible,
+      hasRoad: !!tile.hasRoad,
+      hasRiver: { n: !!tile.hasRiver?.n, s: !!tile.hasRiver?.s, e: !!tile.hasRiver?.e, w: !!tile.hasRiver?.w },
+      resource: tile.resource || null,
+      items: tile.groundItems ? tile.groundItems.slice() : null, // dropped gear (items.js dropItemAt)
+      isRuin: !!tile.isRuin,
+      isCave: !!tile.isCave,
+      city, structure,
+      cityScore: Number.isFinite(rawCityScore) ? Math.round(rawCityScore * 10) / 10 : null,
+      turnNumber: gameState.turnNumber || 0,
+    };
+    gameState.explored[civ.id] = explored;
+    gameState.tileMemory[civ.id] = memory;
   }
 
   /**
@@ -708,6 +781,10 @@ window.GameEngine = window.GameEngine || {};
       if (entry.dueTurn > turnNumber) { stillPending.push(entry); continue; }
       const record = window.GameData.RESOURCES[entry.resourceId];
       if (!record) continue; // unknown id (e.g. a save from a build where it existed) -- drop it
+      // Optional per-resource thinning (terrain.js: only Treasure Chest sets
+      // one): a rejected respawn is dropped, not retried, so that resource
+      // replaces fewer of what gets used up.
+      if (Math.random() < (record.respawnRejectChance || 0)) continue;
       const candidates = [];
       for (const tile of map.tiles) {
         if (tile.resource) continue;
@@ -941,7 +1018,21 @@ window.GameEngine = window.GameEngine || {};
         }
 
         const stayedPut = unit.x === oldX && unit.y === oldY;
-        const continuingRitual = onAnchor && stayedPut;
+        // A Delving unit that MOVED onto the Ruin and explicitly started
+        // Delving the same turn reads as `!stayedPut` (its last tracked
+        // position is wherever it stood a round ago), which used to cancel
+        // the channel it had just started -- the player had to click Start
+        // Delving a second time the following turn. Since onAnchor already
+        // requires channeling === "delving" on a Ruin, an arrival like that
+        // is a fresh start, not an interruption: drop any claim left at the
+        // old position and keep the channel.
+        if (isDelvingUnit && onAnchor && !stayedPut) {
+          clearDelveOwnership(unit, civ, map, oldX, oldY);
+          delete unit._delveFilledOffsets;
+          unit._delveFillProgress = 0;
+          delete unit._channelStash;
+        }
+        const continuingRitual = onAnchor && (stayedPut || isDelvingUnit);
         unit._ritualTurns = onAnchor ? (stayedPut ? (unit._ritualTurns || 0) + 1 : 1) : 0;
         // Scoped to units actually engaged with Delve specifically, not just
         // "isDelvingUnit is true": isDelvingUnit is a CIV-LEVEL capability
@@ -1142,6 +1233,8 @@ window.GameEngine = window.GameEngine || {};
 
     tickBurningDamage(gameState, civ);
     tickPoisonedDamage(gameState, civ);
+    // Timed shapeshifts (Spear of Agasou's Dire Wolf form, raptor Cast Fly) run out.
+    window.GameEngine.ai.tickForms(gameState, civ);
     // Wall Defense (Defend the Walls/Treetop Snipers/Long Range Snipers) is
     // checked in endRound below, not here: checking at the START of this
     // civ's own turn would only ever see enemy positions as of the END of
@@ -1223,10 +1316,10 @@ window.GameEngine = window.GameEngine || {};
           tile._delveMonsterRolled = true;
           window.GameEngine.ai.triggerRuinMonsterEncounter(civ, unit, gameState, ruinLog);
         }
-        if (!tile._delveTreasureRolled && Math.random() < ruinCfg.treasureFindChance) {
+        if (!tile._delveTreasureRolled && Math.random() < ruinCfg.treasureFindChance * window.GameEngine.items.itemLuck(unit).delveMult) {
           tile._delveTreasureRolled = true;
           ruinLog.push(`Ruin: ${civ.id}'s ${unit.name || unit.typeId} finds treasure while delving at (${unit.x},${unit.y})`);
-          const treasureResult = window.GameEngine.ai.grantMonsterKillReward(civ, unit, gameState);
+          const treasureResult = window.GameEngine.ai.grantMonsterKillReward(civ, unit, gameState, { uniqueChance: ruinCfg.uniqueItemChance });
           // Modal for the human player -- see main.js's
           // offerNextTreasureNotice/queueTreasureNotice's own doc comment
           // for why this is set unconditionally for every civ.
@@ -1523,6 +1616,93 @@ window.GameEngine = window.GameEngine || {};
             window.GameEngine.combat.setCondition(ally, "powerMetalAura", {
               expiresAtTurn: (gameState.turnNumber || 0) + 1, attackBonus: 2, firstStrikePctBonus: 0.05,
             });
+          }
+        }
+      }
+    }
+
+    // Item auras (data/items.js `auras`: Kuvira -> Crusade, the Axe of Doom ->
+    // Heavy Metal AND Power Metal): a bearer is an aura source exactly like a
+    // Paladin/Troubadour, whether or not its kingdom knows the matching tech,
+    // and always on (no human toggle). Same effects/values as the native loops
+    // above; radius 1, or 2 with Epic Metal for the metal auras. Own dedupe sets so
+    // overlapping bearers never double-heal an ally.
+    {
+      const itemsApi = window.GameEngine.items;
+      const turnNow = gameState.turnNumber || 0;
+      const healedCrusade = new Set(), healedHeavy = new Set(), poweredUp = new Set();
+      const metalRadius = civ.unlockedMechanics && civ.unlockedMechanics.has("epic_metal") ? 2 : 1;
+      const cheb = window.GameEngine.influence.chebyshev;
+      for (const src of civ.units) {
+        const auras = itemsApi.itemAuras(src);
+        if (!auras.size) continue;
+        for (const ally of civ.units) {
+          const d = cheb(src.x, src.y, ally.x, ally.y);
+          if (auras.has("crusade") && d <= 1 && !healedCrusade.has(ally)) {
+            healedCrusade.add(ally);
+            const before = ally.hp;
+            ally.hp = Math.min(ally.maxHp, ally.hp + Math.max(1, Math.round(ally.maxHp * 0.10)));
+            window.GameEngine.floatingText.spawnHealGain(ally, ally.hp - before);
+            window.GameEngine.combat.setCondition(ally, "crusadeAura", {
+              expiresAtTurn: turnNow + 1, attackBonus: 2, defenseBonus: 1, siegePctBonus: 0.25,
+            });
+          }
+          if (auras.has("heavy_metal") && d <= metalRadius && !healedHeavy.has(ally)) {
+            healedHeavy.add(ally);
+            const before = ally.hp;
+            ally.hp = Math.min(ally.maxHp, ally.hp + Math.max(1, Math.round(ally.maxHp * 0.05)));
+            window.GameEngine.floatingText.spawnHealGain(ally, ally.hp - before);
+            window.GameEngine.combat.setCondition(ally, "heavyMetalAura", {
+              expiresAtTurn: turnNow + 1, defenseBonus: 2, siegePctBonus: 0.3,
+            });
+          }
+          if (auras.has("power_metal") && d <= metalRadius && !poweredUp.has(ally)) {
+            poweredUp.add(ally);
+            window.GameEngine.combat.setCondition(ally, "powerMetalAura", {
+              expiresAtTurn: turnNow + 1, attackBonus: 2, firstStrikePctBonus: 0.05,
+            });
+          }
+        }
+      }
+    }
+
+    // The Umbral Ring (data/items.js flags `umbral` / `seesHidden`): its bearer is
+    // Hidden for the whole dark window with an UNREVEALABLE hidden condition
+    // (combat.revealHidden ignores it, orders.js offers no Cancel Hidden) -- the
+    // usual Hidden rules otherwise apply (half movement, x1.5 defense). Set fresh
+    // each turn; when the dark window ends the condition is simply removed. The
+    // same bearer sees every hidden enemy within its vision: they are revealed
+    // (visible to everyone) for a turn via the ordinary revealHidden path, since
+    // there is no central per-civ visibility check to hook into.
+    {
+      const itemsApi = window.GameEngine.items;
+      const combat = window.GameEngine.combat;
+      const turnNow = gameState.turnNumber || 0;
+      const dark = isDarkWindow(turnNow);
+      let endOfDark = turnNow;
+      if (dark) while (isDarkWindow(endOfDark)) endOfDark++;
+      for (const unit of civ.units) {
+        if (itemsApi.itemFlag(unit, "umbral")) {
+          const hidden = unit.conditions && unit.conditions.hidden;
+          if (dark) {
+            if (!hidden || !hidden.unrevealable || hidden.expiresAtTurn !== endOfDark) {
+              unit.conditions = unit.conditions || {};
+              delete unit.conditions.forcedVisible;
+              combat.setCondition(unit, "hidden", { expiresAtTurn: endOfDark, unrevealable: true });
+            }
+          } else if (hidden && hidden.unrevealable) {
+            delete unit.conditions.hidden;
+          }
+        }
+        if (itemsApi.itemFlag(unit, "seesHidden")) {
+          const radius = effectiveUnitVisionRadius(unit, civ, gameState);
+          for (const otherCiv of Object.values(gameState.civs)) {
+            if (otherCiv.id === civ.id || otherCiv.eliminated) continue;
+            for (const enemy of otherCiv.units) {
+              if (!enemy.conditions || !enemy.conditions.hidden) continue;
+              if (window.GameEngine.influence.chebyshev(unit.x, unit.y, enemy.x, enemy.y) > radius) continue;
+              combat.revealHidden(enemy, turnNow);
+            }
           }
         }
       }
@@ -2367,6 +2547,9 @@ window.GameEngine = window.GameEngine || {};
   window.GameEngine.turns = {
     phaseForTurn,
     weatherForTurn,
+    isDarkWindow,
+    stormActive,
+    currentWeather,
     refreshVisibility,
     dayNightVisionPenaltyFor,
     effectiveUnitVisionRadius,
@@ -2385,6 +2568,7 @@ window.GameEngine = window.GameEngine || {};
     bankChannelStash,
     scheduleResourceRespawn,
     revealMapFragment,
+    rememberTile,
   };
 
   // Live getters, not plain values -- see the note at the top of this module.

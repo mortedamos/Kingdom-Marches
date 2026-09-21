@@ -92,6 +92,12 @@ window.GameData.SPRITE_MANIFESTS = {
     frameWidth: 128, frameHeight: 128, layout: "horizontal",
     animations: { idle: { frames: [0, 1, 2, 3], fps: 1 } },
   },
+  // Giltmaw (a chest-only monster, see units.js): same 4-frame/fps-1 idle
+  // convention as the other monsters.
+  "unit/giltmaw": {
+    frameWidth: 128, frameHeight: 128, layout: "horizontal",
+    animations: { idle: { frames: [0, 1, 2, 3], fps: 1 } },
+  },
   // Treasure Trow: 3 idle frames, plus frame 3 RESERVED as the panic pose --
   // only ever requested by render.js's drawTrowGhosts during the panic beat
   // of a struck Trow's reaction sequence, never by the ordinary unit draw
@@ -309,6 +315,29 @@ window.GameData.SPRITE_MANIFESTS = {
   // "city/human": { ... },
 
   // --- Enhancements ---
+  // Item icons (dropped gear on the ground): static single 128x128 frames -- see render.js drawGroundItems.
+  "enhancement/item_feather": { frameWidth: 128, frameHeight: 128, layout: "horizontal", animations: { idle: { frames: [0], fps: 1 } } },
+  "enhancement/item_cloak": { frameWidth: 128, frameHeight: 128, layout: "horizontal", animations: { idle: { frames: [0], fps: 1 } } },
+  "enhancement/item_boots": { frameWidth: 128, frameHeight: 128, layout: "horizontal", animations: { idle: { frames: [0], fps: 1 } } },
+  "enhancement/item_dwarven_hammer": { frameWidth: 128, frameHeight: 128, layout: "horizontal", animations: { idle: { frames: [0], fps: 1 } } },
+  "enhancement/item_dwarven_armor": { frameWidth: 128, frameHeight: 128, layout: "horizontal", animations: { idle: { frames: [0], fps: 1 } } },
+  "enhancement/item_mythril_armor": { frameWidth: 128, frameHeight: 128, layout: "horizontal", animations: { idle: { frames: [0], fps: 1 } } },
+  "enhancement/item_kuvira": { frameWidth: 128, frameHeight: 128, layout: "horizontal", animations: { idle: { frames: [0], fps: 1 } } },
+  "enhancement/item_rosepearl": { frameWidth: 128, frameHeight: 128, layout: "horizontal", animations: { idle: { frames: [0], fps: 1 } } },
+  "enhancement/item_kurganos": { frameWidth: 128, frameHeight: 128, layout: "horizontal", animations: { idle: { frames: [0], fps: 1 } } },
+  "enhancement/item_mortedamos": { frameWidth: 128, frameHeight: 128, layout: "horizontal", animations: { idle: { frames: [0], fps: 1 } } },
+  "enhancement/item_alunaria": { frameWidth: 128, frameHeight: 128, layout: "horizontal", animations: { idle: { frames: [0], fps: 1 } } },
+  "enhancement/item_agasou": { frameWidth: 128, frameHeight: 128, layout: "horizontal", animations: { idle: { frames: [0], fps: 1 } } },
+  "enhancement/item_xorthalos": { frameWidth: 128, frameHeight: 128, layout: "horizontal", animations: { idle: { frames: [0], fps: 1 } } },
+  "enhancement/item_much_room_mushroom": { frameWidth: 128, frameHeight: 128, layout: "horizontal", animations: { idle: { frames: [0], fps: 1 } } },
+  "enhancement/item_umbral_ring": { frameWidth: 128, frameHeight: 128, layout: "horizontal", animations: { idle: { frames: [0], fps: 1 } } },
+  "enhancement/item_axe_of_doom": { frameWidth: 128, frameHeight: 128, layout: "horizontal", animations: { idle: { frames: [0], fps: 1 } } },
+  "enhancement/item_arangil": { frameWidth: 128, frameHeight: 128, layout: "horizontal", animations: { idle: { frames: [0], fps: 1 } } },
+  "enhancement/item_mhorgrim": { frameWidth: 128, frameHeight: 128, layout: "horizontal", animations: { idle: { frames: [0], fps: 1 } } },
+  "enhancement/item_eyrhild": { frameWidth: 128, frameHeight: 128, layout: "horizontal", animations: { idle: { frames: [0], fps: 1 } } },
+  "enhancement/item_lucky_rock": { frameWidth: 128, frameHeight: 128, layout: "horizontal", animations: { idle: { frames: [0], fps: 1 } } },
+  "enhancement/item_riddle_of_steel": { frameWidth: 128, frameHeight: 128, layout: "horizontal", animations: { idle: { frames: [0], fps: 1 } } },
+  "enhancement/item_arc_of_lightning": { frameWidth: 128, frameHeight: 128, layout: "horizontal", animations: { idle: { frames: [0], fps: 1 } } },
   "enhancement/resource_iron": {
     frameWidth: 128, frameHeight: 128, layout: "horizontal",
     animations: { idle: { frames: [0, 1, 2, 3], fps: 2 } },

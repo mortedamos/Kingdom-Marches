@@ -764,6 +764,20 @@
       const b = c.burning;
       if (!spec || b.radius > spec.radius) { spec = b; ablaze = true; }
     }
+    // A carried item's light (data/items.js `nightLight`: Kuvira, Alunaria, the
+    // Shield of Xorthalos) works like the burning case above: the bigger of the
+    // unit's own lamp and the item's wins, and the pool sits at the sprite's
+    // centre. Only drawn in the unit-light window like every other carried light,
+    // and never for a hidden unit (returned above). A flickering item borrows the
+    // burning light's own flicker rate, so it is exactly as gentle as existing fire.
+    const itemLight = window.GameEngine.items.nightLightOf(unit);
+    if (itemLight && (!spec || itemLight.radius > spec.radius)) {
+      spec = {
+        radius: itemLight.radius, color: itemLight.color, intensity: itemLight.intensity || 0.75,
+        flicker: itemLight.flicker ? (c.burning.flicker || 0) : 0,
+      };
+      ablaze = true;
+    }
     if (!spec) return;
 
     // Where on the sprite the light actually comes from. Authored per frame

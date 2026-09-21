@@ -212,6 +212,7 @@ window.UI = window.UI || {};
     curse: "140,60,190", // Orc Bog Witch curse -- matches CURSE_TINT_COLOR
     blind: "150,150,165", // Treasure Trow prank: dimmed sight -- soft grey
     befuddle: "255,214,102", // Treasure Trow prank: dizzy stars -- warm yellow
+    lightning: "255,240,140", // The Arc of Lightning's bolt -- pale storm yellow
     dire_bear_transform: "110,75,45", // Elf Druid -> Dire Bear -- earthy brown fur/claws
     druid_revert: "120,205,95", // Elf Dire Bear -> Druid -- matches natures_grace's living green
     // Halfellow "Throw a Party" (see cities.js's applyThrowAParty): warm
@@ -242,6 +243,7 @@ window.UI = window.UI || {};
     curse: { chars: ["💀", "🌀", "💜"], drift: -0.3 },
     blind: { chars: ["🌑", "🌫️", "🌑"], drift: -0.3 },
     befuddle: { chars: ["💫", "❓", "💫"], drift: -0.5 },
+    lightning: { chars: ["⚡", "✨", "⚡"], drift: -0.4 },
     dire_bear_transform: { chars: ["🐾", "🍂", "🐾"], drift: -0.3 },
     druid_revert: { chars: ["🍃", "✨", "🍃"], drift: -0.5 },
     // Halfellow "Throw a Party" confetti poof at the city tile -- fired a
@@ -1832,6 +1834,18 @@ window.UI = window.UI || {};
    * Metal's +1 radius). Purely cosmetic; never touches game state.
    */
   function auraInfoForUnit(unit, civ) {
+    // Aura items (data/items.js `auras`: Kuvira, the Axe of Doom): the bearer is a source
+    // whether or not its kingdom knows the tech. Native sources win if both apply.
+    const itemAuraSet = window.GameEngine.items.itemAuras(unit);
+    const nativeAura = auraInfoForUnitNative(unit, civ);
+    if (nativeAura || !itemAuraSet.size) return nativeAura;
+    const epic = !!(civ.unlockedMechanics && civ.unlockedMechanics.has("epic_metal"));
+    if (itemAuraSet.has("crusade")) return { radius: 1, color: "#ffd54f", label: "Crusade" };
+    if (itemAuraSet.has("heavy_metal") && itemAuraSet.has("power_metal")) return { radius: epic ? 2 : 1, color: "#b06bff", label: "Heavy + Power Metal" };
+    if (itemAuraSet.has("heavy_metal")) return { radius: epic ? 2 : 1, color: "#ff8a65", label: "Heavy Metal" };
+    return { radius: epic ? 2 : 1, color: "#7c4dff", label: "Power Metal" };
+  }
+  function auraInfoForUnitNative(unit, civ) {
     if (!civ.unlockedMechanics) return null;
     if (unit.typeId === "paladin" && civ.unlockedMechanics.has("crusade")) {
       return { radius: 1, color: "#ffd54f", label: "Crusade" }; // holy gold

@@ -12,6 +12,7 @@
  *   { kind: "confirm", title, text, confirmLabel, danger, onAnswer(bool) }
  *   { kind: "message", title, text, onDismiss(), onKeepFighting()? }
  *   { kind: "welcomeBack", gain: {harvest, coin, lore}, onDismiss() }
+ *   { kind: "treasureFound", title, intro?, lines: [{icon?, resource?, text, link?: {x,y}, unique?}], onDismiss()? }
  *   { kind: "chooseTech", title, text, options: [{id,label,description}], onAnswer(techId) }
  *   { kind: "chooseStarvationDisband", civLabel, candidates: [{label,description}], onAnswer(index) }
  *   { kind: "chooseWispDisband", civLabel, candidates: [{label,description}], onAnswer(index) }
@@ -364,6 +365,28 @@ window.UI = window.UI || {};
         <h2>Welcome Back!</h2>
         <p>While you were away, your kingdom has gathered the following resources:</p>
         ${rows}
+        <div class="game-dialog-actions game-dialog-actions-centered">
+          <button class="menu-dropdown-btn game-dialog-primary" id="game-dialog-ok-btn">Collect</button>
+        </div>`;
+    }
+    if (dialog.kind === "treasureFound") {
+      // A Treasure Chest (or Ruin Delve / monster-kill) result: one row per
+      // treasure -- a resource icon for coin/lore/harvest, an emoji for
+      // everything else -- with an optional "Show me" jump link (Treasure
+      // Map / Map Fragment). See main.js's treasureDialogFor.
+      const rows = (dialog.lines || []).map((l, i) => {
+        const icon = l.resource
+          ? `<svg class="resource-icon"><use href="#icon-${l.resource}"></use></svg>`
+          : `<span class="treasure-icon">${escapeHtml(l.icon || "✦")}</span>`;
+        const link = l.link
+          ? ` <button class="tile-link" data-treasure-goto-x="${l.link.x}" data-treasure-goto-y="${l.link.y}">Show me</button>`
+          : "";
+        return `<div class="treasure-row${l.unique ? " treasure-row-unique" : ""}">${icon}<span class="treasure-text">${escapeHtml(l.text)}${link}</span></div>`;
+      }).join("");
+      return `
+        <h2>${escapeHtml(dialog.title || "Treasure Found!")}</h2>
+        ${dialog.intro ? `<p>${escapeHtml(dialog.intro)}</p>` : ""}
+        <div class="treasure-list">${rows}</div>
         <div class="game-dialog-actions game-dialog-actions-centered">
           <button class="menu-dropdown-btn game-dialog-primary" id="game-dialog-ok-btn">Collect</button>
         </div>`;

@@ -289,6 +289,50 @@ window.UI = window.UI || {};
   // biggerPct growth (see the unit draw loop below) rather than growing from
   // a fixed center point, so `sz` is as freely adjustable per resource/ruin
   // as biggerPct is per unit.
+  /**
+   * Ground items (2026-09-21): gear left behind when its holder died (ai.js's
+   * dropItemAt puts ids in tile.groundItems), drawn as small static sprites
+   * (assets/enhancements/item_<id>_1.png) along the tile's lower-left, each
+   * with the SAME occasional glint a Treasure Chest gets (overlays.js's
+   * drawChestSparkle). Live tiles use the "just landed" drop offset shared with
+   * chests; a remembered tile (`remembered`) draws them dimmed with no glint,
+   * the way remembered chests are. The seed object is the tile (or the memory
+   * snapshot) so each sprite/glint keeps stable per-tile variation. Falls back
+   * to the item's emoji if the art hasn't loaded.
+   */
+  function drawGroundItems(ctx, ids, seed, screenX, screenY, ts, x, y, deferredIcons, remembered) {
+    const defs = window.GameData.ITEMS;
+    const sz = ts * 0.5;
+    const margin = ts * RESOURCE_ICON_MARGIN_FRAC;
+    ids.forEach((id, k) => {
+      const boxX = screenX + margin + k * sz * 0.65;
+      const boxY = screenY + ts - margin - sz;
+      const sprite = window.UI.sprites.pick(`enhancement/item_${id}`, seed);
+      deferredIcons.push(() => {
+        const now = performance.now();
+        const drop = remembered ? null : overlays.chestDropOffsetFor(x, y, now);
+        const prevAlpha = ctx.globalAlpha;
+        if (remembered) ctx.globalAlpha = prevAlpha * 0.6;
+        if (sprite) {
+          const f = window.UI.sprites.currentFrame(sprite.manifest, "idle", seed);
+          if (drop) {
+            const w = sz * drop.scaleX, h = sz * drop.scaleY;
+            ctx.drawImage(sprite.image, f.sx, f.sy, f.sw, f.sh, boxX - (w - sz) / 2, boxY + drop.yOffsetFrac * sz + (sz - h), w, h);
+          } else {
+            ctx.drawImage(sprite.image, f.sx, f.sy, f.sw, f.sh, boxX, boxY, sz, sz);
+          }
+        } else if (defs[id]) {
+          ctx.font = `${Math.round(sz * 0.8)}px sans-serif`;
+          ctx.textAlign = "center";
+          ctx.textBaseline = "middle";
+          ctx.fillText(defs[id].icon, boxX + sz / 2, boxY + sz / 2);
+        }
+        ctx.globalAlpha = prevAlpha;
+        if (!remembered) overlays.drawChestSparkle(ctx, seed, boxX, boxY, sz, now);
+      });
+    });
+  }
+
   function tileIconBox(screenX, screenY, ts, sz, x, y) {
     const margin = ts * RESOURCE_ICON_MARGIN_FRAC;
     const slot = tileIconSlot(x, y);
@@ -683,6 +727,11 @@ window.UI = window.UI || {};
               ctx.fill();
             });
           }
+        }
+
+        // Ground items: dropped gear -- see drawGroundItems.
+        if (tile.groundItems && tile.groundItems.length) {
+          drawGroundItems(ctx, tile.groundItems, tile, screenX, screenY, ts, x, y, deferredIcons, false);
         }
 
         // Ruin — sprite if available, otherwise "?" text. Same bottom-
@@ -1295,7 +1344,8 @@ window.UI = window.UI || {};
       // "bigger" scales the drawn box up around its bottom-center anchor --
       // the tile's normal bottom-inset stays fixed, extra size grows upward
       // and sideways (see units.js's biggerPct doc comment).
-      const scale = 1 + (baseUnit.biggerPct || 0);
+      // Much Room Mushroom (data/items.js flags.grow): +50% on top, per instance.
+      const scale = 1 + (baseUnit.biggerPct || 0) + (window.GameEngine.items.itemFlag(unit, "grow") || 0);
       const normalSize = ts - pad * 2;
       const boxSize = normalSize * scale;
       const boxX = screenX + ts / 2 - boxSize / 2;
@@ -1346,7 +1396,9 @@ window.UI = window.UI || {};
       }
       ctx.restore();
       overlays.drawConditionVisualEffects(ctx, unit, unitSprite, boxX, boxY, boxSize, now);
-      if (unit.conditions?.burning) overlays.drawFlameEffect(ctx, unit, boxX, boxY, boxSize, now);
+      // Shield of Xorthalos (items flags.flames): the bearer wears the flames too -- cosmetic,
+      // no Burning condition and no damage.
+      if (unit.conditions?.burning || window.GameEngine.items.itemFlag(unit, "flames")) overlays.drawFlameEffect(ctx, unit, boxX, boxY, boxSize, now);
       overlays.drawAmbientUnitEffects(ctx, unit, boxX, boxY, boxSize, now);
       // Torch-, staff- and fire-bearers light their own patch of night.
       // Anchored to the sprite BOX rather than the tile so the light walks
@@ -1385,6 +1437,7 @@ window.UI = window.UI || {};
     }
 
     drawTrowGhosts(ctx, gameState, visible, offsetX, offsetY, ts, now);
+    drawTrowSight(ctx, gameState, visible, humanCivId, offsetX, offsetY, ts);
 
     // Ambient villager figures -- drawn after Cities/Structures/Units so
     // they're never hidden behind a building or wall they're walking past.
@@ -2096,6 +2149,47 @@ window.UI = window.UI || {};
         ctx.strokeText(initial, boxX + boxSize / 2, boxY + boxSize / 2);
         ctx.fillText(initial, boxX + boxSize / 2, boxY + boxSize / 2);
       }
+      ctx.restore();
+    }
+  }
+
+  /**
+   * Trow's Fiddle (a Treasure Chest treasure -- see ai.js's TREASURE_TABLE): for
+   * a few turns the human can see where EVERY Treasure Trow is, fog and
+   * Hidden or not. Each gets a steady gold ring (static, deliberately not
+   * pulsing -- no flashing effects), plus a translucent copy of its sprite when
+   * the live unit isn't already being drawn there (out of sight, or Hidden).
+   * Location only: a Hidden Trow still can't be attacked until it's revealed.
+   */
+  function drawTrowSight(ctx, gameState, visible, humanCivId, offsetX, offsetY, ts) {
+    const civ = humanCivId && gameState.civs[humanCivId];
+    if (!civ || !(civ.trowSightUntil > (gameState.turnNumber || 0))) return;
+    const monsters = gameState.civs[window.GameConfig.worldEncounters.monsters.civId];
+    if (!monsters) return;
+    const mapW = gameState.map.width;
+    for (const trow of monsters.units) {
+      if (trow.typeId !== window.GameData.TROW_UNIT_ID || trow.hp <= 0) continue;
+      const screenX = trow.x * ts + offsetX, screenY = trow.y * ts + offsetY;
+      const idx = trow.y * mapW + trow.x;
+      const alreadyDrawn = visible.has(idx) && !trow.conditions?.hidden;
+      if (!alreadyDrawn) {
+        const race = window.GameData.getRace(monsters.raceId);
+        const unitSprite = window.UI.sprites.pickUnit(trow.typeId, race.id, trow);
+        const pad = ts * 0.11, boxSize = ts - pad * 2;
+        if (unitSprite) {
+          const f = window.UI.sprites.currentFrame(unitSprite.manifest, "idle", trow);
+          ctx.save();
+          ctx.globalAlpha = 0.6;
+          ctx.drawImage(unitSprite.image, f.sx, f.sy, f.sw, f.sh, screenX + pad, screenY + pad, boxSize, boxSize);
+          ctx.restore();
+        }
+      }
+      ctx.save();
+      ctx.strokeStyle = "rgba(240, 200, 90, 0.9)";
+      ctx.lineWidth = Math.max(2, ts * 0.05);
+      ctx.beginPath();
+      ctx.arc(screenX + ts / 2, screenY + ts / 2, ts * 0.46, 0, Math.PI * 2);
+      ctx.stroke();
       ctx.restore();
     }
   }
@@ -3644,6 +3738,10 @@ window.UI = window.UI || {};
           ctx.fill();
         });
       }
+    }
+
+    if (snapshot.items && snapshot.items.length) {
+      drawGroundItems(ctx, snapshot.items, snapshot, screenX, screenY, ts, x, y, deferredIcons, true);
     }
 
     if (snapshot.isRuin) {

@@ -149,6 +149,10 @@
  *                          hold position/garrison instead. Currently only
  *                          Dwarf's Runeforged Titan, which is meant to plod
  *                          deliberately toward an enemy city, not wander off.
+ *   noItems         true   machines and non-creature objects (siege engines, ships,
+ *                          traps, the Great Bonfire, ...): can not carry items, so
+ *                          they are never offered them by chests, tech grants or
+ *                          pickup (combat.js's canUseItems).
  *   nameSpecial     true   this unit is a ship/machine/beast, not a person --
  *                          it gets a thematic proper-noun designation instead
  *                          of a gendered "First Epithet" name, and no gender
@@ -205,7 +209,7 @@ window.GameData.UNITS = {
     canExplore: true, canProspect: true, canBuildRoad: true, attackChars: ["➵", "➳"],
   },
   galley: {
-    id: "galley", label: "Galley", symbol: "⛵", category: "military",
+    id: "galley", noItems: true, label: "Galley", symbol: "⛵", category: "military",
     attack: 1, defense: 2, movement: 4, visionRadius: 4, range: 1,
     isNaval: true, canCarryUnit: true, biggerPct: .5,
     // A ship, not a person -- see unit-names.js's UNIT_TYPE_PROPER_NAMES doc.
@@ -248,7 +252,7 @@ window.GameData.UNITS = {
     coinCost: 30, attackChars: ["➵", "➳"], firstStrikePct: 0.02,
   },
   catapult: {
-    id: "catapult", label: "Catapult", symbol: "⚙", category: "military", raceOnly: "human", range: 2,
+    id: "catapult", noItems: true, label: "Catapult", symbol: "⚙", category: "military", raceOnly: "human", range: 2,
     attack: 7, defense: 3, movement: 1, visionRadius: 2, siegePct: 1.25, siegeAtRange: true, attackChars: ["🪨"],
     coinCost: 28, biggerPct: .5,
     // impactSmoke: a burst of dust/debris drawn on the TARGET's tile once
@@ -259,7 +263,7 @@ window.GameData.UNITS = {
     nameSpecial: true, // a machine, not a person -- see unit-names.js
   },
   trebuchet: {
-    id: "trebuchet", label: "Trebuchet", symbol: "⚙", category: "military", raceOnly: "human", range: 3,
+    id: "trebuchet", noItems: true, label: "Trebuchet", symbol: "⚙", category: "military", raceOnly: "human", range: 3,
     attack: 8, defense: 4, movement: 1, visionRadius: 2, siegePct: 1.5, siegeAtRange: true, // replaces Catapult
     coinCost: 40, attackChars: ["🪨", "☄"], biggerPct: .6,
     impactSmoke: true, // see catapult's own comment on this flag
@@ -298,7 +302,7 @@ window.GameData.UNITS = {
   // isNaval for movement-cost purposes only, so this is still fundamentally
   // a ship that also flies, not a land-capable aircraft.
   skyship: {
-    id: "skyship", label: "Skyship", symbol: "⛵", category: "military", raceOnly: "human", range: 1,
+    id: "skyship", noItems: true, label: "Skyship", symbol: "⛵", category: "military", raceOnly: "human", range: 1,
     attack: 3, defense: 3, movement: 4, visionRadius: 4,
     isNaval: true, canCarryUnit: true, flying: true, biggerPct: .5,
     siegePct: 1.5, burnChancePct: 0.5,
@@ -377,7 +381,7 @@ window.GameData.UNITS = {
   // of siege units marching"), not a singular, wall-tough city-crusher like
   // the Titan.
   awakened_oak: {
-    id: "awakened_oak", label: "Awakened Oak", symbol: "♣", category: "military", raceOnly: "elf",
+    id: "awakened_oak", noItems: true, label: "Awakened Oak", symbol: "♣", category: "military", raceOnly: "elf",
     attack: 10, defense: 9, movement: 2, visionRadius: 3, siegePct: 1.5,
     coinCost: 65, biggerPct: 1.0, attackChars: ["🌳", "🌿", "🫚"],
     rare: true, neverExplores: true,
@@ -456,12 +460,12 @@ window.GameData.UNITS = {
   // civ-wide at the current Trouble Maker count (both flavors share one
   // pool, ai.js's trapCapReached), never built freely.
   trap_frost: {
-    id: "trap_frost", label: "Frost Trap", symbol: "🪤", category: "military", raceOnly: "halfellow",
+    id: "trap_frost", noItems: true, label: "Frost Trap", symbol: "🪤", category: "military", raceOnly: "halfellow",
     attack: 0, defense: 0, movement: 0, visionRadius: 1,
     coinCost: 20, cityBuildable: false, noUpkeep: true, nameSpecial: true, // an object, not a person
   },
   trap_fire: {
-    id: "trap_fire", label: "Fire Trap", symbol: "🪤", category: "military", raceOnly: "halfellow",
+    id: "trap_fire", noItems: true, label: "Fire Trap", symbol: "🪤", category: "military", raceOnly: "halfellow",
     attack: 0, defense: 0, movement: 0, visionRadius: 1,
     coinCost: 20, cityBuildable: false, noUpkeep: true, nameSpecial: true, // an object, not a person
   },
@@ -477,7 +481,7 @@ window.GameData.UNITS = {
   // matches its own aura radius (see turns.js's beginCivTurn) so the light it
   // casts also reveals fog of war that far.
   great_bonfire: {
-    id: "great_bonfire", label: "The Great Bonfire", symbol: "🔥", category: "military", raceOnly: "halfellow",
+    id: "great_bonfire", noItems: true, label: "The Great Bonfire", symbol: "🔥", category: "military", raceOnly: "halfellow",
     attack: 0, defense: 0, movement: 0, visionRadius: 8, biggerPct: .5,
     coinCost: 0, cityBuildable: false, noUpkeep: true, nameSpecial: true, // an object, not a person
   },
@@ -506,7 +510,7 @@ window.GameData.UNITS = {
   // turns.js's beginCivTurn) same convention as Great Bonfire's own
   // visionRadius-matches-aura intent.
   mushroom: {
-    id: "mushroom", label: "Mushroom", symbol: "🍄", category: "military", raceOnly: "halfellow",
+    id: "mushroom", noItems: true, label: "Mushroom", symbol: "🍄", category: "military", raceOnly: "halfellow",
     attack: 0, defense: 0, movement: 0, visionRadius: 1, biggerPct: -.3,
     coinCost: 0, cityBuildable: false, noUpkeep: true, nameSpecial: true, // an object, not a person
   },
@@ -547,7 +551,7 @@ window.GameData.UNITS = {
   // users observed Dwarf civs fielding multiple Titans, undermining its
   // intended feel as a once-in-a-game commitment.
   runeforged_titan: {
-    id: "runeforged_titan", label: "Runeforged Titan", symbol: "▣", category: "military", raceOnly: "dwarf",
+    id: "runeforged_titan", noItems: true, label: "Runeforged Titan", symbol: "▣", category: "military", raceOnly: "dwarf",
     // High defense is load-bearing: near-indestructible to an ordinary
     // attacker, so Resilient Spirit/Unyielding's death-save shouldn't fire
     // on a hit against a full-health Titan.
@@ -568,7 +572,7 @@ window.GameData.UNITS = {
   // through to the ordinary attack (via considerAttackOrGarrison) when
   // nothing was worth bombarding.
   bombard: {
-    id: "bombard", label: "Bombard", symbol: "⛰", category: "military", raceOnly: "dwarf", range: 3,
+    id: "bombard", noItems: true, label: "Bombard", symbol: "⛰", category: "military", raceOnly: "dwarf", range: 3,
     attack: 8, defense: 4, movement: 2, visionRadius: 3, siegePct: 1.25, siegeAtRange: true,
     attackChars: ["⚫️", "💥"], biggerPct: .6, burnChancePct: 0.5,
     neverExplores: true, muzzleSmoke: true,
@@ -648,7 +652,7 @@ window.GameData.UNITS = {
     cityBuildable: false, noUpkeep: true, nameSpecial: true, // a spirit, not a person
   },
   battering_ram: {
-    id: "battering_ram", label: "Battering Ram", symbol: "⚙", category: "military", raceOnly: "orc",
+    id: "battering_ram", noItems: true, label: "Battering Ram", symbol: "⚙", category: "military", raceOnly: "orc",
     attack: 9, defense: 7, movement: 1, visionRadius: 2, siegePct: 1.5,
     coinCost: 30, biggerPct: .5, attackChars: ["💥"], impactSmoke: true,
     nameSpecial: true, // a machine, not a person -- see unit-names.js
@@ -755,6 +759,21 @@ window.GameData.UNITS = {
     coinCost: 0,
     cityBuildable: false, noUpkeep: true, nameSpecial: true, neverExplores: true,
   },
+  // Giltmaw (2026-09-21, user-directed): a treasure chest that bites back. Never
+  // spawned by the ordinary monster roll (not in MONSTER_TERRAIN) -- only by a
+  // chest that rolls it (ai.js's TREASURE_TABLE.giltmaw), adjacent to whoever
+  // opened it. A hostile hunter like the other monsters (counts against the
+  // Max Monsters cap), webs its victims like the Dire Spider, and when slain
+  // ALWAYS drops a chest holding double the treasure rolls (ai.js's
+  // maybeSpawnDeathChest). No restrictedToTerrain: it lunged out of a chest, it
+  // isn't tied to a biome.
+  giltmaw: {
+    id: "giltmaw", label: "Giltmaw", symbol: "🧰", category: "military",
+    attack: 2, defense: 2, movement: 2, visionRadius: 3,
+    webChancePct: 0.7,
+    coinCost: 12, attackChars: ["𓆩", "🪙"],
+    cityBuildable: false, noUpkeep: true, nameSpecial: true, neverExplores: true,
+  },
 };
 
 // Terrain -> monster type id (see ai.js's maybeSpawnMonster). Hills and
@@ -778,6 +797,7 @@ window.GameData.TROW_UNIT_ID = "treasure_trow";
 window.GameData.MONSTER_UNIT_IDS = new Set([
   ...Object.values(window.GameData.MONSTER_TERRAIN),
   window.GameData.TROW_UNIT_ID,
+  "giltmaw", // chest-only mimic -- see its units.js entry
 ]);
 
 window.GameData.UNIT_LIST = Object.keys(window.GameData.UNITS);

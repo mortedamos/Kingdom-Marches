@@ -746,7 +746,7 @@ window.GameData.TECHS = {
   elf_silverleaf_atelier: {
     id: "elf_silverleaf_atelier", label: "Silverleaf Atelier", category: "building", layer: 2, cost: 35,
     prereqs: [], raceOnly: "elf",
-    description: "Unlocks the Silverleaf Atelier. Units trained in this city are armored in elven silversteel: +1 defense, permanently.",
+    description: "Unlocks the Silverleaf Atelier. Units trained in this city are issued Mythril Armor (+1 defense), an item they carry and can lose or pass on.",
     costBreakdown: { coin: 20, lore: 15 },
     effects: [{ type: "unlock_building", building: "silverleaf_atelier" }],
   },
@@ -1129,7 +1129,7 @@ window.GameData.TECHS = {
   dwarf_forgecraft: {
     id: "dwarf_forgecraft", label: "Forgecraft", category: "building", layer: 1, cost: 22,
     prereqs: [], raceOnly: "dwarf",
-    description: "Unlocks the Deep Forge. Units trained in this city carry forge-worked arms: +1 attack, permanently.",
+    description: "Unlocks the Deep Forge. Military units trained in this city are issued a Dwarven Hammer (+1 attack), an item they carry and can lose or pass on.",
     costBreakdown: { coin: 16, lore: 6 },
     effects: [{ type: "unlock_building", building: "deep_forge" }],
   },
@@ -1247,14 +1247,11 @@ window.GameData.TECHS = {
   dwarf_runeforged_armory: {
     id: "dwarf_runeforged_armory", label: "Runeforged Armory", category: "military", layer: 3, cost: 52,
     prereqs: ["dwarf_runecraft"], raceOnly: "dwarf",
-    description: "All Dwarf units gain +1 defense, +1 attack.",
+    description: "All new Dwarf military units are issued Dwarven Armor (+1 defense, +1 attack), an item they carry and can lose or pass on. Machines such as the Runeforged Titan cannot wear it.",
     costBreakdown: { coin: 34, lore: 18 },
-    effects: [
-      { type: "unit_stat_upgrade", unit: "foehammer", changes: { attack: 1, defense: 1 } },
-      { type: "unit_stat_upgrade", unit: "troubadour", changes: { attack: 1, defense: 1 } },
-      { type: "unit_stat_upgrade", unit: "musketeer", changes: { attack: 1, defense: 1 } },
-      { type: "unit_stat_upgrade", unit: "runeforged_titan", changes: { attack: 1, defense: 1 } },
-    ],
+    // 2026-09-21, user-directed: was a flat unit_stat_upgrade on every Dwarf unit. Now a
+    // mechanic read by ai.js's applyBuildingUnitStamps, which hands each NEW unit the item.
+    effects: [{ type: "unlock_mechanic", mechanic: "runeforged_armory" }],
   },
   dwarf_stonebreaker: {
     id: "dwarf_stonebreaker", label: "Stonebreaker", category: "military", layer: 3, cost: 42,

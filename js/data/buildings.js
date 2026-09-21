@@ -90,7 +90,7 @@ window.GameData.BUILDINGS = {
     coinCost: 20, maxHp: 22, visionRadiusBonus: 4,
   },
   // No yield/yieldPct: "Silversteel Mail" -- units trained in this city are
-  // created with +1 defense, permanently (see ai.js's BUILDING_UNIT_STAMPS).
+  // issued a Mythril Armor item (+1 defense) -- see ai.js's applyBuildingUnitStamps.
   // Deliberate mirror of Dwarf's Deep Forge: dwarves forge weapons, elves
   // forge armor.
   silverleaf_atelier: {
@@ -115,8 +115,8 @@ window.GameData.BUILDINGS = {
 
   // ---------- DWARF — holding the hold: forged arms, self-healing walls,
   // clan musters, and the Deep Roads network ----------
-  // No yield: "Forged Arms" -- units trained in this city are created with
-  // +1 attack, permanently (see ai.js's BUILDING_UNIT_STAMPS).
+  // No yield: "Forged Arms" -- units trained in this city are issued a Dwarven
+  // Hammer item (+1 attack) -- see ai.js's applyBuildingUnitStamps.
   deep_forge: {
     id: "deep_forge", label: "Deep Forge", symbol: "⚒", raceOnly: "dwarf",
     coinCost: 25, maxHp: 28, requiresHillsAdjacent: true,

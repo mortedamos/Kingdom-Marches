@@ -221,6 +221,8 @@ window.GameEngine = window.GameEngine || {};
     if (unit.conditions?.greatBonfireAura) pct += unit.conditions.greatBonfireAura.siegePctBonus || 0;
     // Veteran leveling -- see LEVELING section below.
     pct += unit.levelBonuses?.siegePct || 0;
+    // Items (Kurganos): +siege -- see engine/items.js.
+    pct += window.GameEngine.items.itemStat(unit, "siegePct");
     return pct;
   }
 
@@ -259,6 +261,8 @@ window.GameEngine = window.GameEngine || {};
     // Halfellow "Banish the Darkness": The Great Bonfire's aura -- see
     // turns.js's per-turn application and effectiveDefense's matching check.
     pct += unit.conditions?.greatBonfireAura?.doubleStrikePctBonus || 0;
+    // Items (The Arc of Lightning): +double strike -- see engine/items.js.
+    pct += window.GameEngine.items.itemStat(unit, "doubleStrikePct");
     // Veteran leveling -- see LEVELING section below.
     pct += unit.levelBonuses?.doubleStrikePct || 0;
     // A reanimated or befuddled unit can't manage a second swing, for the
@@ -427,6 +431,10 @@ window.GameEngine = window.GameEngine || {};
     const baseUnit = window.GameData.getUnit(unit.typeId);
     const ov = getUnitOverride(civ, unit.typeId);
     let base = (baseUnit.range || 1) + (ov.range || 0);
+    // Items (Mortedamos' Manuscript, Mhorgrim's Hunt): +range -- see engine/items.js.
+    base += window.GameEngine.items.itemStat(unit, "range");
+    // Items (The Arc of Lightning): a range FLOOR -- a unit that already shoots farther keeps it.
+    base = Math.max(base, window.GameEngine.items.itemStatMax(unit, "rangeFloor"));
     // Elf "Upon the Wind": a Ranger gains +1 range while being carried (by a
     // Shadowsteed) -- checked here since this is the exact point every
     // Shadowsteed-mount range calc recurses into (see the shadowsteedMount
@@ -456,7 +464,9 @@ window.GameEngine = window.GameEngine || {};
   // a few turns, not every unit of a type civ-wide the way getUnitProperty's
   // overrides work.
   function isFlying(unit) {
-    return !!window.GameData.getUnit(unit.typeId).flying || hasCondition(unit, "flying");
+    // Feather of Flying (an item, permanent per unit instance -- see engine/items.js).
+    return !!window.GameData.getUnit(unit.typeId).flying || hasCondition(unit, "flying")
+      || window.GameEngine.items.hasItemEffect(unit, "flight");
   }
 
   /**
@@ -505,6 +515,14 @@ window.GameEngine = window.GameEngine || {};
     // Trow's spawn/flee logic in ai.js sets on itself.
     if (isTrow(unit) && key !== "hidden" && key !== "forcedVisible") return;
     if (GREAT_BONFIRE_IMMUNE_CONDITIONS.has(key) && unit.conditions?.greatBonfireAura) return;
+    // Items: per-item immunity lists (Rosepearl, Kuvira, Kurganos, Xorthalos) and
+    // Lucky Rock's chance to shrug off any NEGATIVE condition -- the same seven
+    // keys the Great Bonfire guards. Same single chokepoint as the guards above.
+    if (window.GameEngine.items.hasImmunity(unit, key)) return;
+    if (GREAT_BONFIRE_IMMUNE_CONDITIONS.has(key)) {
+      const resist = window.GameEngine.items.itemLuck(unit).conditionResist;
+      if (resist > 0 && Math.random() < resist) return;
+    }
     unit.conditions = unit.conditions || {};
     unit.conditions[key] = data;
   }
@@ -564,6 +582,34 @@ window.GameEngine = window.GameEngine || {};
    *  against a unit before this check existed -- "in the middle of combat"
    *  isn't just "next to an enemy unit." */
   function canGoHidden(unit, civ, civs) {
+    // Cloak of Hiding (an item): the unit can go Hidden regardless of
+    // race/tech, under exactly the same rules as every other source below
+    // (adjacent enemies, forcedVisible, 3 turns, half movement, revealed by
+    // attacking).
+    if (!hasHideAbility(unit, civ) && !window.GameEngine.items.hasItemEffect(unit, "hide")) return false;
+    if (hasCondition(unit, "hidden") || hasCondition(unit, "forcedVisible")) return false;
+    const adjacent = (x, y) => Math.max(Math.abs(x - unit.x), Math.abs(y - unit.y)) <= 1;
+    for (const otherCiv of Object.values(civs)) {
+      if (otherCiv.id === civ.id || otherCiv.eliminated) continue;
+      for (const eu of otherCiv.units) {
+        if (adjacent(eu.x, eu.y)) return false;
+      }
+      for (const city of otherCiv.cities) {
+        if (adjacent(city.x, city.y)) return false;
+        for (const s of city.structures) {
+          if (adjacent(s.x, s.y)) return false;
+        }
+      }
+    }
+    return true;
+  }
+
+  /** Does `unit` have any tech/race/unit-type source of the Hide ability?
+   *  (Everything canGoHidden above allows EXCEPT the Cloak of Hiding item,
+   *  which the loot table uses to decide whether a Cloak would do anything
+   *  for this unit.) Pure -- ignores the situational checks (adjacent
+   *  enemies, already Hidden). */
+  function hasHideAbility(unit, civ) {
     const mechanics = civ.unlockedMechanics;
     // Halfellow "Sneaking Around": narrowed to
     // the Wanderer only, unlike Elf's own unlock of the identical shared
@@ -586,22 +632,9 @@ window.GameEngine = window.GameEngine || {};
     // Around researched separately, just the summon tech that lets Wisps
     // exist at all.
     const hasWispStealth = !!(mechanics && mechanics.has("wisp_summon") && unit.typeId === "wisp");
-    if (!hasSneak && !hasInvisibility && !hasTroubleStealth && !hasKeepWatch && !hasWispStealth) return false;
-    if (hasCondition(unit, "hidden") || hasCondition(unit, "forcedVisible")) return false;
-    const adjacent = (x, y) => Math.max(Math.abs(x - unit.x), Math.abs(y - unit.y)) <= 1;
-    for (const otherCiv of Object.values(civs)) {
-      if (otherCiv.id === civ.id || otherCiv.eliminated) continue;
-      for (const eu of otherCiv.units) {
-        if (adjacent(eu.x, eu.y)) return false;
-      }
-      for (const city of otherCiv.cities) {
-        if (adjacent(city.x, city.y)) return false;
-        for (const s of city.structures) {
-          if (adjacent(s.x, s.y)) return false;
-        }
-      }
-    }
-    return true;
+    // Items (Alunaria): the bearer can go Hidden like a Human Wizard with Invisibility.
+    const hasItemHide = window.GameEngine.items.grantsAction(unit, "goHidden");
+    return hasSneak || hasInvisibility || hasTroubleStealth || hasKeepWatch || hasWispStealth || hasItemHide;
   }
 
   /** Activates Hidden for 3 turns. A full-turn action -- the caller is
@@ -628,6 +661,9 @@ window.GameEngine = window.GameEngine || {};
    *  1 more turn, same as natural expiry (see tickConditions above). */
   function revealHidden(unit, turnNumber) {
     if (!hasCondition(unit, "hidden")) return;
+    // The Umbral Ring's hiding (turns.js) can't be broken by anything -- attacking,
+    // splash damage, or an enemy walking onto the tile.
+    if (unit.conditions.hidden.unrevealable) return;
     clearCondition(unit, "hidden");
     setCondition(unit, "forcedVisible", { expiresAtTurn: turnNumber + 1 });
   }
@@ -650,8 +686,9 @@ window.GameEngine = window.GameEngine || {};
     // buildingBonuses: permanent stat stamped on at build time by the city's
     // structures (Dwarf Deep Forge's +1 attack) -- see ai.js's
     // BUILDING_UNIT_STAMPS for why it's separate from levelBonuses.
+    // itemStat: carried gear (Dwarven Hammer/Armor) -- see engine/items.js.
     let atk = baseUnit.attack + (ov.attack || 0) + (unit.levelBonuses?.attack || 0)
-      + (unit.buildingBonuses?.attack || 0);
+      + (unit.buildingBonuses?.attack || 0) + window.GameEngine.items.itemStat(unit, "attack");
 
     // Orc Bog Witch curse (death-curse or Malefic Malediction): -50% attack while active.
     if (unit.conditions?.curse) atk *= unit.conditions.curse.attackMult;
@@ -762,8 +799,9 @@ window.GameEngine = window.GameEngine || {};
     const ov = getUnitOverride(civ, unit.typeId);
     // buildingBonuses: Elf Silverleaf Atelier's +1 defense, stamped at build
     // time -- see ai.js's BUILDING_UNIT_STAMPS.
+    // itemStat: carried gear (Dwarven/Mythril Armor) -- see engine/items.js.
     let def = (baseUnit.defense + (ov.defense || 0) + (unit.levelBonuses?.defense || 0)
-      + (unit.buildingBonuses?.defense || 0)) * (race.defenseMult || 1.0);
+      + (unit.buildingBonuses?.defense || 0) + window.GameEngine.items.itemStat(unit, "defense")) * (race.defenseMult || 1.0);
 
     // Undead "Zombie": same reduced-stats condition as effectiveAttack above.
     if (unit.conditions?.zombie) def *= unit.conditions.zombie.statMult;
@@ -1133,7 +1171,8 @@ window.GameEngine = window.GameEngine || {};
       fullMissed = hit.missed;
     }
     function dealReturn() {
-      if (!isAdjacent) { counterOutOfRange = true; return; }
+      // context.noCounter: a strike that can't be answered (The Riddle of Steel).
+      if (!isAdjacent || context.noCounter) { counterOutOfRange = true; return; }
       // A harmless unit (the Treasure Trow) never hits back. Only reachable
       // from AI win-probability simulations -- a real strike on a Trow is
       // intercepted at the top of resolveRound -- but without it the counter's
@@ -1163,7 +1202,9 @@ window.GameEngine = window.GameEngine || {};
         // here on the FINAL counter value (after counterDamageMult) rather
         // than relying on mitigatedDamage's floor alone, since 33% of that
         // floor (mitigatedDamage's minimum 1) would otherwise round to 0.
-        let dmg = Math.round(mitigatedDamage(counterAtkStat, counterDefStat) * 0.33);
+        // Shield of Xorthalos (items `fullCounter`): the bearer counters for full damage.
+        const counterFactor = window.GameEngine.items.itemFlag(defenderUnit, "fullCounter") ? 1.0 : 0.33;
+        let dmg = Math.round(mitigatedDamage(counterAtkStat, counterDefStat) * counterFactor);
         // Whirlwind Strike/Blade Storm (see attackDamageMult above) --
         // counterDamageMult scales an already-adjacent target's counter down
         // further (25%/16% effectiveness); a non-adjacent Blade Storm target
@@ -1893,6 +1934,7 @@ window.GameEngine = window.GameEngine || {};
 
   window.GameEngine.combat = {
     isTrow,
+    hasHideAbility,
     roll3d6,
     damageRoll,
     recordCombatEvent,

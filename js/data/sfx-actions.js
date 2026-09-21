@@ -135,3 +135,22 @@ window.GameData.sfxAllCombos = function () {
 window.GameData.sfxFileName = function (raceId, unitId, action, n, ext) {
   return `${raceId}_${unitId}_${action}_${n}.${ext}`;
 };
+
+/**
+ * SYSTEM CLIPS -- UI stings that aren't tied to any race/unit/action combo (see
+ * js/audio/sfx.js's "SYSTEM SFX" block), listed here so the coverage tracker
+ * (working/tools/sfx-tracker.html) can show whether each one exists. `file` is the
+ * exact name in assets/sfx/; `label` says when it plays. `optional: true` means the
+ * game has a fallback and works without it (the unique-item sting falls back to the
+ * ordinary treasure chest sound until the clip is recorded).
+ */
+window.GameData.SFX_SYSTEM_CLIPS = [
+  { file: "system_button_click.mp3", label: "Any button click" },
+  { file: "system_confirm_action.mp3", label: "A confirm-an-action prompt opens" },
+  { file: "system_research_complete_1.mp3", label: "Tech researched (variant 1)" },
+  { file: "system_research_complete_2.mp3", label: "Tech researched (variant 2)" },
+  { file: "system_research_complete_3.mp3", label: "Tech researched (variant 3)" },
+  { file: "system_treasure_chest_open_1.mp3", label: "Treasure chest / delve treasure / Welcome Back / item pick-up" },
+  { file: "system_unique_item_found_1.mp3", label: "A UNIQUE item is found (chest or delve) -- plays instead of the chest sting", optional: true },
+  { file: "halfellow_party_1.mp3", label: "Halfellow Throw a Party" },
+];
