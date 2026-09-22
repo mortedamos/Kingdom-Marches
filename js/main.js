@@ -7666,6 +7666,14 @@
   // The sidebar is not re-rendered here (data doesn't change between turns).
   let animFrameId = null;
   let lastPanMs = null;
+  // Lightning ground scorch (2026-09-21, user-directed): weather.js's own
+  // flash is purely cosmetic real-time screen dressing and deliberately
+  // knows nothing about the map, so it just counts strikes
+  // (window.UI.weather.current().strikeSeq). This is the one place that has
+  // both the live gameState and the camera/viewport needed to turn "a strike
+  // just happened" into "mark a real, currently-visible land tile" -- see
+  // the frame() loop below and turns.js's applyLightningScorch.
+  let lastWeatherStrikeSeq = 0;
   // WASD map panning -- px/second at 100% zoom,
   // applied every frame while a key is held (see setupGlobalShortcuts'
   // panKeys) rather than one fixed step per keydown, so holding a key pans
@@ -7728,6 +7736,25 @@
           // freeze it between player actions.
           window.UI.weather.tick(gameState);
           window.UI.weather.render($("map-weather"), viewState);
+          // Lightning ground scorch: a new strike (weather.js's own
+          // strikeSeq counter moved) picks a random point across the
+          // visible map canvas and, if it lands on a real, in-bounds LAND
+          // tile, marks it -- see turns.js's applyLightningScorch. Off-map
+          // or water misses are simply skipped, same as a real bolt not
+          // every strike leaving a mark someone would ever find. No redraw
+          // needed here: this loop already re-renders every frame, so the
+          // very next one picks up the fresh tile state on its own.
+          const strikeSeq = window.UI.weather.current().strikeSeq;
+          if (strikeSeq !== lastWeatherStrikeSeq) {
+            lastWeatherStrikeSeq = strikeSeq;
+            const mapCanvas = $("map-canvas");
+            const px = Math.random() * mapCanvas.clientWidth;
+            const py = Math.random() * mapCanvas.clientHeight;
+            const hitTile = window.UI.render.screenToTile(px, py, viewState, gameState.map);
+            if (hitTile && window.GameEngine.worldgen.isLand(gameState.map.tiles[hitTile.y * gameState.map.width + hitTile.x])) {
+              window.GameEngine.turns.applyLightningScorch(gameState, hitTile.x, hitTile.y);
+            }
+          }
           // The astronomical clock rides the same loop rather than redraw():
           // the sun/moon glides along its arc for a second and a half after
           // every End Turn, which a redraw-on-change repaint would render as

@@ -40,8 +40,10 @@
  * that falls out for free. On top of that, both scratch passes re-darken
  * every non-visible tile before blitting, so a light's FALLOFF can't spill
  * across the fog boundary and imply something is standing there. That second
- * step only walks tiles inside the bounding box of the lights actually on
- * screen, so a map with no lights on it costs nothing.
+ * step costs nothing on a map with no lights at all, and its result is
+ * otherwise cached across frames -- see buildFogClip -- since which on-screen
+ * tiles are fogged only changes with the camera or the fog itself, not with
+ * every frame a light flickers or a unit glides.
  *
  * NO FLASHING. Light flicker is small, slow, and pinned to a static value
  * under reduced motion; the turn-to-turn transition is an eased ramp, never
@@ -1143,28 +1145,50 @@
   /**
    * The tiles on screen that are NOT currently visible, as one path, in
    * scratch-canvas coordinates -- used to stop light spilling across the fog
-   * boundary. Bounded to the union of the lights' own footprints, so a map
-   * with no lights near the fog costs nothing.
+   * boundary.
+   *
+   * CACHED across frames (2026-09-22, user-reported slowdown at night):
+   * which on-screen tiles are fogged changes only when the camera pans/
+   * zooms or fog itself updates -- a unit moving, a turn advancing -- never
+   * merely because a frame ticked or a light flickered/glided. Rebuilding
+   * this by walking every on-screen tile every single frame while the
+   * player is just looking at a stationary board was pure waste; the cache
+   * key below covers every input that can actually change the result.
+   *
+   * That's ALSO why the walked area is now the viewport's own on-screen tile
+   * range rather than the (constantly moving, per-frame) footprint of the
+   * lights themselves as it was before -- bounding by lights made the old
+   * version cheap per call but impossible to cache, since the bbox reshapes
+   * every frame a unit so much as glides a pixel. Bounding by viewport
+   * instead decouples the result from lights entirely. This can walk a
+   * BIGGER area on the (now rare) rebuild, but every tile outside the old
+   * lights-bbox was already going to render as fully dark regardless -- no
+   * light reaches it -- so re-filling it with the same dark tint is a no-op
+   * visually. `lights.length` is kept as the early-out: with no lights on
+   * screen there is nothing for fog to clip against, so a map with none
+   * still costs nothing, cache or no cache.
+   *
+   * `visible.size` in the key catches revealMapFragment's in-place mutation
+   * of the SAME Set object (see turns.js) that a reference check alone would
+   * miss -- refreshVisibility replaces the object each round (a reference
+   * check alone catches that), but that one rare reveal-item path adds tiles
+   * to the existing Set instead. Set#size is O(1) and changes the instant
+   * tiles are added, so this needs no changes in turns.js to stay correct.
    */
+  let fogClipCache = null; // { vis, key, path }
   function buildFogClip(gameState, visible, offsetX, offsetY, ts, w, h, scale) {
-    if (!lights.length || !visible) return null;
+    if (!lights.length || !visible) { fogClipCache = null; return null; }
     const map = gameState.map;
 
-    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-    for (const L of lights) {
-      if (L.x - L.r < minX) minX = L.x - L.r;
-      if (L.y - L.r < minY) minY = L.y - L.r;
-      if (L.x + L.r > maxX) maxX = L.x + L.r;
-      if (L.y + L.r > maxY) maxY = L.y + L.r;
+    const key = offsetX + "|" + offsetY + "|" + ts + "|" + scale + "|" + w + "|" + h + "|" + visible.size;
+    if (fogClipCache && fogClipCache.vis === visible && fogClipCache.key === key) {
+      return fogClipCache.path;
     }
-    minX = Math.max(0, minX); minY = Math.max(0, minY);
-    maxX = Math.min(w, maxX); maxY = Math.min(h, maxY);
-    if (maxX <= minX || maxY <= minY) return null;
 
-    const x0 = Math.max(0, Math.floor((minX - offsetX) / ts));
-    const x1 = Math.min(map.width - 1, Math.floor((maxX - offsetX) / ts));
-    const y0 = Math.max(0, Math.floor((minY - offsetY) / ts));
-    const y1 = Math.min(map.height - 1, Math.floor((maxY - offsetY) / ts));
+    const x0 = Math.max(0, Math.floor((0 - offsetX) / ts));
+    const x1 = Math.min(map.width - 1, Math.floor((w - offsetX) / ts));
+    const y0 = Math.max(0, Math.floor((0 - offsetY) / ts));
+    const y1 = Math.min(map.height - 1, Math.floor((h - offsetY) / ts));
 
     const path = new Path2D();
     let any = false;
@@ -1175,7 +1199,9 @@
         any = true;
       }
     }
-    return any ? path : null;
+    const result = any ? path : null;
+    fogClipCache = { vis: visible, key, path: result };
+    return result;
   }
 
   /**
@@ -1201,6 +1227,15 @@
     // than being slightly too dark ever would.
     const maxCut = c.lights.maxCutout != null ? c.lights.maxCutout : 1;
     const mask = buildLightMask(sw, sh, scale, maxCut, now);
+
+    // Computed once and reused by both the darkness-cutout pass below and
+    // the glow pass further down -- they used to each call moonSurfacePaths
+    // themselves with identical arguments, rebuilding the same hash-bucketed
+    // Path2Ds from the same moonSurfaces array twice a frame. Exactly the
+    // "built the same stamps twice" duplication buildLightMask's own comment
+    // above already diagnosed and fixed for light stamps; this is the same
+    // bug in the water-shimmer path, just not caught by that pass (2026-09-22).
+    const moonGroups = moonSurfaces.length ? moonSurfacePaths(scale, offsetX, offsetY, ts, now) : null;
 
     // ---- Pass A: the darkness sheet, with holes where the lights are ----
     sctx.setTransform(1, 0, 0, 1, 0, 0);
@@ -1228,12 +1263,12 @@
     // blue-minus-red metric where it should be positive), which read as a
     // patch of daylight rather than as a reflection. So: brighter here,
     // fully blue there.
-    if (moonSurfaces.length) {
+    if (moonGroups) {
       const mAlpha = moonAlpha();
       const surf = c.moonlight.surfaces || {};
       sctx.globalCompositeOperation = "destination-out";
       sctx.fillStyle = "#fff";
-      for (const g of moonSurfacePaths(scale, offsetX, offsetY, ts, now).values()) {
+      for (const g of moonGroups.values()) {
         const cut = (surf[g.kind] && surf[g.kind].cutout) || 0;
         if (cut <= 0) continue;
         sctx.globalAlpha = Math.max(0, Math.min(maxCut, cut * mAlpha * g.mul * maxCut));
@@ -1297,11 +1332,11 @@
       // Water's cold cast, laid down before the warm lamps so a harbour
       // lantern reads as sitting on top of the moonlit water rather than
       // being tinted by it. Same batched paths as the mask above.
-      if (moonSurfaces.length) {
+      if (moonGroups) {
         const mAlpha = moonAlpha();
         const surf = c.moonlight.surfaces || {};
         sctx.fillStyle = c.moonlight.color;
-        for (const grp of moonSurfacePaths(scale, offsetX, offsetY, ts, now).values()) {
+        for (const grp of moonGroups.values()) {
           const g = (surf[grp.kind] && surf[grp.kind].glow) || 0;
           if (g <= 0) continue;
           sctx.globalAlpha = Math.max(0, Math.min(1, g * mAlpha * grp.mul));

@@ -79,6 +79,14 @@
      *  confounded by the storm overcast darkening the background the drops
      *  are measured against. */
     dropCount: 0,
+    /** Incremented once per new lightning flash (see updateLightning) --
+     *  exposed so a caller with the world/camera context this module
+     *  deliberately doesn't have (main.js's animation loop) can notice "a
+     *  strike just happened" by diffing this against its own last-seen
+     *  value, and place a ground scorch mark on a real map tile itself.
+     *  This module stays purely cosmetic either way -- it only ever reports
+     *  that a flash occurred, it never picks a tile or touches game state. */
+    strikeSeq: 0,
   };
 
   /** Session-only overrides for the tuning panel -- never persisted, never
@@ -159,6 +167,35 @@
   }
 
   // ---------------------------------------------------------------------
+  // Draw-call batching, shared by rain streaks and splashes below.
+  //
+  // Canvas cost is dominated by draw-CALL count, not geometry -- a
+  // beginPath/stroke per particle scales linearly with density, and rain
+  // alone can mean 1000+ drops on screen during a storm (2026-09-21,
+  // user-reported slowdown at night/in rain). Every particle here varies
+  // continuously in only one or two style properties (alpha, and for rain,
+  // stroke width); position and length/radius are exact per-particle
+  // regardless. So: quantize the style property into a small fixed number of
+  // steps, accumulate every particle sharing a step into ONE Path2D, then
+  // issue one stroke()/fill() per step instead of one per particle. This
+  // turns an O(particle count) draw-call count into a small constant.
+  //
+  // The banding this introduces is in alpha/width only, at a granularity
+  // fine enough that a fading, semi-transparent streak or ripple doesn't
+  // read any differently than the continuous version did.
+  // ---------------------------------------------------------------------
+  function quantizeRange(value, lo, hi, steps) {
+    const range = hi - lo;
+    if (range <= 0 || steps <= 1) return 0;
+    const t = Math.max(0, Math.min(1, (value - lo) / range));
+    return Math.round(t * (steps - 1));
+  }
+  function valueForStep(idx, lo, hi, steps) {
+    if (steps <= 1) return lo;
+    return lo + (idx / (steps - 1)) * (hi - lo);
+  }
+
+  // ---------------------------------------------------------------------
   // Rain
   //
   // Drops are pooled and recycled rather than allocated per frame, and the
@@ -167,6 +204,8 @@
   // appearing at once.
   // ---------------------------------------------------------------------
   const drops = [];
+  const RAIN_ALPHA_STEPS = 4;
+  const RAIN_WIDTH_STEPS = 3;
 
   function targetDropCount(w, h) {
     const c = cfg().rain;
@@ -226,6 +265,7 @@
   // its ring-and-fade it was at, no separate static path needed.
   // ---------------------------------------------------------------------
   const splashes = [];
+  const SPLASH_ALPHA_STEPS = 6;
 
   function targetSplashCount(w, h) {
     const c = cfg().splash;
@@ -278,11 +318,18 @@
     const c = cfg().splash;
     if (!c || !splashes.length) return;
     const rgb = hexRgb(c.color);
-    ctx.save();
+    const ringAlphaMax = c.ringAlpha || 0.5;
+    const dotAlphaMax = c.dotAlpha || 0.6;
+
+    // One shared path per alpha step (see the batching note above `drops`)
+    // instead of a beginPath/stroke or beginPath/fill per splash.
+    const ringPaths = new Array(SPLASH_ALPHA_STEPS);
+    const dotPaths = new Array(SPLASH_ALPHA_STEPS);
+
     for (const s of splashes) {
       const t = s.age / s.life;                    // 0-1 through this splash's life
       const ringT = Math.min(1, t / 0.9);           // the ring finishes just before the dot's own tail fades
-      const ringAlpha = (1 - ringT) * (c.ringAlpha || 0.5) * state.rain;
+      const ringAlphaBase = (1 - ringT) * ringAlphaMax;
       // Floored at 0 defensively: ctx.arc throws on a negative radius, and
       // this is downstream of state.storm/stormRadiusMul, which this
       // function has no business trusting blindly to stay in range (found
@@ -291,24 +338,42 @@
       // path itself shouldn't be able to crash if some future change to the
       // easing math ever let it happen for real).
       const r = Math.max(0, s.maxR * stormRadiusMul * (0.25 + 0.75 * ringT));
-      if (ringAlpha > 0.01) {
-        ctx.beginPath();
-        ctx.arc(s.x, s.y, r, 0, Math.PI * 2);
-        ctx.strokeStyle = `rgba(${rgb[0]},${rgb[1]},${rgb[2]},${ringAlpha})`;
-        ctx.lineWidth = 1;
-        ctx.stroke();
+      if (ringAlphaBase * state.rain > 0.01) {
+        const idx = quantizeRange(ringAlphaBase, 0, ringAlphaMax, SPLASH_ALPHA_STEPS);
+        const path = ringPaths[idx] || (ringPaths[idx] = new Path2D());
+        // moveTo to the arc's own start point first -- without it, Path2D
+        // draws a stray connecting line from whatever the previous splash in
+        // this bucket left the pen at.
+        path.moveTo(s.x + r, s.y);
+        path.arc(s.x, s.y, r, 0, Math.PI * 2);
       }
       // Impact dot -- the "plink" before the ring opens, visible only in the
       // first slice of the lifecycle.
       if (t < 0.3) {
-        const dotAlpha = (1 - t / 0.3) * (c.dotAlpha || 0.6) * state.rain;
-        if (dotAlpha > 0.01) {
-          ctx.beginPath();
-          ctx.arc(s.x, s.y, Math.max(0.6, s.maxR * 0.22), 0, Math.PI * 2);
-          ctx.fillStyle = `rgba(${rgb[0]},${rgb[1]},${rgb[2]},${dotAlpha})`;
-          ctx.fill();
+        const dotAlphaBase = (1 - t / 0.3) * dotAlphaMax;
+        if (dotAlphaBase * state.rain > 0.01) {
+          const dotR = Math.max(0.6, s.maxR * 0.22);
+          const idx = quantizeRange(dotAlphaBase, 0, dotAlphaMax, SPLASH_ALPHA_STEPS);
+          const path = dotPaths[idx] || (dotPaths[idx] = new Path2D());
+          path.moveTo(s.x + dotR, s.y);
+          path.arc(s.x, s.y, dotR, 0, Math.PI * 2);
         }
       }
+    }
+
+    ctx.save();
+    ctx.lineWidth = 1;
+    ctx.strokeStyle = `rgb(${rgb[0]},${rgb[1]},${rgb[2]})`;
+    for (let i = 0; i < SPLASH_ALPHA_STEPS; i++) {
+      if (!ringPaths[i]) continue;
+      ctx.globalAlpha = valueForStep(i, 0, ringAlphaMax, SPLASH_ALPHA_STEPS) * state.rain;
+      ctx.stroke(ringPaths[i]);
+    }
+    ctx.fillStyle = `rgb(${rgb[0]},${rgb[1]},${rgb[2]})`;
+    for (let i = 0; i < SPLASH_ALPHA_STEPS; i++) {
+      if (!dotPaths[i]) continue;
+      ctx.globalAlpha = valueForStep(i, 0, dotAlphaMax, SPLASH_ALPHA_STEPS) * state.rain;
+      ctx.fill(dotPaths[i]);
     }
     ctx.restore();
   }
@@ -333,6 +398,9 @@
         const d = cfg().audio.thunderDelayMs || (L.thunderDelayMs || [400, 2600]);
         const delay = d[0] + Math.random() * (d[1] - d[0]);
         flash = { startedAt: now, thunderAt: now + delay, fired: false };
+        // See state.strikeSeq's own doc comment -- this is the one moment a
+        // strike actually begins, so it's the one place this increments.
+        state.strikeSeq++;
         // The floor is what guarantees a run of unlucky rolls can't produce a
         // train of flashes -- isolated slow brightenings are safe, repeated
         // ones are not, and that is not something to leave to chance.
@@ -580,16 +648,30 @@
     const { angle } = updateDrops(w, h, reduced() ? 0 : dt);
     if (drops.length) {
       const dx = Math.sin(angle), dy = Math.cos(angle);
+      // Batch by (alpha step, width step) into shared paths -- see the note
+      // above `drops`. lineWidth and globalAlpha are per-STROKE-CALL canvas
+      // state, not per-segment, so every drop landing in the same bucket can
+      // be one moveTo/lineTo pair inside a single path stroked once.
+      const buckets = new Array(RAIN_ALPHA_STEPS * RAIN_WIDTH_STEPS);
+      for (const d of drops) {
+        const aStep = quantizeRange(d.alpha, c.alpha[0], c.alpha[1], RAIN_ALPHA_STEPS);
+        const wStep = quantizeRange(d.width, c.widthPx[0], c.widthPx[1], RAIN_WIDTH_STEPS);
+        const idx = aStep * RAIN_WIDTH_STEPS + wStep;
+        const path = buckets[idx] || (buckets[idx] = new Path2D());
+        path.moveTo(d.x, d.y);
+        path.lineTo(d.x + dx * d.len, d.y - dy * d.len);
+      }
       ctx.save();
       ctx.strokeStyle = c.color;
       ctx.lineCap = "round";
-      for (const d of drops) {
-        ctx.globalAlpha = d.alpha * state.rain;
-        ctx.lineWidth = d.width;
-        ctx.beginPath();
-        ctx.moveTo(d.x, d.y);
-        ctx.lineTo(d.x + dx * d.len, d.y - dy * d.len);
-        ctx.stroke();
+      for (let aStep = 0; aStep < RAIN_ALPHA_STEPS; aStep++) {
+        for (let wStep = 0; wStep < RAIN_WIDTH_STEPS; wStep++) {
+          const path = buckets[aStep * RAIN_WIDTH_STEPS + wStep];
+          if (!path) continue;
+          ctx.globalAlpha = valueForStep(aStep, c.alpha[0], c.alpha[1], RAIN_ALPHA_STEPS) * state.rain;
+          ctx.lineWidth = valueForStep(wStep, c.widthPx[0], c.widthPx[1], RAIN_WIDTH_STEPS);
+          ctx.stroke(path);
+        }
       }
       ctx.restore();
     }

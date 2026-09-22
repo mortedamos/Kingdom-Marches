@@ -638,6 +638,16 @@ window.UI = window.UI || {};
           overlays.drawFireflies(ctx, tile, screenX, screenY, ts, now);
         }
 
+        // Lightning ground scorch -- see turns.js's applyLightningScorch/
+        // overlays.js's drawLightningScorch. Fades linearly over its own
+        // remaining lifetime rather than popping off at 0, using the same
+        // scorchTurns the engine stamped it with as the fade's full span.
+        if (tile.scorchExpiresAtTurn > (gameState.turnNumber || 0)) {
+          const scorchTurns = (window.GameConfig.view.weather.lightning || {}).scorchTurns || 3;
+          const turnsLeft = tile.scorchExpiresAtTurn - (gameState.turnNumber || 0);
+          overlays.drawLightningScorch(ctx, tile, screenX, screenY, ts, Math.min(1, turnsLeft / scorchTurns));
+        }
+
         // River — procedural curve, drawn UNDER roads (see drawRiverOverlay)
         // so a road crossing a river reads as on top of it. `now` is what
         // enables the flow glints; the remembered-tile path deliberately

@@ -295,6 +295,27 @@ window.GameEngine = window.GameEngine || {};
     return weatherForTurn(turn, gameState.seed || 0);
   }
 
+  /** Ground scorch mark from a lightning strike (2026-09-21, user-directed):
+   *  unlike the flash itself (weather.js, purely cosmetic, real-time), a
+   *  mark that lingers "for a few turns" has to be tracked against the
+   *  actual turn clock so it survives a save/load and doesn't out-last (or
+   *  fade early relative to) how long the player actually takes. Stamped
+   *  directly on the tile -- already-serialized game state, same convention
+   *  as tile.resource/tile.chestRollMult -- so no separate save-data plumbing
+   *  or per-turn cleanup sweep is needed: render.js just compares
+   *  tile.scorchExpiresAtTurn against the current turn number on the way by.
+   *  Called from main.js's animation loop, which is the one place that has
+   *  both the live gameState AND the camera/viewport context needed to pick
+   *  a real, currently-visible land tile for weather.js's screen-space flash
+   *  to have "landed" on. */
+  function applyLightningScorch(gameState, x, y) {
+    const { map } = gameState;
+    if (x < 0 || x >= map.width || y < 0 || y >= map.height) return;
+    const tile = map.tiles[y * map.width + x];
+    const scorchTurns = (window.GameConfig.view.weather.lightning || {}).scorchTurns ?? 3;
+    tile.scorchExpiresAtTurn = (gameState.turnNumber || 0) + scorchTurns;
+  }
+
   /**
    * Racial day/night vision penalty: -1 to a civ's vision radius (city and
    * unit alike) during the specific cycle slots its race sees worst in --
@@ -2567,6 +2588,7 @@ window.GameEngine = window.GameEngine || {};
     isDarkWindow,
     stormActive,
     currentWeather,
+    applyLightningScorch,
     refreshVisibility,
     dayNightVisionPenaltyFor,
     effectiveUnitVisionRadius,

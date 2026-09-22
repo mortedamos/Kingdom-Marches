@@ -63,11 +63,11 @@ window.GameConfig = {
   // stamp, and the only cost of forgetting is being told the wrong thing.
   build: {
     /** Local date this build was cut, YYYY-MM-DD. */
-    date: "2026-09-21",
+    date: "2026-09-22",
     /** Local time this build was cut, 24-hour HH:MM. */
-    time: "19:57",
+    time: "09:25",
     /** Monotonic build counter -- increment it, don't recompute it. */
-    number: 327,
+    number: 328,
   },
 
   // =========================================================================
@@ -1362,8 +1362,10 @@ window.GameConfig = {
        *  and perfectly vertical rain reads as static. */
       rain: {
         /** Drops on screen at full rain, scaled by viewport area so a large
-         *  window isn't sparser than a small one. Per million square px. */
-        densityPerMpx: 900,
+         *  window isn't sparser than a small one. Per million square px.
+         *  900 -> 780 (2026-09-21, user-directed: "a few less rain
+         *  streaks"). */
+        densityPerMpx: 780,
         stormDensityMul: 2.1,
         angleDeg: 14,
         stormAngleDeg: 24,
@@ -1515,6 +1517,14 @@ window.GameConfig = {
          *  onto the floor to keep THUNDER (not just the flash) that far
          *  apart -- see updateLightning's own comment. */
         thunderDelayMs: [400, 2600],
+        /** Ground scorch mark (2026-09-21, user-directed: "a lightning bolt
+         *  strikes it should leave a blast mark on the ground for a few
+         *  turns"). Unlike the flash itself, this IS tied to the map/turn
+         *  clock, not real time -- see turns.js's applyLightningScorch/
+         *  main.js's own strike-detection in its animation loop and
+         *  render.js's drawing of tile.scorchExpiresAtTurn. How many turns
+         *  the mark lingers once it lands. */
+        scorchTurns: 3,
       },
 
       /**

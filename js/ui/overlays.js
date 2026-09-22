@@ -2055,6 +2055,55 @@ window.UI = window.UI || {};
    *  shrinking GRASS_TUFT_COUNT itself: a tile that DOES show grass still
    *  gets the full 2-tuft look, it's just rarer across the map, so density
    *  drops without any single tuft cluster reading as sparser than before. */
+  /** Lightning ground scorch (2026-09-21, user-directed): a dark, irregular
+   *  blast mark left where a strike landed (see turns.js's
+   *  applyLightningScorch/main.js's own strike-detection), drawn purely from
+   *  the tile's own stable clutter seed -- no sprite art, same "procedural
+   *  ground decoration" convention as drawGrassClutter/drawWindWisp above --
+   *  so it never changes shape frame to frame while it lingers. A soft dark
+   *  blob (irregular, not a perfect circle) with a handful of thin cracks
+   *  radiating outward, like scorched earth. `alpha` is the caller's own
+   *  fade -- see render.js's per-tile loop, which derives it from how many
+   *  turns are left before tile.scorchExpiresAtTurn. */
+  function drawLightningScorch(ctx, tile, screenX, screenY, ts, alpha) {
+    if (alpha <= 0) return;
+    const seed = tileClutterSeed(tile);
+    const cx = screenX + ts * 0.5, cy = screenY + ts * 0.58;
+    const baseR = ts * (0.22 + seed[0] * 0.06);
+    ctx.save();
+    ctx.globalAlpha = Math.max(0, Math.min(1, alpha));
+    // Irregular blob: a closed path around the circle with each point's
+    // radius jittered by the tile's own stable seed, not a plain circle.
+    const POINTS = 9;
+    ctx.beginPath();
+    for (let i = 0; i < POINTS; i++) {
+      const a = (i / POINTS) * Math.PI * 2;
+      const jitter = 0.75 + ((seed[i % 5] + i * 0.37) % 1) * 0.5;
+      const r = baseR * jitter;
+      const px = cx + Math.cos(a) * r, py = cy + Math.sin(a) * r * 0.85;
+      if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+    }
+    ctx.closePath();
+    ctx.fillStyle = "#1a1410";
+    ctx.fill();
+    // A few thin cracks radiating past the blob's own edge.
+    const CRACKS = 4;
+    ctx.strokeStyle = "#0f0b08";
+    ctx.lineWidth = Math.max(1, ts * 0.02);
+    ctx.lineCap = "round";
+    for (let i = 0; i < CRACKS; i++) {
+      const a = seed[(i + 1) % 5] * Math.PI * 2;
+      const len = baseR * (0.5 + seed[(i + 2) % 5] * 0.6);
+      const x0 = cx + Math.cos(a) * baseR * 0.7, y0 = cy + Math.sin(a) * baseR * 0.6;
+      const x1 = cx + Math.cos(a) * (baseR + len), y1 = cy + Math.sin(a) * (baseR + len) * 0.85;
+      ctx.beginPath();
+      ctx.moveTo(x0, y0);
+      ctx.lineTo(x1, y1);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
   function drawGrassClutter(ctx, tile, x, y, screenX, screenY, ts, now) {
     const seed = tileClutterSeed(tile);
     if (seed[4] < GRASS_SKIP_CHANCE) return;
@@ -2460,6 +2509,7 @@ window.UI = window.UI || {};
     drawLevelUpGlowBehind, drawLevelUpSparkles, drawFlameEffect, drawChestSparkle, drawResourceGlint,
     drawAmbientUnitEffects,
     drawGrassClutter, drawWindWisp, drawSwampSnake, drawForestBird, drawFireflies,
+    drawLightningScorch,
     hexToRgba, drawHatch, drawConstructionSite, auraInfoForUnit, drawTileScoreOverlay,
     ATTACK_ANIM_MS, SLASH_ANIM_MS, AREA_EFFECT_ANIM_MS, AREA_EFFECT_COLORS, DEATH_EFFECT_ANIM_MS,
     // Exported so the Knowledge Base's Conditions page can read the same
