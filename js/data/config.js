@@ -65,9 +65,9 @@ window.GameConfig = {
     /** Local date this build was cut, YYYY-MM-DD. */
     date: "2026-09-22",
     /** Local time this build was cut, 24-hour HH:MM. */
-    time: "09:25",
+    time: "20:15",
     /** Monotonic build counter -- increment it, don't recompute it. */
-    number: 328,
+    number: 329,
   },
 
   // =========================================================================
@@ -1337,8 +1337,20 @@ window.GameConfig = {
        * i.e. every system that starts also stops exactly once, so "starts
        * and stops 30% more often" is the same target either way: 30% more
        * systems per unit time.
+       *
+       * Lowered to 0.23 (2026-09-22, user-directed: "rains 25% less often").
+       * Same non-linearity as above means this is NOT 0.34 * 0.75 (which
+       * would be 0.255) -- the day-shadowing veto in weatherSystemForDay
+       * means raw rate and observed frequency don't move together linearly,
+       * so this was found the same way the 0.34 figure above was: simulated
+       * (400,000+ days, same duration/gap settings as today) until observed
+       * frequency landed at 25% below the measured baseline. Baseline at
+       * 0.34 raw measured ~25.37% observed (confirming the ~25.5% figure
+       * above still holds); 0.23 raw measures ~19.0% observed, i.e. ~74.9%
+       * of baseline -- rain 25% less often, not merely a 25%-smaller number
+       * here.
        */
-      rainChancePerDay: 0.34,
+      rainChancePerDay: 0.23,
       /** Chance a system turns thundery somewhere in its middle. The storm is
        *  always a window INSIDE the rain, so it builds out of rain and dies
        *  back into it rather than starting or ending the system. */
