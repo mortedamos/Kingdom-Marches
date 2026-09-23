@@ -10,6 +10,13 @@
 (function () {
   let gameState = null;
   let viewState = null;
+  // Actual played time (2026-09-24, user-directed): this browser tab's own
+  // clock for how long the CURRENT session has been running -- deliberately
+  // NOT part of gameState (not save-worthy: a wall-clock timestamp from this
+  // one session is meaningless once serialized and reloaded elsewhere).
+  // Folded into gameState.playTimeMs (which IS saved) by commitPlayTime();
+  // see that function and beginPlayTimeSession's own doc comments.
+  let sessionStartedAt = null;
   // Knowledge Base state is module-level rather than part of viewState --
   // the Knowledge menu has to work from the title screen too, before
   // viewState (or gameState) exists. "units" | "structures" | "terrain" |
@@ -1936,6 +1943,7 @@
     }
 
     gameState = createNewGame(racesInPlay, seed, monsterCapPerKingdom, worldType);
+    beginPlayTimeSession();
     // Territorial Victory toggle (2026-09-02, user-directed): reuses the
     // exact flag "Keep Fighting!" already sets mid-game when a human
     // player declines a territorial win (see turns.js's checkVictory,
@@ -2037,6 +2045,7 @@
    *  freshly generated map. */
   function startGameFromSave(payload) {
     gameState = payload.gameState;
+    beginPlayTimeSession();
     humanCivId = payload.humanCivId;
     spectatorMode = payload.spectatorMode;
     applyGameSpeed(payload.gameSpeedPercent || 100);
@@ -2401,14 +2410,21 @@
     const gameState = {
       map, civs, turnNumber: 0, visibility: {}, explored: {}, tileMemory: {},
       turnOrder, turnStepIndex: 0, seed, aiActionLog: [],
-      // Victory-stats screen's "Total Time Taken" (2026-08-19, user-
-      // directed) -- real wall-clock time, not active-play time; a save
-      // reloaded later just resumes counting from whenever the game was
-      // first created, same as a save file's own age would read. Plain
-      // JSON.stringify-able number, so savegame.js's generic round-trip
-      // preserves it with no special-casing needed (see that file's own
-      // doc comment on what DOES need special handling).
+      // When this game was first created -- real wall-clock time, not
+      // active-play time. Plain JSON.stringify-able number, so savegame.js's
+      // generic round-trip preserves it with no special-casing needed (see
+      // that file's own doc comment on what DOES need special handling).
       startedAt: Date.now(),
+      // Victory-stats screen's "Total Time Taken" (2026-08-19, user-directed;
+      // 2026-09-24, user-directed fix: was computed as Date.now() -
+      // startedAt above, which kept counting even while the game sat closed
+      // between sessions -- a save reloaded a week later would report "a
+      // week played." This instead accumulates only the time the game was
+      // actually open and running, folded in by commitPlayTime() at every
+      // save and at victory itself -- see beginPlayTimeSession/
+      // commitPlayTime's own doc comments. Same "plain number, generic
+      // round-trip" shape as startedAt.
+      playTimeMs: 0,
       // Game Options "Max Monsters" slider:
       // per-game override of config.js's worldEncounters.monsters.
       // perKingdomCap -- see ai.js's maybeSpawnMonster/seedInitialMonsters,
@@ -2994,6 +3010,7 @@
   }
 
   async function handleSaveGame() {
+    commitPlayTime(); // fold this session's elapsed time into gameState.playTimeMs before it's serialized
     const payload = {
       version: 1,
       savedAt: new Date().toISOString(),
@@ -3046,6 +3063,30 @@
     reader.readAsArrayBuffer(file);
   }
 
+  /** Starts (or restarts) this browser session's play-time clock. Called
+   *  exactly once at each of the three moments a game (new or loaded)
+   *  becomes this session's live gameState -- startGame's own
+   *  `gameState = createNewGame(...)`, startGameFromSave, and
+   *  finishApplyLoadedPayload -- never mid-session. */
+  function beginPlayTimeSession() {
+    sessionStartedAt = Date.now();
+  }
+
+  /** Folds the time elapsed since the last commit (or session start) into
+   *  gameState.playTimeMs and resets the session clock, so calling this
+   *  repeatedly -- every save, plus right before the victory screen reads
+   *  it -- never double-counts. A save always carries an up-to-date total
+   *  without needing a live per-frame ticker; the victory screen calling
+   *  this itself is what makes ITS number exact even mid-session, between
+   *  saves. No-op before a game exists (sessionStartedAt/gameState both
+   *  null then; shouldn't happen in practice, just defensive). */
+  function commitPlayTime() {
+    if (sessionStartedAt == null || !gameState) return;
+    const now = Date.now();
+    gameState.playTimeMs = (gameState.playTimeMs || 0) + (now - sessionStartedAt);
+    sessionStartedAt = now;
+  }
+
   /** Quick Save / Quick Load: same payload shape and serializer as the
    *  File > Save Game / Load Game buttons above, just to/from a single
    *  fixed localStorage slot instead of a downloaded/picked file -- see
@@ -3074,6 +3115,7 @@
    *  explicit feedback since the player is waiting on it. */
   async function quickSave({ silent = false } = {}) {
     if (!gameState) return;
+    commitPlayTime(); // fold this session's elapsed time into gameState.playTimeMs before it's serialized
     const payload = {
       version: 1, savedAt: new Date().toISOString(),
       humanCivId, spectatorMode, aiDifficulty, gameSpeedPercent,
@@ -3212,6 +3254,7 @@
   function finishApplyLoadedPayload(payload) {
     for (const k of Object.keys(gameState)) delete gameState[k];
     Object.assign(gameState, payload.gameState);
+    beginPlayTimeSession();
 
     humanCivId = payload.humanCivId;
     spectatorMode = payload.spectatorMode;
@@ -3919,6 +3962,17 @@
     // advanceOneUnitStep's roundComplete check, this function's only caller).
     if (gameState.turnNumber % 10 === 0) quickSave({ silent: true });
 
+    // Halfellow "Neighborhood Pub" rumors (2026-09-24, user-directed):
+    // drained exactly once per round, UNCONDITIONALLY, regardless of what
+    // this round turns out to mean (ordinary play, victory, or the human's
+    // own defeat) -- turns.js's queue is only ever meant to hold one round's
+    // worth at a time, so this has to run every time finishRoundBookkeeping
+    // does or a rumor revealed the same round the game ends would never get
+    // drained and could resurface stale in a later game (module-level state,
+    // not reset by createNewGame). Only actually SHOWN below, mid-chain, when
+    // the round turned out to be ordinary play.
+    const rumorsThisRound = window.GameEngine.turns.drainPendingRumors();
+
     // A leftover gameState.immediateVictoryResult (see checkImmediateVictory)
     // from earlier this same round, never consumed because some OTHER
     // dialog kept occupying viewState.dialog's one slot every redraw() until
@@ -3962,8 +4016,13 @@
         // behind treasure notices. A capture from a hand-clicked attack was
         // already offered at the moment of the attack; this catches the
         // automated-unit case, where the queue is drained at round end.
+        // Rumors (2026-09-24, user-directed) sit after treasure notices,
+        // behind every real decision the player owes, ahead of the founding/
+        // pending-intent tail -- pure flavor, least urgent of the chain.
+        // rumorsThisRound was already drained once, unconditionally, above.
         const afterUnitBuilt = () => offerNextCityCaptureDecision(civ,
-          () => offerNextTreasureNotice(civ, () => offerNextPendingIntent(civ, () => offerFoundCityIfPending(civ))));
+          () => offerNextTreasureNotice(civ,
+            () => offerNextRumor(rumorsThisRound, () => offerNextPendingIntent(civ, () => offerFoundCityIfPending(civ)))));
         const afterTech = () => {
           if (finishedTechId) {
             openTechResearchedDialog(civ, finishedTechId, () => offerNextUnitBuiltNotice(civ, afterUnitBuilt));
@@ -4076,12 +4135,15 @@
     redraw();
   }
 
-  /** Victory stats screen (2026-08-19, user-directed): total real-world
-   *  time since the game was created (gameState.startedAt), total turns,
-   *  the winning civ's current military power (same flat sum-of-unitPower
-   *  metric turns.js's recordHistory already uses for the Report screen's
-   *  line graph), influence level (owned tiles alongside the fixed
-   *  territorial-victory target it's being measured against -- see
+  /** Victory stats screen (2026-08-19, user-directed): total ACTIVE play
+   *  time (gameState.playTimeMs, committed up to this exact instant by
+   *  commitPlayTime() below -- 2026-09-24, user-directed fix; this used to
+   *  read Date.now() - gameState.startedAt, real wall-clock time since
+   *  creation, which kept counting even while the game sat closed between
+   *  sessions), total turns, the winning civ's current military power (same
+   *  flat sum-of-unitPower metric turns.js's recordHistory already uses for
+   *  the Report screen's line graph), influence level (owned tiles alongside
+   *  the fixed territorial-victory target it's being measured against -- see
    *  turns.js's VICTORY_TILE_TARGET -- added 2026-08-20 so a win by
    *  elimination or a narrow territorial win both read the same number the
    *  same way), unit kills/losses (civ.unitsKilled/unitsLostInBattle,
@@ -4094,8 +4156,10 @@
   function openVictoryStatsDialog(winnerCivId) {
     const civ = gameState.civs[winnerCivId];
     const race = window.GameData.getRace(civ.raceId);
-    const elapsedMs = Date.now() - (gameState.startedAt || Date.now());
-    const totalSeconds = Math.max(0, Math.floor(elapsedMs / 1000));
+    // Commits this live session's elapsed time first, so a victory reached
+    // long after the last save/quicksave still reports up to the second.
+    commitPlayTime();
+    const totalSeconds = Math.max(0, Math.floor((gameState.playTimeMs || 0) / 1000));
     const hours = Math.floor(totalSeconds / 3600);
     const minutes = Math.floor((totalSeconds % 3600) / 60);
     const seconds = totalSeconds % 60;
@@ -4568,6 +4632,94 @@
     redraw();
   }
 
+  /** Halfellow "Neighborhood Pub" rumor text -- one line per event kind (see
+   *  turns.js's pushSignificantEvent call sites for the exact shape of each).
+   *  Direction is omitted for "advancement": a discovery isn't somewhere ON
+   *  the map the way a city or a found item is (2026-09-24, user-directed).
+   *  Falls back to a generic label if the race/item/tech somehow can't be
+   *  looked up (civ eliminated between the event and the modal showing,
+   *  data since removed, etc.) rather than throwing over flavor text. */
+  function rumorText(rumor, raceLabel, capturedByRaceLabel) {
+    const dirSuffix = rumor.direction ? `, to the ${rumor.direction}` : "";
+    if (rumor.kind === "cityFounded") {
+      return `${raceLabel} has founded a new city, ${rumor.cityName}${dirSuffix}.`;
+    }
+    if (rumor.kind === "cityDestroyed") {
+      return `${raceLabel}'s city of ${rumor.cityName} has been destroyed${dirSuffix}.`;
+    }
+    if (rumor.kind === "cityCaptured") {
+      return `${raceLabel}'s city of ${rumor.cityName} has been captured by ${capturedByRaceLabel || "another kingdom"}${dirSuffix}.`;
+    }
+    if (rumor.kind === "uniqueItem") {
+      const item = window.GameData.getItem(rumor.itemId);
+      return `${raceLabel} has claimed ${item ? item.label : "a legendary item"}${dirSuffix}.`;
+    }
+    if (rumor.kind === "advancement") {
+      const tech = window.GameData.getTech(rumor.techId);
+      return `${raceLabel} has unlocked a new advancement: ${tech ? tech.label : "something unknown"}.`;
+    }
+    return `${raceLabel} is up to something.`;
+  }
+
+  /** Where (if anywhere) this rumor's "OK"/close row should also offer a
+   *  Knowledge Base jump -- only where one is genuinely relevant: a claimed
+   *  item's own Items-page entry, or the finder's race's Tech Tree for a new
+   *  advancement (the closest existing KB destination to "this exact tech";
+   *  there's no deeper per-node jump into a specific tech in a rendered
+   *  tree). A founded/destroyed city has no matching KB article at all, so
+   *  this returns null for those -- no button shown (dialog.js's own
+   *  kbLink-is-optional handling). */
+  function buildRumorKbLink(rumor) {
+    if (rumor.kind === "uniqueItem") {
+      const item = window.GameData.getItem(rumor.itemId);
+      if (!item) return null;
+      return {
+        label: "View in Knowledge Base",
+        open: () => { openKnowledge("items"); knowledgeSelectedItemKey = rumor.itemId; renderKnowledgeOverlay(); },
+      };
+    }
+    if (rumor.kind === "advancement") {
+      const civ = gameState.civs[rumor.civId];
+      if (!civ) return null;
+      return {
+        label: "View Tech Tree",
+        open: () => { openKnowledge("techtrees"); knowledgeSelectedRaceId = civ.raceId; renderKnowledgeOverlay(); },
+      };
+    }
+    return null;
+  }
+
+  /** Drains and shows this round's revealed Neighborhood Pub rumors, one
+   *  modal at a time (same one-at-a-time chaining convention every other
+   *  offerNextX in this section uses) -- `rumors` is the array
+   *  turns.js's drainPendingRumors() returned, passed down through the
+   *  finishRoundBookkeeping chain rather than re-drained per step (the
+   *  engine queue is only meant to be drained once per round). */
+  function offerNextRumor(rumors, onDone) {
+    if (!rumors || !rumors.length) { if (onDone) onDone(); return; }
+    const rumor = rumors.shift();
+    const civ = gameState.civs[rumor.civId];
+    const race = civ ? window.GameData.getRace(civ.raceId) : null;
+    const raceLabel = race ? race.label : "An unknown kingdom";
+    let capturedByRaceLabel = null;
+    if (rumor.kind === "cityCaptured") {
+      const capturedByCiv = gameState.civs[rumor.capturedByCivId];
+      const capturedByRace = capturedByCiv ? window.GameData.getRace(capturedByCiv.raceId) : null;
+      capturedByRaceLabel = capturedByRace ? capturedByRace.label : "another kingdom";
+    }
+    const kbLink = buildRumorKbLink(rumor);
+    window.SfxSystem.playRumor();
+    viewState.dialog = {
+      kind: "rumor",
+      raceLabel, raceColor: race ? race.color : null,
+      text: rumorText(rumor, raceLabel, capturedByRaceLabel),
+      kbLink: kbLink ? { label: kbLink.label } : null,
+      onOpenKb: kbLink ? kbLink.open : null,
+      onDismiss: () => offerNextRumor(rumors, onDone),
+    };
+    redraw();
+  }
+
   /** Automate Actions confirmation queue: drains
    *  civ.units for a pendingIntent one at a time (staged by the
    *  unit.automated && !opts.forcedX gates in ai.js's considerAttackOrGarrison/
@@ -4984,6 +5136,30 @@
 
         if (stepResult.roundComplete) {
           viewState.turnBanner = null;
+          // Passive-structure attacks (Wall Defense Tier / Mage Tower /
+          // Runewall -- 2026-09-25, user-reported "no attack animation")
+          // land EXCLUSIVELY on this exact step: turns.js's endRound ticks
+          // them once per round, synchronously inside the advanceOneStep()
+          // call just above, before this branch ever runs. Every other kind
+          // of damage to the human gets a chance at the pendingAttack/
+          // detectHumanAttack checks further down this loop on an ordinary
+          // (non-round-completing) step -- this category never reaches
+          // those, so without this check it would NEVER get a camera pan or
+          // notice, not just rarely: the animation itself still fires and
+          // draws correctly (same generic combat-anim pipeline every ranged
+          // unit attack uses), but silently, wherever the camera happened to
+          // already be. Skipped only when finishRoundBookkeeping (already
+          // run, above) claimed viewState.dialog for something else this
+          // round (tech/treasure/rumor/starvation/victory/defeat/etc.) --
+          // that wins, and the attack's own animation still plays out on the
+          // map behind it regardless.
+          const towerNotice = !viewState.dialog ? detectHumanAttack(preAttackSnap) : null;
+          if (towerNotice && !window.UI.render.isTileOnScreen(towerNotice.x, towerNotice.y, $("map-canvas"), gameState, viewState)) {
+            centerViewOn(towerNotice.x, towerNotice.y);
+            redraw();
+            offerAttackNotice(towerNotice, () => { handleNextUnit(); redraw(); });
+            return;
+          }
           // Back to the player: center on whatever unit they should look at
           // next (2026-09-06, user-directed), same cycler the sidebar's own
           // "Next Unit" button uses -- picks up right after whichever unit
@@ -5830,6 +6006,22 @@
         dialog.onKeepFighting();
         redraw();
       };
+    } else if (dialog.kind === "rumor") {
+      // OK and the corner X both dismiss identically (2026-09-24, user-
+      // directed) -- the only dialog kind in this game with a close-X
+      // alongside its own OK button.
+      const finish = () => {
+        viewState.dialog = null;
+        lastRenderedDialog = null;
+        if (dialog.onDismiss) dialog.onDismiss();
+        redraw();
+      };
+      const okBtn = $("game-dialog-ok-btn");
+      if (okBtn) okBtn.onclick = finish;
+      const closeBtn = $("game-dialog-rumor-close-btn");
+      if (closeBtn) closeBtn.onclick = finish;
+      const kbBtn = $("game-dialog-rumor-kb-btn");
+      if (kbBtn && dialog.onOpenKb) kbBtn.onclick = () => { finish(); dialog.onOpenKb(); };
     } else if (dialog.kind === "gameOver" || dialog.kind === "victoryStats") {
       const okBtn = $("game-dialog-ok-btn");
       if (okBtn) okBtn.onclick = () => dialog.onReturnToTitle();
@@ -7674,6 +7866,7 @@
   window.__sim = {
     newGame(raceIds, seed, monsterCapPerKingdom, worldType) {
       gameState = createNewGame(raceIds, seed, monsterCapPerKingdom, worldType);
+      beginPlayTimeSession();
       window.GameEngine.turns.refreshVisibility(gameState);
       return gameState;
     },

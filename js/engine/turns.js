@@ -1962,7 +1962,14 @@ window.GameEngine = window.GameEngine || {};
     // up front from the stockpile when chosen (see tech.js), so there's
     // nothing else for beginCivTurn to hand it each turn.
     const finishedTechId = window.GameEngine.tech.tickResearch(civ);
-    if (finishedTechId) civ.lastCompletedTech = finishedTechId; // for the tech-researched dialog
+    if (finishedTechId) {
+      civ.lastCompletedTech = finishedTechId; // for the tech-researched dialog
+      // Halfellow "Neighborhood Pub" rumor candidate (2026-09-24,
+      // user-directed) -- only a genuinely RESEARCHED tech, never a free
+      // grant (grantFreeTech doesn't go through tickResearch at all), so the
+      // identical starting techs every civ gets don't count as "news."
+      pushSignificantEvent({ kind: "advancement", civId: civ.id, techId: finishedTechId, turn: gameState.turnNumber || 0 });
+    }
 
     let aiTurnState = null;
     if (civ.id !== humanCivId) {
@@ -2337,14 +2344,119 @@ window.GameEngine = window.GameEngine || {};
     gameState.history.turns.push(gameState.turnNumber || 0);
   }
 
+  // ---------------------------------------------------------------------
+  // SIGNIFICANT EVENTS / HALFELLOW "NEIGHBORHOOD PUB" RUMORS
+  // (2026-09-24, user-directed rework)
+  //
+  // A "significant event" is one of: a city founded, a city destroyed, a
+  // city captured, a unique (legendary) item claimed, or an advancement
+  // (tech) genuinely researched -- see pushSignificantEvent's own call sites
+  // (cities.js's foundCity/destroyCity/captureCity, ai.js's
+  // rollChestTreasures unique-item grant, and this civ's own tech completion
+  // in beginCivTurn/cities.js's applyResearchBoost). Deliberately NOT raised
+  // for a tech a civ was simply GRANTED for free (the identical starting
+  // techs every civ gets, or a first-city bonus pick) -- "the unlocking of a
+  // new advancement" reads as an achievement, not a freebie every kingdom
+  // already has. A capture is its own kind, distinct from cityDestroyed --
+  // the city isn't gone, it changed hands -- and carries BOTH civs
+  // (civId: the previous owner; capturedByCivId: the new one) since a
+  // capture can be "my own kingdom's business" from either side.
+  //
+  // Purely cosmetic/informational, same "engine never depends on the UI
+  // layer" boundary combat.js's own pendingCombatEvents queue keeps: this
+  // module only ever produces plain, JSON-safe event records (civId string,
+  // coordinates, ids -- never a live unit/civ reference) and a separate
+  // pull-queue of REVEALED rumors, both module-private here and drained by
+  // main.js, never touching gameState itself (so there's nothing for
+  // savegame.js to strip -- an unprocessed event only ever exists mid-round,
+  // always fully resolved by the time endRound below finishes it).
+  // ---------------------------------------------------------------------
+  let pendingWorldEvents = [];
+  let pendingRumors = [];
+
+  /** Records one candidate event for this round's Neighborhood Pub rumor
+   *  roll -- see the section comment above for what qualifies and why. */
+  function pushSignificantEvent(evt) {
+    pendingWorldEvents.push(evt);
+  }
+
+  /** UI-side: pulls and clears every rumor revealed since the last drain --
+   *  same pull-based shape as combat.js's drainCombatEvents. Each entry is
+   *  one event record from pushSignificantEvent above, enriched with
+   *  `direction` (see compassDirectionFrom) where a location applies. */
+  function drainPendingRumors() {
+    const rumors = pendingRumors;
+    pendingRumors = [];
+    return rumors;
+  }
+
+  /** 8-point compass direction from the map's own center to (x, y) --
+   *  "absolute map" framing (2026-09-24, user-directed), not relative to the
+   *  human player's own kingdom: two events at the same map position always
+   *  read the same direction regardless of where the player happens to be
+   *  settled. y increases downward (row-major map), so a positive dy points
+   *  south. */
+  function compassDirectionFrom(map, x, y) {
+    const dx = x - map.width / 2;
+    const dy = y - map.height / 2;
+    const dirs = ["East", "Southeast", "South", "Southwest", "West", "Northwest", "North", "Northeast"];
+    const angleDeg = (Math.atan2(dy, dx) * 180) / Math.PI; // -180..180, 0 = East, +90 = South
+    const idx = (Math.round(angleDeg / 45) % 8 + 8) % 8;
+    return dirs[idx];
+  }
+
+  // For each Neighborhood Pub owned, an independent 10% chance to reveal any
+  // ONE given event -- "for each Neighborhood Pub building, you gain a 10%
+  // chance" (2026-09-24, user-directed) reads as N independent trials, not a
+  // flat N*10% (which could exceed 100% with enough copies and has no clean
+  // meaning as a probability).
+  const NEIGHBORHOOD_PUB_RUMOR_CHANCE = 0.10;
+
+  /** Halfellow "Neighborhood Pub" rework: rolls the human player's own pub
+   *  count against every OTHER civ's significant event this round --
+   *  human-player-only by design (2026-09-24, user-directed: a rumor modal
+   *  is a player-facing flavor feature, never rolled for an AI civ, and
+   *  spectator mode has no human to show one to at all). Drains
+   *  pendingWorldEvents unconditionally either way (so a spectator game or a
+   *  human with no pub doesn't silently accumulate an ever-growing backlog),
+   *  and rolls "once per event" (not once per turn) -- more events in the
+   *  world and more pubs both mean more chances to hear something, at the
+   *  cost of occasionally surfacing more than one rumor in the same round
+   *  (main.js's offerNextRumor chains them one modal at a time rather than
+   *  dropping any). */
+  function resolveNeighborhoodPubRumors(gameState) {
+    const events = pendingWorldEvents;
+    pendingWorldEvents = [];
+    if (!events.length) return;
+    const human = Object.values(gameState.civs).find((c) => c.isHuman);
+    if (!human) return; // spectator mode, or no human civ this game
+    const pubCount = window.GameEngine.cities.civBuiltBuildingCount(human, "neighborhood_pub");
+    if (pubCount <= 0) return;
+    for (const evt of events) {
+      // "other kingdoms" only -- a capture (2026-09-25, user-directed)
+      // involves TWO civs, either of which could be the human's own, so
+      // both roles are checked, not just civId.
+      if (evt.civId === human.id || evt.capturedByCivId === human.id) continue;
+      let revealed = false;
+      for (let i = 0; i < pubCount && !revealed; i++) {
+        if (Math.random() < NEIGHBORHOOD_PUB_RUMOR_CHANCE) revealed = true;
+      }
+      if (!revealed) continue;
+      const withDirection = (evt.x != null && evt.y != null)
+        ? { ...evt, direction: compassDirectionFrom(gameState.map, evt.x, evt.y) }
+        : evt;
+      pendingRumors.push(withDirection);
+    }
+  }
+
   /**
    * Once-per-round teardown, run after every civ has taken its turn:
    * elimination check, victory check, turn counter advance. Shared by
    * `runTurn` and `advanceOneUnitStep`.
    *
-   * Wall Defense and Mage Tower's once-per-round scans run HERE, after
-   * every civ (including Wandering Monsters) has already moved and acted
-   * this round -- so a check sees this round's real final positions,
+   * Wall Defense, Mage Tower, and Runewall's once-per-round scans run HERE,
+   * after every civ (including Wandering Monsters) has already moved and
+   * acted this round -- so a check sees this round's real final positions,
    * catching a monster that approached, attacked, and retreated all in the
    * same round. Runs before checkElimination so a kill lands in time for
    * this same round's elimination/victory checks.
@@ -2354,7 +2466,14 @@ window.GameEngine = window.GameEngine || {};
       if (civ.eliminated) continue;
       window.GameEngine.ai.tickWallDefense(gameState, civ);
       window.GameEngine.ai.tickMageTowerDefense(gameState, civ);
+      window.GameEngine.ai.tickRunewallDefense(gameState, civ);
     }
+    // Halfellow "Neighborhood Pub" rumors: resolved once per round, after
+    // every civ's own turn (so this round's foundings/destructions/tech
+    // completions/unique finds are all already queued) but before
+    // checkElimination/checkVictory below -- a rumor about a kingdom that's
+    // about to be eliminated this same round should still be revealable.
+    resolveNeighborhoodPubRumors(gameState);
     checkElimination(gameState);
     const victoryResult = checkVictory(gameState);
     recordHistory(gameState);
@@ -2589,6 +2708,8 @@ window.GameEngine = window.GameEngine || {};
     stormActive,
     currentWeather,
     applyLightningScorch,
+    pushSignificantEvent,
+    drainPendingRumors,
     refreshVisibility,
     dayNightVisionPenaltyFor,
     effectiveUnitVisionRadius,

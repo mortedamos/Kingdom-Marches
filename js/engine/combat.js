@@ -1503,6 +1503,27 @@ window.GameEngine = window.GameEngine || {};
   }
 
   /**
+   * Dwarf "Runecraft" rework (2026-09-24, user-directed): +0.5 defense per
+   * OTHER wall segment standing in the SAME city, but only for a city that
+   * has actually built a Runewall -- the building is the gate, there's no
+   * separate unlock_mechanic flag (see techs.js's dwarf_runecraft). Zero for
+   * anything that isn't a wall (`building.isWall`), for a wall whose city
+   * has no Runewall, or if the wall's owning city can't be found at all
+   * (defenderCiv missing -- attackStructure's own doc comment on why that's
+   * optional). City lookup is by object identity (a city's own `structures`
+   * array containing this exact record), not by scanning tiles, since
+   * that's the array city.structures itself already is.
+   */
+  function runewallDefenseBonus(structureRecord, building, defenderCiv) {
+    if (!building.isWall || !defenderCiv) return 0;
+    const city = defenderCiv.cities.find((c) => c.structures.includes(structureRecord));
+    if (!city || !city.structures.some((s) => s.id === "runewall")) return 0;
+    const otherWalls = city.structures.filter((s) =>
+      s !== structureRecord && window.GameData.getBuilding(s.id).isWall).length;
+    return otherWalls * 0.5;
+  }
+
+  /**
    * A unit attacks a static structure. Mutates the structure record's hp.
    * Returns { damage, destroyed, counterDamage, militiaSpawned }. Most
    * structures have no `defense` stat and take the raw damage roll
@@ -1512,7 +1533,8 @@ window.GameEngine = window.GameEngine || {};
    * defended structure meaningfully outlasts a plain one instead of just
    * having more HP. `defenderCiv`/`gameState` are optional -- only needed to
    * evaluate Halfellow's "Rouse the People" (every other race's structures
-   * still never counterattack) or Human's "Ramparts" (walls and cities).
+   * still never counterattack), Human's "Ramparts" (walls and cities), or
+   * Dwarf's Runecraft wall-count bonus (walls only).
    */
   function attackStructure(unit, structureRecord, attackerCiv, defenderCiv, gameState) {
     const building = window.GameData.getBuilding(structureRecord.id);
@@ -1529,9 +1551,13 @@ window.GameEngine = window.GameEngine || {};
     // building already takes the raw roll. No more gateUnlocked bypass here
     // (2026-08-27) -- Unlock the Gate no longer touches an individual
     // structure's own defense stat, see isCityWallDefenseSuppressed's own
-    // doc comment for where its effect actually lands now.
+    // doc comment for where its effect actually lands now. Runecraft's
+    // per-city wall-count bonus is added BEFORE siege bypass, same as the
+    // building's own static defense value -- siege still bites into the
+    // total, it doesn't ignore the bonus specifically.
     const rollHit = () => building.defense
-      ? mitigatedDamage(atk, siegeAdjustedDefense(building.defense, unit, attackerCiv))
+      ? mitigatedDamage(atk, siegeAdjustedDefense(
+          building.defense + runewallDefenseBonus(structureRecord, building, defenderCiv), unit, attackerCiv))
       : Math.round(damageRoll(atk));
     const dmg = rollHit();
     structureRecord.hp -= dmg;

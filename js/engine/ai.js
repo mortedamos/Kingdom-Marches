@@ -4704,15 +4704,18 @@ window.GameEngine = window.GameEngine || {};
     // low-industry civ (Orcs, despite high militarism -- see industriousness
     // 0.3) walls up far less.
     //
-    // Human "Ramparts" / Halfellow "Rouse the People" / "Hedge Walls" turn a
-    // wall from passive HP padding into something that actively fights back
-    // (counterattacks a melee attacker) or outlasts a siege on its own
-    // (self-heals 5%/turn) -- a flat priority blind to that would keep
-    // treating a wall as worth exactly as much before and after researching
-    // the tech that makes it genuinely dangerous to attack. Doubled, not
-    // just bumped, once any of those is unlocked; stacks if a civ somehow
-    // has more than one (not currently possible for any single race, but
-    // harmless either way).
+    // Human "Ramparts" / Halfellow "Rouse the People" / "Hedge Walls" / Dwarf
+    // "Runecraft" (2026-09-24 rework) turn a wall from passive HP padding
+    // into something that actively fights back (counterattacks a melee
+    // attacker), outlasts a siege on its own (self-heals 5%/turn), or gets
+    // tougher for every OTHER wall standing alongside it in the same city
+    // (Runecraft, per-city -- see combat.js's runewallDefenseBonus) -- a flat
+    // priority blind to that would keep treating a wall as worth exactly as
+    // much before and after researching the tech that makes it genuinely
+    // dangerous to attack, or worth building MORE of once each one makes its
+    // neighbors stronger too. Doubled, not just bumped, once any of those is
+    // unlocked; stacks if a civ somehow has more than one (not currently
+    // possible for any single race, but harmless either way).
     //
     // Wall-vs-army gate (2026-07-14): a wall's score (militarism+
     // industriousness averaged, up to x2/x3 with the mechanic bonus above)
@@ -4748,7 +4751,13 @@ window.GameEngine = window.GameEngine || {};
       // added -- Elf walls that inherit a resting Ranger/Druid's attack are
       // at least as much reason to build walls as the others here.
       const wallMechanicBonus = ["warden_of_the_trees", "rouse_the_people", "hedge_walls"]
-        .filter((m) => civ.unlockedMechanics && civ.unlockedMechanics.has(m)).length;
+        .filter((m) => civ.unlockedMechanics && civ.unlockedMechanics.has(m)).length
+        // Dwarf "Runecraft": a per-CITY check, not a civ-wide mechanic string
+        // like the three above -- the wall-count defense bonus only applies
+        // where THIS city has actually built a Runewall (see combat.js's
+        // runewallDefenseBonus), counted the same way so a city that already
+        // has one gets the same extra push to keep stacking walls around it.
+        + (city.structures.some((s) => s.id === "runewall") ? 1 : 0);
       const wallMult = 1 + wallMechanicBonus;
       // Modern up-front-payment cost -- routes
       // through the same buildingOption every other building option in
@@ -9637,7 +9646,17 @@ window.GameEngine = window.GameEngine || {};
       if (uniqueId) {
         const def = window.GameData.getItem(uniqueId);
         const line = grantItemTreasure(unit, civ, uniqueId, def.text);
-        if (line) treasures.push(Object.assign(line, { unique: true }));
+        if (line) {
+          treasures.push(Object.assign(line, { unique: true }));
+          // Halfellow "Neighborhood Pub" rumor candidate (2026-09-24,
+          // user-directed) -- the single choke point every unique-item grant
+          // (ordinary chest, Giltmaw/Trow chest, Ruin delve) already routes
+          // through, so one hook here covers all of them.
+          window.GameEngine.turns.pushSignificantEvent({
+            kind: "uniqueItem", civId: civ.id, x: unit.x, y: unit.y, itemId: uniqueId,
+            turn: gameState.turnNumber || 0,
+          });
+        }
       }
     }
     return { treasures, giltmaw: false };
@@ -15719,18 +15738,13 @@ window.GameEngine = window.GameEngine || {};
       const bonus = (civ.mechanicValues && civ.mechanicValues.altar_of_ages) || 0.25;
       xpAmount *= (1 + bonus);
     }
-    // Halfellow Neighborhood Pub ("It's Like the Great Stories"): +25% XP,
-    // civ-wide -- every unit, not scoped to one city the way Altar of Ages
-    // above is. 2026-08-24: this used to be a separate L4 tech granting
-    // +50%; it's now intrinsic to the Pub building (destroying it revokes
-    // the bonus), and the rate was cut to 25% to match Elf's Altar of Ages
-    // -- the Pub already beats it on scope (civ-wide), tech layer, and
-    // price, so it kept the stronger of those axes rather than all four.
-    if (window.GameEngine.cities.civHasBuiltBuilding(civ, "neighborhood_pub")) {
-      xpAmount *= 1.25;
-    }
-    // Dwarf "Runeforged Tools": +25% XP, civ-wide -- same shape as Great
-    // Stories above.
+    // Halfellow Neighborhood Pub used to grant +25% XP civ-wide here
+    // ("It's Like the Great Stories") -- removed 2026-09-24, user-directed
+    // rework: the Pub now grants a chance to learn of significant events in
+    // other kingdoms instead (see turns.js's resolveNeighborhoodPubRumors),
+    // no XP effect at all anymore.
+    // Dwarf "Runeforged Tools": +25% XP, civ-wide -- same shape Great
+    // Stories used to have above.
     if (civ.unlockedMechanics && civ.unlockedMechanics.has("runeforged_tools")) {
       const bonus = (civ.mechanicValues && civ.mechanicValues.runeforged_tools) || 0.25;
       xpAmount *= (1 + bonus);
@@ -15779,21 +15793,24 @@ window.GameEngine = window.GameEngine || {};
 
   /** True if this civ has any reason to park a spare military unit on Rest
    *  and Defend in one of its cities -- every wall-defense tier and the Mage
-   *  College tower gain +25pp fire chance and +2 attack from it, Warden of
-   *  the Trees needs a qualifying unit resting to fire at all, and Dwarf's
-   *  Great Hall grants +10% defense per Great Hall built to the resting
-   *  unit itself. Derived from
+   *  College tower/Runewall turret gain +25pp fire chance and +2 attack from
+   *  it, Warden of the Trees needs a qualifying unit resting to fire at all,
+   *  and Dwarf's Great Hall grants +10% defense per Great Hall built to the
+   *  resting unit itself. Derived from
    *  WALL_DEFENSE_TIERS rather than a hand-kept second list, so adding a
    *  tier can't silently leave this behind (the mistake that removing
    *  "ramparts" would otherwise have caused -- see maybeRestAndDefend's
-   *  caller). */
+   *  caller) -- Mage College/Great Hall/Runewall aren't tiers (no mechanic
+   *  string, just owning the building), so they're checked explicitly here
+   *  instead. */
   function restingInCityPaysOff(civ) {
     if (!civ.unlockedMechanics) return false;
     for (const t of WALL_DEFENSE_TIERS) if (civ.unlockedMechanics.has(t.mechanic)) return true;
     if (civ.unlockedMechanics.has("warden_of_the_trees")) return true;
     const cities = window.GameEngine.cities;
     return cities.civHasBuiltBuilding(civ, "mage_college")
-      || cities.civHasBuiltBuilding(civ, "great_hall");
+      || cities.civHasBuiltBuilding(civ, "great_hall")
+      || cities.civHasBuiltBuilding(civ, "runewall");
   }
 
   /** Wall Defense: each of this civ's wall segments
@@ -15953,6 +15970,73 @@ window.GameEngine = window.GameEngine || {};
         log.push(`Mage Tower: ${civ.id}'s Mage College at (${s.x},${s.y}) attacks ${targetCiv.id}'s ${describeUnit(target)} for ${dmg}`);
         if (target.hp <= 0) {
           log.push(`Mage Tower: ${targetCiv.id}'s ${describeUnit(target)} is slain by ${civ.id}'s Mage College at (${s.x},${s.y})`);
+          otherCivRemoveDeadUnit(civs, target, civ.id);
+        }
+      }
+    }
+    if (log.length) appendAIActionLog(gameState, civ.id, log);
+  }
+
+  // Dwarf "Runecraft" rework (2026-09-24, user-directed): the Runewall
+  // building is now itself a defensive turret, same overall shape as the
+  // Mage College tower just above (down to reusing the exact same Rest and
+  // Defend fire-chance/attack bonus), with its own range/attack and a
+  // freeze-on-hit chance on top. See combat.js's runewallDefenseBonus for
+  // this same tech's OTHER new effect (per-city wall defense scaling), a
+  // separate mechanic from this attack.
+  const RUNEWALL_FIRE_CHANCE = 0.75;
+  const RUNEWALL_RANGE = 3;
+  const RUNEWALL_ATTACK = 2;
+  const RUNEWALL_FREEZE_CHANCE = 0.5;
+  const RUNEWALL_ATTACK_CHARS = ["❆", "❄"];
+
+  /** Runewall fire: each of this civ's Runewall structures independently
+   *  rolls RUNEWALL_FIRE_CHANCE, once per round, to strike the nearest enemy
+   *  unit within RUNEWALL_RANGE -- ticked here directly from turns.js's
+   *  endRound (see tickMageTowerDefense's own call site), same reasoning: a
+   *  passive structure ability with no unit or turn-order of its own. No
+   *  mechanic gate -- owning a standing Runewall IS the unlock; destroying
+   *  the structure revokes it, same as every other building-sourced effect. */
+  function tickRunewallDefense(gameState, civ) {
+    const { civs } = gameState;
+    const log = [];
+    for (const city of civ.cities) {
+      // Rest and Defend city bonus: see tickMageTowerDefense's matching
+      // comment -- same +25 percentage points fire chance / +2 attack while
+      // a unit is actively Resting and Defending in this city.
+      const restAndDefending = civ.units.some((u) => u.x === city.x && u.y === city.y && u.channeling === "restAndDefend");
+      const fireChance = RUNEWALL_FIRE_CHANCE + (restAndDefending ? 0.25 : 0);
+      const attackBonus = restAndDefending ? 2 : 0;
+      for (const s of city.structures) {
+        if (s.id !== "runewall") continue;
+        if (Math.random() >= fireChance) continue;
+        let target = null, targetCiv = null, bestDist = Infinity;
+        for (const otherCiv of Object.values(civs)) {
+          if (otherCiv.id === civ.id || otherCiv.eliminated) continue;
+          for (const eu of otherCiv.units) {
+            if (eu.conditions?.hidden || window.GameEngine.combat.isTrow(eu)) continue; // Trow is unhurtable
+            const dist = window.GameEngine.influence.chebyshev(s.x, s.y, eu.x, eu.y);
+            if (dist > RUNEWALL_RANGE) continue;
+            if (dist < bestDist) { bestDist = dist; target = eu; targetCiv = otherCiv; }
+          }
+        }
+        if (!target) continue;
+        const dmg = window.GameEngine.combat.mitigatedDamage(
+          RUNEWALL_ATTACK + attackBonus, window.GameEngine.combat.effectiveDefense(target, targetCiv, {}));
+        target.hp = Math.max(0, target.hp - dmg);
+        window.GameEngine.combat.recordCombatEvent({
+          ax: s.x, ay: s.y, atkUnit: { typeId: "foehammer" }, dx: target.x, dy: target.y, defUnit: target,
+          attackChars: RUNEWALL_ATTACK_CHARS,
+        });
+        log.push(`Runewall: ${civ.id}'s Runewall at (${s.x},${s.y}) attacks ${targetCiv.id}'s ${describeUnit(target)} for ${dmg}`);
+        if (target.hp > 0 && Math.random() < RUNEWALL_FREEZE_CHANCE) {
+          window.GameEngine.combat.setCondition(target, "frozen", {
+            attackMult: 0.75, expiresAtTurn: (gameState.turnNumber || 0) + FROZEN_DURATION,
+          });
+          log.push(`Runewall: ${targetCiv.id}'s ${describeUnit(target)} is frozen by ${civ.id}'s Runewall at (${s.x},${s.y})`);
+        }
+        if (target.hp <= 0) {
+          log.push(`Runewall: ${targetCiv.id}'s ${describeUnit(target)} is slain by ${civ.id}'s Runewall at (${s.x},${s.y})`);
           otherCivRemoveDeadUnit(civs, target, civ.id);
         }
       }
@@ -16598,6 +16682,7 @@ window.GameEngine = window.GameEngine || {};
     appendAIActionLog,
     tickWallDefense,
     tickMageTowerDefense,
+    tickRunewallDefense,
     operateGalley,
     exploreWater,
     exploreWith,

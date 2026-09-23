@@ -1154,14 +1154,21 @@ window.GameData.TECHS = {
     costBreakdown: { coin: 20, lore: 16 },
     effects: [{ type: "unlock_building", building: "great_hall" }],
   },
+  // 2026-09-24 rework, user-directed: was "Unlocks the Runewall. Walls heal
+  // 5% of their max HP per turn" (the hedge_walls mechanic, shared with
+  // Halfellow's own Hedge Walls tech -- removed here, not from Halfellow's).
+  // No unlock_mechanic effect anymore: both new abilities are gated on an
+  // actual Runewall standing in the city (see combat.js's
+  // runewallDefenseBonus / ai.js's tickRunewallDefense), same "owning the
+  // building IS the unlock, no separate flag" convention Mage College's
+  // tower already uses -- unlock_building is the only effect needed.
   dwarf_runecraft: {
     id: "dwarf_runecraft", label: "Runecraft", category: "building", layer: 2, cost: 46,
     prereqs: [], raceOnly: "dwarf",
-    description: "Unlocks the Runewall. Walls heal 5% of their max HP per turn.",
+    description: "Unlocks the Runewall. Every Dwarf wall in a city with a Runewall gains +0.5 defense for every OTHER Dwarf wall built in that same city. Additionally, each turn a Runewall has a 75% chance to attack an enemy unit within range 3 for 2 attack, with a 50% chance to also inflict Frozen.",
     costBreakdown: { coin: 28, lore: 18 },
     effects: [
       { type: "unlock_building", building: "runewall" },
-      { type: "unlock_mechanic", mechanic: "hedge_walls" },
     ],
   },
   dwarf_defend_the_walls: {
@@ -2026,10 +2033,19 @@ window.GameData.TECHS = {
     costBreakdown: { lore: 22, coin: 16 },
     effects: [{ type: "unlock_feature_bonus", feature: "river", bonus: { lore: 1 } }],
   },
+  // 2026-09-24 rework, user-directed: was "Unlocks the Neighborhood Pub.
+  // Tales told over a pint make veterans of everyone: all Halfellow units
+  // gain +25% XP whenever they earn XP" (see ai.js's grantXPAndAutoLevel,
+  // where that effect used to live -- removed there, not just reworded
+  // here). No unlock_mechanic effect: the rumor roll reads the Pub COUNT
+  // directly (cities.civBuiltBuildingCount) each round in turns.js's
+  // resolveNeighborhoodPubRumors, same "owning the building(s) IS the
+  // effect" convention Historical Society's own per-copy scaling already
+  // uses.
   halfellow_neighborhood_pub: {
     id: "halfellow_neighborhood_pub", label: "Neighborhood Pub", category: "building", layer: 2, cost: 35,
     prereqs: [], raceOnly: "halfellow",
-    description: "Unlocks the Neighborhood Pub. Tales told over a pint make veterans of everyone: all Halfellow units gain +25% XP whenever they earn XP.",
+    description: "Unlocks the Neighborhood Pub. Tales told over a pint reveal happenings in distant lands: for each Neighborhood Pub you've built, you gain a 10% chance to learn when something significant happens in another kingdom -- a city founded or destroyed, a legendary item claimed, or a new advancement unlocked.",
     costBreakdown: { coin: 20, harvest: 15 },
     effects: [{ type: "unlock_building", building: "neighborhood_pub" }],
   },

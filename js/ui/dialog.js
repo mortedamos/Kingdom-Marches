@@ -22,6 +22,7 @@
  *   { kind: "attackNotice", unitLabel, onGoTo(), onSkip() }
  *   { kind: "gameOver", turnsSurvived, citiesFounded, citiesLost, techsResearched, influenceInfo?: {winnerLabel, winnerTiles, ownTiles, tileTarget}, onViewInfluenceReport()?, onKeepFighting()?, onReturnToTitle() }
  *   { kind: "victoryStats", raceId, raceLabel, timeTaken, totalTurns, militaryPower, influenceLevel, unitKills, unitsLost, rivals: [{label,color,eliminated,territoryPct}], onReturnToTitle() }
+ *   { kind: "rumor", raceLabel, raceColor, text, kbLink?: {label}, onOpenKb()?, onDismiss() }
  *
  * Every kind rendered here needs a matching branch in main.js's
  * wireDialogButtons -- the markup below only names the buttons, it doesn't
@@ -389,6 +390,24 @@ window.UI = window.UI || {};
         <div class="treasure-list">${rows}</div>
         <div class="game-dialog-actions game-dialog-actions-centered">
           <button class="menu-dropdown-btn game-dialog-primary" id="game-dialog-ok-btn">Collect</button>
+        </div>`;
+    }
+    if (dialog.kind === "rumor") {
+      // Halfellow "Neighborhood Pub" rumor (2026-09-24, user-directed): the
+      // ONE dialog kind in this file with its own corner close-X in
+      // addition to OK, both dismissing identically -- see main.js's
+      // wireDialogButtons. `raceColor` tints the little swatch next to the
+      // title so a screen full of these (one civ mentioned again and again)
+      // reads at a glance; `kbLink` is omitted entirely for an event kind
+      // with no natural Knowledge Base destination (city founded/destroyed
+      // -- see main.js's buildRumorKbLink).
+      return `
+        <button class="techtree-close-btn" id="game-dialog-rumor-close-btn" aria-label="Close">&times;</button>
+        <h2><span class="victory-rival-swatch" style="background:${escapeHtml(dialog.raceColor || "#999")}"></span> A Rumor from the Pub</h2>
+        <p>${escapeHtml(dialog.text)}</p>
+        <div class="game-dialog-actions">
+          ${dialog.kbLink ? `<button class="tile-link" id="game-dialog-rumor-kb-btn">${escapeHtml(dialog.kbLink.label)}</button>` : ""}
+          <button class="menu-dropdown-btn game-dialog-primary" id="game-dialog-ok-btn">OK</button>
         </div>`;
     }
     // "message" -- single-button dismiss, e.g. a victory announcement. A

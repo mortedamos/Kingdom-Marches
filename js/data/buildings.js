@@ -129,10 +129,13 @@ window.GameData.BUILDINGS = {
     id: "great_hall", label: "Great Hall", symbol: "⌂", raceOnly: "dwarf",
     coinCost: 25, maxHp: 28,
   },
-  // No yield/yieldPct/influenceMult: Runewall's bonus is the "hedge_walls"
-  // mechanic (walls self-heal 5% max HP/turn, civ-wide -- see cities.js
-  // tickCity), the same mechanic Halfellow's Hedge Walls tech grants, not a
-  // per-city economic effect.
+  // No yield/yieldPct/influenceMult (2026-09-24 rework, user-directed): a
+  // Runewall gives every actual wall segment IN THIS SAME CITY +0.5 defense
+  // per other wall segment the city has (combat.js's runewallDefenseBonus,
+  // read inside attackStructure) and independently fires on a nearby enemy
+  // each round like a Mage College tower does (ai.js's
+  // tickRunewallDefense/turns.js's endRound) -- both per-city, gated on this
+  // specific city having a standing Runewall, not civ-wide.
   runewall: {
     id: "runewall", label: "Runewall", symbol: "▦", raceOnly: "dwarf",
     coinCost: 30, maxHp: 34,

@@ -912,6 +912,17 @@ window.GameEngine = window.GameEngine || {};
     const result = window.GameEngine.tech.reduceResearchTurns(civ, amount);
     if (!result) return null;
 
+    // Halfellow "Neighborhood Pub" rumor candidate (2026-09-24, user-
+    // directed) -- same "genuinely researched, not free-granted" scoping as
+    // turns.js's own tickResearch hook; this is the OTHER way a tech
+    // actually finishes (spending a city's turn to rush it), so it needs
+    // its own push rather than relying on that one.
+    if (result.completed) {
+      window.GameEngine.turns.pushSignificantEvent({
+        kind: "advancement", civId: civ.id, techId: result.techId, turn: gameState.turnNumber || 0,
+      });
+    }
+
     for (const [k, v] of Object.entries(cost)) {
       civ.stockpile[k] = Math.max(0, (civ.stockpile[k] || 0) - v);
     }
@@ -1715,6 +1726,13 @@ window.GameEngine = window.GameEngine || {};
     // memory for why this mattered.
     civ.cityEvents = civ.cityEvents || [];
     civ.cityEvents.push({ turn: gameState.turnNumber || 0, type: "founded" });
+    // Halfellow "Neighborhood Pub" rumor candidate (2026-09-24, user-
+    // directed) -- see turns.js's pushSignificantEvent/
+    // resolveNeighborhoodPubRumors for how/whether this actually surfaces.
+    window.GameEngine.turns.pushSignificantEvent({
+      kind: "cityFounded", civId: civ.id, x, y, cityName: name,
+      turn: gameState.turnNumber || 0,
+    });
     // Free first-city tech: the moment a civ's
     // FIRST city exists, it picks one Layer-1 tech for free -- a jumpstart
     // so early strategy isn't purely "whatever's cheapest to research."
@@ -1777,6 +1795,17 @@ window.GameEngine = window.GameEngine || {};
     fromCiv.cities = fromCiv.cities.filter((c) => c !== city);
     fromCiv.cityEvents = fromCiv.cityEvents || [];
     fromCiv.cityEvents.push({ turn: gameState.turnNumber || 0, type: "razed" }); // lost, from the previous owner's view
+    // Halfellow "Neighborhood Pub" rumor candidate (2026-09-25, user-
+    // directed): a capture is its own event, distinct from foundCity/
+    // destroyCity's -- the city isn't gone, it changed hands. Carries BOTH
+    // civs (civId: the previous owner, "this happened to"; capturedByCivId:
+    // the new one) since resolveNeighborhoodPubRumors' "not my own kingdom's
+    // business" filter has to exclude the human civ from EITHER role, not
+    // just one.
+    window.GameEngine.turns.pushSignificantEvent({
+      kind: "cityCaptured", civId: fromCiv.id, capturedByCivId: toCiv.id,
+      x: city.x, y: city.y, cityName: city.name, turn: gameState.turnNumber || 0,
+    });
 
     city.civId = toCiv.id;
     city.population = 1;
@@ -1825,6 +1854,14 @@ window.GameEngine = window.GameEngine || {};
     // and ai.js's recentCityDelta for why this is tracked.
     civ.cityEvents = civ.cityEvents || [];
     civ.cityEvents.push({ turn: gameState.turnNumber || 0, type: "razed" });
+    // Halfellow "Neighborhood Pub" rumor candidate -- see foundCity's
+    // matching push. Only a true razing (this function): a captured city
+    // (captureCity above) changes hands rather than being destroyed, so it
+    // isn't "destruction" in the sense the tech's own wording means.
+    window.GameEngine.turns.pushSignificantEvent({
+      kind: "cityDestroyed", civId: civ.id, x: city.x, y: city.y, cityName: city.name,
+      turn: gameState.turnNumber || 0,
+    });
     const tile = map.tiles[city.y * map.width + city.x];
     tile.ownerCivId = null;
     tile.status = "neutral";

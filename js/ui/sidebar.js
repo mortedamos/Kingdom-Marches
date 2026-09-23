@@ -595,7 +595,7 @@ window.UI = window.UI || {};
     // Dwarf
     deep_forge: ["Military units built here are issued a Dwarven Hammer (+1 attack)"],
     great_hall: ["+10% defense per Great Hall built while Resting on any of your holdings (kingdom-wide)"],
-    runewall: ["walls heal 5% of max HP per turn (kingdom-wide)"],
+    runewall: ["+0.5 defense per other wall in this city; 75% chance/turn to strike an enemy within 3 for 2 attack (50% to Freeze)"],
     deep_gate: ["Dwarf units may travel between Deep Gates (kingdom-wide)"],
     // Orc
     war_camp: ["+1 movement for units built here"],
@@ -604,7 +604,7 @@ window.UI = window.UI || {};
     ancestral_dolmen: ["a unit built here falling rouses allies within 3: +25% attack for 3 turns"],
     // Halfellow
     farmers_market: ["+2 max HP for units built here"],
-    neighborhood_pub: ["+25% XP for all your units (kingdom-wide)"],
+    neighborhood_pub: ["10% chance/turn per copy to learn of a significant event in another kingdom (kingdom-wide)"],
     historical_society: ["reveals every Ruin on the map, +1 visible radius per copy built (kingdom-wide)"],
     armory: ["+50% attack and defense for units built here"],
   };

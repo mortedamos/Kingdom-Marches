@@ -296,6 +296,13 @@ window.SfxSystem = (function () {
   // A UNIQUE item find (data/items.js `unique`) gets its own sting. Optional: until the
   // clip exists in assets/sfx (js/data/sfx-manifest.js), the ordinary chest sting plays.
   const SYSTEM_UNIQUE_ITEM_FOUND_KEY = "system_unique_item_found_1";
+  // Halfellow "Neighborhood Pub" rumor modal (2026-09-24, user-directed):
+  // plays the moment a rumor is revealed -- see main.js's offerNextRumor.
+  // No fallback clip (unlike SYSTEM_UNIQUE_ITEM_FOUND_KEY above): nothing
+  // else in the game sounds like "a rumor," so silence until the real clip
+  // is dropped in is the right degraded behavior, not borrowing an unrelated
+  // sting. Awaiting the actual audio file from the user.
+  const SYSTEM_RUMOR_KEY = "system_rumor_1";
   function hasSystemClip(key) { return (window.GameData.SFX_FILES || []).includes(`${key}.mp3`); }
   const SYSTEM_RESEARCH_COMPLETE_VARIANTS = 3;
   let lastResearchCompleteVariant = null;
@@ -309,6 +316,7 @@ window.SfxSystem = (function () {
   function systemKeys() {
     const keys = [SYSTEM_BUTTON_CLICK_KEY, SYSTEM_CONFIRM_ACTION_KEY, SYSTEM_TREASURE_CHEST_OPEN_KEY, SYSTEM_HALFELLOW_PARTY_KEY];
     if (hasSystemClip(SYSTEM_UNIQUE_ITEM_FOUND_KEY)) keys.push(SYSTEM_UNIQUE_ITEM_FOUND_KEY);
+    if (hasSystemClip(SYSTEM_RUMOR_KEY)) keys.push(SYSTEM_RUMOR_KEY);
     for (let n = 1; n <= SYSTEM_RESEARCH_COMPLETE_VARIANTS; n++) keys.push(`system_research_complete_${n}`);
     return keys;
   }
@@ -360,6 +368,15 @@ window.SfxSystem = (function () {
    *  sting instead of the chest one, or the chest one if that clip isn't recorded yet. */
   function playUniqueItemFound() {
     playSystemKey(hasSystemClip(SYSTEM_UNIQUE_ITEM_FOUND_KEY) ? SYSTEM_UNIQUE_ITEM_FOUND_KEY : SYSTEM_TREASURE_CHEST_OPEN_KEY);
+  }
+
+  /** Public: a Neighborhood Pub rumor modal is about to show (see main.js's
+   *  offerNextRumor). Unlike playUniqueItemFound just above, this has no
+   *  fallback clip -- nothing else in the game sounds like "a rumor," so a
+   *  guarded no-op (silence) is the right degraded behavior until the real
+   *  clip is dropped in, not a borrowed, unrelated sting. */
+  function playRumor() {
+    if (hasSystemClip(SYSTEM_RUMOR_KEY)) playSystemKey(SYSTEM_RUMOR_KEY);
   }
 
   /** Public: Halfellow "Throw a Party" fires (see cities.js's
@@ -457,6 +474,7 @@ window.SfxSystem = (function () {
     playResearchComplete,
     playTreasureChestOpen,
     playUniqueItemFound,
+    playRumor,
     playHalfellowParty,
     setMasterVolume,
     setSfxVolume,
