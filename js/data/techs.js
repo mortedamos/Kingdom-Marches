@@ -1061,7 +1061,7 @@ window.GameData.TECHS = {
   dwarf_dwarven_mining: {
     id: "dwarf_dwarven_mining", label: "Wealth of the Earth", category: "civic", layer: 1, cost: 16,
     prereqs: [], raceOnly: "dwarf",
-    description: "Any Dwarf unit, not just Pioneers and Trackers, can mine Gold Veins and Iron Veins. Mining also pays 50% more coin and lore.",
+    description: "Any Dwarf unit, not just Pioneers and Trackers, can mine Gold Veins and Iron Veins. Mining also pays 50% more coin and lore. In addition, you have a chance to discover buried treasure as if delving a ruin.",
     costBreakdown: { coin: 10, lore: 6 },
     effects: [{ type: "unlock_mechanic", mechanic: "dwarven_mining" }],
   },

@@ -1530,12 +1530,30 @@ window.GameEngine = window.GameEngine || {};
         + (civ.mechanicValues?.deep_mines_yield || 0);
       // 3x payout plus the withProspectingLore kicker (2026-08-17, user-directed).
       // Dwarf "Wealth of the Earth" (any dwarf may mine): +50% coin AND lore from mining.
-      const wealth = civ.raceId === "dwarf" && civ.unlockedMechanics.has("dwarven_mining")
-        ? window.GameConfig.worldEncounters.wealthOfTheEarthMiningMult : 1;
+      const hasWealthOfTheEarth = civ.raceId === "dwarf" && civ.unlockedMechanics.has("dwarven_mining");
+      const wealth = hasWealthOfTheEarth ? window.GameConfig.worldEncounters.wealthOfTheEarthMiningMult : 1;
       const mined = withProspectingLore({ coin: 9 * yieldMult * marketcraftMult });
       accumulateChannelStash(unit, { ...mined, coin: mined.coin * wealth, lore: mined.lore * wealth });
       // Gathering XP -- see the Dungeon Delve block above.
       window.GameEngine.ai.grantXPAndAutoLevel(unit, civ, window.GameConfig.leveling.xpPerGatheringRound);
+      // Wealth of the Earth (2026-09-25, user-directed addition): a Gold/Iron
+      // Vein has the same chance to turn up buried treasure as delving a
+      // Ruin -- reuses that roll's own chance/reward table/luck modifier
+      // wholesale ("as if delving a ruin") rather than a new tunable, and
+      // _delveTreasureRolled is a generic "this tile already paid out its
+      // one-time find" flag, not Ruin-specific, so it's safe to key off the
+      // vein tile too: at most once per vein, and it starts fresh once the
+      // vein exhausts and respawns as a new tile elsewhere (see just below).
+      if (hasWealthOfTheEarth && !tile._delveTreasureRolled) {
+        const ruinCfg = window.GameConfig.worldEncounters.ruin;
+        if (Math.random() < ruinCfg.treasureFindChance * window.GameEngine.items.itemLuck(unit).delveMult) {
+          tile._delveTreasureRolled = true;
+          window.GameEngine.ai.appendAIActionLog(gameState, civ.id,
+            [`Wealth of the Earth: ${civ.id}'s ${unit.name || baseUnit.label} finds treasure while mining at (${unit.x},${unit.y})`]);
+          const treasureResult = window.GameEngine.ai.grantMonsterKillReward(civ, unit, gameState, { uniqueChance: ruinCfg.uniqueItemChance });
+          window.GameEngine.ai.queueTreasureNotice(civ, unit.name || baseUnit.label, treasureResult);
+        }
+      }
       if (Math.random() < resourceExhaustionChanceFor(civ)) {
         scheduleResourceRespawn(gameState, tile.resource);
         tile.resource = null;
