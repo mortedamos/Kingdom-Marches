@@ -133,7 +133,14 @@ window.UI = window.UI || {};
       const nx = dxg / len, ny = dyg / len;
       activeCombatAnims.push({
         ...evt,
-        start: now,
+        // evt.delayMs (Double Strike's follow-up hit -- see ai.js's
+        // DOUBLE_STRIKE_FOLLOWUP_DELAY_MS): stamps `start` into the future so
+        // this anim doesn't play at the exact same instant as the primary
+        // hit's own event, which drained in the same batch -- same "future
+        // start, elapsed<0 stays invisible until it arrives" trick
+        // activeImpactSmoke already uses for a lobbed shot's landing puff.
+        // getUnitShakeOffset/drawCombatSlashAt below both guard for it.
+        start: now + (evt.delayMs || 0),
         nx, ny,
         ampScale: 0.75 + Math.random() * 0.5,
         freq: 2.5 + Math.random() * 2.5,
@@ -159,7 +166,10 @@ window.UI = window.UI || {};
             delay: Math.random() * 0.15,
           });
         }
-        activeMuzzleSmoke.push({ x: evt.ax, y: evt.ay, start: now, puffs });
+        // + (evt.delayMs || 0): same Double Strike follow-up offset the main
+        // slash anim gets above, so a musket's second shot puffs a beat
+        // after the first instead of on top of it.
+        activeMuzzleSmoke.push({ x: evt.ax, y: evt.ay, start: now + (evt.delayMs || 0), puffs });
       }
       if (atkBase?.impactSmoke) {
         const puffs = [];
@@ -171,7 +181,7 @@ window.UI = window.UI || {};
             delay: Math.random() * 0.15,
           });
         }
-        const impactDelay = isRanged ? SLASH_ANIM_MS : 80;
+        const impactDelay = (isRanged ? SLASH_ANIM_MS : 80) + (evt.delayMs || 0);
         activeImpactSmoke.push({ x: evt.dx, y: evt.dy, start: now + impactDelay, puffs });
       }
     }
@@ -916,7 +926,12 @@ window.UI = window.UI || {};
       const isDefender = a.defUnit === unit;
       if (!isAttacker && !isDefender) continue;
       const t = (now - a.start) / ATTACK_ANIM_MS;
-      if (t >= 1) continue;
+      // t < 0: a delayed follow-up (Double Strike -- see updateCombatAnims'
+      // own delayMs handling) that hasn't actually started yet -- must bail
+      // here, not just at t>=1, or Math.sin(Math.PI * t) below would jitter
+      // the unit early with a negative-time value instead of staying still
+      // until the hit actually lands.
+      if (t < 0 || t >= 1) continue;
       const jump = Math.sin(Math.PI * t) * a.ampScale;
       const shimmyEnv = 1 - t;
       if (isAttacker) {
@@ -946,7 +961,10 @@ window.UI = window.UI || {};
    */
   function drawCombatSlashAt(ctx, a, ax, ay, dx, dy, ts, now) {
     const elapsed = now - a.start;
-    if (elapsed > SLASH_ANIM_MS) return;
+    // elapsed < 0: a delayed follow-up (Double Strike) that hasn't started
+    // yet -- same "stay invisible until it arrives" guard drawImpactSmokeAt
+    // uses for its own future-stamped `start`.
+    if (elapsed < 0 || elapsed > SLASH_ANIM_MS) return;
     const t = elapsed / SLASH_ANIM_MS;
 
     let px, py, angle, alpha, size;
@@ -1078,7 +1096,9 @@ window.UI = window.UI || {};
    */
   function drawMuzzleSmokeAt(ctx, e, px, py, ts, now) {
     const elapsed = now - e.start;
-    if (elapsed > MUZZLE_SMOKE_ANIM_MS) return;
+    // elapsed < 0: a Double-Strike-delayed puff that hasn't fired yet -- same
+    // guard drawImpactSmokeAt uses for its own future-stamped `start`.
+    if (elapsed < 0 || elapsed > MUZZLE_SMOKE_ANIM_MS) return;
     const t = elapsed / MUZZLE_SMOKE_ANIM_MS;
 
     ctx.save();

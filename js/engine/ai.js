@@ -14990,16 +14990,20 @@ window.GameEngine = window.GameEngine || {};
         dx: hitX, dy: hitY, defUnit: bestTarget,
       });
       // Double Strike (see combat.js's resolveRound): the follow-up hit gets
-      // its own animation, callout and (delayed) attack sfx, so a second blow
-      // reads as a second blow rather than as one unusually large damage
-      // number. Delay roughly matches render.js's own attack-animation beat.
+      // its own animation, callout and attack sfx, so a second blow reads as
+      // a second blow rather than as one unusually large damage number --
+      // both the recordCombatEvent (via delayMs) and the sfx land
+      // DOUBLE_STRIKE_FOLLOWUP_DELAY_MS after the first hit's own, instead of
+      // at the exact same instant, so the two slashes render sequentially
+      // rather than directly on top of each other.
       if (result.doubleStruck) {
         window.GameEngine.floatingText.spawnFloatingText(unit, "Double Strike!", "strike");
         window.GameEngine.combat.recordCombatEvent({
           ax: unit.x, ay: unit.y, atkUnit: unit,
           dx: bestTarget.x, dy: bestTarget.y, defUnit: bestTarget,
+          delayMs: DOUBLE_STRIKE_FOLLOWUP_DELAY_MS,
         });
-        window.SfxSystem.playAction(civ.raceId, unit.typeId, "attack", unit.x, unit.y, DOUBLE_STRIKE_SFX_DELAY_MS);
+        window.SfxSystem.playAction(civ.raceId, unit.typeId, "attack", unit.x, unit.y, DOUBLE_STRIKE_FOLLOWUP_DELAY_MS);
       }
       // First Strike: narrated the same way as
       // Double Strike above -- only when the ORDER effect actually decided
@@ -15504,15 +15508,16 @@ window.GameEngine = window.GameEngine || {};
         ax: unit.x, ay: unit.y, atkUnit: unit,
         dx: bestStruct.x, dy: bestStruct.y, defUnit: null,
       });
-      // Double Strike: same follow-up narration
+      // Double Strike: same follow-up narration/timing
       // as the unit-vs-unit branch above (see combat.js's attackStructure).
       if (res.doubleStruck) {
         window.GameEngine.floatingText.spawnFloatingText(unit, "Double Strike!", "strike");
         window.GameEngine.combat.recordCombatEvent({
           ax: unit.x, ay: unit.y, atkUnit: unit,
           dx: bestStruct.x, dy: bestStruct.y, defUnit: null,
+          delayMs: DOUBLE_STRIKE_FOLLOWUP_DELAY_MS,
         });
-        window.SfxSystem.playAction(civ.raceId, unit.typeId, "attack", unit.x, unit.y, DOUBLE_STRIKE_SFX_DELAY_MS);
+        window.SfxSystem.playAction(civ.raceId, unit.typeId, "attack", unit.x, unit.y, DOUBLE_STRIKE_FOLLOWUP_DELAY_MS);
       }
       markCombatEngaged(civ); // attacker only -- no defending unit is engaged here
       // Hidden: attacking reveals the attacker, regardless of target type.
@@ -15960,11 +15965,17 @@ window.GameEngine = window.GameEngine || {};
   // instead of overlapping it.
   const DEATH_SFX_DELAY_MS = 350;
 
-  // Double Strike's follow-up "attack" clip -- same reasoning as the death
-  // delay above: it should land as a distinct second blow rather than
-  // overlapping the first hit's own clip. Shorter, since the two hits are
-  // meant to read as one fast flurry. See the resolveRound call site.
-  const DOUBLE_STRIKE_SFX_DELAY_MS = 220;
+  // Double Strike's follow-up hit -- same reasoning as the death delay
+  // above: it should land as a distinct second blow rather than overlapping
+  // the first hit's own animation and clip. Shorter, since the two hits are
+  // meant to read as one fast flurry. Drives BOTH the follow-up's
+  // recordCombatEvent (via delayMs -- see overlays.js's updateCombatAnims)
+  // and its "attack" sfx (2026-09-24: previously only the sfx was delayed,
+  // so the second slash animation fired at the exact same timestamp as the
+  // first and the two rendered on top of each other -- indistinguishable
+  // from a single attack despite the code faithfully recording two events).
+  // See the resolveRound call sites below.
+  const DOUBLE_STRIKE_FOLLOWUP_DELAY_MS = 220;
 
   // Death-spot Treasure Chest: every unit that
   // dies via otherCivRemoveDeadUnit is by definition dying to something
