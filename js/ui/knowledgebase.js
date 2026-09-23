@@ -958,7 +958,7 @@ window.UI = window.UI || {};
     },
     {
       key: "fireball", label: "Fireball!", icon: "🔥", restriction: "Human — Wizard (or an item: Kurganos)",
-      description: "Blasts a 3x3 area anywhere within 3 tiles -- no target required inside it, the whole block is hit -- dealing damage to every unit and structure caught there, each independently rolling a 50% chance to also catch fire. Costs the Wizard's whole turn.",
+      description: "Blasts a 2x2 block anywhere within 3 tiles -- no target required inside it, the whole block is hit -- dealing damage to every unit and structure caught there, each independently rolling a 50% chance to also catch fire. Costs the Wizard's whole turn.",
     },
     {
       key: "bombardment", label: "Bombardment", icon: "💣", restriction: "Dwarf — Bombard",
@@ -1001,8 +1001,8 @@ window.UI = window.UI || {};
       description: "Instantly summons a Wisp at a chosen already-explored swamp tile. Capped civ-wide at one live Wisp per Bog Witch this kingdom currently fields, shared across the whole roster rather than one per caster.",
     },
     {
-      key: "setTrap", label: "Set a Trap", icon: "🪤", restriction: "Halfellow — Trouble Maker",
-      description: "Plants a Frost or Fire trap, hidden, on an unoccupied tile within 2 of the caster. The first enemy unit to end movement within 1 tile of it springs it: 1-4 random damage plus Frozen (frost) or Burning (fire), then the trap is consumed. Capped civ-wide at one live trap per Trouble Maker, both flavors sharing the same pool.",
+      key: "setTrap", label: "Set a Trap", icon: "🪤", restriction: "Halfellow — Trouble Maker (or an item: Mhorgrim's Hunt)",
+      description: "Plants a Frost or Fire trap, hidden, on an unoccupied tile within 2 of the caster. The first enemy unit to end movement within 1 tile of it springs it: 1-4 random damage plus Frozen (frost) or Burning (fire), then the trap is consumed. Capped civ-wide at one live trap per Trouble Maker or trap-granting item bearer, both flavors sharing the same pool.",
     },
     {
       key: "createGreatBonfire", label: "Create The Great Bonfire", icon: "🔥", restriction: "Halfellow — Wanderer",
@@ -1534,7 +1534,7 @@ window.UI = window.UI || {};
   // in GameData.ITEMS), shown in the tier those items are drawn from.
   const TREASURE_ITEMS_ENTRY = {
     label: "Items", icon: "🎒",
-    description: "Some treasure is a piece of gear. A chest can hold an item, and so can the treasure found in a Ruin delve or the chest a Giltmaw or Treasure Trow drops (those can even hold a Unique Item, of which only one exists in the world at a time). The unit that finds it carries it for good: it gives bonuses or new abilities, can be dropped when its bearer falls in battle, and can be picked up by any unit. Machines cannot carry items. See the Items article for every item.",
+    description: "Some treasure is a piece of gear. A chest can hold an item, and so can the treasure found in a Ruin delve or the chest a Giltmaw or Treasure Trow drops. Any of these can rarely turn up a Unique Item too (of which only one exists in the world at a time) -- a small chance for an ordinary chest, much better odds from a Ruin delve or a Giltmaw/Trow chest. The unit that finds it carries it for good: it gives bonuses or new abilities, can be dropped when its bearer falls in battle, and can be picked up by any unit. Machines cannot carry items. See the Items article for every item.",
   };
   const TREASURE_TIER_LABEL = { common: "Common", uncommon: "Uncommon", rare: "Rare" };
 
@@ -1572,7 +1572,7 @@ window.UI = window.UI || {};
     const t = TREASURE_INFO[selectedKey];
     const cfg = treasureCfg();
     if (!t || !cfg.treasures[selectedKey] || window.GameData.ITEMS[selectedKey]) {
-      return `<div class="kb-profile-empty">Select a treasure on the left to see what it does. A chest holds 1 treasure (65%), 2 (27%) or 3 (8%), drawn by rarity; a trap may spring first, but the treasure is still yours. Ruin delves and the chests of a Giltmaw or Treasure Trow can also yield a Unique Item -- see the Items page.</div>`;
+      return `<div class="kb-profile-empty">Select a treasure on the left to see what it does. A chest holds 1 treasure (65%), 2 (27%) or 3 (8%), drawn by rarity; a trap may spring first, but the treasure is still yours. Ruin delves and the chests of a Giltmaw or Treasure Trow can also yield a Unique Item, and even an ordinary chest rarely can -- see the Items page.</div>`;
     }
     return `
       <div class="kb-profile-header">

@@ -6255,13 +6255,16 @@ window.GameEngine = window.GameEngine || {};
   /**
    * Human "Fireball!": a standalone targeted action. The Wizard (`caster`)
    * targets ANY tile within FIREBALL_RANGE --
-   * it doesn't need to contain an enemy itself, since the blast covers the
-   * full 3x3 area centered there (see combat.js's applyFireballBlast). Every
-   * hit unit/structure independently rolls FIREBALL_IGNITE_CHANCE to catch
-   * fire. Costs the caster's whole turn, no exhaustion afterward -- same
-   * convention as the reworked Teleportation. Returns true on success
-   * (always succeeds once called; an empty target tile is a legal, if
-   * wasted, cast -- callers are responsible for picking a worthwhile one).
+   * it doesn't need to contain an enemy itself, since the blast covers a 2x2
+   * block anchored there (see combat.js's applyFireballBlast) -- same
+   * corner-toward-the-caster shape Bombardment/Dragonfire use (2026-09-23,
+   * user-directed: "match bombard"), not the fixed 3x3-centered square this
+   * used to be. Every hit unit/structure independently rolls
+   * FIREBALL_IGNITE_CHANCE to catch fire. Costs the caster's whole turn, no
+   * exhaustion afterward -- same convention as the reworked Teleportation.
+   * Returns true on success (always succeeds once called; an empty target
+   * tile is a legal, if wasted, cast -- callers are responsible for picking
+   * a worthwhile one).
    */
   function performWizardFireball(civ, caster, tx, ty, gameState, log) {
     if (caster.usedThisTurn) return false;
@@ -6275,18 +6278,18 @@ window.GameEngine = window.GameEngine || {};
       }
       if (hit.kind === "unit" && hit.unit.hp <= 0) otherCivRemoveDeadUnit(gameState.civs, hit.unit, civ.id);
     }
-    // A separate radius-0 burst PER TILE the blast actually covers (matching
-    // applyFireballBlast's own 3x3-clamped-to-map-bounds loop exactly),
+    // A separate radius-0 burst PER TILE the blast actually covers (using the
+    // SAME bombardBlastOffsets applyFireballBlast itself used, so the visual
+    // always lands exactly on the tiles actually hit regardless of which
+    // side of the caster tx falls on -- see combat.js's bombardBlastOffsets),
     // rather than one wide effect centered on the target -- "every square
     // where fireball resolved" gets its own flame, not a shared wash. See
     // overlays.js's AREA_EFFECT_GLYPHS.fireball.
     const { map } = gameState;
-    for (let dy = -1; dy <= 1; dy++) {
-      for (let dx = -1; dx <= 1; dx++) {
-        const x = tx + dx, y = ty + dy;
-        if (x < 0 || x >= map.width || y < 0 || y >= map.height) continue;
-        window.GameEngine.combat.spawnAreaEffect(x, y, 0, "fireball");
-      }
+    for (const { dx, dy } of window.GameEngine.combat.bombardBlastOffsets(caster.x, tx)) {
+      const x = tx + dx, y = ty + dy;
+      if (x < 0 || x >= map.width || y < 0 || y >= map.height) continue;
+      window.GameEngine.combat.spawnAreaEffect(x, y, 0, "fireball");
     }
     window.SfxSystem.playAction(civ.raceId, caster.typeId, "fireball", tx, ty);
     log.push(`Fireball: ${civ.id}'s Wizard blasts (${tx},${ty}), hitting ${hits.length} target(s), igniting ${ignited}`);
@@ -6332,34 +6335,36 @@ window.GameEngine = window.GameEngine || {};
   // risking friendly fire, not just a break-even one.
   const FIREBALL_ALLY_RISK_WEIGHT = 1.5;
 
-  /** Dry-run of how a Fireball centered on (cx, cy) would net out -- same
-   *  3x3 scan applyFireballBlast itself uses, but counting instead of
-   *  dealing damage, since this runs during target SELECTION (see
+  /** Dry-run of how a Fireball anchored on (cx, cy) would net out -- same
+   *  bombardBlastOffsets-shaped scan applyFireballBlast itself uses (see that
+   *  function's own doc comment; must stay in sync with it, same reasoning
+   *  scoreBombardBlast's own doc comment gives for its match with
+   *  applyBombardBlast, or this would score one set of tiles while
+   *  performWizardFireball fires on a different one), but counting instead
+   *  of dealing damage, since this runs during target SELECTION (see
    *  maybeFireballStrike). Returns enemy hits minus
    *  (allied hits * FIREBALL_ALLY_RISK_WEIGHT) -- allied here also counts
    *  the caster itself, if the caster's own tile falls within the blast. */
   function scoreFireballBlast(cx, cy, casterUnit, civs, casterCivId, gameState) {
     const { map } = gameState;
     let enemy = 0, allied = 0;
-    for (let dy = -1; dy <= 1; dy++) {
-      for (let dx = -1; dx <= 1; dx++) {
-        const x = cx + dx, y = cy + dy;
-        if (x < 0 || x >= map.width || y < 0 || y >= map.height) continue;
-        for (const otherCiv of Object.values(civs)) {
-          if (otherCiv.eliminated) continue;
-          if (!otherCiv.units.some((u) => u.x === x && u.y === y && !u.conditions?.hidden)) continue;
-          if (otherCiv.id === casterCivId) allied++; else enemy++;
-        }
-        const struct = window.GameEngine.cities.findStructureAt(gameState, x, y);
-        if (struct) { if (struct.civ.id === casterCivId) allied++; else enemy++; }
+    for (const { dx, dy } of window.GameEngine.combat.bombardBlastOffsets(casterUnit.x, cx)) {
+      const x = cx + dx, y = cy + dy;
+      if (x < 0 || x >= map.width || y < 0 || y >= map.height) continue;
+      for (const otherCiv of Object.values(civs)) {
+        if (otherCiv.eliminated) continue;
+        if (!otherCiv.units.some((u) => u.x === x && u.y === y && !u.conditions?.hidden)) continue;
+        if (otherCiv.id === casterCivId) allied++; else enemy++;
       }
+      const struct = window.GameEngine.cities.findStructureAt(gameState, x, y);
+      if (struct) { if (struct.civ.id === casterCivId) allied++; else enemy++; }
     }
     return enemy - allied * FIREBALL_ALLY_RISK_WEIGHT;
   }
 
   /**
    * Human "Fireball!" AI: scans every currently-visible tile within
-   * FIREBALL_RANGE for the one whose 3x3 blast nets the best score (see
+   * FIREBALL_RANGE for the one whose 2x2 blast nets the best score (see
    * scoreFireballBlast -- enemy hits weighed against allied/self risk), and
    * casts there if it clears FIREBALL_MIN_TARGETS. Returns true if it
    * consumed the turn.
@@ -6389,12 +6394,14 @@ window.GameEngine = window.GameEngine || {};
   /**
    * Dwarf "Bombardment": Bombard's own standalone targeted-blast action,
    * on top of its ordinary attack (see units.js's bombard comment). Same
-   * standalone-targeted-blast shape as performWizardFireball, but the
-   * blast is combat.js's applyBombardBlast (2x2, target = top-left
-   * corner) instead of Fireball's 3x3, and burnChancePct is read as
-   * per-unit data (units.js's bombard.burnChancePct: 0.5) rather than a
-   * hardcoded module constant, matching Elf Poisonous Extracts/Dwarf's own
-   * later conventions instead of Fireball's older FIREBALL_IGNITE_CHANCE.
+   * standalone-targeted-blast SHAPE as performWizardFireball (both a 2x2,
+   * corner-anchored bombardBlastOffsets block), but through combat.js's
+   * shared applyBombardBlast rather than Fireball's own applyFireballBlast
+   * (this one also hits cities, where Fireball never does), and
+   * burnChancePct is read as per-unit data (units.js's
+   * bombard.burnChancePct: 0.5) rather than a hardcoded module constant,
+   * matching Elf Poisonous Extracts/Dwarf's own later conventions instead of
+   * Fireball's older FIREBALL_IGNITE_CHANCE.
    */
   function performDwarfBombardment(civ, caster, tx, ty, gameState, log) {
     if (caster.usedThisTurn) return false;
@@ -6450,15 +6457,19 @@ window.GameEngine = window.GameEngine || {};
       ax: caster.x, ay: caster.y, atkUnit: caster, dx: tx, dy: ty, defUnit: null,
     });
     // A separate radius-0 burst per tile the blast actually covers (mirrors
-    // performWizardFireball's own per-tile spawnAreaEffect loop), sized to
-    // the 2x2 footprint rather than Fireball's 3x3.
+    // performWizardFireball's own per-tile spawnAreaEffect loop) -- must use
+    // the SAME bombardBlastOffsets(caster.x, tx) applyBombardBlast itself
+    // used above, not a hardcoded "extends right+down" assumption: the block
+    // extends LEFT instead whenever tx is on the caster's right (see that
+    // function's own doc comment), and a fixed dx/dy:0..1 loop put the burst
+    // visual one tile off from the actual damage in that case (2026-09-23,
+    // fixed to match the corresponding bugfix already made in
+    // performWizardFireball).
     const { map } = gameState;
-    for (let dy = 0; dy <= 1; dy++) {
-      for (let dx = 0; dx <= 1; dx++) {
-        const x = tx + dx, y = ty + dy;
-        if (x < 0 || x >= map.width || y < 0 || y >= map.height) continue;
-        window.GameEngine.combat.spawnAreaEffect(x, y, 0, "fireball");
-      }
+    for (const { dx, dy } of window.GameEngine.combat.bombardBlastOffsets(caster.x, tx)) {
+      const x = tx + dx, y = ty + dy;
+      if (x < 0 || x >= map.width || y < 0 || y >= map.height) continue;
+      window.GameEngine.combat.spawnAreaEffect(x, y, 0, "fireball");
     }
     window.SfxSystem.playAction(civ.raceId, caster.typeId, "bombardment", tx, ty);
     log.push(`Bombardment: ${civ.id}'s Bombard blasts (${tx},${ty}), hitting ${hits.length} target(s), igniting ${ignited}`);
@@ -6493,8 +6504,8 @@ window.GameEngine = window.GameEngine || {};
   const BOMBARDMENT_ALLY_RISK_WEIGHT = 1.5;
 
   /** Dry-run of how a Bombardment targeted at (cx, cy) would net out --
-   *  same shape as scoreFireballBlast, just over combat.js's 2x2 footprint
-   *  instead of a 3x3 centered one. Must use the SAME offsets
+   *  same shape as scoreFireballBlast (both over the same corner-anchored
+   *  2x2 footprint now). Must use the SAME offsets
    *  applyBombardBlast will actually apply (combat.js's
    *  bombardBlastOffsets, direction-dependent on which side of the caster
    *  cx is on) -- otherwise this scores one set of tiles while
@@ -6623,13 +6634,15 @@ window.GameEngine = window.GameEngine || {};
     window.GameEngine.combat.recordCombatEvent({
       ax: caster.x, ay: caster.y, atkUnit: caster, dx: tx, dy: ty, defUnit: null,
     });
+    // Same bombardBlastOffsets(caster.x, tx) fix as performDwarfBombardment
+    // above (2026-09-23) -- a hardcoded dx/dy:0..1 loop here would put the
+    // burst visual one tile off from the actual damage whenever the block
+    // extends left instead of right.
     const { map } = gameState;
-    for (let dy = 0; dy <= 1; dy++) {
-      for (let dx = 0; dx <= 1; dx++) {
-        const x = tx + dx, y = ty + dy;
-        if (x < 0 || x >= map.width || y < 0 || y >= map.height) continue;
-        window.GameEngine.combat.spawnAreaEffect(x, y, 0, "fireball");
-      }
+    for (const { dx, dy } of window.GameEngine.combat.bombardBlastOffsets(caster.x, tx)) {
+      const x = tx + dx, y = ty + dy;
+      if (x < 0 || x >= map.width || y < 0 || y >= map.height) continue;
+      window.GameEngine.combat.spawnAreaEffect(x, y, 0, "fireball");
     }
     window.SfxSystem.playAction(civ.raceId, caster.typeId, "dragonfire", tx, ty);
     log.push(`Dragonfire: ${civ.id}'s Dragon blasts (${tx},${ty}), hitting ${hits.length} target(s), igniting ${ignited}`);
@@ -8862,14 +8875,19 @@ window.GameEngine = window.GameEngine || {};
     return true;
   }
 
-  /** Civ-wide trap population cap: one trap per Trouble Maker -- both
-   *  flavors share a single pool, same "self-cleaning"
-   *  shape as wispCapReached: a dead trap or dead Trouble Maker simply drops
-   *  out of civ.units, freeing/shrinking the cap next time this is checked. */
+  /** Civ-wide trap population cap: one trap per eligible trap-setter (a
+   *  Trouble Maker, OR any unit carrying Mhorgrim's Hunt -- see
+   *  items.grantsAction) -- both flavors share a single pool, same
+   *  "self-cleaning" shape as wispCapReached: a dead trap or a dead/departed
+   *  setter simply drops out of civ.units, freeing/shrinking the cap next
+   *  time this is checked. Counting item-bearers here too matters: without
+   *  it, a civ with no actual Trouble Maker could never place a single trap
+   *  even with the item, since the cap would be stuck at 0. */
   function trapCapReached(civ) {
-    const troubleMakers = civ.units.filter((u) => u.typeId === "trouble_maker").length;
+    const itemsApi = window.GameEngine.items;
+    const setters = civ.units.filter((u) => u.typeId === "trouble_maker" || itemsApi.grantsAction(u, "setTrap")).length;
     const traps = civ.units.filter((u) => u.typeId === "trap_frost" || u.typeId === "trap_fire").length;
-    return traps >= troubleMakers;
+    return traps >= setters;
   }
 
   /** A Trouble Maker plants a trap at (targetX,targetY) IMMEDIATELY -- no
@@ -9149,11 +9167,18 @@ window.GameEngine = window.GameEngine || {};
    *  when no owned tile is in range (e.g. a Trouble Maker off on a
    *  Resource Heist/Unlock the Gate run deep in enemy territory).
    *  Alternates flavor by a coin flip -- no tactical reasoning about which
-   *  is better here, just variety. Returns true if it consumed the Trouble
-   *  Maker's turn. */
+   *  is better here, just variety. Returns true if it consumed the turn.
+   *
+   *  Items (Mhorgrim's Hunt, 2026-09-23): the bearer can Set the Trap
+   *  whatever its type or tech, same nativeX-or-grantsAction gate
+   *  maybeRiddlePlay uses -- called both from maybeTroubleMakerPlay (the
+   *  native path) and maybeItemActionsPlay (the item-granted path), so this
+   *  one function is the single source of truth for the AI's own trap-siting
+   *  logic regardless of which route got it here. */
   function maybeHalfellowTrapPlay(civ, unit, gameState, log) {
-    if (unit.typeId !== "trouble_maker" || !civ.unlockedMechanics) return false;
-    if (!civ.unlockedMechanics.has("trap_summon") || unit.usedThisTurn) return false;
+    const nativeTrapper = unit.typeId === "trouble_maker" && civ.unlockedMechanics && civ.unlockedMechanics.has("trap_summon");
+    if (!nativeTrapper && !window.GameEngine.items.grantsAction(unit, "setTrap")) return false;
+    if (unit.usedThisTurn) return false;
     if (trapCapReached(civ)) return false;
     const { map } = gameState;
     let pick = null, bestOwned = false, bestDist = Infinity;
@@ -9603,9 +9628,10 @@ window.GameEngine = window.GameEngine || {};
       treasures.push({ id: "plunder", resource: "coin", text: `Plunder turns up an extra ${grantPlunderBonus(civ, unit, cfg)} coin besides.` });
     }
     // Unique items (data/items.js `unique: true`): a bonus on top of the normal
-    // haul, only where the caller asks for it (Ruin delves, Giltmaw/Trow chests).
-    // At most one per find, and only one that isn't already somewhere in the
-    // world -- see engine/items.js pickUniqueItemFor.
+    // haul, only where the caller asks for it (Ruin delves, Giltmaw/Trow chests,
+    // and -- rarely -- an ordinary chest, via openTreasureChest's fallback to
+    // cfg.ordinaryUniqueChance). At most one per find, and only one that isn't
+    // already somewhere in the world -- see engine/items.js pickUniqueItemFor.
     if (opts.uniqueChance && ctx.openerAlive && Math.random() < opts.uniqueChance) {
       const uniqueId = window.GameEngine.items.pickUniqueItemFor(unit, civ, gameState);
       if (uniqueId) {
@@ -9642,7 +9668,11 @@ window.GameEngine = window.GameEngine || {};
     if (!tile || tile.resource !== "chest") return null;
     const cfg = window.GameConfig.worldEncounters.treasureChest;
     const rollMult = tile.chestRollMult || 1;
-    const uniqueChance = tile.chestUniqueChance || 0;
+    // An ordinary chest's tile never carries its own chestUniqueChance (only
+    // a Giltmaw/Trow drop does -- see dropTrowChest) so it falls back to
+    // cfg.ordinaryUniqueChance here; a Giltmaw/Trow chest's own explicit,
+    // higher chance always wins first since it's truthy.
+    const uniqueChance = tile.chestUniqueChance || cfg.ordinaryUniqueChance || 0;
     // Items a fallen unit's death chest holds (see maybeSpawnDeathChest) --
     // granted after the rolled treasures below.
     const chestItems = tile.chestItems || [];
@@ -11102,6 +11132,11 @@ window.GameEngine = window.GameEngine || {};
         if (best && castRaptorFly(civ, unit, best, gameState, log)) return true;
       }
     }
+    // Set the Trap (Mhorgrim's Hunt): a standing/passive play with no
+    // urgency of its own, same reasoning maybeTroubleMakerPlay's own comment
+    // gives for placing it last in its native dispatch order -- so it goes
+    // last here too, behind anything more immediately impactful above.
+    if (has("setTrap") && maybeHalfellowTrapPlay(civ, unit, gameState, log)) return true;
     return false;
   }
 

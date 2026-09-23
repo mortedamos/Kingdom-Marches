@@ -937,6 +937,21 @@ window.GameEngine = window.GameEngine || {};
       u !== unit && Math.max(Math.abs(u.x - unit.x), Math.abs(u.y - unit.y)) === 1);
   }
 
+  /** "Give Item" (2026-09-23, user-directed): adjacent own-civ units that
+   *  could receive item `itemId` from `unit` right now. Excludes a carried
+   *  passenger (adjacentOwnUnits' own strict distance-1 check already does
+   *  this for free -- a passenger shares its carrier's own tile, distance 0,
+   *  not 1), matching the user's own choice of adjacent-tiles-only for this
+   *  action. contextMenuOptions below offers one pill per item this unit
+   *  carries that has at least one eligible target here. */
+  function giveItemTargets(unit, gameState, humanCivId, itemId) {
+    const civ = gameState.civs[unit.civId];
+    if (!civ || unit.usedThisTurn) return [];
+    if (!window.GameEngine.items.hasItem(unit, itemId)) return [];
+    return adjacentOwnUnits(unit, civ).filter((u) =>
+      !u.carriedBy && window.GameEngine.items.canReceiveItem(u, civ, itemId));
+  }
+
   /** Halfellow "Riddle": enemy units within effectiveRange, excluding Hidden
    *  and already-Befuddled ones, respecting the per-caster cooldown. */
   function riddleTargets(unit, gameState, humanCivId) {
@@ -1189,6 +1204,19 @@ window.GameEngine = window.GameEngine || {};
         options.push({ kind: "pickUpItem", label: "Pick Up" });
       }
 
+      // Give Item (2026-09-23, user-directed): one pill per item this unit
+      // carries that has at least one eligible adjacent-ally recipient right
+      // now -- same "pill per option" shape the Troubadour aura choice above
+      // uses instead of a separate item-picker UI. Clicking one opens
+      // target-selection mode (main.js) over giveItemTargets for that
+      // specific item.
+      if (!unit.usedThisTurn && !unit.channeling) {
+        for (const id of Object.keys(window.GameEngine.items.itemsOf(unit))) {
+          if (!giveItemTargets(unit, gameState, humanCivId, id).length) continue;
+          options.push({ kind: `giveItem:${id}`, label: `Give ${window.GameData.getItem(id).label}` });
+        }
+      }
+
       // Human "Battlefield Promotion": an existing unit of an obsoleted
       // type (Archer, Cavalry, Knight, Catapult -- any `replace_unit`
       // `from`) can spend the turn converting itself into its own
@@ -1393,8 +1421,12 @@ window.GameEngine = window.GameEngine || {};
       // pills, one per flavor, both gated on the SAME shared cap
       // (ai.js's trapCapReached counts both typeIds together) -- picking
       // either one still only ever nets one trap for this cap slot.
-      if (unit.typeId === "trouble_maker" && !unit.usedThisTurn
-          && civ.unlockedMechanics?.has("trap_summon") && !window.GameEngine.ai.trapCapReached(civ)) {
+      // Items (Mhorgrim's Hunt): the bearer can Set the Trap whatever its
+      // type or tech, same convention every other item-granted action here
+      // uses (Riddle/Teleport/Fireball above).
+      if ((unit.typeId === "trouble_maker" && civ.unlockedMechanics?.has("trap_summon")
+            || window.GameEngine.items.grantsAction(unit, "setTrap"))
+          && !unit.usedThisTurn && !window.GameEngine.ai.trapCapReached(civ)) {
         options.push({ kind: "setTrap:frost", label: "Set Frost Trap" });
         options.push({ kind: "setTrap:fire", label: "Set Fire Trap" });
       }
@@ -1945,6 +1977,7 @@ window.GameEngine = window.GameEngine || {};
     naturesGraceTargets,
     carryTargets,
     boardTargets,
+    giveItemTargets,
     riddleTargets,
     resourceHeistTargets,
     unlockTheGateTargets,

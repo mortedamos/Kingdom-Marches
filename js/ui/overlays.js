@@ -1721,6 +1721,223 @@ window.UI = window.UI || {};
     }
   }
 
+  // ---------------------------------------------------------------------
+  // Carried-item auras (2026-09-23, user-directed) -- five unique items each
+  // mark their bearer with a distinct, always-on ambient effect (day or
+  // night alike, unlike nightLight above, which only shows in the dark
+  // hours): Kurganos gets flame and lightning, The Rosepearl a purple glow,
+  // The Umbral Ring a shadow aura, Eyrhild's Fury a golden sparkle, and The
+  // Arc of Lightning a lightning aura. Declared per item as data/items.js's
+  // `carryAura`, read via engine/items.js's carryAuraOf -- see that field's
+  // own doc comment.
+  //
+  // Eyrhild's Fury's golden sparkle is deliberately built from a different
+  // hue, a ring instead of a filled halo, and rising/twinkling motes instead
+  // of an orbit, so it's never confused with the pending-level-up glow/
+  // sparkle above (drawLevelUpGlowBehind/drawLevelUpSparkles) -- the user
+  // explicitly called out that risk.
+  //
+  // Same "glow behind the sprite, particles in front of it" split render.js
+  // already uses for the level-up treatment: drawItemAuraGlowBehind is
+  // called where drawLevelUpGlowBehind is (before the sprite draws),
+  // drawItemAuraEffects where drawAmbientUnitEffects/drawLevelUpSparkles are
+  // (after). Since all 5 items are `unique: true` (data/items.js), at most
+  // one unit in the whole game world can ever be showing a given aura at
+  // once -- conditionEffectPhase's per-unit phase offset still applies for a
+  // natural, non-mechanical beat, just with no "many units in lockstep" case
+  // to actually guard against.
+  // ---------------------------------------------------------------------
+
+  /** A handful of small colored motes drifting slowly upward and fading --
+   *  same shape as drawAmbientSmoke above, kept as its own function (rather
+   *  than generalizing that one) matching this file's existing habit of
+   *  small dedicated variants over one heavily-parameterized shared one (see
+   *  drawWispFlicker vs. drawFlameEffect). `color` is a plain CSS color
+   *  string; per-mote fade is applied via globalAlpha, not the color itself. */
+  function drawAuraMotes(ctx, baseX, baseY, scale, phase, now, color, alphaMult, cycleMs = 3600) {
+    if (window.UI.motion && window.UI.motion.isReduced()) return; // pure motion, no meaningful static frame
+    const delays = [0, 0.33, 0.66];
+    ctx.save();
+    for (const delay of delays) {
+      const t = (((now + phase * 1000) % cycleMs) / cycleMs - delay + 1) % 1;
+      const ease = 1 - (1 - t) * (1 - t);
+      const rise = scale * 1.1 * ease;
+      const size = scale * (0.1 + 0.07 * ease);
+      const alpha = (t < 0.15 ? t / 0.15 : Math.max(0, 1 - (t - 0.15) / 0.85)) * alphaMult;
+      if (alpha <= 0.02) continue;
+      const driftX = Math.sin(t * Math.PI * 1.6 + phase * 5 + delay * 6) * scale * 0.18;
+      ctx.globalAlpha = alpha;
+      ctx.fillStyle = color;
+      ctx.beginPath();
+      ctx.arc(baseX + driftX, baseY - rise, Math.max(1, size), 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  /** A single jagged lightning-bolt stroke, crackling in and out via the same
+   *  occasional-burst envelope drawSparkleBurstPair uses above -- most of the
+   *  cycle draws nothing, so it reads as an intermittent crackle rather than
+   *  a constant static line, and stays well clear of the no-flashing rule
+   *  (bursts are seconds apart with a smooth fade in/out, never a fast
+   *  strobe). The zigzag shape comes from `phase`/`seedOffset` rather than
+   *  Math.random(), so it doesn't re-jitter every single frame while lit --
+   *  it's the same bolt redrawn, not a new one. `seedOffset` also staggers
+   *  multiple bolts on the same unit so they don't crackle in unison. */
+  function drawAuraLightningBolt(ctx, x, y, len, phase, now, color, seedOffset, cycleMs, burstMs) {
+    const t = (now + phase * 1000 + seedOffset * cycleMs) % cycleMs;
+    if (t > burstMs) return;
+    const alpha = sparkleEnvelope(t / burstMs);
+    if (alpha <= 0.02) return;
+    const zigzagSeed = (phase * 977 + seedOffset * 1301) % 1000;
+    const jag = (k) => Math.sin(zigzagSeed + k * 11.3) * len * 0.14;
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.strokeStyle = color;
+    ctx.lineWidth = Math.max(1, len * 0.08);
+    ctx.lineCap = "round";
+    ctx.beginPath();
+    ctx.moveTo(x + jag(0), y - len / 2);
+    ctx.lineTo(x + jag(1), y - len / 6);
+    ctx.lineTo(x + jag(2), y + len / 6);
+    ctx.lineTo(x + jag(3), y + len / 2);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  /** Per-aura-kind glow, drawn BEHIND the sprite (see drawItemAuraGlowBehind
+   *  below) -- each function fully owns its own save/restore/composite mode
+   *  since "shadow" needs ordinary darkening (source-over) where the other
+   *  four want an emitted-light look ("lighter"). */
+  const ITEM_AURA_GLOW = {
+    elemental(ctx, cx, cy, r, pulse) {
+      ctx.save();
+      ctx.globalCompositeOperation = "lighter";
+      const grad = ctx.createRadialGradient(cx, cy, r * 0.12, cx, cy, r);
+      grad.addColorStop(0, `rgba(255,140,40,${0.4 * pulse})`);
+      grad.addColorStop(0.55, `rgba(255,80,20,${0.2 * pulse})`);
+      grad.addColorStop(1, "rgba(255,80,20,0)");
+      ctx.fillStyle = grad;
+      ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.fill();
+      ctx.restore();
+    },
+    purple_glow(ctx, cx, cy, r, pulse) {
+      ctx.save();
+      ctx.globalCompositeOperation = "lighter";
+      const grad = ctx.createRadialGradient(cx, cy, r * 0.12, cx, cy, r);
+      grad.addColorStop(0, `rgba(200,110,255,${0.4 * pulse})`);
+      grad.addColorStop(0.55, `rgba(150,60,220,${0.2 * pulse})`);
+      grad.addColorStop(1, "rgba(150,60,220,0)");
+      ctx.fillStyle = grad;
+      ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.fill();
+      ctx.restore();
+    },
+    shadow(ctx, cx, cy, r, pulse) {
+      // "source-over" near-black, not "lighter" -- a pool of shadow clinging
+      // to the bearer, not an emitted light. Capped well short of full black
+      // (see the alpha values) so the sprite itself is never obscured.
+      ctx.save();
+      const grad = ctx.createRadialGradient(cx, cy, r * 0.1, cx, cy, r);
+      grad.addColorStop(0, `rgba(20,5,35,${0.4 * pulse})`);
+      grad.addColorStop(0.6, `rgba(15,5,25,${0.2 * pulse})`);
+      grad.addColorStop(1, "rgba(15,5,25,0)");
+      ctx.fillStyle = grad;
+      ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.fill();
+      ctx.restore();
+    },
+    golden_sparkle(ctx, cx, cy, r, pulse) {
+      // A thin ring, not a filled halo -- deliberately built differently
+      // from drawLevelUpGlowBehind above; see this section's own doc comment.
+      ctx.save();
+      ctx.globalCompositeOperation = "lighter";
+      ctx.strokeStyle = `rgba(255,244,200,${0.55 * pulse})`;
+      ctx.lineWidth = Math.max(1, r * 0.09);
+      ctx.beginPath();
+      ctx.arc(cx, cy, r * 0.78, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.restore();
+    },
+    lightning(ctx, cx, cy, r, pulse) {
+      ctx.save();
+      ctx.globalCompositeOperation = "lighter";
+      const grad = ctx.createRadialGradient(cx, cy, r * 0.12, cx, cy, r);
+      grad.addColorStop(0, `rgba(210,235,255,${0.35 * pulse})`);
+      grad.addColorStop(0.55, `rgba(140,190,255,${0.18 * pulse})`);
+      grad.addColorStop(1, "rgba(140,190,255,0)");
+      ctx.fillStyle = grad;
+      ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.fill();
+      ctx.restore();
+    },
+  };
+
+  /** render.js calls this where it calls drawLevelUpGlowBehind, right before
+   *  the sprite itself draws. No-ops for a unit carrying none of the 5
+   *  aura-bearing items (carryAuraOf returns null). */
+  function drawItemAuraGlowBehind(ctx, unit, boxX, boxY, boxSize, now) {
+    const kind = window.GameEngine.items.carryAuraOf(unit);
+    const draw = kind && ITEM_AURA_GLOW[kind];
+    if (!draw) return;
+    const cx = boxX + boxSize / 2, cy = boxY + boxSize / 2;
+    const phase = conditionEffectPhase(unit);
+    const reduced = window.UI.motion && window.UI.motion.isReduced();
+    const pulse = reduced ? 1 : 0.7 + 0.3 * Math.sin(now / 480 + phase);
+    draw(ctx, cx, cy, boxSize * 0.62, pulse);
+  }
+
+  /** render.js calls this where it calls drawAmbientUnitEffects, after the
+   *  sprite draws -- the front-layer half of each aura (particles, sparks,
+   *  bolts). No-ops for a unit carrying none of the 5 aura-bearing items. */
+  function drawItemAuraEffects(ctx, unit, boxX, boxY, boxSize, now) {
+    const kind = window.GameEngine.items.carryAuraOf(unit);
+    if (!kind) return;
+    const phase = conditionEffectPhase(unit);
+    const cx = boxX + boxSize / 2;
+    const reduced = window.UI.motion && window.UI.motion.isReduced();
+    switch (kind) {
+      case "elemental": {
+        // Fire (reusing the same teardrop tongue shape ambient/Burning fire
+        // uses, at Wisp-like subdued scale) plus lightning crackling past
+        // it -- the item's other half.
+        const t = now / 140 + phase * 3;
+        const lean = reduced ? 0.1 : 0.2 * Math.sin(t);
+        ctx.save();
+        ctx.globalAlpha = reduced ? 0.7 : 0.6 + 0.2 * Math.sin(t * 2);
+        ctx.translate(cx, boxY + boxSize * 0.14);
+        ctx.rotate(lean);
+        drawFlameTongue(ctx, boxSize * 0.24);
+        ctx.restore();
+        drawAuraLightningBolt(ctx, boxX + boxSize * 0.78, boxY + boxSize * 0.5, boxSize * 0.5,
+          phase, now, "#cfe6ff", 0, 2400, 260);
+        break;
+      }
+      case "purple_glow":
+        drawAuraMotes(ctx, cx, boxY + boxSize * 0.1, boxSize * 0.5, phase, now, "#be6eff", 0.55);
+        break;
+      case "shadow":
+        drawAuraMotes(ctx, cx, boxY + boxSize * 0.85, boxSize * 0.55, phase, now, "#1e0a2d", 0.6, 4200);
+        break;
+      case "golden_sparkle": {
+        // Rising, twinkling motes rather than orbiting sparkles -- see this
+        // section's doc comment for why this deliberately doesn't reuse
+        // drawLevelUpSparkles' own motion.
+        const spots = [{ dx: -0.28, delay: 0 }, { dx: 0.1, delay: 0.4 }, { dx: 0.32, delay: 0.75 }];
+        const cycle = 2200;
+        for (const s of spots) {
+          const t = reduced ? 0.4 : (((now + phase * 1000) % cycle) / cycle - s.delay + 1) % 1;
+          const alpha = t < 0.2 ? t / 0.2 : Math.max(0, 1 - (t - 0.2) / 0.8);
+          if (alpha <= 0.03) continue;
+          const rise = boxSize * 0.5 * (reduced ? 0.4 : t);
+          drawSparkleMark(ctx, cx + boxSize * s.dx, boxY + boxSize * 0.9 - rise, boxSize * 0.08 * alpha, alpha, "#fff4c8");
+        }
+        break;
+      }
+      case "lightning":
+        drawAuraLightningBolt(ctx, boxX + boxSize * 0.22, boxY + boxSize * 0.5, boxSize * 0.55, phase, now, "#dff0ff", 0, 2000, 220);
+        drawAuraLightningBolt(ctx, boxX + boxSize * 0.8, boxY + boxSize * 0.45, boxSize * 0.5, phase, now, "#bcdcff", 0.55, 2000, 220);
+        break;
+    }
+  }
+
   /**
    * Small status badges -- one per active unit.conditions entry with a
    * mapped icon (see CONDITION_ICONS), plus a "carrying a passenger" badge
@@ -2507,7 +2724,7 @@ window.UI = window.UI || {};
     getActiveMuzzleSmoke, getActiveImpactSmoke,
     getUnitShakeOffset, drawConditionVisualEffects, drawConditionBadges, drawChannelStashLabel, drawIdleCityBadge, drawWallCrossableBadge,
     drawLevelUpGlowBehind, drawLevelUpSparkles, drawFlameEffect, drawChestSparkle, drawResourceGlint,
-    drawAmbientUnitEffects,
+    drawAmbientUnitEffects, drawItemAuraGlowBehind, drawItemAuraEffects,
     drawGrassClutter, drawWindWisp, drawSwampSnake, drawForestBird, drawFireflies,
     drawLightningScorch,
     hexToRgba, drawHatch, drawConstructionSite, auraInfoForUnit, drawTileScoreOverlay,

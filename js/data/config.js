@@ -63,11 +63,11 @@ window.GameConfig = {
   // stamp, and the only cost of forgetting is being told the wrong thing.
   build: {
     /** Local date this build was cut, YYYY-MM-DD. */
-    date: "2026-09-22",
+    date: "2026-09-23",
     /** Local time this build was cut, 24-hour HH:MM. */
-    time: "20:15",
+    time: "11:53",
     /** Monotonic build counter -- increment it, don't recompute it. */
-    number: 329,
+    number: 330,
   },
 
   // =========================================================================
@@ -1066,9 +1066,17 @@ window.GameConfig = {
        *  usual number of treasure rolls. */
       giltmawRollMult: 2,
       /** Chance that a slain Giltmaw's chest / a struck Treasure Trow's chest also holds a
-       *  unique item (only one not already in the world). Ordinary chests never do. */
+       *  unique item (only one not already in the world). */
       giltmawUniqueChance: 0.25,
       trowUniqueChance: 0.10,
+      /** Same bonus roll as giltmawUniqueChance/trowUniqueChance above, but for
+       *  an ORDINARY chest -- much rarer since these are common (2026-09-23,
+       *  user-directed: "1% chance"). ai.js's openTreasureChest falls back to
+       *  this only when the chest's tile carries no explicit chestUniqueChance
+       *  of its own (i.e. it isn't a Giltmaw/Trow drop, which always stamp one
+       *  -- see dropTrowChest), so this can only ever ADD a chance, never
+       *  override or reduce the higher ones those already have. */
+      ordinaryUniqueChance: 0.01,
     },
     /** Weather hazards (ai.js tickStormAndRain, once per round): during a STORM one random
      *  tile on the map is struck by lightning -- units there take `lightningDamage` (flat,

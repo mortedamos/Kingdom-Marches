@@ -1396,6 +1396,7 @@ window.UI = window.UI || {};
       const isOwnHidden = !!unit.conditions?.hidden && (humanCivId == null || unit.civId === humanCivId);
       const spriteAlpha = isOwnHidden ? 0.55 : 1;
       overlays.drawLevelUpGlowBehind(ctx, unit, boxX, boxY, boxSize, now);
+      overlays.drawItemAuraGlowBehind(ctx, unit, boxX, boxY, boxSize, now);
       ctx.save();
       ctx.globalAlpha = spriteAlpha;
       // Which frame of the idle cycle the sprite actually drew, captured here
@@ -1430,6 +1431,7 @@ window.UI = window.UI || {};
       // no Burning condition and no damage.
       if (unit.conditions?.burning || window.GameEngine.items.itemFlag(unit, "flames")) overlays.drawFlameEffect(ctx, unit, boxX, boxY, boxSize, now);
       overlays.drawAmbientUnitEffects(ctx, unit, boxX, boxY, boxSize, now);
+      overlays.drawItemAuraEffects(ctx, unit, boxX, boxY, boxSize, now);
       // Torch-, staff- and fire-bearers light their own patch of night.
       // Anchored to the sprite BOX rather than the tile so the light walks
       // with the unit's interpolated position mid-move.
@@ -1733,10 +1735,12 @@ window.UI = window.UI || {};
     // aoeOffsets (every other placement flow -- structures, summons,
     // teleport, traps -- is unaffected).
     if (placement.aoeOffsets && hover && placement.slots.some((s) => s.x === hover.x && s.y === hover.y)) {
-      // Bombardment's offsets depend on which side of the caster the
-      // hovered tile is on (see combat.js's bombardBlastOffsets) -- so
-      // aoeOffsets may be a function of the hovered tile instead of a
-      // fixed list; Fireball's stays a plain array, always centered.
+      // Fireball/Bombardment/Dragonfire's offsets all depend on which side
+      // of the caster the hovered tile is on (see combat.js's
+      // bombardBlastOffsets, 2026-09-23: Fireball's blast now matches
+      // Bombardment's shape) -- so aoeOffsets is a function of the hovered
+      // tile for those. A placement with a genuinely fixed blast (e.g.
+      // Barrel Bomb's single tile) can still pass a plain array instead.
       const offsets = typeof placement.aoeOffsets === "function"
         ? placement.aoeOffsets(hover) : placement.aoeOffsets;
       for (const off of offsets) {

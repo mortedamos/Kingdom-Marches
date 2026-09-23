@@ -120,6 +120,19 @@
     return best;
   }
 
+  /** The carried-item ambient aura kind the bearer shows (data/items.js
+   *  `carryAura`; drawn by overlays.js's drawItemAuraGlowBehind/
+   *  drawItemAuraEffects), or null. Unlike nightLightOf, which picks the
+   *  BIGGEST light when several are carried, this just takes the first held
+   *  aura-bearing item (heldDefs' own iteration order) -- stacking auras
+   *  would read as visual clutter, not information, and there's no natural
+   *  "biggest" to compare across different aura kinds the way there is for a
+   *  light's radius. */
+  function carryAuraOf(unit) {
+    for (const d of heldDefs(unit)) if (d.carryAura) return d.carryAura;
+    return null;
+  }
+
   /** Aggregate treasure/affliction luck of the bearer (multipliers default to 1, chances to 0). */
   function itemLuck(unit) {
     const luck = { extraTreasureChance: 0, delveMult: 1, trapMult: 1, conditionResist: 0, resourceMult: 1 };
@@ -198,6 +211,24 @@
     return tile.groundItems.filter((id) => canReceiveItem(unit, civ, id));
   }
 
+  /** "Give Item" (2026-09-23, user-directed): moves item `id` from `giver` to
+   *  `receiver`, both already validated by the caller (orders.js's
+   *  giveItemTargets checks adjacency and canReceiveItem before the pill is
+   *  even offered) -- re-checked here too, since either unit could have
+   *  changed state between the ring being drawn and this actually resolving,
+   *  same "don't trust a stale menu" caution every other targeted action in
+   *  this codebase takes. Spends the GIVER's action, same as Pick Up; the
+   *  receiver's own turn is untouched, mirroring how a chest/pickup grant
+   *  never costs the recipient anything either. Returns true on success. */
+  function transferItem(giver, receiver, civ, id) {
+    if (!giver || giver.usedThisTurn || !hasItem(giver, id) || !canReceiveItem(receiver, civ, id)) return false;
+    giver.items = itemsOf(giver); // also migrates the old flag-style shape, same as giveItem
+    delete giver.items[id];
+    giveItem(receiver, civ, id);
+    giver.usedThisTurn = true;
+    return true;
+  }
+
   /** The "Pick Up" action: takes the first holdable item on the unit's tile,
    *  spends its action. Returns the item id, or null if there was nothing valid. */
   function pickUpItem(civ, unit, gameState) {
@@ -250,8 +281,8 @@
     itemsOf, hasItem, itemStat, hasItemEffect, canUseItems,
     itemStatMax, itemBolt,
     hasUniqueItem,
-    heldDefs, hasImmunity, onHitEffects, grantsAction, itemAuras, itemFlag, nightLightOf, itemLuck,
-    canReceiveItem, giveItem, dropItemAt, pickableItemsAt, pickUpItem,
+    heldDefs, hasImmunity, onHitEffects, grantsAction, itemAuras, itemFlag, nightLightOf, carryAuraOf, itemLuck,
+    canReceiveItem, giveItem, transferItem, dropItemAt, pickableItemsAt, pickUpItem,
     isItemInPlay, pickUniqueItemFor,
   };
 })();

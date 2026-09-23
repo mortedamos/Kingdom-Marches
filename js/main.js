@@ -6604,6 +6604,26 @@
           startTargetSelection("Board",
             window.GameEngine.orders.boardTargets(unit, gameState, humanCivId),
             (target) => handleCarryUnit(target, unit));
+        } else if (kind && kind.startsWith("giveItem:")) {
+          // "Give Item": "giveItem:<id>" payload-in-kind-string, same
+          // convention as setTrap:/activateAura: above. `unit` is the giver;
+          // stage two picks the receiver (target-selection mode over
+          // giveItemTargets, re-validated at click time same as every other
+          // targeted action here). items.js's transferItem does the actual
+          // move-and-spend-the-giver's-turn and re-checks eligibility itself
+          // since either unit could have changed since the ring was drawn.
+          const civ = gameState.civs[humanCivId];
+          const id = kind.slice("giveItem:".length);
+          const itemDef = window.GameData.getItem(id);
+          const itemLabel = itemDef ? itemDef.label : "Item";
+          startTargetSelection(`Give ${itemLabel}`,
+            window.GameEngine.orders.giveItemTargets(unit, gameState, humanCivId, id),
+            (target) => {
+              if (civ && window.GameEngine.items.transferItem(unit, target, civ, id)) {
+                window.SfxSystem.playTreasureChestOpen(); // same "gear changed hands" cue Pick Up uses
+                window.GameEngine.floatingText.spawnFloatingText(target, `${itemLabel}!`, "aura");
+              }
+            });
         } else if (kind === "dropOff") {
           // "Drop Off": commits instantly, no
           // placement mode -- see orders.js's ring option, gated on
@@ -6838,14 +6858,19 @@
     redraw();
   }
 
-  /** Human "Fireball!": tile-placement mode over
-   *  every in-bounds tile within FIREBALL_RANGE (3, mirrored here as a
-   *  literal -- see ai.js) of the caster -- no explored/visibility
-   *  requirement, matching orders.js's own gate on the ring option. Picking
-   *  a slot commits via performPlayerFireball; clicking outside every
-   *  highlighted tile cancels, same convention as every other placement
-   *  flow. No preview sprite (see startTeleportPlacement's previewUnitId)
-   *  -- Fireball doesn't relocate a unit, it detonates on the chosen tile. */
+  /** Human "Fireball!": same tile-placement shape as Bombardment/Dragonfire
+   *  below (2026-09-23, user-directed: "match bombard") -- tile-placement
+   *  mode over every in-bounds tile within FIREBALL_RANGE (3, mirrored here
+   *  as a literal -- see ai.js) of the caster, no explored/visibility
+   *  requirement, matching orders.js's own gate on the ring option. The
+   *  picked tile becomes one CORNER of the 2x2 blast (see combat.js's
+   *  bombardBlastOffsets/applyFireballBlast), not a center -- which corner
+   *  depends on which side of the caster the hovered tile is on, same
+   *  convention startBombardmentPlacement below uses. Picking a slot commits
+   *  via performPlayerFireball; clicking outside every highlighted tile
+   *  cancels, same convention as every other placement flow. No preview
+   *  sprite (see startTeleportPlacement's previewUnitId) -- Fireball doesn't
+   *  relocate a unit, it detonates on the chosen tile. */
   function startFireballPlacement(caster) {
     if (!humanCivId) return;
     const civ = gameState.civs[humanCivId];
@@ -6865,14 +6890,15 @@
       slots,
       label: "Fireball!",
       // Blast preview (render.js's drawPlacementOverlay): the hovered
-      // tile's own 3x3 blast (see combat.js's applyFireballBlast) drawn as
-      // an offset list, not just the single anchor tile -- so the player
-      // can actually see what the blast will hit before committing.
-      aoeOffsets: (() => {
-        const offs = [];
-        for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) offs.push({ dx, dy });
-        return offs;
-      })(),
+      // tile's own 2x2 blast (see combat.js's bombardBlastOffsets --
+      // extends toward the caster, so which corner the hovered tile is
+      // depends on which side of the caster it's on) drawn as an offset
+      // list, not just the single anchor tile -- so the player can
+      // actually see the other tiles that would also get hit before
+      // committing. A function of the hovered tile, not a fixed list --
+      // see render.js's drawPlacementOverlay for the caller side. Same
+      // exact shape startBombardmentPlacement below uses.
+      aoeOffsets: (tile) => window.GameEngine.combat.bombardBlastOffsets(caster.x, tile.x),
       onPick: (slot) => {
         viewState.placement = null;
         if (slot) window.GameEngine.ai.performPlayerFireball(civ, caster, slot.x, slot.y, gameState);

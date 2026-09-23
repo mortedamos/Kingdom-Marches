@@ -1785,42 +1785,52 @@ window.GameEngine = window.GameEngine || {};
   /**
    * Human "Fireball!" (see ai.js's performWizardFireball): a standalone
    * targeted action. Deals FIREBALL_DAMAGE_PCT of the Wizard's attack (not
-   * applySplashDamage's half-roll) to every unit AND structure in the 3x3
-   * area centered on (centerX, centerY) -- the target tile itself, plus its
-   * 8 neighbors, no "primary target" distinction. Indiscriminate: the
-   * caster's OWN civ (including the caster itself, if it's standing in its
-   * own blast) is just as exposed as anyone else -- see ai.js's
-   * maybeFireballStrike for the AI-side risk/reward targeting that this
-   * demands. Never hits cities directly (same "structures, not cities"
-   * scope applySplashDamage already uses). Returns a log of hits, same shape
-   * as applySplashDamage's, for the caller to roll ignite chance against.
+   * applySplashDamage's half-roll) to every unit AND structure in a 2x2
+   * block anchored on (centerX, centerY), no "primary target" distinction.
+   *
+   * AREA (2026-09-23, user-directed: "match bombard"): reuses
+   * bombardBlastOffsets below for the exact same 2x2-block-with-no-single-
+   * center shape Bombardment/Dragonfire use -- the targeted tile is always
+   * one CORNER of the block, extending back toward the caster (see that
+   * function's own doc comment for the left/right-of-caster logic), not a
+   * fixed square centered on the target the way this used to work. Kept as
+   * its OWN function rather than switching to the shared applyOffsetBlast
+   * (which Bombardment/Dragonfire/Barrel Bomb use) because Fireball's damage
+   * math and scope are still deliberately its own: one flat attack value for
+   * BOTH unit and structure hits (no isSiege split), and it never hits
+   * cities at all (same "structures, not cities" scope applySplashDamage
+   * uses) -- only the blast's SHAPE changed to match, not its effects.
+   *
+   * Indiscriminate: the caster's OWN civ (including the caster itself, if
+   * it's standing in its own blast) is just as exposed as anyone else -- see
+   * ai.js's maybeFireballStrike for the AI-side risk/reward targeting that
+   * this demands. Returns a log of hits, same shape as applySplashDamage's,
+   * for the caller to roll ignite chance against.
    */
   function applyFireballBlast(casterUnit, casterCiv, centerX, centerY, gameState) {
     const { map, civs } = gameState;
     const atk = effectiveAttack(casterUnit, casterCiv, {}) * FIREBALL_DAMAGE_PCT;
     const hits = [];
-    for (let dy = -1; dy <= 1; dy++) {
-      for (let dx = -1; dx <= 1; dx++) {
-        const x = centerX + dx, y = centerY + dy;
-        if (x < 0 || x >= map.width || y < 0 || y >= map.height) continue;
-        for (const otherCiv of Object.values(civs)) {
-          if (otherCiv.eliminated) continue;
-          const hitUnit = otherCiv.units.find((u) => u.x === x && u.y === y && !isTrow(u)); // Trow is unhurtable
-          if (hitUnit) {
-            const dmg = mitigatedDamage(atk, effectiveDefense(hitUnit, otherCiv, {}));
-            hitUnit.hp -= dmg;
-            // Hidden: an AoE blast isn't "aimed," so it can still catch a
-            // Hidden unit by accident -- being hit this way reveals it.
-            revealHidden(hitUnit, gameState.turnNumber || 0);
-            hits.push({ kind: "unit", x, y, damage: dmg, civId: otherCiv.id, typeId: hitUnit.typeId, unit: hitUnit });
-          }
+    for (const { dx, dy } of bombardBlastOffsets(casterUnit.x, centerX)) {
+      const x = centerX + dx, y = centerY + dy;
+      if (x < 0 || x >= map.width || y < 0 || y >= map.height) continue;
+      for (const otherCiv of Object.values(civs)) {
+        if (otherCiv.eliminated) continue;
+        const hitUnit = otherCiv.units.find((u) => u.x === x && u.y === y && !isTrow(u)); // Trow is unhurtable
+        if (hitUnit) {
+          const dmg = mitigatedDamage(atk, effectiveDefense(hitUnit, otherCiv, {}));
+          hitUnit.hp -= dmg;
+          // Hidden: an AoE blast isn't "aimed," so it can still catch a
+          // Hidden unit by accident -- being hit this way reveals it.
+          revealHidden(hitUnit, gameState.turnNumber || 0);
+          hits.push({ kind: "unit", x, y, damage: dmg, civId: otherCiv.id, typeId: hitUnit.typeId, unit: hitUnit });
         }
-        const structFound = window.GameEngine.cities.findStructureAt(gameState, x, y);
-        if (structFound) {
-          const dmg = mitigatedDamage(atk, 0);
-          structFound.record.hp -= dmg;
-          hits.push({ kind: "structure", x, y, damage: dmg, civId: structFound.civ.id, id: structFound.record.id, record: structFound.record });
-        }
+      }
+      const structFound = window.GameEngine.cities.findStructureAt(gameState, x, y);
+      if (structFound) {
+        const dmg = mitigatedDamage(atk, 0);
+        structFound.record.hp -= dmg;
+        hits.push({ kind: "structure", x, y, damage: dmg, civId: structFound.civ.id, id: structFound.record.id, record: structFound.record });
       }
     }
     return hits;
@@ -1916,11 +1926,11 @@ window.GameEngine = window.GameEngine || {};
    * Dwarf "Bombardment" (see ai.js's performDwarfBombardment) / Orc
    * "Dragonfire" (see ai.js's performDragonfire) -- both reuse this exact
    * function, differing only in caster/range, which live entirely in
-   * ai.js. Same standalone-targeted-blast shape as Human's Fireball just
-   * above, but a 2x2 area (not 3x3) and anchored differently -- a 2x2 block
-   * has no single center tile, so per the tech's own design the TARGETED
-   * tile is one of the block's corners (see bombardBlastOffsets above for
-   * which one, and why).
+   * ai.js. Same standalone-targeted-blast SHAPE as Human's Fireball just
+   * above (both are the same 2x2, corner-anchored bombardBlastOffsets
+   * block), but through the shared applyOffsetBlast body below instead of
+   * Fireball's own -- Fireball keeps its own flat unit/structure damage (no
+   * isSiege split) and never hits a city, where this one does both.
    */
   function applyBombardBlast(casterUnit, casterCiv, centerX, centerY, gameState) {
     return applyOffsetBlast(casterUnit, casterCiv, bombardBlastOffsets(casterUnit.x, centerX), centerX, centerY, gameState);
