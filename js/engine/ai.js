@@ -7510,6 +7510,7 @@ window.GameEngine = window.GameEngine || {};
     unit.usedThisTurn = true;
     unit.currentMission = `Unlocked the gate at (${structure.x},${structure.y})`;
     log.push(`Unlock the Gate: ${civ.id}'s ${describeUnit(unit)} suppresses ${target.civId}'s ${city.name}'s wall defense by 75% for ${UNLOCK_THE_GATE_ROUNDS} rounds`);
+    if (window.GameEngine.story) window.GameEngine.story.push({ type: "moment", trigger: "unlockGate", civId: civ.id, targetCivId: target.civId, city: city.name });
     // "Trickster opens the gate, then the army walks in" (2026-09-12,
     // user-directed): headless testing found this fired 75 times in one
     // 250-turn game with ZERO follow-up attacks -- Halfellow's own units
@@ -7615,6 +7616,8 @@ window.GameEngine = window.GameEngine || {};
     unit.currentMission = resisted ? `Riddle resisted by ${describeUnit(target)}` : `Befuddled ${describeUnit(target)} with a riddle`;
     log.push(`Riddle: ${civ.id}'s ${describeUnit(unit)} poses a riddle to ${targetCiv.id}'s ${describeUnit(target)} -> ` +
       (resisted ? "resisted" : "befuddled"));
+    // Story engine (js/engine/story.js): riddle moments (Barnaby, Hobby).
+    if (window.GameEngine.story) window.GameEngine.story.push({ type: "moment", trigger: resisted ? "riddleFail" : "riddleWin", civId: civ.id, targetCivId: target.civId });
     // Speech-bubble flavor: the caster poses
     // the actual riddle, the target replies with the answer if it
     // resisted or a stumped non-answer if it got Befuddled -- reuses the
@@ -12164,6 +12167,7 @@ window.GameEngine = window.GameEngine || {};
     unit.usedThisTurn = true;
     unit.currentMission = `Hunting an enemy ${describeUnit(nearest)} near (${nearest.x},${nearest.y})`;
     log.push(`Dire Wolf: ${civ.id}'s Dire Wolf tracks an enemy ${describeUnit(nearest)} toward (${nearest.x},${nearest.y})`);
+    if (window.GameEngine.story) window.GameEngine.story.push({ type: "moment", trigger: "wolfHunt", civId: civ.id });
     return true;
   }
 
@@ -16180,6 +16184,12 @@ window.GameEngine = window.GameEngine || {};
       civ.unitsLostInBattle = (civ.unitsLostInBattle || 0) + 1;
       const killerCiv = killerCivId ? civs[killerCivId] : null;
       if (killerCiv) killerCiv.unitsKilled = (killerCiv.unitsKilled || 0) + 1;
+      // Story engine (js/engine/story.js): rival taunts and kill moments.
+      if (window.GameEngine.story) {
+        window.GameEngine.story.push({
+          type: "unitKilled", victimCivId: deadUnit.civId, victimTypeId: deadUnit.typeId, killerCivId,
+        });
+      }
     }
   }
 

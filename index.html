@@ -126,6 +126,15 @@
               <option value="reduced">Reduced</option>
             </select>
           </label>
+          <label class="audio-panel-row">
+            <span>Text Speed</span>
+            <select id="title-menu-text-speed-select">
+              <option value="slow">Slow</option>
+              <option value="normal">Normal</option>
+              <option value="fast">Fast</option>
+              <option value="instant">Instant</option>
+            </select>
+          </label>
         </div>
       </div>
       <div class="menu-item">
@@ -293,6 +302,15 @@
               <option value="auto">Auto</option>
               <option value="full">Full</option>
               <option value="reduced">Reduced</option>
+            </select>
+          </label>
+          <label class="audio-panel-row">
+            <span>Text Speed</span>
+            <select id="text-speed-select">
+              <option value="slow">Slow</option>
+              <option value="normal">Normal</option>
+              <option value="fast">Fast</option>
+              <option value="instant">Instant</option>
             </select>
           </label>
           <div id="fog-of-war-panel" class="fow-panel" style="display:none;">
@@ -619,6 +637,9 @@
   <script src="js/data/techs.js"></script>
   <script src="js/data/buildings.js"></script>
   <script src="js/data/items.js"></script>
+  <script src="js/data/story/characters.js"></script>
+  <script src="js/data/story/barks.js"></script>
+  <script src="js/data/story/shared.js"></script>
   <!-- Hand-authored lamp positions for the day/night cycle. Data only; must
        load before js/ui/daynight.js reads it. -->
   <script src="js/data/window-lights.js"></script>
@@ -637,6 +658,7 @@
   <script src="js/engine/strategy.js"></script>
   <script src="js/engine/ai.js"></script>
   <script src="js/engine/turns.js"></script>
+  <script src="js/engine/story.js"></script>
   <script src="js/engine/orders.js"></script>
   <script src="js/engine/savegame.js"></script>
 
@@ -661,6 +683,7 @@
   <script src="js/ui/reports.js"></script>
   <script src="js/ui/knowledgebase.js"></script>
   <script src="js/ui/dialog.js"></script>
+  <script src="js/ui/story.js"></script>
   <script src="js/ui/fireworks.js"></script>
   <script src="js/ui/credits.js"></script>
   <script src="js/ui/buildlist.js"></script>

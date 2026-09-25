@@ -665,12 +665,12 @@ html, body {
      docked here at all (see mobile.css). */
   padding-top: 62px;
 }
-.sidebar.race-human, .game-dialog-victory.race-human         { border-image-source: url("../assets/img/sidebar-gilding-human.svg"); }
-.sidebar.race-elf, .game-dialog-victory.race-elf             { border-image-source: url("../assets/img/sidebar-gilding-elf.svg"); }
-.sidebar.race-dwarf, .game-dialog-victory.race-dwarf         { border-image-source: url("../assets/img/sidebar-gilding-dwarf.svg"); }
-.sidebar.race-orc, .game-dialog-victory.race-orc             { border-image-source: url("../assets/img/sidebar-gilding-orc.svg"); }
+.sidebar.race-human, .game-dialog-victory.race-human, .game-dialog-story.race-human, .story-bark.race-human         { border-image-source: url("../assets/img/sidebar-gilding-human.svg"); }
+.sidebar.race-elf, .game-dialog-victory.race-elf, .game-dialog-story.race-elf, .story-bark.race-elf             { border-image-source: url("../assets/img/sidebar-gilding-elf.svg"); }
+.sidebar.race-dwarf, .game-dialog-victory.race-dwarf, .game-dialog-story.race-dwarf, .story-bark.race-dwarf         { border-image-source: url("../assets/img/sidebar-gilding-dwarf.svg"); }
+.sidebar.race-orc, .game-dialog-victory.race-orc, .game-dialog-story.race-orc, .story-bark.race-orc             { border-image-source: url("../assets/img/sidebar-gilding-orc.svg"); }
 .sidebar.race-undead, .game-dialog-victory.race-undead       { border-image-source: url("../assets/img/sidebar-gilding-undead.svg"); }
-.sidebar.race-halfellow, .game-dialog-victory.race-halfellow { border-image-source: url("../assets/img/sidebar-gilding-halfellow.svg"); }
+.sidebar.race-halfellow, .game-dialog-victory.race-halfellow, .game-dialog-story.race-halfellow, .story-bark.race-halfellow { border-image-source: url("../assets/img/sidebar-gilding-halfellow.svg"); }
 .sidebar.race-spectator { border-image-source: url("../assets/img/sidebar-gilding-spectator.svg"); }
 .panel h2 {
   margin: 0 0 12px 0;
@@ -2521,3 +2521,159 @@ html, body {
 /* Unique item found (data/items.js `unique`): a static gold-edged row -- no animation. */
 .treasure-row-unique { padding: 6px 8px; border: 1px solid var(--accent); border-radius: 6px; background: rgba(201, 168, 87, 0.10); }
 .treasure-row-unique .treasure-text { color: var(--accent-hover); font-weight: 600; }
+
+/* ---------------------------------------------------------------------------
+   STORY (single player) -- js/ui/story.js renders; doc/story_bible.md designs.
+   A scene is one line at a time in #game-dialog-modal, framed in the current
+   speaker's kingdom gilding (the .game-dialog-story.race-* rules above share
+   the sidebar's border-image). Narration and the Marchstone get their own
+   panels. Barks are small corner cards that fade in and out -- opacity only,
+   never flashing (photosensitivity rule).
+   --------------------------------------------------------------------------- */
+.game-dialog-story {
+  width: min(700px, 94vw);
+  border-width: 18px;
+  border-style: solid;
+  border-image-slice: 20;
+  border-image-repeat: round;
+  padding: 16px 18px 12px;
+}
+.story-header {
+  font-family: "Cinzel", Georgia, serif;
+  font-size: 12px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  margin-bottom: 10px;
+}
+.story-line { display: flex; gap: 16px; align-items: flex-start; min-height: 160px; }
+/* Speakers alternate sides within a scene (js/ui/story.js speakerSide). */
+.story-line.story-side-right { flex-direction: row-reverse; }
+.story-body { flex: 1; min-width: 0; }
+/* Name, with the honorific stacked beneath it; always left-aligned, even
+   when the portrait is on the right. */
+.story-nameplate { display: flex; flex-direction: column; align-items: flex-start; gap: 1px; margin-bottom: 8px; }
+.story-name {
+  font-family: "Cinzel", Georgia, serif;
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+.story-title { font-style: italic; font-size: 12.5px; line-height: 1.3; color: var(--text-dim); }
+.game-dialog-story .story-text { font-size: 16px; line-height: 1.55; margin: 0; }
+.story-text em, .story-bark-text em { color: var(--accent-hover); }
+.story-text strong, .story-bark-text strong { font-weight: 700; color: var(--text-main); }
+/* Word-by-word reveal: words are laid out from the start (no reflow) and
+   fade in; opacity only, never flashing (photosensitivity rule). */
+.story-revealing .story-w { opacity: 0; transition: opacity 0.12s ease-out; }
+.story-revealing .story-w.on { opacity: 1; }
+:root[data-motion-reduced="true"] .story-revealing .story-w { opacity: 1; transition: none; }
+
+.story-portrait {
+  position: relative;
+  flex: 0 0 128px;
+  width: 128px; height: 160px; /* 4:5, the portrait art's shape */
+  border: 2px solid var(--accent);
+  border-radius: 6px;
+  background: radial-gradient(circle at 50% 35%, var(--story-race-color, #555), #111 110%);
+  display: flex; align-items: center; justify-content: center;
+  overflow: hidden;
+}
+.story-portrait img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.story-portrait-stone { height: 128px; }
+.story-initials {
+  font-family: "Cinzel", Georgia, serif;
+  font-size: 30px;
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.9);
+  text-shadow: 0 2px 3px rgba(0, 0, 0, 0.6);
+}
+.story-portrait-small { flex-basis: 52px; width: 52px; height: 52px; }
+.story-portrait-small img { object-position: 50% 18%; } /* barks: crop to the face */
+.story-portrait-small .story-initials { font-size: 17px; }
+
+/* Narration: a parchment-toned box, no portrait. */
+.story-line-narration {
+  min-height: 0;
+  padding: 14px 18px;
+  background: linear-gradient(180deg, rgba(233, 220, 192, 0.10), rgba(233, 220, 192, 0.05));
+  border-left: 3px solid var(--accent);
+  border-radius: 4px;
+}
+.story-line-narration .story-text { font-style: italic; color: #e8dcc0; }
+
+/* The Marchstone: a dark stone panel with a thin gold crack. */
+.game-dialog-story.story-stone {
+  border: 2px solid #8a6d2a;
+  border-image: none;
+  background: linear-gradient(180deg, #16161a, #0c0c0e);
+  box-shadow: 0 0 24px rgba(201, 168, 87, 0.18) inset;
+}
+.story-portrait-stone { background: #1b1b20; border-color: #8a6d2a; }
+.story-portrait-stone svg { width: 64px; height: 84px; }
+.story-stone-body { fill: #2c2c33; stroke: #4a4a55; stroke-width: 1.5; }
+.story-stone-crack { fill: none; stroke: var(--accent); stroke-width: 2; }
+.story-stone-words {
+  font-family: "Cinzel", Georgia, serif;
+  font-variant: small-caps;
+  letter-spacing: 3px;
+  font-size: 22px !important;
+  color: var(--accent) !important;
+}
+
+.story-actions { display: flex; align-items: center; justify-content: flex-end; gap: 8px; margin-top: 14px; }
+.story-progress { margin-right: auto; font-size: 12px; color: var(--text-dim); }
+
+/* Barks: small, self-dismissing corner cards. */
+#story-bark-stack {
+  position: fixed;
+  left: 16px;
+  bottom: 96px;
+  z-index: 900;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-width: min(360px, calc(100vw - 32px));
+  pointer-events: none;
+}
+.story-bark {
+  pointer-events: auto;
+  cursor: pointer;
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  background: var(--bg-panel);
+  border-width: 10px;
+  border-style: solid;
+  border-image-slice: 20;
+  border-image-repeat: round;
+  padding: 8px 10px;
+  opacity: 0;
+  transition: opacity 0.35s ease;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.5);
+}
+.story-bark.story-stone { border: 2px solid #8a6d2a; border-image: none; }
+.story-bark.story-bark-in { opacity: 1; }
+.story-bark-body { flex: 1; min-width: 0; }
+.story-bark-caption { font-style: italic; font-size: 11px; color: var(--text-dim); margin-bottom: 3px; }
+.story-bark-name {
+  font-family: "Cinzel", Georgia, serif;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+.story-bark-text { font-size: 13px; line-height: 1.4; color: var(--text-main); }
+:root[data-motion-reduced="true"] .story-bark { transition: none; }
+
+@media (max-width: 600px) {
+  .story-line { gap: 10px; min-height: 0; }
+  .story-portrait { flex-basis: 84px; width: 84px; height: 105px; }
+  .story-portrait-small { flex-basis: 44px; width: 44px; height: 44px; }
+  .story-portrait-stone { height: 84px; }
+  .story-initials { font-size: 20px; }
+  .game-dialog-story .story-text { font-size: 15px; }
+  #story-bark-stack { left: 8px; right: 8px; bottom: 120px; max-width: none; }
+}

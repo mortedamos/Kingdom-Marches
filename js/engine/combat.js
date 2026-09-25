@@ -54,6 +54,14 @@ window.GameEngine = window.GameEngine || {};
    *  target is a city/structure (dx/dy then point at its tile instead). */
   function recordCombatEvent(evt) {
     pendingCombatEvents.push(evt);
+    // Story engine (js/engine/story.js): who fought whom, as plain civ ids
+    // -- first blood, first contact, and the Dwarf/Orc lovers' thread.
+    if (window.GameEngine.story) {
+      window.GameEngine.story.push({
+        type: "combat", atkCivId: evt.atkUnit ? evt.atkUnit.civId : null,
+        defCivId: evt.defUnit ? evt.defUnit.civId : null, dx: evt.dx, dy: evt.dy,
+      });
+    }
   }
 
   /** UI-side: pulls and clears every event recorded since the last drain. */

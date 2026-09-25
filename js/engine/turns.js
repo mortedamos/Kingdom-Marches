@@ -2396,6 +2396,9 @@ window.GameEngine = window.GameEngine || {};
    *  roll -- see the section comment above for what qualifies and why. */
   function pushSignificantEvent(evt) {
     pendingWorldEvents.push(evt);
+    // The single-player story engine listens to the same event stream (see
+    // js/engine/story.js) -- a plain copy, never a live reference.
+    if (window.GameEngine.story) window.GameEngine.story.push({ type: "world", ...evt });
   }
 
   /** UI-side: pulls and clears every rumor revealed since the last drain --

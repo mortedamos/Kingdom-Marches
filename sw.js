@@ -39,7 +39,7 @@
 // thing that invalidates the precache -- unrelated to the game's own
 // GameConfig.build stamp, which exists for a human to read, not for cache
 // invalidation.
-const VERSION = "2026-09-21-2";
+const VERSION = "2026-09-25-story-3";
 const SHELL_CACHE = `km-shell-${VERSION}`;
 
 // Exactly the <script src> list index.html loads, plus the handful of
@@ -70,6 +70,9 @@ const SHELL_FILES = [
   "/js/data/techs.js",
   "/js/data/buildings.js",
   "/js/data/items.js",
+  "/js/data/story/characters.js",
+  "/js/data/story/barks.js",
+  "/js/data/story/shared.js",
   "/js/data/window-lights.js",
   "/js/engine/worldgen.js",
   "/js/engine/influence.js",
@@ -84,6 +87,7 @@ const SHELL_FILES = [
   "/js/engine/strategy.js",
   "/js/engine/ai.js",
   "/js/engine/turns.js",
+  "/js/engine/story.js",
   "/js/engine/orders.js",
   "/js/engine/savegame.js",
   "/js/audio/music.js",
@@ -103,6 +107,7 @@ const SHELL_FILES = [
   "/js/ui/reports.js",
   "/js/ui/knowledgebase.js",
   "/js/ui/dialog.js",
+  "/js/ui/story.js",
   "/js/ui/fireworks.js",
   "/js/ui/credits.js",
   "/js/ui/buildlist.js",

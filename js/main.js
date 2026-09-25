@@ -494,6 +494,11 @@
           <input type="checkbox" id="show-tutorial-toggle" checked>
         </label>
         <p class="launch-hint">Opens a quick guide once the game loads. Auto-unchecked if your quicksave already has 50+ turns played.</p>
+        <label class="launch-row launch-row-check">
+          <span>Story</span>
+          <input type="checkbox" id="show-story-toggle" checked>
+        </label>
+        <p class="launch-hint">Plays your kingdom's story as the war unfolds: its leaders, rivals and endings. Single player only.</p>
       </div>
       </div>
 
@@ -1134,6 +1139,16 @@
       sel.addEventListener("change", () => window.UI.motion.setMode(sel.value));
     }
     window.UI.motion.onChange(sync);
+
+    // Story dialogue text speed (js/ui/story.js), same two-control pattern.
+    const speedSelects = [$("title-menu-text-speed-select"), $("text-speed-select")].filter(Boolean);
+    for (const sel of speedSelects) {
+      sel.value = window.UI.story.getTextSpeed();
+      sel.addEventListener("change", () => {
+        window.UI.story.setTextSpeed(sel.value);
+        for (const other of speedSelects) other.value = sel.value;
+      });
+    }
   }
 
   /** Open/close wiring for the title screen's own menu bar -- same
@@ -1953,6 +1968,13 @@
     // it for free through savegame.js's generic JSON walk -- no special
     // handling needed there.
     gameState.disableTerritorialVictory = !$("territorial-victory-toggle").checked;
+    // Single-player story (js/engine/story.js): picks this lineup's scenario
+    // and seeds gameState.story. Runs after the territorial toggle above --
+    // the Opening reads it (the "N" no-territorial-victory variant). Left
+    // null in Spectator mode or with the Story box unticked.
+    window.GameEngine.story.init(gameState, humanCivId, {
+      enabled: !spectatorMode && !!($("show-story-toggle") && $("show-story-toggle").checked),
+    });
     // createNewGame leaves visibility empty -- without this, nothing is
     // visible (full fog) until the first End Turn runs beginRound.
     window.GameEngine.turns.refreshVisibility(gameState);
@@ -2029,9 +2051,14 @@
     });
     const sfxPromise = window.SfxSystem.init(racesInPlay, (done, total) => setLoadingProgress("sfx", done, total));
     const spritesPromise = window.UI.sprites.preloadAll(racesInPlay, (done, total) => setLoadingProgress("sprites", done, total));
+    // This lineup's story scenario file (lazy -- only the active one loads;
+    // always resolves, even if the file is missing).
+    window.GameEngine.story.resetBuffer();
+    window.UI.story.clearBarks();
+    const storyPromise = window.UI.story.loadScenario(gameState.story && gameState.story.id);
     const LOADING_FAILSAFE_MS = 30000;
     Promise.race([
-      Promise.all([musicPromise, sfxPromise, spritesPromise]),
+      Promise.all([musicPromise, sfxPromise, spritesPromise, storyPromise]),
       new Promise((resolve) => setTimeout(resolve, LOADING_FAILSAFE_MS)),
     ]).then(finishStartGame);
   }
@@ -2198,6 +2225,9 @@
       openTutorial();
     }
     showPendingAwayReward();
+    // The story's Opening (B0) on a fresh game; a loaded game has already
+    // seen it, so this finds nothing due and no-ops.
+    if (!viewState.dialog) offerStoryScenes(() => {});
   }
 
   function hashStringToSeed(str) {
@@ -3237,9 +3267,12 @@
     setLoadingProgress("music", 1, 1);
     setLoadingProgress("sfx", 1, 1);
     const spritesPromise = window.UI.sprites.preloadAll(racesInPlay, (done, total) => setLoadingProgress("sprites", done, total));
+    window.GameEngine.story.resetBuffer();
+    window.UI.story.clearBarks();
+    const storyPromise = window.UI.story.loadScenario(payload.gameState.story && payload.gameState.story.id);
     const LOADING_FAILSAFE_MS = 30000;
     Promise.race([
-      spritesPromise,
+      Promise.all([spritesPromise, storyPromise]),
       new Promise((resolve) => setTimeout(resolve, LOADING_FAILSAFE_MS)),
     ]).then(() => finishApplyLoadedPayload(payload));
   }
@@ -4020,9 +4053,12 @@
         // behind every real decision the player owes, ahead of the founding/
         // pending-intent tail -- pure flavor, least urgent of the chain.
         // rumorsThisRound was already drained once, unconditionally, above.
+        // Story scenes (js/engine/story.js) play after the rumors -- this
+        // round's guaranteed beat and/or one optional scene, if any are due.
         const afterUnitBuilt = () => offerNextCityCaptureDecision(civ,
           () => offerNextTreasureNotice(civ,
-            () => offerNextRumor(rumorsThisRound, () => offerNextPendingIntent(civ, () => offerFoundCityIfPending(civ)))));
+            () => offerNextRumor(rumorsThisRound,
+              () => offerStoryScenes(() => offerNextPendingIntent(civ, () => offerFoundCityIfPending(civ))))));
         const afterTech = () => {
           if (finishedTechId) {
             openTechResearchedDialog(civ, finishedTechId, () => offerNextUnitBuiltNotice(civ, afterUnitBuilt));
@@ -4087,8 +4123,20 @@
         onKeepFighting: (victoryType === "territory" && !spectatorMode) ? () => {
           gameState.disableTerritorialVictory = true;
           window.UI.fireworks.stop();
+          // Story: the Marchstone answers the refusal ("NOT YET") at the
+          // start of the next human turn.
+          window.GameEngine.story.noteRefusal(gameState);
         } : undefined,
-        onDismiss: () => openVictoryStatsDialog(winnerCivId),
+        // Accepting the win plays the story's ending (E-Held / E-Remains)
+        // before the stats screen, when the player is the winner.
+        onDismiss: () => {
+          if (winnerCivId === humanCivId) {
+            playStoryEnding(victoryType === "territory" ? "E-Held" : "E-Remains", { winnerCivId },
+              () => openVictoryStatsDialog(winnerCivId));
+          } else {
+            openVictoryStatsDialog(winnerCivId);
+          }
+        },
       };
       redraw();
     });
@@ -4223,7 +4271,7 @@
         tileTarget: window.GameEngine.turns.VICTORY_TILE_TARGET,
       };
     }
-    viewState.dialog = {
+    const gameOverDialog = {
       kind: "gameOver",
       turnsSurvived: gameState.turnNumber || 0,
       citiesFounded: events.filter((e) => e.type === "founded").length,
@@ -4252,6 +4300,16 @@
       } : undefined,
       onReturnToTitle: handleReturnToTitle,
     };
+    // Story ending first (bible §4's defeat endings): E-Eclipsed when a rival
+    // held the Marches while this kingdom still stands, E-Fallen when it
+    // has been eliminated. Then the Game Over screen as before.
+    const endingScene = (gameState.story && !spectatorMode)
+      ? window.GameEngine.story.endingScene(gameState, humanCivId, lostToInfluence ? "E-Eclipsed" : "E-Fallen",
+        { winnerCivId: victoryResult && victoryResult.winner })
+      : null;
+    viewState.dialog = endingScene
+      ? { kind: "story", scene: endingScene, index: 0, onDone: () => { viewState.dialog = gameOverDialog; redraw(); } }
+      : gameOverDialog;
     // Fixed game_over.mp3, overriding any situational/victory theme (see
     // music.js's resolveCurrent priority order).
     window.MusicSystem.notifyGameOver();
@@ -4687,6 +4745,50 @@
       };
     }
     return null;
+  }
+
+  // ---------------------------------------------------------------------
+  // STORY (single player) -- js/engine/story.js decides what plays;
+  // js/ui/story.js draws it; these chain it into the same one-dialog-at-a-
+  // time notice flow as every other offerNextX here.
+  // ---------------------------------------------------------------------
+
+  /** Plays `scenes` one after another through the "story" dialog kind, then
+   *  calls `onDone`. Each scene is several lines; Next steps through them. */
+  function playStoryScenes(scenes, onDone) {
+    if (!scenes || !scenes.length) { onDone(); return; }
+    const [scene, ...rest] = scenes;
+    viewState.dialog = { kind: "story", scene, index: 0, onDone: () => playStoryScenes(rest, onDone) };
+    redraw();
+  }
+
+  /** Whatever story scenes are due at the start of the human's turn (the
+   *  Opening on turn 1, a guaranteed beat, optional event scenes). */
+  function offerStoryScenes(onDone) {
+    const scenes = (gameState && gameState.story && humanCivId && !spectatorMode)
+      ? window.GameEngine.story.nextScenes(gameState, humanCivId)
+      : [];
+    playStoryScenes(scenes, onDone);
+  }
+
+  /** One of the four endings (E-Held/E-Remains/E-Fallen/E-Eclipsed), then
+   *  `onDone`. Each ending plays at most once per game. */
+  function playStoryEnding(kind, info, onDone) {
+    const scene = (gameState.story && humanCivId && !spectatorMode)
+      ? window.GameEngine.story.endingScene(gameState, humanCivId, kind, info)
+      : null;
+    playStoryScenes(scene ? [scene] : [], onDone);
+  }
+
+  /** Drains the story engine's event buffer (kills, captures, fights) into
+   *  story state, showing any barks it produced right away -- barks never
+   *  block play. Called at the top of every redraw(); cheap when idle. */
+  function pumpStory() {
+    if (!gameState || !gameState.story || !humanCivId || spectatorMode) {
+      window.GameEngine.story.resetBuffer();
+      return;
+    }
+    for (const bark of window.GameEngine.story.pump(gameState, humanCivId)) window.UI.story.showBark(bark);
   }
 
   /** Drains and shows this round's revealed Neighborhood Pub rumors, one
@@ -5323,6 +5425,7 @@
     // reason. See their own doc comments just above this function.
     checkImmediateVictory();
     checkPendingKingdomEliminations();
+    pumpStory();
 
     // Rebuild the selected tile's tab list from live state BEFORE anything
     // draws. The tabs hold direct references to units/cities/structures, any
@@ -5602,7 +5705,9 @@
     if (viewState.dialog) {
       if (viewState.dialog !== lastRenderedDialog) {
         const modal = $("game-dialog-modal");
-        modal.innerHTML = window.UI.dialog.render(viewState.dialog);
+        modal.innerHTML = viewState.dialog.kind === "story"
+          ? window.UI.story.renderScene(viewState.dialog)
+          : window.UI.dialog.render(viewState.dialog);
         // Victory stats gets the grander treatment plus the winning
         // kingdom's own gilded border (2026-08-20, user-directed) -- same
         // race-<raceId> class convention sidebar.js uses for the sidebar's
@@ -5613,7 +5718,11 @@
         // X button away with the content. It supplies its own
         // .techtree-modal-scroll body wrapper instead (see dialog.js), the
         // same chrome-fixed/body-scrolls split the tech tree uses.
-        modal.className = viewState.dialog.kind === "victoryStats"
+        // Story scenes: the border follows the current speaker's kingdom
+        // (see js/ui/story.js's sceneModalClass).
+        modal.className = viewState.dialog.kind === "story"
+          ? window.UI.story.sceneModalClass(viewState.dialog)
+          : viewState.dialog.kind === "victoryStats"
           ? `techtree-modal game-dialog-modal game-dialog-victory race-${viewState.dialog.raceId}`
           : viewState.dialog.kind === "cityAutomation"
             ? "techtree-modal game-dialog-automation"
@@ -5839,6 +5948,41 @@
    *  callback that immediately opens the NEXT dialog (offerNextPendingIntent's
    *  one-automated-unit-at-a-time chain) still gets its own fresh render. */
   function wireDialogButtons(dialog) {
+    if (dialog.kind === "story") {
+      // Next steps to the scene's next line (a fresh dialog object, so
+      // redraw() re-renders it); on the last line -- or Skip -- the scene
+      // ends and its onDone continues the notice chain.
+      // Both handlers act only while THIS dialog is still the live one, so a
+      // stale or double click can never replay onDone (which would re-run
+      // the rest of the notice chain).
+      const finish = () => {
+        if (viewState.dialog !== dialog) return;
+        viewState.dialog = null;
+        lastRenderedDialog = null;
+        dialog.onDone();
+        redraw();
+      };
+      const nextBtn = $("story-next-btn");
+      const skipBtn = $("story-skip-btn");
+      // The line fills in word by word (js/ui/story.js startReveal); the
+      // first Next while it's still filling just completes it.
+      const reveal = window.UI.story.startReveal($("game-dialog-modal"));
+      if (nextBtn) {
+        nextBtn.onclick = () => {
+          if (viewState.dialog !== dialog) return;
+          if (!reveal.done) { reveal.finish(); return; }
+          if (dialog.index < dialog.scene.lines.length - 1) {
+            viewState.dialog = { ...dialog, index: dialog.index + 1 };
+            redraw();
+          } else {
+            finish();
+          }
+        };
+        nextBtn.focus();
+      }
+      if (skipBtn) skipBtn.onclick = finish;
+      return;
+    }
     if (dialog.kind === "foundCity") {
       const input = $("game-dialog-name-input");
       const confirmBtn = $("game-dialog-confirm-btn");
