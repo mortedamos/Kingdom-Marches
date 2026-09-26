@@ -2590,9 +2590,9 @@ html, body {
   color: rgba(255, 255, 255, 0.9);
   text-shadow: 0 2px 3px rgba(0, 0, 0, 0.6);
 }
-.story-portrait-small { flex-basis: 52px; width: 52px; height: 52px; }
-.story-portrait-small img { object-position: 50% 18%; } /* barks: crop to the face */
-.story-portrait-small .story-initials { font-size: 17px; }
+.story-portrait-small { flex-basis: 84px; width: 84px; height: 105px; } /* 4:5 like the dialogue portraits (enlarged 2026-09-26, user-directed) */
+.story-portrait-small img { object-position: 50% 20%; }
+.story-portrait-small .story-initials { font-size: 24px; }
 
 /* Narration: a parchment-toned box, no portrait. */
 .story-line-narration {
@@ -2707,7 +2707,7 @@ html, body {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  max-width: min(360px, calc(100vw - 32px));
+  max-width: min(420px, calc(100vw - 32px));
   pointer-events: none;
 }
 .story-bark {
@@ -2743,7 +2743,7 @@ html, body {
 @media (max-width: 600px) {
   .story-line { gap: 10px; min-height: 0; }
   .story-portrait { flex-basis: 84px; width: 84px; height: 105px; }
-  .story-portrait-small { flex-basis: 44px; width: 44px; height: 44px; }
+  .story-portrait-small { flex-basis: 64px; width: 64px; height: 80px; }
   .story-initials { font-size: 20px; }
   .game-dialog-story .story-text { font-size: 15px; }
   #story-bark-stack { left: 8px; right: 8px; bottom: 120px; max-width: none; }
