@@ -5509,7 +5509,16 @@
         // (enemyUnitStartPos comparison), not "did anything" -- otherwise
         // every idle garrison unit stepAIUnit still returns each turn would
         // also trigger this, turning every End Turn into a slog.
-        if (steppedUnit && steppedUnit.civId !== humanCivId) {
+        // Excludes a hidden unit (2026-09-26, user-reported: this was
+        // revealing a wandering Treasure Trow) -- `visible.has(idx)` is only
+        // fog-of-war tile visibility, not "can the player actually see the
+        // UNIT standing there," and a Trow is deliberately Hidden the moment
+        // it spawns regardless of fog (see ai.js's collectTrowTiles) so that
+        // nobody sees it arrive. Panning the camera to it and flashing/
+        // labeling its tile the instant it takes a step defeated that
+        // entirely. Same `conditions.hidden` gate every other AI-visibility
+        // check in ai.js already uses.
+        if (steppedUnit && steppedUnit.civId !== humanCivId && !steppedUnit.conditions?.hidden) {
           const start = enemyUnitStartPos.get(steppedUnit);
           const moved = start && (start.x !== steppedUnit.x || start.y !== steppedUnit.y);
           if (moved) {

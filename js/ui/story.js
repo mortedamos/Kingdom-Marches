@@ -351,7 +351,14 @@ window.UI = window.UI || {};
     };
     for (const c of cards) c.addEventListener("click", finish);
     stack().onclick = finish;
-    setTimeout(finish, total);
+    // Mobile (2026-09-26, user-directed): no auto-dismiss timer at all -- the
+    // bark stays up until tapped. Reading a small on-screen card while also
+    // working the touch controls takes longer than the desktop BARK_MS
+    // window assumes, and a bark that vanishes on its own before it's been
+    // read is just lost. `body.mobile` is main.js's own one-time device
+    // detection (detectMobile, coarse pointer + narrow viewport) -- same
+    // class every other mobile-specific check in the codebase reads.
+    if (!document.body.classList.contains("mobile")) setTimeout(finish, total);
   }
 
   function showBark(bark) {
