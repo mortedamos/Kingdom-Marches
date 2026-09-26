@@ -1229,6 +1229,15 @@ window.GameEngine = window.GameEngine || {};
     civ.units = civ.units.filter((u) => u.hp > 0);
   }
 
+  /** Story mode: a gathering round (fishing, hunting, farming, mining,
+   *  delving) is a chance for the player's own characters to remark on it.
+   *  The engine only reports it; story.js decides whether anyone speaks. */
+  function storyGatherMoment(gameState, civ, unit) {
+    if (!civ.isHuman || !gameState.story || !window.GameEngine.story) return;
+    const tile = gameState.map.tiles[unit.y * gameState.map.width + unit.x];
+    window.GameEngine.story.push({ type: "gather", civId: civ.id, channel: unit.channeling, resource: tile ? tile.resource : null });
+  }
+
   /**
    * Once-per-civ-turn setup: city tick, resource/stockpile accounting,
    * starvation check, research tick, then everything in an AI civ's turn
@@ -1330,6 +1339,7 @@ window.GameEngine = window.GameEngine || {};
         // gathering channel, not just this one -- see config.js's
         // leveling.xpPerGatheringRound doc comment.
         window.GameEngine.ai.grantXPAndAutoLevel(unit, civ, window.GameConfig.leveling.xpPerGatheringRound);
+        storyGatherMoment(gameState, civ, unit);
 
         // Ruin encounters: each can fire AT MOST ONCE per Ruin, ever --
         // tracked on the TILE itself (not the unit), so it survives a
@@ -1429,6 +1439,7 @@ window.GameEngine = window.GameEngine || {};
       // Gathering XP -- see the Dungeon Delve block above for why this is
       // flat and shared across every gathering channel.
       window.GameEngine.ai.grantXPAndAutoLevel(unit, civ, window.GameConfig.leveling.xpPerGatheringRound);
+      storyGatherMoment(gameState, civ, unit);
       if (Math.random() < resourceExhaustionChanceFor(civ)) {
         scheduleResourceRespawn(gameState, tile.resource);
         tile.resource = null;
@@ -1470,6 +1481,7 @@ window.GameEngine = window.GameEngine || {};
       accumulateChannelStash(unit, withProspectingLore({ harvest: 9 * marketcraftMult }));
       // Gathering XP -- see the Dungeon Delve block above.
       window.GameEngine.ai.grantXPAndAutoLevel(unit, civ, window.GameConfig.leveling.xpPerGatheringRound);
+      storyGatherMoment(gameState, civ, unit);
       if (Math.random() < resourceExhaustionChanceFor(civ)) {
         scheduleResourceRespawn(gameState, tile.resource);
         tile.resource = null;
@@ -1494,6 +1506,7 @@ window.GameEngine = window.GameEngine || {};
       accumulateChannelStash(unit, withProspectingLore({ harvest: 9 * marketcraftMult }));
       // Gathering XP -- see the Dungeon Delve block above.
       window.GameEngine.ai.grantXPAndAutoLevel(unit, civ, window.GameConfig.leveling.xpPerGatheringRound);
+      storyGatherMoment(gameState, civ, unit);
       if (Math.random() < resourceExhaustionChanceFor(civ)) {
         scheduleResourceRespawn(gameState, tile.resource);
         tile.resource = null;
@@ -1536,6 +1549,7 @@ window.GameEngine = window.GameEngine || {};
       accumulateChannelStash(unit, { ...mined, coin: mined.coin * wealth, lore: mined.lore * wealth });
       // Gathering XP -- see the Dungeon Delve block above.
       window.GameEngine.ai.grantXPAndAutoLevel(unit, civ, window.GameConfig.leveling.xpPerGatheringRound);
+      storyGatherMoment(gameState, civ, unit);
       // Wealth of the Earth (2026-09-25, user-directed addition): a Gold/Iron
       // Vein has the same chance to turn up buried treasure as delving a
       // Ruin -- reuses that roll's own chance/reward table/luck modifier

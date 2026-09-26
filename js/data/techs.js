@@ -684,7 +684,7 @@ window.GameData.TECHS = {
   elf_tending_to_the_earth: {
     id: "elf_tending_to_the_earth", label: "Tending to the Earth", category: "civic", layer: 1, cost: 18,
     prereqs: [], raceOnly: "elf",
-    description: "Any resource gathering activity only has a 2% chance per turn to exhaust the resource, not the normal 5%.",
+    description: "Any resource gathering activity only has a 2% chance per turn to exhaust the resource, not the normal 5%. Each city also gains +0.25 harvest for every forest tile in its radius.",
     costBreakdown: { lore: 12, coin: 6 },
     effects: [{ type: "unlock_mechanic", mechanic: "tending_to_the_earth" }],
   },

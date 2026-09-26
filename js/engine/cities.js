@@ -50,6 +50,7 @@ window.GameEngine = window.GameEngine || {};
   const INTRINSIC_COIN_RATE = CFG.intrinsicCoinRate; // population-based coin production
   const INTRINSIC_LORE_RATE = CFG.intrinsicLoreRate;
   const FLAT_CITY_HARVEST = CFG.flatHarvest; // flat per-city per-turn base yield
+  const TENDING_HARVEST_PER_FOREST = 0.25; // Elf "Tending to the Earth", per forest tile in radius
   const FLAT_CITY_COIN    = CFG.flatCoin;
   const FLAT_CITY_LORE    = CFG.flatLore;
   const LORE_TRICKLE_RATE = CFG.loreTrickleRate;  // influence bonus per point of Lore/turn
@@ -605,7 +606,11 @@ window.GameEngine = window.GameEngine || {};
     // Tech: harvest_pct_bonus (e.g. Human "Industrious Harvest") scales total harvest yield.
     // Structure yieldPct (e.g. Bazaar +10% harvest) is a SEPARATE, per-city-only multiplier.
     const harvestPctMult = 1 + (civ.harvestPctBonus || 0);
-    const totalHarvest = (tileYield.harvest + struct.yield.harvest + FLAT_CITY_HARVEST
+    // Tech: Elf "Tending to the Earth" (2026-09-25, user-directed addition):
+    // +TENDING_HARVEST_PER_FOREST harvest per forest tile in this city's radius.
+    const tendingHarvest = civ.unlockedMechanics && civ.unlockedMechanics.has("tending_to_the_earth")
+      ? TENDING_HARVEST_PER_FOREST * countForestInRadius(city, map) : 0;
+    const totalHarvest = (tileYield.harvest + struct.yield.harvest + FLAT_CITY_HARVEST + tendingHarvest
         + (buildingCountBonus.harvest || 0) * buildingCount)
       * harvestPctMult * (1 + struct.yieldPct.harvest);
 
@@ -1538,6 +1543,21 @@ window.GameEngine = window.GameEngine || {};
     return n;
   }
 
+  /** Forest tiles anywhere in the city's influence radius square (the city's
+   *  own tile included) -- Elf "Tending to the Earth". */
+  function countForestInRadius(city, map) {
+    let n = 0;
+    const radius = city.influenceRadius;
+    for (let dy = -radius; dy <= radius; dy++) {
+      for (let dx = -radius; dx <= radius; dx++) {
+        const nx = city.x + dx, ny = city.y + dy;
+        if (nx < 0 || nx >= map.width || ny < 0 || ny >= map.height) continue;
+        if (map.tiles[ny * map.width + nx].terrain === "forest") n++;
+      }
+    }
+    return n;
+  }
+
   function countForestAdjacent(city, map) {
     let n = 0;
     for (let dy = -1; dy <= 1; dy++) {
@@ -1838,7 +1858,10 @@ window.GameEngine = window.GameEngine || {};
     return city;
   }
 
-  function destroyCity(gameState, civ, city) {
+  /** `opts.razedByCivId` = the kingdom that razed it; `opts.formerOwnerCivId`
+   *  = whose city it was before a capture-then-raze (the story system's
+   *  vengeance lines need both -- see js/engine/story.js). */
+  function destroyCity(gameState, civ, city, opts = {}) {
     const { map } = gameState;
     for (const s of city.structures) {
       const sTile = map.tiles[s.y * map.width + s.x];
@@ -1860,6 +1883,7 @@ window.GameEngine = window.GameEngine || {};
     // isn't "destruction" in the sense the tech's own wording means.
     window.GameEngine.turns.pushSignificantEvent({
       kind: "cityDestroyed", civId: civ.id, x: city.x, y: city.y, cityName: city.name,
+      razedByCivId: opts.razedByCivId || null, formerOwnerCivId: opts.formerOwnerCivId || null,
       turn: gameState.turnNumber || 0,
     });
     const tile = map.tiles[city.y * map.width + city.x];

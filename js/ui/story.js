@@ -48,6 +48,8 @@ window.UI = window.UI || {};
 
   // ------------------------------------------------------------------ portraits
 
+  const STONE_PORTRAIT = "assets/portraits/stone.jpg";
+
   /** assets/portraits/<id>_<mood>.jpg -- 480x600 mood portraits. */
   function portraitSrc(id, mood) {
     return `assets/portraits/${id}_${mood}.jpg`;
@@ -63,9 +65,12 @@ window.UI = window.UI || {};
 
   function portraitHtml(id, size = "", mood = null) {
     if (id === "stone") {
+      // One portrait, no moods (assets/portraits/stone.jpg); the SVG stays
+      // underneath as the fallback if the image can't load.
       return `<div class="story-portrait story-portrait-stone ${size}" aria-hidden="true">
         <svg viewBox="0 0 60 80"><path d="M14 76 L10 30 Q12 8 30 4 Q48 8 50 30 L46 76 Z" class="story-stone-body"/>
-        <path d="M31 6 L27 24 L33 36 L26 52 L31 64 L28 76" class="story-stone-crack"/></svg></div>`;
+        <path d="M31 6 L27 24 L33 36 L26 52 L31 64 L28 76" class="story-stone-crack"/></svg>
+        <img src="${STONE_PORTRAIT}" alt="" onerror="this.remove()"></div>`;
     }
     const ch = character(id);
     const race = ch.race && window.GameData.getRace ? window.GameData.getRace(ch.race) : null;
@@ -77,21 +82,33 @@ window.UI = window.UI || {};
       <span class="story-initials">${escapeHtml(ch.initials || "?")}</span>${img}</div>`;
   }
 
-  /** Warm the browser cache with every portrait of every character from the
-   *  lineup's kingdoms, so mood changes between lines never blink. */
-  const preloaded = new Set();
+  /** Loads every portrait of every character from the lineup's kingdoms
+   *  (plus the Marchstone's) so mood changes between lines never blink.
+   *  Resolves once they've all loaded or failed -- loadScenario waits on it,
+   *  so the game's loading screen covers it and the opening scene's faces
+   *  are ready the moment it appears. Capped so a slow file can't hold the
+   *  loading screen hostage. */
+  const preloaded = new Map();
+  const PORTRAIT_PRELOAD_CAP_MS = 8000;
   function preloadPortraits(races) {
     const chars = window.GameData.STORY_CHARACTERS || {};
+    const srcs = [STONE_PORTRAIT];
     for (const [id, ch] of Object.entries(chars)) {
       if (!ch.portrait || (races && !races.includes(ch.race))) continue;
-      for (const mood of window.GameData.storyMoodsFor(id)) {
-        const src = portraitSrc(id, mood);
-        if (preloaded.has(src)) continue;
-        preloaded.add(src);
-        const img = new Image();
-        img.src = src;
-      }
+      for (const mood of window.GameData.storyMoodsFor(id)) srcs.push(portraitSrc(id, mood));
     }
+    const waits = srcs.map((src) => {
+      if (!preloaded.has(src)) {
+        preloaded.set(src, new Promise((resolve) => {
+          const img = new Image();
+          img.onload = img.onerror = () => resolve();
+          img.src = src;
+        }));
+      }
+      return preloaded.get(src);
+    });
+    const cap = new Promise((resolve) => setTimeout(resolve, PORTRAIT_PRELOAD_CAP_MS));
+    return Promise.race([Promise.all(waits), cap]);
   }
 
   /** Which side the speaker of line `index` stands on. The first speaker of
@@ -220,14 +237,32 @@ window.UI = window.UI || {};
           <p class="story-text">${formatText(line.text)}</p>
         </div></div>`;
     }
+    // Skip is the corner X (ends the whole scene); Back steps to the
+    // previous line and is disabled on the first.
     return `
+      <button class="story-close" id="story-skip-btn" title="Skip scene" aria-label="Skip scene">✕</button>
       ${header ? `<div class="story-header">${header}</div>` : ""}
       ${body}
       <div class="story-actions">
         <span class="story-progress">${index + 1} / ${scene.lines.length}</span>
-        ${last ? "" : `<button class="menu-dropdown-btn" id="story-skip-btn">Skip</button>`}
+        <button class="menu-dropdown-btn" id="story-back-btn"${index === 0 ? " disabled" : ""}>◂ Back</button>
         <button class="menu-dropdown-btn game-dialog-primary" id="story-next-btn">${last ? "Continue" : "Next ▸"}</button>
       </div>`;
+  }
+
+  /** The speaker's short vocalization (js/audio/sfx.js playCharacterVoice)
+   *  when a line opens -- only when the speaker changes (or opens the
+   *  scene), so a character with several lines in a row grunts once. */
+  function voiceLine(dialog) {
+    const { scene, index } = dialog;
+    const line = scene.lines[index];
+    if (!line || line.narration || !line.speaker) return;
+    const prev = index > 0 ? scene.lines[index - 1] : null;
+    if (prev && !prev.narration && prev.speaker === line.speaker) return;
+    playVoice(line.speaker, line.mood);
+  }
+  function playVoice(speaker, mood) {
+    if (window.SfxSystem && window.SfxSystem.playCharacterVoice) window.SfxSystem.playCharacterVoice(speaker, mood);
   }
 
   function sceneModalClass(dialog) {
@@ -282,18 +317,34 @@ window.UI = window.UI || {};
     setTimeout(() => card.remove(), 400);
   }
 
+  let barkToken = 0;
+
   function showNextBark() {
     if (barkShowing || !barkQueue.length) return;
     barkShowing = true;
+    const token = ++barkToken;
     const bark = barkQueue.shift();
     const cards = [mountCard(barkCardHtml(bark.speaker, bark.text, bark.caption, bark.name, bark.mood))];
+    playVoice(bark.speaker, bark.mood);
     let total = BARK_MS;
-    if (bark.reply) {
-      setTimeout(() => cards.push(mountCard(barkCardHtml(bark.reply.speaker, bark.reply.text, "", bark.reply.name, bark.reply.mood))), REPLY_DELAY_MS);
-      total += REPLY_DELAY_MS;
+    // A reply may itself carry a reply: a short conversation, each card
+    // arriving REPLY_DELAY_MS after the one before (longer lines wait longer).
+    let delay = 0;
+    let prevText = bark.text;
+    for (let r = bark.reply; r; r = r.reply) {
+      const reply = r;
+      delay += REPLY_DELAY_MS + Math.min(2500, String(prevText).split(/\s+/).length * 60);
+      prevText = reply.text;
+      setTimeout(() => {
+        if (token === barkToken && barkShowing) {
+          cards.push(mountCard(barkCardHtml(reply.speaker, reply.text, "", reply.name, reply.mood)));
+          playVoice(reply.speaker, reply.mood);
+        }
+      }, delay);
     }
+    total += delay;
     const finish = () => {
-      if (!barkShowing) return;
+      if (!barkShowing || token !== barkToken) return;
       cards.forEach(unmountCard);
       barkShowing = false;
       setTimeout(showNextBark, 450);
@@ -346,18 +397,18 @@ window.UI = window.UI || {};
     if (!id) return Promise.resolve(false);
     window.GameData.STORY_SCENARIOS = window.GameData.STORY_SCENARIOS || {};
     const race = id.split("/")[0];
-    preloadPortraits([race, ...(id.split("/")[1] || "").split("+")]);
+    const portraits = preloadPortraits([race, ...(id.split("/")[1] || "").split("+")]);
     const racePool = loadedRacePools.has(race)
       ? Promise.resolve(true)
       : loadScript(`js/data/story/shared/${race}.js`).then((ok) => { if (ok) loadedRacePools.add(race); return ok; });
     const scenario = window.GameData.STORY_SCENARIOS[id]
       ? Promise.resolve(true)
       : loadScript(scenarioPath(id)).then(() => !!window.GameData.STORY_SCENARIOS[id]);
-    return Promise.all([racePool, scenario]).then(([, ok]) => ok);
+    return Promise.all([racePool, scenario, portraits]).then(([, ok]) => ok);
   }
 
   window.UI.story = {
-    renderScene, sceneModalClass, showBark, clearBarks, loadScenario, scenarioPath,
+    renderScene, sceneModalClass, voiceLine, showBark, clearBarks, loadScenario, scenarioPath,
     startReveal, getTextSpeed, setTextSpeed, formatText, speakerSide, resolveMood, preloadPortraits,
   };
 })();

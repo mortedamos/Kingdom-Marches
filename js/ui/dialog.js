@@ -49,6 +49,22 @@ window.UI = window.UI || {};
   const AUTOMATION_LEVELS = ["Never", "Rarely", "Sometimes", "Often", "Always"];
 
   function render(dialog) {
+    if (dialog.kind === "storyReplay") {
+      // Interface menu > Replay Story Scenes: every story scene seen this
+      // game, newest first (js/engine/story.js getLog). main.js's
+      // wireDialogButtons plays the chosen one through the "story" kind.
+      const entries = (dialog.entries || []).map((e, i) => ({ e, i })).reverse();
+      const list = entries.length
+        ? entries.map(({ e, i }) => `<li><button class="menu-dropdown-btn story-replay-item" data-replay-index="${i}">
+            <span class="story-replay-name">${escapeHtml(e.name)}</span><span class="story-replay-turn">Turn ${e.round}</span></button></li>`).join("")
+        : `<li class="game-dialog-hint">No story scenes yet.</li>`;
+      return `
+        <h2>Replay Story Scenes</h2>
+        <ul class="story-replay-list">${list}</ul>
+        <div class="game-dialog-actions">
+          <button class="menu-dropdown-btn game-dialog-primary" id="game-dialog-ok-btn">Close</button>
+        </div>`;
+    }
     if (dialog.kind === "foundCity") {
       return `
         <h2>Found a City?</h2>

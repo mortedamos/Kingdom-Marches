@@ -6449,7 +6449,7 @@ window.GameEngine = window.GameEngine || {};
         }
         if (hit.result.destroyed) {
           window.GameEngine.combat.markRival(hit.civ, civ.id);
-          window.GameEngine.cities.destroyCity(gameState, hit.civ, hit.city);
+          window.GameEngine.cities.destroyCity(gameState, hit.civ, hit.city, { razedByCivId: civ.id });
         }
       }
     }
@@ -6636,7 +6636,7 @@ window.GameEngine = window.GameEngine || {};
         }
         if (hit.result.destroyed) {
           window.GameEngine.combat.markRival(hit.civ, civ.id);
-          window.GameEngine.cities.destroyCity(gameState, hit.civ, hit.city);
+          window.GameEngine.cities.destroyCity(gameState, hit.civ, hit.city, { razedByCivId: civ.id });
         }
       }
     }
@@ -6756,7 +6756,7 @@ window.GameEngine = window.GameEngine || {};
         }
         if (hit.result.destroyed) {
           window.GameEngine.combat.markRival(hit.civ, civ.id);
-          window.GameEngine.cities.destroyCity(gameState, hit.civ, hit.city);
+          window.GameEngine.cities.destroyCity(gameState, hit.civ, hit.city, { razedByCivId: civ.id });
         }
       }
     }
@@ -6870,8 +6870,10 @@ window.GameEngine = window.GameEngine || {};
       }
     }
 
-    // 2. A storm throws one bolt at a random tile.
+    // 2. A storm throws one bolt at a random tile -- on half its rounds
+    //    (lightningChancePerRound, 2026-09-25).
     if (!weather.storming) return;
+    if (Math.random() >= (cfg.lightningChancePerRound ?? 1)) return;
     const x = Math.floor(Math.random() * map.width), y = Math.floor(Math.random() * map.height);
     window.GameEngine.combat.spawnAreaEffect(x, y, 0, "lightning");
     for (const civ of Object.values(civs)) {
@@ -9503,6 +9505,8 @@ window.GameEngine = window.GameEngine || {};
     if (!window.GameEngine.items.giveItem(unit, civ, id)) return null;
     const def = window.GameData.getItem(id);
     window.GameEngine.floatingText.spawnFloatingText(unit, `${def.label}!`, "aura");
+    // Story: Gnash loves a Lucky Rock (it is both lucky AND a rock).
+    if (id === "lucky_rock" && window.GameEngine.story) window.GameEngine.story.push({ type: "moment", trigger: "luckyRock", civId: civ.id });
     return { id, icon: def.icon, text: `${def.label} -- ${detail}` };
   }
 
@@ -15445,7 +15449,7 @@ window.GameEngine = window.GameEngine || {};
           log.push(`Conquest: ${civ.id}'s ${describeUnit(unit)} captured ${cityName} from ${formerOwnerId}!`);
           unit.currentMission = `Captured ${cityName}`;
         } else if (shouldRazeCity(civ, bestCity.city, bestCity.civ, gameState)) {
-          window.GameEngine.cities.destroyCity(gameState, bestCity.civ, bestCity.city);
+          window.GameEngine.cities.destroyCity(gameState, bestCity.civ, bestCity.city, { razedByCivId: civ.id });
           log.push(`Siege: ${civ.id}'s ${describeUnit(unit)} razed ${formerOwnerId}'s city ${cityName} to the ground!`);
           unit.currentMission = `Razed ${formerOwnerId}'s city to the ground`;
         } else {

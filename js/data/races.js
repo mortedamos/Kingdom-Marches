@@ -144,7 +144,7 @@ window.GameData.RACES = {
   human: {
     id: "human",
     label: "Human",
-    identity: "The Trade Connector",
+    identity: "The Arcane Crown",
     color: "#8e44ad",
     citySymbol: "⌂",
 

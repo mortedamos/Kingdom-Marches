@@ -1708,12 +1708,84 @@ window.UI = window.UI || {};
       </div>`;
   }
 
+  // --- Characters page (2026-09-25, user-directed) ----------------------------
+  // The story's cast (js/data/story/characters.js), one spoiler-free article
+  // each from js/data/story/character-profiles.js: role, background, virtues,
+  // flaws, quirks, relations and a line in their own voice.
+  const CHARACTER_GROUPS = [
+    { race: "human", label: "Westmarch" },
+    { race: "elf", label: "The Silverwood" },
+    { race: "dwarf", label: "Karrak" },
+    { race: "orc", label: "The Bloodmire" },
+    { race: "halfellow", label: "The Hearthlands" },
+    { race: null, label: "The Marches" },
+  ];
+  function characterPortraitSrc(id) {
+    return id === "stone" ? "assets/portraits/stone.jpg" : `assets/portraits/${id}_neutral.jpg`;
+  }
+  function storyMarkup(text) {
+    return window.UI.story && window.UI.story.formatText ? window.UI.story.formatText(text) : escapeHtml(text);
+  }
+
+  function renderCharacterListHtml(selectedId) {
+    const chars = window.GameData.STORY_CHARACTERS || {};
+    const profiles = window.GameData.STORY_CHARACTER_PROFILES || {};
+    return CHARACTER_GROUPS.map((g) => {
+      const ids = Object.keys(chars).filter((id) => (chars[id].race || null) === g.race && profiles[id]);
+      if (!ids.length) return "";
+      return `<div class="kb-list-group">
+        <div class="kb-list-group-label">${escapeHtml(g.label)}</div>
+        ${ids.map((id) => {
+          const selected = id === selectedId ? " kb-list-btn-selected" : "";
+          return `<button class="kb-list-btn${selected}" data-character-id="${escapeHtml(id)}">
+            <img class="kb-character-thumb" src="${characterPortraitSrc(id)}" alt="" width="28" height="28"><span>${escapeHtml(chars[id].name)}</span></button>`;
+        }).join("")}
+      </div>`;
+    }).join("");
+  }
+
+  function renderCharacterProfileHtml(selectedId) {
+    const ch = (window.GameData.STORY_CHARACTERS || {})[selectedId];
+    const p = (window.GameData.STORY_CHARACTER_PROFILES || {})[selectedId];
+    if (!ch || !p) {
+      return `<div class="kb-profile-empty">Select a character on the left. These are the leaders, advisors and rivals you'll meet in the story, the single-player narrative that plays as your war unfolds.</div>`;
+    }
+    const kingdom = ch.race ? (CHARACTER_GROUPS.find((g) => g.race === ch.race) || {}).label : null;
+    const list = (items) => `<ul class="kb-character-list">${items.map((t) => `<li>${storyMarkup(t)}</li>`).join("")}</ul>`;
+    return `
+      <div class="kb-profile-header kb-character-header">
+        <img class="kb-character-portrait ${ch.race ? `race-${ch.race}` : "story-stone"}" src="${characterPortraitSrc(selectedId)}" alt="" width="128" height="160">
+        <div>
+          <h2>${escapeHtml(ch.name)}</h2>
+          ${ch.title ? `<div class="kb-profile-subline">${escapeHtml(ch.title)}</div>` : ""}
+          <div class="kb-chip-row">${kingdom ? `<span class="kb-chip">${escapeHtml(kingdom)}</span>` : ""}${ch.title ? "" : `<span class="kb-chip">${escapeHtml(p.role)}</span>`}</div>
+        </div>
+      </div>
+      <p class="kb-character-quote">“${storyMarkup(p.quote)}”</p>
+      <h3>Background</h3>
+      <div class="kb-condition-profile-desc">${storyMarkup(p.background)}</div>
+      ${p.virtues.length ? `<h3>Virtues</h3>${list(p.virtues)}` : ""}
+      ${p.flaws.length ? `<h3>Flaws</h3>${list(p.flaws)}` : ""}
+      ${p.quirks ? `<h3>Quirks</h3><div class="kb-condition-profile-desc">${storyMarkup(p.quirks)}</div>` : ""}
+      ${p.relations ? `<h3>Family &amp; Rivals</h3><div class="kb-condition-profile-desc">${storyMarkup(p.relations)}</div>` : ""}`;
+  }
+
+  /** Full HTML for the Characters page -- same list+profile layout as Items. */
+  function renderCharacters(selectedId) {
+    return `
+      <div class="kb-header"><h2>Characters</h2></div>
+      <div class="kb-body">
+        <div class="kb-list-pane">${renderCharacterListHtml(selectedId)}</div>
+        <div class="kb-profile-pane">${renderCharacterProfileHtml(selectedId)}</div>
+      </div>`;
+  }
+
   // conditionDisplayName exported (2026-08-26) so techtree.js's own
   // condition cross-links (conditionLinksHtml) render the exact same label
   // this page's own list does, rather than a second hand-copied version
   // that could drift.
   window.UI.knowledgebase = {
-    renderUnits, renderConditions, renderStats, renderStructures, renderActions, renderTerrain, renderTreasure, renderItems,
+    renderUnits, renderConditions, renderStats, renderStructures, renderActions, renderTerrain, renderTreasure, renderItems, renderCharacters,
     drawUnitPortrait, drawStructurePortrait, drawTerrainPortrait, wireCombatSimulator, conditionDisplayName,
   };
 })();

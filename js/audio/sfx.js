@@ -391,6 +391,42 @@ window.SfxSystem = (function () {
     playSystemKey(SYSTEM_HALFELLOW_PARTY_KEY);
   }
 
+  // CHARACTER VOICES (2026-09-25, user-directed): a short vocalization
+  // ("hmm", a grunt, "aah") when a story character speaks -- see
+  // js/ui/story.js's voice calls. Files: voice_<characterId>_<n>.mp3, and
+  // optionally voice_<characterId>_<mood>_<n>.mp3, which wins for that mood.
+  // Listed in the tracker via js/data/sfx-actions.js's sfxVoiceCharacters.
+  // A character with no clips is simply silent.
+  const lastVoiceVariant = {};
+  function voiceKeys(characterId, mood) {
+    const files = window.GameData.SFX_FILES || [];
+    const pick = (re) => files.filter((f) => re.test(f)).map((f) => f.replace(/\.mp3$/, ""));
+    const moodKeys = mood ? pick(new RegExp(`^voice_${characterId}_${mood}_\\d+\\.mp3$`)) : [];
+    return moodKeys.length ? moodKeys : pick(new RegExp(`^voice_${characterId}_\\d+\\.mp3$`));
+  }
+  function voiceKeysForRaces(racesInPlay) {
+    const chars = window.GameData.STORY_CHARACTERS || {};
+    const wanted = new Set(racesInPlay || []);
+    return (window.GameData.SFX_FILES || [])
+      .filter((f) => {
+        const m = /^voice_([a-z]+)_/.exec(f);
+        if (!m) return false;
+        const ch = chars[m[1]];
+        return !!ch && (!ch.race || wanted.has(ch.race));
+      })
+      .map((f) => f.replace(/\.mp3$/, ""));
+  }
+  /** Public: a story character speaks (a dialogue line or a bark card). */
+  function playCharacterVoice(characterId, mood) {
+    if (!characterId) return;
+    const keys = voiceKeys(characterId, mood);
+    if (!keys.length) return;
+    const pool = keys.length > 1 ? keys.filter((k) => k !== lastVoiceVariant[characterId]) : keys;
+    const key = pool[Math.floor(Math.random() * pool.length)];
+    lastVoiceVariant[characterId] = key;
+    playSystemKey(key);
+  }
+
   function setMasterVolume(v) { masterVolume = Math.max(0, Math.min(1, v)); }
   /** Public: the Audio menu's Sound Effects slider. Only affects clips
    *  started AFTER this call -- an in-flight clip is a few hundred ms long,
@@ -429,7 +465,10 @@ window.SfxSystem = (function () {
    */
   async function init(racesInPlay, onProgress) {
     buildIndex();
-    loaded = new Map();
+    // `loaded` is kept, not reset: prewarm() (below) may already have
+    // fetched this game's clips in the background while the player was
+    // still choosing options -- those are reused instead of re-fetched.
+    // Keys are unique per clip, so a previous game's entries are harmless.
     voices = new Map();
     lastVariantPlayed = {};
     lastResearchCompleteVariant = null;
@@ -459,14 +498,35 @@ window.SfxSystem = (function () {
     // Background tier: fire-and-forget, same as sprites.js's runTiered --
     // keeps loading after the loading screen has already moved on.
     (async () => {
+      // Story character voices for the races in play (after the critical
+      // tier -- no dialogue can play before the game screen appears).
+      const voiceClips = voiceKeysForRaces(racesInPlay);
+      for (let i = 0; i < voiceClips.length; i += BATCH) {
+        await Promise.all(voiceClips.slice(i, i + BATCH).map((k) => preloadClip(k)));
+      }
       for (let i = 0; i < background.length; i += BATCH) {
         await Promise.all(background.slice(i, i + BATCH).map((k) => preloadClip(k)));
       }
     })();
   }
 
+  /** Background warm-up while the player is still on the Game Options
+   *  screen (main.js's startBackgroundPreload): fetches every clip for
+   *  `racesInPlay` a few at a time, with no progress reporting. init()
+   *  later finds them already in `loaded`. */
+  async function prewarm(racesInPlay) {
+    buildIndex();
+    const { critical, background } = clipKeysForRaces(racesInPlay);
+    const keys = [...systemKeys(), ...critical, ...voiceKeysForRaces(racesInPlay), ...background];
+    const BATCH = 4;
+    for (let i = 0; i < keys.length; i += BATCH) {
+      await Promise.all(keys.slice(i, i + BATCH).map((k) => preloadClip(k)));
+    }
+  }
+
   return {
     init,
+    prewarm,
     hasClip,
     playAction,
     playButtonClick,
@@ -476,6 +536,7 @@ window.SfxSystem = (function () {
     playUniqueItemFound,
     playRumor,
     playHalfellowParty,
+    playCharacterVoice,
     setMasterVolume,
     setSfxVolume,
     setMuted,

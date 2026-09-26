@@ -154,3 +154,21 @@ window.GameData.SFX_SYSTEM_CLIPS = [
   { file: "system_unique_item_found_1.mp3", label: "A UNIQUE item is found (chest or delve) -- plays instead of the chest sting", optional: true },
   { file: "halfellow_party_1.mp3", label: "Halfellow Throw a Party" },
 ];
+
+/**
+ * CHARACTER VOICES (2026-09-25, user-directed) -- a short vocalization
+ * ("hmm", a grunt, "aah") played when a story character speaks: when a
+ * dialogue line opens with a new speaker, and on each bark card. See
+ * js/audio/sfx.js's playCharacterVoice.
+ *
+ *   assets/sfx/voice_<characterId>_<n>.mp3          any mood (1-3 variants)
+ *   assets/sfx/voice_<characterId>_<mood>_<n>.mp3   optional: used instead for that mood
+ *
+ * characterId is the key in js/data/story/characters.js (e.g. "skarra"),
+ * and mood one of js/data/story/characters.js's moods for that character
+ * (neutral/happy/angry/sad or their signature). "stone" is the Marchstone.
+ * The tracker (working/tools/sfx-tracker.html) lists one row per character.
+ */
+window.GameData.sfxVoiceFileName = function (characterId, n, mood) {
+  return mood ? `voice_${characterId}_${mood}_${n}.mp3` : `voice_${characterId}_${n}.mp3`;
+};

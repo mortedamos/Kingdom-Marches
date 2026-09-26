@@ -162,6 +162,7 @@
           <button id="title-kb-terrain-btn" class="menu-dropdown-btn">Terrain</button>
           <button id="title-kb-treasure-btn" class="menu-dropdown-btn">Treasure</button>
           <button id="title-kb-items-btn" class="menu-dropdown-btn">Items</button>
+          <button id="title-kb-characters-btn" class="menu-dropdown-btn">Characters</button>
           <button id="title-kb-actions-btn" class="menu-dropdown-btn">Actions</button>
           <button id="title-kb-conditions-btn" class="menu-dropdown-btn">Conditions</button>
           <button id="title-kb-stats-btn" class="menu-dropdown-btn">Stats</button>
@@ -313,6 +314,15 @@
               <option value="instant">Instant</option>
             </select>
           </label>
+          <!-- Story (single player only) -- see main.js's setupStoryMenuControls. -->
+          <div id="story-menu-panel" class="fow-panel" style="display:none;">
+            <div class="fow-panel-label">Story</div>
+            <label class="audio-panel-row">
+              <span>Show Story</span>
+              <input type="checkbox" id="story-visible-toggle" checked>
+            </label>
+            <button id="story-replay-btn" class="menu-dropdown-btn">Replay Story Scenes</button>
+          </div>
           <div id="fog-of-war-panel" class="fow-panel" style="display:none;">
             <div class="fow-panel-label">Fog of War</div>
             <label class="audio-panel-row"><span>Off</span><input type="radio" name="fow-mode" id="fow-mode-off" value="off" checked></label>
@@ -368,6 +378,7 @@
           <button id="kb-terrain-btn" class="menu-dropdown-btn">Terrain</button>
           <button id="kb-treasure-btn" class="menu-dropdown-btn">Treasure</button>
           <button id="kb-items-btn" class="menu-dropdown-btn">Items</button>
+          <button id="kb-characters-btn" class="menu-dropdown-btn">Characters</button>
           <button id="kb-actions-btn" class="menu-dropdown-btn">Actions</button>
           <button id="kb-conditions-btn" class="menu-dropdown-btn">Conditions</button>
           <button id="kb-stats-btn" class="menu-dropdown-btn">Stats</button>
@@ -638,7 +649,10 @@
   <script src="js/data/buildings.js"></script>
   <script src="js/data/items.js"></script>
   <script src="js/data/story/characters.js"></script>
+  <script src="js/data/story/character-profiles.js"></script>
   <script src="js/data/story/barks.js"></script>
+  <script src="js/data/story/barks-advance.js"></script>
+  <script src="js/data/story/barks-events.js"></script>
   <script src="js/data/story/shared.js"></script>
   <!-- Hand-authored lamp positions for the day/night cycle. Data only; must
        load before js/ui/daynight.js reads it. -->

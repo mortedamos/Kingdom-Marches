@@ -2302,9 +2302,28 @@ window.UI = window.UI || {};
    *  radiating outward, like scorched earth. `alpha` is the caller's own
    *  fade -- see render.js's per-tile loop, which derives it from how many
    *  turns are left before tile.scorchExpiresAtTurn. */
+  /** Ashen blast decals (2026-09-25, user-directed: "look more like an ashen
+   *  blast area, not a black blob with lines coming out of it"): Gemini art,
+   *  assets/enhancements/scorch_{1-3}.png, 128x128 with transparency. The
+   *  procedural mark below stays as the fallback until they've loaded. */
+  const SCORCH_IMAGES = [1, 2, 3].map((n) => {
+    const img = new Image();
+    img.src = `assets/enhancements/scorch_${n}.png`;
+    return img;
+  });
+
   function drawLightningScorch(ctx, tile, screenX, screenY, ts, alpha) {
     if (alpha <= 0) return;
     const seed = tileClutterSeed(tile);
+    const decal = SCORCH_IMAGES[Math.floor(seed[0] * SCORCH_IMAGES.length) % SCORCH_IMAGES.length];
+    if (decal.complete && decal.naturalWidth) {
+      const size = ts * 0.8;
+      ctx.save();
+      ctx.globalAlpha = Math.max(0, Math.min(1, alpha)) * 0.9;
+      ctx.drawImage(decal, screenX + (ts - size) / 2, screenY + (ts - size) / 2 + ts * 0.04, size, size);
+      ctx.restore();
+      return;
+    }
     const cx = screenX + ts * 0.5, cy = screenY + ts * 0.58;
     const baseR = ts * (0.22 + seed[0] * 0.06);
     ctx.save();

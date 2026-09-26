@@ -65,9 +65,9 @@ window.GameConfig = {
     /** Local date this build was cut, YYYY-MM-DD. */
     date: "2026-09-25",
     /** Local time this build was cut, 24-hour HH:MM. */
-    time: "19:59",
+    time: "23:20",
     /** Monotonic build counter -- increment it, don't recompute it. */
-    number: 334,
+    number: 335,
   },
 
   // =========================================================================
@@ -1094,6 +1094,9 @@ window.GameConfig = {
      *  see turns.js's Mine Vein block. */
     wealthOfTheEarthMiningMult: 1.5,
     weatherHazards: {
+      /** Chance each storm round actually throws its bolt (2026-09-25, user-directed:
+       *  lightning 50% less often -- was every round). */
+      lightningChancePerRound: 0.5,
       lightningDamage: 3,
       extinguishChance: 0.25,
     },
@@ -1372,8 +1375,10 @@ window.GameConfig = {
        *  that field's own comment for why the two moved together) to 2-25,
        *  so an individual system also stops sooner, not just starts more
        *  often. */
+      // maxTurns 25 -> 19 (2026-09-25, user-directed: "rain and storms should end
+      // 25% sooner"); the storm is a window inside the rain, so it shortens with it.
       minTurns: 2,
-      maxTurns: 25,
+      maxTurns: 19,
       /** Clear turns required between one system ending and the next being
        *  allowed to begin. Without a gap, systems overlap and run together
        *  into stretches of rain far longer than maxTurns -- see
@@ -1388,7 +1393,8 @@ window.GameConfig = {
          *  window isn't sparser than a small one. Per million square px.
          *  900 -> 780 (2026-09-21, user-directed: "a few less rain
          *  streaks"). */
-        densityPerMpx: 780,
+        // 780 -> 546 (2026-09-25, user-directed: "reduce rain by 30%").
+        densityPerMpx: 546,
         stormDensityMul: 2.1,
         angleDeg: 14,
         stormAngleDeg: 24,
@@ -1532,7 +1538,10 @@ window.GameConfig = {
          * spread to read as genuinely irregular rather than "usually exactly
          * the floor, occasionally more."
          */
-        meanGapMs: 9500,
+        // 9500 -> 19000 (2026-09-25, user-directed: "lightning should strike the
+        // ground 50% less often during a storm"): doubling the mean gap halves the
+        // strike rate (and the ground scorch marks each strike leaves).
+        meanGapMs: 19000,
         minGapMs: 3200,
         /** Thunder follows the flash by this much, as distant weather does.
          *  Randomized per strike within the range. Widening this range also

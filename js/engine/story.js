@@ -72,6 +72,11 @@ window.GameEngine.story = (function () {
     orc: ["war_camp", "butchery", "dragon_den", "ancestral_dolmen"],
     halfellow: ["neighborhood_pub", "historical_society", "farmers_market", "armory"],
   };
+  /** Every race's shared structures: first build gets a home bark. */
+  const COMMON_BUILDINGS = ["wall_section", "bridge_section"];
+  /** Relics Skarra covets (2026-09-25, user-directed): she barks whenever
+   *  one changes hands -- gloating if the Orcs got it, scheming if not. */
+  const SKARRA_COVETS = ["umbral_ring", "mortedamos"];
 
   /** Optional-scene pacing by number of rivals (bible §4 "Scaling with
    *  lineup size"). */
@@ -85,15 +90,20 @@ window.GameEngine.story = (function () {
   };
 
   // Bark pacing (bible §8b).
-  const BARK_MIN_GAP_ROUNDS = 2;
-  const BARK_TRIGGER_COOLDOWN = 10;
+  // 2026-09-25, user-directed ("more bark and dialogue -- it's fun"):
+  // loosened from 2 / 10 / 6 / 6 / 1/3 / 1/3 / 1/4.
+  const BARK_MIN_GAP_ROUNDS = 1;
+  const BARK_TRIGGER_COOLDOWN = 5;
   const BARK_DEFER_ROUNDS = 3;         // a poll-born bark waits at most this long for a free round
-  const VOICE_CAP = 6;
-  const TAUNT_VOICE_GAP_ROUNDS = 6;
-  const TAUNT_CHANCE_AFTER_FIRST = 1 / 3;
-  const REPLY_CHANCE = 1 / 3;
-  const UNIT_WIN_CHANCE = 1 / 4;       // Sigrun & co. commenting on a won fight
-  const RESEARCH_ASIDE_CHANCE = 1 / 3; // Barnaby's research asides
+  const VOICE_CAP = 10;
+  const TAUNT_VOICE_GAP_ROUNDS = 4;
+  const TAUNT_CHANCE_AFTER_FIRST = 1 / 2;
+  const REPLY_CHANCE = 1 / 2;
+  const UNIT_WIN_CHANCE = 1 / 3;       // Sigrun & co. commenting on a won fight
+  const UNIT_LOST_CHANCE = 1 / 4;      // the player's own people mourning a loss (when no taunt)
+  const VAELIS_SCOFF_CHANCE = 1 / 5;   // Vaelis sneering at a non-elf advancement
+  const CITY_FALL_CHANCE = 3 / 4;      // the losing kingdom shouting about a city taken or razed
+  const GATHER_CHANCE = 1 / 6;         // per gathering unit per round
   const TAUNT_TIER_BY_COUNT = [0, 0, 1, 1, 2, 3];
   const FEUD_GAP_ROUNDS = 10;          // between steps of the witches' feud / Vaelis's whispers
 
@@ -287,7 +297,7 @@ window.GameEngine.story = (function () {
         for (const id of [].concat(v)) if (E.st.dead[id] == null) return false;
       } else if (k === "losing") {
         if (!isLosing(E, v)) return false;
-      } else if (k === "winner" || k === "conqueror" || k === "firstBlood" || k === "taunter" || k === "holder") {
+      } else if (k === "winner" || k === "conqueror" || k === "firstBlood" || k === "taunter" || k === "holder" || k === "resource") {
         if (E.ctx[k] !== v) return false;
       } else if (k === "seen") {
         if (E.st.seen[v] == null) return false;
@@ -312,7 +322,8 @@ window.GameEngine.story = (function () {
         const civ = arg ? civOfRace(gs, arg) : player;
         return capitalName(civ) || (civ ? REALMS[civ.raceId] : whole);
       }
-      if (name === "city" || name === "enemyCity" || name === "unit" || name === "enemyUnit" || name === "item") {
+      if (name === "city" || name === "enemyCity" || name === "unit" || name === "enemyUnit" || name === "item"
+        || name === "tech" || name === "building" || name === "rival") {
         // No event city: fall back to the capital, then the realm (turn 1
         // has no cities at all -- bible §12 rule 23).
         return E.ctx[name] != null ? E.ctx[name] : name === "city" ? (capitalName(player) || REALMS[player.raceId]) : "";
@@ -435,7 +446,9 @@ window.GameEngine.story = (function () {
   }
   /** Scenes that skip the optional budget entirely (bible §4). */
   function skipsBudget(key) {
-    return key.startsWith("eliminated:") || key.startsWith("meet:") || key === "lovers:reveal";
+    // built:* too (2026-09-25, user-directed): a first building should
+    // always get its moment, not expire behind other optional scenes.
+    return key.startsWith("eliminated:") || key.startsWith("meet:") || key.startsWith("built:") || key === "lovers:reveal";
   }
 
   function enqueue(gs, humanCivId, key, ctx = {}) {
@@ -523,16 +536,39 @@ window.GameEngine.story = (function () {
       } else {
         q(`relic:news:${id}`, ctx);
       }
+      if (SKARRA_COVETS.includes(id) && speakerAvailable(gs, "skarra")) {
+        const B = window.GameData.STORY_BARKS;
+        const pool = B && B.skarraCovets && B.skarraCovets[`${race === "orc" ? "got" : "lost"}:${id}`];
+        queueBark(gs, humanCivId, poolBark(gs, humanCivId, pool, `covet:${race === "orc" ? "got" : "lost"}:${id}`,
+          ctx, { triggerKey: null, force: true, recycle: true }));
+      }
     }
 
-    // The player's first copy of a signature building.
-    for (const b of SIGNATURE_BUILDINGS[st.playerRace] || []) {
+    // The player's first copy of each building type: its `built:<id>` scene
+    // where one exists (signature buildings), otherwise a home bark from
+    // `home["built:<id>"]` (walls, bridges). One bark per poll; any other
+    // new building waits for the next round, so they don't pile up.
+    let builtBarked = false;
+    for (const b of [...(SIGNATURE_BUILDINGS[st.playerRace] || []), ...COMMON_BUILDINGS]) {
       if (st.builtSeen[b]) continue;
       const city = human.cities.find((c) => cityHas(c, b));
       if (!city) continue;
+      const def = (window.GameData.BUILDINGS || {})[b];
+      const ctx = { city: city.name, building: def ? def.label : b };
+      if (getSceneDef(st, `built:${b}`)) {
+        st.builtSeen[b] = round(gs);
+        q(`built:${b}`, ctx);
+        if (b === "runewall") q("titan:wall", ctx);
+        continue;
+      }
+      if (builtBarked) continue;
+      // A forced bark in a scene round is deferred into pendingBarks by
+      // poolBark itself (and comes back null), so count the queue too.
+      const queued = st.pendingBarks.length;
+      const bark = homeBark(gs, humanCivId, `built:${b}`, ctx, { force: true });
       st.builtSeen[b] = round(gs);
-      q(`built:${b}`, { city: city.name });
-      if (b === "runewall") q("titan:wall", { city: city.name });
+      if (bark) queueBark(gs, humanCivId, bark);
+      if (st.pendingBarks.length > queued) builtBarked = true;
     }
 
     // Kazra's Titan chain: rune technologies (bible §13.4).
@@ -599,13 +635,13 @@ window.GameEngine.story = (function () {
   function nextScenes(gs, humanCivId) {
     const st = gs.story;
     ensureState(st);
-    if (!st || !scenarioOf(st)) return [];
+    if (!st || !scenarioOf(st) || st.hidden) return [];
     const r = round(gs);
     const out = [];
     const take = (key, ctx, opts) => {
       const scene = buildScene(gs, humanCivId, key, ctx, opts);
       markSeen(gs, key);
-      if (scene) out.push(scene);
+      if (scene) { out.push(scene); logScene(gs, scene); }
       return scene;
     };
 
@@ -668,7 +704,7 @@ window.GameEngine.story = (function () {
   function endingScene(gs, humanCivId, kind, info = {}) {
     const st = gs.story;
     ensureState(st);
-    if (!st || st.endingsPlayed[kind]) return null;
+    if (!st || st.hidden || st.endingsPlayed[kind]) return null;
     st.endingsPlayed[kind] = round(gs);
     const ctx = {
       winner: info.winnerCivId ? raceOf(gs, info.winnerCivId) : undefined,
@@ -676,8 +712,54 @@ window.GameEngine.story = (function () {
     };
     const scene = buildScene(gs, humanCivId, kind, ctx);
     markSeen(gs, kind);
+    if (scene) logScene(gs, scene);
     return scene;
   }
+
+  // ------------------------------------------------------------------ replay
+
+  const RACE_PLURAL = { human: "Westmarch", elf: "the Elves", dwarf: "the Dwarves", orc: "the Orcs", halfellow: "the Halfellows" };
+  /** A readable name for a scene key, for the Interface menu's replay list. */
+  function sceneDisplayName(key, label) {
+    if (label) return label;
+    const [kind, a, b] = key.split(":");
+    const race = (r) => RACE_PLURAL[r] || r;
+    const building = (id) => ((window.GameData.BUILDINGS || {})[id] || {}).label || id;
+    const item = (id) => ((window.GameData.ITEMS || {})[id] || {}).label || id;
+    switch (kind) {
+      case "N": case "R": return "The Stone's Answer";
+      case "meet": return `First Contact: ${race(a)}`;
+      case "capture": return `A City Taken from ${race(a)}`;
+      case "lost": return `A City Lost to ${race(a)}`;
+      case "eliminated": return `The Fall of ${race(a)}`;
+      case "rival-vs-rival": return `${race(a)} against ${race(b)}`;
+      case "built": return `First ${building(a)}`;
+      case "relic": return a === "found" ? `Relic Found: ${item(b)}` : `Relic News: ${item(b)}`;
+      case "ultimate": return `A Legend Takes the Field (${race(a)})`;
+      case "lovers": return "The Lovers";
+      case "feud": return "The Witches' Feud";
+      case "whisper": return "The Whispering War";
+      case "titan": return "Kazra's Titan";
+      case "trow": return "The Treasure Trow";
+      case "found": return `The ${a === "3" ? "Third" : "Sixth"} City`;
+      case "tech": return "New Learning";
+      case "capital-threat": return "The Capital Threatened";
+      case "E-Held": case "E-Remains": case "E-Fallen": case "E-Eclipsed": return "The Ending";
+      default: return kind.charAt(0).toUpperCase() + kind.slice(1);
+    }
+  }
+  /** Every scene the player has seen this game, kept (already resolved) so
+   *  the Interface menu can replay it -- see main.js's openStoryReplay. */
+  function logScene(gs, scene) {
+    const st = gs.story;
+    if (!st.log) st.log = [];
+    st.log.push({ key: scene.key, round: round(gs), name: sceneDisplayName(scene.key, scene.label), scene });
+  }
+  function getLog(gs) { return (gs && gs.story && gs.story.log) || []; }
+  /** Interface menu "Show Story": hidden, no scenes or barks play (the
+   *  story state keeps tracking the war, so it can pick up again). */
+  function setHidden(gs, hidden) { if (gs && gs.story) gs.story.hidden = !!hidden; }
+  function isHidden(gs) { return !!(gs && gs.story && gs.story.hidden); }
 
   function noteRefusal(gs) {
     if (gs.story) gs.story.flags.refused = true;
@@ -697,11 +779,19 @@ window.GameEngine.story = (function () {
     return !!civ && !civ.eliminated;
   }
 
-  function pickFromPool(gs, poolKey, lines, E, extraFilter) {
+  /** `recycle`: once every fitting line has been used, start over rather
+   *  than go quiet (for pools that fire all game long, like advancements). */
+  function pickFromPool(gs, poolKey, lines, E, extraFilter, { recycle = false } = {}) {
     const st = gs.story;
     const used = st.usedLines[poolKey] || (st.usedLines[poolKey] = []);
-    const candidates = lines.map((l, i) => ({ l, i })).filter(({ l, i }) =>
-      !used.includes(i) && speakerAvailable(gs, l.s) && reqHolds(l.req, E) && (!extraFilter || extraFilter(l)));
+    const fits = ({ l }) => speakerAvailable(gs, l.s) && reqHolds(l.req, E) && (!extraFilter || extraFilter(l));
+    const all = lines.map((l, i) => ({ l, i }));
+    let candidates = all.filter((c) => !used.includes(c.i) && fits(c));
+    if (!candidates.length && recycle) {
+      const fitting = all.filter(fits);
+      st.usedLines[poolKey] = used.filter((i) => !fitting.some((c) => c.i === i));
+      return pickFromPool(gs, poolKey, lines, E, extraFilter);
+    }
     if (!candidates.length) return null;
     const pick = candidates[Math.floor(Math.random() * candidates.length)];
     used.push(pick.i);
@@ -716,8 +806,17 @@ window.GameEngine.story = (function () {
     return true;
   }
 
+  /** A pool line may carry `then: [{s, t, m?, req?}, ...]` -- a short
+   *  conversation. Each follow-up becomes the previous card's `reply`; the
+   *  chain stops at the first line whose speaker can't talk right now. */
   function toBark(st, line, caption, E) {
-    return { caption: caption ? fillTokens(caption, E) : "", speaker: line.s, text: fillTokens(line.t, E), mood: line.m || null, ...speakerOverrides(st, line.s) };
+    const bark = { caption: caption ? fillTokens(caption, E) : "", speaker: line.s, text: fillTokens(line.t, E), mood: line.m || null, ...speakerOverrides(st, line.s) };
+    let tail = bark;
+    for (const f of line.then || []) {
+      if (!speakerAvailable(E.gs, f.s) || !reqHolds(f.req, E)) break;
+      tail = tail.reply = { speaker: f.s, text: fillTokens(f.t, E), mood: f.m || null, ...speakerOverrides(st, f.s) };
+    }
+    return bark;
   }
 
   function recordBark(st, r, triggerKey, speaker) {
@@ -727,28 +826,43 @@ window.GameEngine.story = (function () {
     st.voiceLastRound[speaker] = r;
   }
 
-  /** A bark from a pool, checked against pacing and recorded. */
-  function poolBark(gs, humanCivId, pool, poolKey, ctx, { triggerKey = poolKey, filter, cap = false } = {}) {
+  /** A bark from a pool, checked against pacing and recorded. `force`
+   *  skips the pacing checks (events that should ALWAYS get a line: first
+   *  buildings, advancements, a city falling) -- it still never talks over
+   *  a scene: in a scene round the bark is deferred via pendingBarks.
+   *  `prefer(line)` > 0 picks from the best-scoring lines first. */
+  function poolBark(gs, humanCivId, pool, poolKey, ctx, { triggerKey = poolKey, filter, cap = false, force = false, recycle = false, prefer } = {}) {
     const st = gs.story;
     if (!pool) return null;
     const r = round(gs);
-    if (!barkAllowed(st, r, triggerKey)) return null;
+    if (!force && !barkAllowed(st, r, triggerKey)) return null;
     const E = env(gs, humanCivId, ctx);
-    const line = pickFromPool(gs, poolKey, pool.lines, E, (l) =>
-      (!cap || (st.voiceCounts[l.s] || 0) < VOICE_CAP) && (!filter || filter(l)));
+    const base = (l) => (!cap || (st.voiceCounts[l.s] || 0) < VOICE_CAP) && (!filter || filter(l));
+    let line = null;
+    if (prefer) {
+      const scores = [...new Set(pool.lines.map(prefer))].filter((s) => s > 0).sort((a, b) => b - a);
+      for (const s of scores) {
+        line = pickFromPool(gs, `${poolKey}#${s}`, pool.lines, E, (l) => base(l) && prefer(l) === s, { recycle });
+        if (line) break;
+      }
+    }
+    if (!line) line = pickFromPool(gs, poolKey, pool.lines, E, base, { recycle });
     if (!line) return null;
     recordBark(st, r, triggerKey, line.s);
-    return toBark(st, line, pool.caption, E);
+    const bark = toBark(st, line, pool.caption, E);
+    if (force && r === st.lastSceneRound) { queueBark(gs, humanCivId, bark); return null; }
+    return bark;
   }
 
   /** The player's own kingdom reacting to its own play (bible §8b home
    *  moments) -- only the player's own characters speak. */
-  function homeBark(gs, humanCivId, trigger, ctx) {
+  function homeBark(gs, humanCivId, trigger, ctx, opts = {}) {
     const B = window.GameData.STORY_BARKS;
     const pool = B && B.home && B.home[trigger];
     const race = gs.story.playerRace;
     return poolBark(gs, humanCivId, pool, `home:${trigger}`, ctx, {
-      filter: (l) => (characters()[l.s] || {}).race === race,
+      ...opts,
+      filter: (l) => (characters()[l.s] || {}).race === race && (!opts.filter || opts.filter(l)),
     });
   }
 
@@ -758,9 +872,39 @@ window.GameEngine.story = (function () {
     return poolBark(gs, humanCivId, B && B.world && B.world[trigger], `world:${trigger}`, ctx);
   }
 
-  function rivalBark(gs, humanCivId, key, ctx) {
+  function rivalBark(gs, humanCivId, key, ctx, opts = {}) {
     const B = window.GameData.STORY_BARKS;
-    return poolBark(gs, humanCivId, B && B.rival && B.rival[key], key, ctx, { cap: true });
+    return poolBark(gs, humanCivId, B && B.rival && B.rival[key], key, ctx, { cap: true, ...opts });
+  }
+
+  /** An advancement's name for a line of dialogue: labels like "Fireball!"
+   *  lose their trailing punctuation so "{tech}." reads cleanly. */
+  function techLabel(tech) { return String(tech.label).replace(/[!.?]+$/, ""); }
+
+  /** Vaelis sneering at someone else's advancement: `who` is "player" (a
+   *  rival's jab at the player) or "rival" (the elf player's own heir
+   *  scoffing at another kingdom). Paced by its own trigger cooldown. */
+  function vaelisScoff(gs, humanCivId, who, ctx) {
+    if (!speakerAvailable(gs, "vaelis")) return null;
+    const B = window.GameData.STORY_BARKS;
+    const pool = B && B.vaelisScoffs && B.vaelisScoffs[who];
+    return poolBark(gs, humanCivId, pool, `vaelisScoff:${who}`, ctx, { triggerKey: "vaelisScoff", recycle: true, force: who === "player" });
+  }
+
+  /** Every advancement the player makes gets a line (2026-09-25,
+   *  user-directed): the advance pool's lines for this exact tech first,
+   *  else any line for its category or none -- sometimes a short
+   *  conversation (`then`). */
+  function advanceBark(gs, humanCivId, techId) {
+    const tech = (window.GameData.TECHS || {})[techId];
+    if (!tech) return null;
+    const B = window.GameData.STORY_BARKS;
+    const pool = B && B.advance && B.advance[gs.story.playerRace];
+    return poolBark(gs, humanCivId, pool, `advance:${gs.story.playerRace}`, { tech: techLabel(tech) }, {
+      triggerKey: null, force: true, recycle: true,
+      filter: (l) => (!l.techs || l.techs.includes(techId)) && (!l.cat || l.cat === tech.category),
+      prefer: (l) => (l.techs ? 1 : 0),
+    });
   }
 
   /** Poll-born barks (produced at turn start, when a scene may be showing)
@@ -802,6 +946,11 @@ window.GameEngine.story = (function () {
     return bark;
   }
 
+  function tauntDefs() {
+    const B = window.GameData.STORY_BARKS;
+    return (B && B.taunts) || {};
+  }
+
   function tileOwnerCivId(gs, x, y) {
     if (x == null || y == null || !gs.map) return null;
     for (const c of Object.values(gs.civs)) {
@@ -821,6 +970,11 @@ window.GameEngine.story = (function () {
    * Cheap when nothing happened -- main.js calls this on every redraw().
    */
   function pump(gs, humanCivId) {
+    const barks = pumpEvents(gs, humanCivId);
+    return isHidden(gs) ? [] : barks;
+  }
+
+  function pumpEvents(gs, humanCivId) {
     const st = gs && gs.story;
     ensureState(st);
     if (!st || !humanCivId || !gs.civs[humanCivId]) { buffer = []; return []; }
@@ -863,7 +1017,12 @@ window.GameEngine.story = (function () {
         if (evt.victimTypeId === "bog_witch" && killerRace === "elf") bark = worldBark(gs, humanCivId, "feudYsolde", {});
         else if (evt.victimTypeId === "druid" && killerRace === "orc") bark = worldBark(gs, humanCivId, "feudSkarra", {});
         if (!bark && victim === humanCivId && killerRace && killerRace !== st.playerRace) {
-          bark = tryTaunt(gs, humanCivId, killerRace, { unit: unitLabel(evt.victimTypeId) });
+          const ctx = { unit: unitLabel(evt.victimTypeId) };
+          bark = tryTaunt(gs, humanCivId, killerRace, ctx);
+          // Kingdoms without a taunting voice (Dwarves, Humans, Halfellows)
+          // still speak up now and then from rival["killedYours:<race>"].
+          if (!bark && !(tauntDefs()[killerRace]) && Math.random() < UNIT_WIN_CHANCE) bark = rivalBark(gs, humanCivId, `killedYours:${killerRace}`, ctx);
+          if (!bark && Math.random() < UNIT_LOST_CHANCE) bark = homeBark(gs, humanCivId, "unitLost", ctx);
         } else if (!bark && killer === humanCivId && victimRace) {
           if (evt.victimTypeId === "bog_witch" && !st.flags.bogwitchCursed) {
             const B = window.GameData.STORY_BARKS;
@@ -881,13 +1040,14 @@ window.GameEngine.story = (function () {
         const fromRace = raceOf(gs, from), toRace = raceOf(gs, to);
         if (!fromRace || !toRace) continue;
         let bark = null;
+        const cityFall = Math.random() < CITY_FALL_CHANCE ? { force: true } : {};
         if (from === humanCivId) {
           st.lastConqueror = toRace;
           enqueue(gs, humanCivId, `lost:${toRace}`, { city: evt.cityName });
-          bark = rivalBark(gs, humanCivId, `tookCity:${toRace}`, { city: evt.cityName });
+          bark = rivalBark(gs, humanCivId, `tookCity:${toRace}`, { city: evt.cityName }, cityFall);
         } else if (to === humanCivId) {
           enqueue(gs, humanCivId, `capture:${fromRace}`, { enemyCity: evt.cityName });
-          bark = rivalBark(gs, humanCivId, `lostCity:${fromRace}`, { city: evt.cityName });
+          bark = rivalBark(gs, humanCivId, `lostCity:${fromRace}`, { city: evt.cityName }, cityFall);
         } else {
           enqueue(gs, humanCivId, `rival-vs-rival:${toRace}:${fromRace}`, { enemyCity: evt.cityName });
           // Vaelis's Whispering War (bible §13.10): two NON-elf kingdoms
@@ -902,15 +1062,64 @@ window.GameEngine.story = (function () {
           st.counters.mercyCity = evt.cityName;
         }
         if (bark) barks.push(bark);
+      } else if (evt.type === "world" && evt.kind === "cityDestroyed") {
+        // A city razed. For the player's own raze (main.js) the city was
+        // captured first, so civId is the player and formerOwnerCivId the
+        // kingdom that lost it; an AI raze passes the victim as civId.
+        const victim = evt.formerOwnerCivId || evt.civId, razer = evt.razedByCivId;
+        const victimRace = raceOf(gs, victim), razerRace = raceOf(gs, razer);
+        if (!victimRace || !razerRace || victim === razer) continue;
+        let bark = null;
+        if (razer === humanCivId) {
+          // The kingdom that lost it swears vengeance.
+          if (Math.random() < CITY_FALL_CHANCE) bark = rivalBark(gs, humanCivId, `razed:${victimRace}`, { city: evt.cityName }, { force: true });
+        } else if (victim === humanCivId) {
+          bark = rivalBark(gs, humanCivId, `razedYours:${razerRace}`, { city: evt.cityName }, { force: true });
+          const grief = homeBark(gs, humanCivId, "cityRazed", { city: evt.cityName }, { force: true });
+          if (bark && grief) { let t = bark; while (t.reply) t = t.reply; t.reply = { ...grief, caption: "" }; }
+          else bark = bark || grief;
+        }
+        if (bark) barks.push(bark);
       } else if (evt.type === "world" && evt.kind === "advancement") {
-        if (evt.civId === humanCivId && Math.random() < RESEARCH_ASIDE_CHANCE) {
-          const bark = homeBark(gs, humanCivId, "research", {});
+        const tech = (window.GameData.TECHS || {})[evt.techId];
+        const advRace = raceOf(gs, evt.civId);
+        if (evt.civId === humanCivId) {
+          let bark = advanceBark(gs, humanCivId, evt.techId);
+          // Vaelis, a rival, now and then sneers at the player's progress
+          // (2026-09-25, user-directed: he truly believes elves superior).
+          if (st.playerRace !== "elf" && tech && Math.random() < VAELIS_SCOFF_CHANCE) {
+            const scoff = vaelisScoff(gs, humanCivId, "player", { tech: techLabel(tech) });
+            if (bark && scoff) { let t = bark; while (t.reply) t = t.reply; t.reply = { ...scoff, caption: "" }; }
+            else bark = bark || scoff;
+          }
+          if (bark) barks.push(bark);
+        } else if (st.playerRace === "elf" && advRace && advRace !== "elf" && tech && Math.random() < VAELIS_SCOFF_CHANCE / 2) {
+          // Playing the Elves: he sneers at the other kingdoms' advances.
+          const scoff = vaelisScoff(gs, humanCivId, "rival", { tech: techLabel(tech), rival: REALMS[advRace] });
+          if (scoff) barks.push(scoff);
+        }
+      } else if (evt.type === "gather") {
+        // A gathering round (turns.js's storyGatherMoment): sometimes a
+        // remark, from home["gather:<channel>"] or the general home.gather.
+        if (evt.civId === humanCivId && Math.random() < GATHER_CHANCE) {
+          const ctx = { resource: evt.resource };
+          const bark = homeBark(gs, humanCivId, `gather:${evt.channel}`, ctx, { triggerKey: "gather" })
+            || homeBark(gs, humanCivId, "gather", ctx, { triggerKey: "gather" });
           if (bark) barks.push(bark);
         }
       } else if (evt.type === "moment") {
         // Ability moments (riddles, Unlock the Gate, wolf hunts...).
         let bark = null;
-        if (evt.civId === humanCivId) {
+        if (evt.trigger === "luckyRock") {
+          // Gnash LOVES a Lucky Rock: his own kingdom's (delight), or the
+          // player's (envy) -- one pool, lines split by `req.holder`.
+          const race = raceOf(gs, evt.civId);
+          if ((evt.civId === humanCivId || race === "orc") && speakerAvailable(gs, "gnash")) {
+            const B = window.GameData.STORY_BARKS;
+            bark = poolBark(gs, humanCivId, B && B.luckyRock, "luckyRock",
+              { holder: race === "orc" ? "orc" : "other" }, { triggerKey: "luckyRock", force: true, recycle: true });
+          }
+        } else if (evt.civId === humanCivId) {
           bark = homeBark(gs, humanCivId, evt.trigger, { city: evt.city });
         } else if (evt.targetCivId === humanCivId) {
           const race = raceOf(gs, evt.civId);
@@ -932,7 +1141,7 @@ window.GameEngine.story = (function () {
 
   return {
     PLAYABLE, REALMS, SIGNATURE_BUILDINGS,
-    push, resetBuffer, init, pump, nextScenes, endingScene, noteRefusal,
+    push, resetBuffer, init, pump, nextScenes, endingScene, noteRefusal, getLog, setHidden, isHidden, sceneDisplayName,
     reqHolds, fillTokens, numberToWords, buildScene, debugScene, scenarioIdFor, getSceneDef,
   };
 })();

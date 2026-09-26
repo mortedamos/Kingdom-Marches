@@ -38,6 +38,7 @@
   let knowledgeSelectedTerrainKey = null;
   let knowledgeSelectedTreasureKey = null;
   let knowledgeSelectedItemKey = null;
+  let knowledgeSelectedCharacterId = null; // Characters page (story cast)
   // Tech Trees page (2026-08-26, user-directed): which race's tree is
   // showing. Reference-only, gameplay-free -- see buildReferenceCiv --
   // unlike the sidebar's "View Tech Tree" (a specific LIVE civ's actual
@@ -494,11 +495,15 @@
           <input type="checkbox" id="show-tutorial-toggle" checked>
         </label>
         <p class="launch-hint">Opens a quick guide once the game loads. Auto-unchecked if your quicksave already has 50+ turns played.</p>
+      </div>
+
+      <div class="launch-section" id="story-section">
+        <div class="launch-section-label">Story</div>
         <label class="launch-row launch-row-check">
-          <span>Story</span>
+          <span>Play the Story</span>
           <input type="checkbox" id="show-story-toggle" checked>
         </label>
-        <p class="launch-hint">Plays your kingdom's story as the war unfolds: its leaders, rivals and endings. Single player only.</p>
+        <p class="launch-hint">Plays your kingdom's story as the war unfolds: its leaders, rivals and endings. Single player only. Can be hidden or shown again mid-game from the Interface menu.</p>
       </div>
       </div>
 
@@ -909,6 +914,7 @@
     $("spectator-toggle").addEventListener("change", (e) => {
       const isSpectator = e.target.checked;
       $("single-player-section").style.display = isSpectator ? "none" : "block";
+      $("story-section").style.display = isSpectator ? "none" : "block";
       $("spectator-race-section").style.display = isSpectator ? "block" : "none";
     });
 
@@ -960,6 +966,7 @@
     setupFocusMuting();
     setupTitleLoadGameControl();
     setupMotionControls();
+    setupStoryMenuControls();
   }
 
   /** Title menu bar's File > Load Game: loads a save straight from the title
@@ -1216,6 +1223,26 @@
     });
   }
 
+  /** Background asset warm-up (2026-09-25, user-directed): the moment the
+   *  player clicks Begin, start fetching art, sound and story portraits for
+   *  every race, quietly, while they pick options. The real loading screen
+   *  (beginGameScreenTransition) still runs on Start Game, but finds most of
+   *  it already fetched. The opponents aren't known yet (they're drawn at
+   *  random on Start), so this warms all five races. Runs once per page. */
+  let backgroundPreloadStarted = false;
+  function startBackgroundPreload() {
+    if (backgroundPreloadStarted) return;
+    backgroundPreloadStarted = true;
+    const races = [...RACE_LIST];
+    try {
+      window.UI.sprites.preloadAll(races);
+      if (window.SfxSystem.prewarm) window.SfxSystem.prewarm(races);
+      if (window.UI.story.preloadPortraits) window.UI.story.preloadPortraits(races);
+    } catch (e) {
+      console.warn("[preload] background warm-up failed; the loading screen will fetch instead", e);
+    }
+  }
+
   /** Open/close wiring for the launch options modal. Closing is deliberately
    *  generous (button, backdrop click, Escape) because this modal is the only
    *  thing on the splash screen -- there's nothing behind it to lose. */
@@ -1229,6 +1256,7 @@
       // this modal on a later click never STOPS music that's already
       // playing -- play() on an already-playing element is a harmless no-op.
       playTitleMusic();
+      startBackgroundPreload();
     };
     const close = () => { overlay.style.display = "none"; };
 
@@ -1411,6 +1439,14 @@
           renderKnowledgeOverlay();
         };
       }
+    } else if (knowledgeView === "characters") {
+      content.innerHTML = window.UI.knowledgebase.renderCharacters(knowledgeSelectedCharacterId);
+      for (const btn of content.querySelectorAll(".kb-list-btn[data-character-id]")) {
+        btn.onclick = () => {
+          knowledgeSelectedCharacterId = btn.dataset.characterId;
+          renderKnowledgeOverlay();
+        };
+      }
     } else if (knowledgeView === "items") {
       // Items page (2026-09-21): gear a unit carries, from config.js's item table.
       content.innerHTML = window.UI.knowledgebase.renderItems(knowledgeSelectedItemKey);
@@ -1492,6 +1528,7 @@
     knowledgeSelectedActionKey = null;
     knowledgeSelectedTerrainKey = null;
     knowledgeSelectedTreasureKey = null;
+    knowledgeSelectedCharacterId = null;
     knowledgeSelectedItemKey = null;
     knowledgeSelectedRaceId = null;
     knowledgeBackTarget = null;
@@ -1640,6 +1677,10 @@
     if (unitsBtn) unitsBtn.addEventListener("click", () => openKnowledge("units"));
     const structuresBtn = $("kb-structures-btn");
     if (structuresBtn) structuresBtn.addEventListener("click", () => openKnowledge("structures"));
+    const charactersBtn = $("kb-characters-btn");
+    if (charactersBtn) charactersBtn.addEventListener("click", () => openKnowledge("characters"));
+    const titleCharactersBtn = $("title-kb-characters-btn");
+    if (titleCharactersBtn) titleCharactersBtn.addEventListener("click", () => openKnowledge("characters"));
     const itemsBtn = $("kb-items-btn");
     if (itemsBtn) itemsBtn.addEventListener("click", () => openKnowledge("items"));
     const treasureBtn = $("kb-treasure-btn");
@@ -2209,6 +2250,7 @@
     setupTileScoreControls();
     updateSpeedMenuVisibility();
     updateFogMenuVisibility();
+    updateStoryMenu();
     updateAiReportsMenuVisibility();
 
     if (spectatorMode) startAutoplay();
@@ -2794,6 +2836,45 @@
     $("fog-of-war-panel").style.display = spectatorMode ? "" : "none";
   }
 
+  /** Interface menu's Story panel (2026-09-25, user-directed): single
+   *  player only. "Show Story" reflects whether scenes and barks play;
+   *  Replay lists the scenes already seen this game. */
+  function updateStoryMenu() {
+    const panel = $("story-menu-panel");
+    if (!panel) return;
+    panel.style.display = spectatorMode || !humanCivId ? "none" : "";
+    const toggle = $("story-visible-toggle");
+    if (toggle && gameState) toggle.checked = !!gameState.story && !window.GameEngine.story.isHidden(gameState);
+  }
+
+  function openStoryReplay() {
+    if (!gameState || spectatorMode) return;
+    viewState.dialog = { kind: "storyReplay", entries: window.GameEngine.story.getLog(gameState) };
+    redraw();
+  }
+
+  function setupStoryMenuControls() {
+    const toggle = $("story-visible-toggle");
+    if (toggle) toggle.addEventListener("change", () => {
+      if (!gameState || spectatorMode || !humanCivId) return;
+      if (toggle.checked && !gameState.story) {
+        // Started with the story off: begin it now, from the Opening, which
+        // plays at the start of the next turn.
+        window.GameEngine.story.init(gameState, humanCivId, { enabled: true });
+        window.UI.story.loadScenario(gameState.story && gameState.story.id).then(() => redraw());
+      } else {
+        window.GameEngine.story.setHidden(gameState, !toggle.checked);
+        if (!toggle.checked) window.UI.story.clearBarks();
+      }
+      updateStoryMenu();
+    });
+    const replayBtn = $("story-replay-btn");
+    if (replayBtn) replayBtn.addEventListener("click", () => {
+      if (viewState && viewState.dialog) return; // never over another dialog
+      openStoryReplay();
+    });
+  }
+
   /** Shows/hides the "AI Actions"/"AI Tech Trees" Report menu items --
    *  spectator-only: both reports expose an
    *  opponent's decision-making/tech progress, which is spectator-mode
@@ -3343,6 +3424,7 @@
     centerViewOnStart();
     updateSpeedMenuVisibility();
     updateFogMenuVisibility();
+    updateStoryMenu();
     updateAiReportsMenuVisibility();
     if (spectatorMode) startAutoplay();
     hideLoadingScreen();
@@ -4593,7 +4675,7 @@
       formerOwnerLabel: formerRace ? `the ${formerRace.label} Kingdom` : formerOwnerId,
       onAnswer: (keep) => {
         if (!keep) {
-          window.GameEngine.cities.destroyCity(gameState, civ, city);
+          window.GameEngine.cities.destroyCity(gameState, civ, city, { razedByCivId: civ.id, formerOwnerCivId: formerOwnerId });
           // Razing our own just-taken city can't eliminate anyone (the
           // previous owner already lost it on capture), so no elimination
           // re-check is needed here -- unlike the AI raze path in ai.js.
@@ -5967,6 +6049,9 @@
       // The line fills in word by word (js/ui/story.js startReveal); the
       // first Next while it's still filling just completes it.
       const reveal = window.UI.story.startReveal($("game-dialog-modal"));
+      // The speaker's vocalization, once per line shown.
+      // (Keyed on the line index: Next/Back copy the dialog object.)
+      if (dialog.voicedIndex !== dialog.index) { dialog.voicedIndex = dialog.index; window.UI.story.voiceLine(dialog); }
       if (nextBtn) {
         nextBtn.onclick = () => {
           if (viewState.dialog !== dialog) return;
@@ -5981,6 +6066,34 @@
         nextBtn.focus();
       }
       if (skipBtn) skipBtn.onclick = finish;
+      const backBtn = $("story-back-btn");
+      if (backBtn) {
+        backBtn.onclick = () => {
+          if (viewState.dialog !== dialog || dialog.index <= 0) return;
+          viewState.dialog = { ...dialog, index: dialog.index - 1 };
+          redraw();
+        };
+      }
+      return;
+    }
+    if (dialog.kind === "storyReplay") {
+      const okBtn = $("game-dialog-ok-btn");
+      if (okBtn) okBtn.onclick = () => {
+        if (viewState.dialog !== dialog) return;
+        viewState.dialog = null;
+        lastRenderedDialog = null;
+        redraw();
+      };
+      for (const btn of document.querySelectorAll(".story-replay-item")) {
+        btn.onclick = () => {
+          if (viewState.dialog !== dialog) return;
+          const entry = dialog.entries[Number(btn.dataset.replayIndex)];
+          if (!entry) return;
+          // Back to the list when the replayed scene ends.
+          viewState.dialog = { kind: "story", scene: entry.scene, index: 0, onDone: openStoryReplay };
+          redraw();
+        };
+      }
       return;
     }
     if (dialog.kind === "foundCity") {
