@@ -115,12 +115,12 @@ window.GameData.STORY_CHARACTER_PROFILES = {
   // -------------------------------------------------------------- BLOODMIRE
   grukka: {
     role: "Warchief of the Bloodmire Clans",
-    background: "A massive, scarred warlord who united the clans by strength and by keeping his word, which is rare in the bogs. The Accord gave the orcs the worst land in the Marches, and to Grukka the Marchstone was always a fence. He is a widower, and raised his son alone.",
+    background: "A massive, scarred warlord who united the clans by strength and by keeping his word, which is rare in the bogs. The Accord gave the orcs the worst land in the Marches, and to Grukka the Marchstone was always a cage. He is a widower, and raised his son alone.",
     virtues: ["Honourable: when Grukka gives his word, it holds.", "A born leader the clans actually follow."],
     flaws: ["Wrathful: his temper is legendary, and quick.", "He knows how to take, and is only beginning to wonder how to keep."],
     quirks: "Measures people with one cocked eyebrow. Tells his sister to plot more quietly. Never forgot the Last Parley with Westmarch, which ended in blood.",
     relations: "Father of Varg. Younger brother of Skarra, who has resented him since the day the clans chose him.",
-    quote: "Your stone was a fence. Fences break.",
+    quote: "Your stone was a cage. Cage bars break.",
   },
   skarra: {
     role: "Bog Witch of Bloodmire, the Bog-Mother",

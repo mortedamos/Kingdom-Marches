@@ -1,8 +1,8 @@
 /**
- * STORY SCENARIO -- orc/dwarf+elf+halfellow+human, "Break the Fence"
+ * STORY SCENARIO -- orc/dwarf+elf+halfellow+human, "Break the Cage"
  * The canonical orc story: from raider to ruler, and from Warchief to
  * father, with a sister at his back holding a knife. Every crown in the
- * Marches drew a line around the bog. B3: the fences, named. B5: Skarra's
+ * Marches drew a line around the bog. B3: the bars, named. B5: Skarra's
  * coup with the lovers' secret (shared). B6 override: Sigrun comes to the
  * bog herself, and the Thane's daughter teaches the Warchief to build.
  * Threads: lovers, feud, whisper (shared).
@@ -12,7 +12,7 @@ window.GameData = window.GameData || {};
 window.GameData.STORY_SCENARIOS = window.GameData.STORY_SCENARIOS || {};
 
 window.GameData.STORY_SCENARIOS["orc/dwarf+elf+halfellow+human"] = {
-  title: "Break the Fence",
+  title: "Break the Cage",
   beats: {
     B0: [
       { n: "The Bloodmire, the swamp country of the Orcs. Mist hangs low over the mud huts and fire pits, and every frog in the bog has gone silent." },
@@ -24,7 +24,7 @@ window.GameData.STORY_SCENARIOS["orc/dwarf+elf+halfellow+human"] = {
       { s: "skarra", t: "The Marchstone, little Warchief! The great stone of the Long Accord, SPLIT in two! The ancestors are SCREAMING!", m: "gleeful" },
       { s: "grukka", t: "The Accord. The peace that gave the Elves their forests, the Dwarves their mountains, the Humans their rivers, the halfellows their fields… and us the bog.", m: "angry" },
       { s: "skarra", t: "And the ancestors say more! Now the Marches pass to the crown that HOLDS them, or else to the crown that REMAINS!", m: "gleeful" },
-      { s: "grukka", t: "That stone was a fence, sister. Every crown in the Marches helped build it. Fences break.", m: "defiant" },
+      { s: "grukka", t: "That stone was a cage, sister. Every crown in the Marches forged a bar of it. Bars break.", m: "defiant" },
       { n: "A huge shape shoulders through the crowd: Gnash, the ogre who serves as the clans' butcher, grinning over a cleaver the size of a door." },
       { s: "gnash", t: "Free! Free to SMASH! Who we smash first, chief?", m: "happy" },
       { s: "grukka", t: "Everyone, Gnash. One at a time.", m: "defiant" },
@@ -46,10 +46,10 @@ window.GameData.STORY_SCENARIOS["orc/dwarf+elf+halfellow+human"] = {
       { s: "grukka", t: "You're quiet, boy. Quiet isn't orc.", m: "angry" },
       { s: "varg", t: "The ancestors say avenge the fallen, Father. What if I don't want anyone to fall?", m: "sad" },
     ],
-    // The fences, named.
+    // The bars, named.
     B3: [
       { n: "The orc war council in {capital}, around a roaring fire pit. Grukka's captains are boasting of new ground taken, from every direction at once." },
-      { s: "grukka", t: "Mountain, forest, field and tower. Four fences. We've broken through all of them this season. So why the long face, boy?", m: "defiant" },
+      { s: "grukka", t: "Mountain, forest, field and tower. Four bars on the cage. We've broken through all of them this season. So why the long face, boy?", m: "defiant" },
       { s: "varg", t: "Because we take it, Father, and then we move on. The camps empty. The fields rot. If all we do is take, the Clans will scatter the moment we stop winning.", m: "sad" },
       { s: "varg", t: "The Dwarves dig in. The halfellows plant. The Humans pave. Even the Elves grow things. We're the only people in the Marches who've never *kept* anything.", m: "sad" },
       { s: "skarra", t: "Listen to him! Soft as bog-moss! Is this a Warchief's son or a dwarf's pet?", m: "gleeful" },
@@ -74,8 +74,8 @@ window.GameData.STORY_SCENARIOS["orc/dwarf+elf+halfellow+human"] = {
       { n: "The Orcs have won by holding the Marches. For the first time in history, an orc crown rules the borderlands." },
       { n: "At the heart of the Marches, the split Marchstone speaks." },
       { s: "stone", t: "HELD." },
-      { n: "Across the Marches, the orc settlements have become real towns, with walls, wells, and fields that don't rot. Every fence the Accord drew is a road now." },
-      { s: "grukka", t: "Not a fence. A hearth.", m: "happy" },
+      { n: "Across the Marches, the orc settlements have become real towns, with walls, wells, and fields that don't rot. Every bar the Accord forged is a road now." },
+      { s: "grukka", t: "Not a cage. A hearth.", m: "happy" },
       { s: "grukka", t: "…Don't tell anyone I said hearth.", m: "defiant" },
       { s: "gnash", t: "EVERYONE HEARD. Gnash tell everyone anyway, to be sure.", m: "happy" },
       { n: "Somewhere deep in the bog, Skarra's distant shriek echoes as she curses destiny from exile. Destiny the frog, sunning on a lily pad, ignores her." },
@@ -91,7 +91,7 @@ window.GameData.STORY_SCENARIOS["orc/dwarf+elf+halfellow+human"] = {
       { n: "At the heart of the Marches, the split Marchstone speaks." },
       { s: "stone", t: "REMAINS." },
       { n: "Grukka sits atop the split Marchstone as if it were a throne. The stone is cold." },
-      { s: "grukka", t: "We broke the fence. Every one of them. So what do we keep inside it now?", m: "sad" },
+      { s: "grukka", t: "We broke the cage. Every one of them. So what do we keep inside it now?", m: "sad" },
       { n: "Varg stands below. He hasn't spoken to his mother since the mountain fell." },
       { s: "varg", t: "You told me to keep talking, Father, so I'll say it. I had someone to keep. You took the whole mountain.", m: "sad" },
       { s: "grukka", t: "…Boy.", m: "sad" },
@@ -124,7 +124,7 @@ window.GameData.STORY_SCENARIOS["orc/dwarf+elf+halfellow+human"] = {
       { n: "Far away, the split Marchstone speaks, and not to the Orcs." },
       { s: "stone", t: "HELD." },
       { s: "grukka", t: "Another crown holds the Marches. They've drawn new borders.", m: "defiant" },
-      { s: "grukka", t: "New fence. Same bog.", m: "defiant" },
+      { s: "grukka", t: "New cage. Same bog.", m: "defiant" },
       { n: "Grukka stares at the new borders for a long time. Then he looks at the timber halls his son built." },
       { s: "grukka", t: "…This time, we build inside it.", m: "defiant" },
       { s: "varg", t: "Father, I'm riding to Karrak.", m: "bashful", req: { alive: "dwarf" }, alt: "Then let's build, Father." },

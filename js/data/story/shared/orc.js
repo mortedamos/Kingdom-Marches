@@ -84,7 +84,7 @@ Object.assign(window.GameData.STORY_SHARED.orc, {
       alt: { s: "gnash", t: "Gnash like turnip. Turnip is crunchy. …Gnash on Skarra's side, though. Probably.", m: "confused" } },
     { n: "The clans hold their breath. Grukka steps up onto the stone opposite his sister's." },
     { s: "grukka", t: "You'd hand my son to the dwarves' axes to steal my seat, Skarra.", m: "angry", req: { inGame: "dwarf" },
-      alt: "Soft. I've broken more fences than you've cursed frogs, sister. The clans follow me because I keep my word." },
+      alt: "Soft. I've broken more cage bars than you've cursed frogs, sister. The clans follow me because I keep my word." },
     { s: "skarra", t: "Skarra would hand ANYONE to ANYONE!", m: "gleeful" },
     { s: "grukka", t: "And my word is this: get out of my bog. Take your frog.", m: "angry" },
     { n: "Gnash looks from one sister to the other, counting on his fingers." },
@@ -359,7 +359,7 @@ Object.assign(window.GameData.STORY_SHARED.orc, {
   "rival-vs-rival:elf:human": [
     { n: "News crosses the bog: the Elves have taken {enemyCity}, a city of Westmarch." },
     { s: "vaelis", t: "*(in the captured city)* Square towers. Square houses. Everything in such a *hurry*.", m: "aloof" },
-    { s: "grukka", t: "Tower and root. The two fences that boxed in the bog, fighting each other. I could watch this all day.", m: "happy" },
+    { s: "grukka", t: "Tower and root. Two bars of the bog's cage, fighting each other. I could watch this all day.", m: "happy" },
   ],
   "rival-vs-rival:halfellow:dwarf": [
     { n: "News crosses the bog: the halfellows have taken {enemyCity}, a dwarf hold. Witnesses mention unlocked gates, and a very persuasive pie." },

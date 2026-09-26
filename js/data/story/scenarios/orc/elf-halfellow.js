@@ -54,7 +54,7 @@ window.GameData.STORY_SCENARIOS["orc/elf+halfellow"] = {
       { n: "At the heart of the Marches, the split Marchstone speaks." },
       { s: "stone", t: "HELD." },
       { n: "Across the Marches, the orc settlements have become real towns, with walls, wells, fields, and hedges. Somebody asked the halfellows how." },
-      { s: "grukka", t: "Not a fence. A hearth. …Don't tell anyone I said hearth.", m: "happy" },
+      { s: "grukka", t: "Not a cage. A hearth. …Don't tell anyone I said hearth.", m: "happy" },
       { s: "gnash", t: "EVERYONE HEARD. Gnash tell everyone anyway, to be sure.", m: "happy" },
       { s: "hobby", t: "*(in the Hearthlands)* She *kept* it. Uncle, the Orcs kept it! I'm almost proud.", m: "happy", req: { alive: "halfellow" } },
       { s: "aelthir", t: "*(in the Silverwood)* Strength is what you keep. He listened.", m: "happy", req: { alive: "elf" } },
@@ -87,7 +87,7 @@ window.GameData.STORY_SCENARIOS["orc/elf+halfellow"] = {
       { n: "Far away, the split Marchstone speaks, and not to the Orcs." },
       { s: "stone", t: "HELD." },
       { s: "grukka", t: "The soft ones hold the Marches. Beaten by gardeners.", m: "angry" },
-      { s: "grukka", t: "New fence. Same bog. …This time, we build inside it. And we plant something. Something that grows back by spring.", m: "defiant" },
+      { s: "grukka", t: "New cage. Same bog. …This time, we build inside it. And we plant something. Something that grows back by spring.", m: "defiant" },
     ],
   },
 };

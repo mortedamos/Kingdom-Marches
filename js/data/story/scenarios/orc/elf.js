@@ -1,5 +1,5 @@
 /**
- * STORY SCENARIO -- orc/elf, "The Fenced Forest"
+ * STORY SCENARIO -- orc/elf, "The Caged Bog"
  * The elves kept the best land for a thousand years, and Vaelis doesn't
  * know Grukka's name. Skarra and Ysolde's eighty-year feud comes to a head
  * (shared feud:*). THREAD (bible §13.11, Moss Falls): at B4 Moss is shot by
@@ -12,7 +12,7 @@ window.GameData = window.GameData || {};
 window.GameData.STORY_SCENARIOS = window.GameData.STORY_SCENARIOS || {};
 
 window.GameData.STORY_SCENARIOS["orc/elf"] = {
-  title: "The Fenced Forest",
+  title: "The Caged Bog",
   beats: {
     B0: [
       { n: "The Bloodmire, the swamp country of the Orcs. Mist hangs low over the mud huts and fire pits, and every frog in the bog has gone silent." },
@@ -21,9 +21,9 @@ window.GameData.STORY_SCENARIOS["orc/elf"] = {
       { n: "At the Speaking Stones, an ancient ring of standing stones where the Bog Witches speak with the orc dead, Warchief Grukka Ironjaw, ruler of the Bloodmire Clans, watches the stones tremble." },
       { n: "His elder sister, Skarra the Bog-Mother, rises from the mud with bones rattling in her wild hair. A fat green frog named Destiny rides on her shoulder." },
       { s: "skarra", t: "The Marchstone, little Warchief! SPLIT in two! Now the Marches pass to the crown that HOLDS them, or else to the crown that REMAINS!", m: "gleeful" },
-      { s: "grukka", t: "The Accord gave the Elves the Silverwood, the best land in the Marches. It gave us the bog. That stone was a fence, sister. Fences break.", m: "angry" },
+      { s: "grukka", t: "The Accord gave the Elves the Silverwood, the best land in the Marches. It gave us the bog. That stone was a cage, sister. Cage bars break.", m: "angry" },
       { n: "A huge shape shoulders through the crowd: Gnash, the ogre who serves as the clans' butcher, grinning over a cleaver the size of a door." },
-      { s: "gnash", t: "Fence break! Gnash smash fence MORE, to be sure!", m: "happy" },
+      { s: "gnash", t: "Cage break! Gnash smash cage MORE, to be sure!", m: "happy" },
       { n: "At the edge of the torchlight stands Varg, Grukka's son, one hand buried in the fur of Moss, his grey dire wolf mount." },
       { s: "varg", t: "Moss can smell the forest from here, Father. It smells like… rain. Like things growing.", m: "bashful" },
       { s: "skarra", t: "It smells like the moss-haired crow! Eighty years, Skarra has waited to burn that witch's spring!", m: "gleeful" },
@@ -86,8 +86,8 @@ window.GameData.STORY_SCENARIOS["orc/elf"] = {
       { n: "The Orcs have won by holding the Marches. For the first time in history, an orc crown rules the borderlands." },
       { n: "At the heart of the Marches, the split Marchstone speaks." },
       { s: "stone", t: "HELD." },
-      { n: "Across the Marches, the orc settlements have become real towns, with walls, wells, and fields that don't rot. The best land in the Marches is no longer behind anyone's fence." },
-      { s: "grukka", t: "Not a fence. A hearth.", m: "happy" },
+      { n: "Across the Marches, the orc settlements have become real towns, with walls, wells, and fields that don't rot. The best land in the Marches is no longer behind anyone's bars." },
+      { s: "grukka", t: "Not a cage. A hearth.", m: "happy" },
       { s: "grukka", t: "…Don't tell anyone I said hearth.", m: "defiant" },
       { s: "gnash", t: "EVERYONE HEARD. Gnash tell everyone anyway, to be sure.", m: "happy" },
       { s: "vaelis", t: "*(in the Silverwood)* The orcs hold the Marches. …What *was* the Warchief's name?", m: "aloof", req: { alive: "elf" } },
@@ -102,7 +102,7 @@ window.GameData.STORY_SCENARIOS["orc/elf"] = {
       { n: "At the heart of the Marches, the split Marchstone speaks." },
       { s: "stone", t: "REMAINS." },
       { n: "Grukka sits atop the split Marchstone as if it were a throne. The stone is cold." },
-      { s: "grukka", t: "We broke the fence. The best land in the Marches is ours. So what do we keep inside it now?", m: "sad" },
+      { s: "grukka", t: "We broke the cage. The best land in the Marches is ours. So what do we keep inside it now?", m: "sad" },
       { n: "Varg stands below, his axe still wet. He burned the last grove himself.", req: { flag: "mossDead" },
         alt: "Varg stands below, one hand in Moss's grey fur." },
       { s: "varg", t: "Nothing, Father. There's nothing left to keep. That was the point.", m: "sad", req: { flag: "mossDead" },
@@ -127,7 +127,7 @@ window.GameData.STORY_SCENARIOS["orc/elf"] = {
       { n: "Far away, the split Marchstone speaks, and not to the Orcs." },
       { s: "stone", t: "HELD." },
       { s: "grukka", t: "The Elves hold the Marches. They've drawn new borders.", m: "defiant" },
-      { s: "grukka", t: "New fence. Same bog.", m: "defiant" },
+      { s: "grukka", t: "New cage. Same bog.", m: "defiant" },
       { n: "Grukka stares at the new borders for a long time. Then he looks at the timber halls his son built." },
       { s: "grukka", t: "…This time, we build inside it.", m: "defiant" },
       { s: "varg", t: "Build, Father. And I'll guard it. Nobody shoots anything of ours again.", m: "angry", req: { flag: "mossDead" },

@@ -314,6 +314,10 @@ window.GameEngine = window.GameEngine || {};
     const tile = map.tiles[y * map.width + x];
     const scorchTurns = (window.GameConfig.view.weather.lightning || {}).scorchTurns ?? 3;
     tile.scorchExpiresAtTurn = (gameState.turnNumber || 0) + scorchTurns;
+    // Wall-clock time of the strike, for render.js's real-time fade. (A
+    // mark carried over in a save from an earlier session is long past its
+    // fade window, so it simply doesn't reappear.)
+    tile.scorchAtMs = Date.now();
   }
 
   /**

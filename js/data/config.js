@@ -65,9 +65,9 @@ window.GameConfig = {
     /** Local date this build was cut, YYYY-MM-DD. */
     date: "2026-09-25",
     /** Local time this build was cut, 24-hour HH:MM. */
-    time: "23:20",
+    time: "23:55",
     /** Monotonic build counter -- increment it, don't recompute it. */
-    number: 335,
+    number: 336,
   },
 
   // =========================================================================
@@ -1557,6 +1557,12 @@ window.GameConfig = {
          *  render.js's drawing of tile.scorchExpiresAtTurn. How many turns
          *  the mark lingers once it lands. */
         scorchTurns: 3,
+        /** Real-time fade (2026-09-25, user-directed: "scorch marks should
+         *  fade over time"): a mark stays at full strength this long after
+         *  the strike, then eases out over scorchFadeSeconds -- see
+         *  render.js. The turn-based expiry above still caps it. */
+        scorchHoldSeconds: 15,
+        scorchFadeSeconds: 90,
       },
 
       /**

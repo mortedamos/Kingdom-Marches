@@ -642,10 +642,27 @@ window.UI = window.UI || {};
         // overlays.js's drawLightningScorch. Fades linearly over its own
         // remaining lifetime rather than popping off at 0, using the same
         // scorchTurns the engine stamped it with as the fade's full span.
+        // 2026-09-25, user-directed ("scorch marks should fade over time"):
+        // the turn-based fade alone held a mark at full strength for as
+        // long as the player lingered on one turn, so it's now also faded
+        // smoothly in real time from the moment of the strike
+        // (tile.scorchAtMs): full strength for scorchHoldSeconds, then
+        // easing out over scorchFadeSeconds. Whichever fade is further
+        // along wins. The animation loop redraws every frame, so it's a
+        // slow, continuous fade, never a flicker.
         if (tile.scorchExpiresAtTurn > (gameState.turnNumber || 0)) {
-          const scorchTurns = (window.GameConfig.view.weather.lightning || {}).scorchTurns || 3;
+          const lightningCfg = window.GameConfig.view.weather.lightning || {};
+          const scorchTurns = lightningCfg.scorchTurns || 3;
           const turnsLeft = tile.scorchExpiresAtTurn - (gameState.turnNumber || 0);
-          overlays.drawLightningScorch(ctx, tile, screenX, screenY, ts, Math.min(1, turnsLeft / scorchTurns));
+          let alpha = Math.min(1, turnsLeft / scorchTurns);
+          if (tile.scorchAtMs) {
+            const holdMs = (lightningCfg.scorchHoldSeconds ?? 15) * 1000;
+            const fadeMs = (lightningCfg.scorchFadeSeconds ?? 90) * 1000;
+            const t = Math.max(0, Date.now() - tile.scorchAtMs - holdMs) / fadeMs;
+            const timeAlpha = t >= 1 ? 0 : 1 - t * t * (3 - 2 * t); // smoothstep ease-out
+            alpha = Math.min(alpha, timeAlpha);
+          }
+          overlays.drawLightningScorch(ctx, tile, screenX, screenY, ts, alpha);
         }
 
         // River — procedural curve, drawn UNDER roads (see drawRiverOverlay)

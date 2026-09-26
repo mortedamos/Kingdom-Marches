@@ -1,8 +1,8 @@
 /**
  * STORY SCENARIO -- orc/elf+human, "Tower and Root"
  * The human towers and the elf forest boxed in the bogs: the story of the
- * fence, from two sides. B3: Grukka stands on the one hill where both
- * borders meet, and sees the fence whole. Threads: feud, bloodline (as
+ * cage, from two sides. B3: Grukka stands on the one hill where both
+ * borders meet, and sees the cage whole. Threads: feud, bloodline (as
  * outside witness), whisper (shared). Shared defaults: shared/orc.js.
  */
 window.GameData = window.GameData || {};
@@ -18,7 +18,7 @@ window.GameData.STORY_SCENARIOS["orc/elf+human"] = {
       { n: "At the Speaking Stones, an ancient ring of standing stones where the Bog Witches speak with the orc dead, Warchief Grukka Ironjaw, ruler of the Bloodmire Clans, watches the stones tremble." },
       { n: "His elder sister, Skarra the Bog-Mother, rises from the mud with bones rattling in her wild hair. A fat green frog named Destiny rides on her shoulder." },
       { s: "skarra", t: "The Marchstone, little Warchief! SPLIT! Now the Marches pass to the crown that HOLDS them, or else to the crown that REMAINS!", m: "gleeful" },
-      { s: "grukka", t: "On one side of the bog, the Elves' forest. On the other, Westmarch's towers. Between them, a thousand years, they built our fence.", m: "angry" },
+      { s: "grukka", t: "On one side of the bog, the Elves' forest. On the other, Westmarch's towers. Between them, a thousand years, they built our cage.", m: "angry" },
       { s: "grukka", t: "And the Queen of Westmarch owes me an apology for the parley. I'll collect it the orc way.", m: "angry" },
       { n: "A huge shape shoulders through the crowd: Gnash, the ogre who serves as the clans' butcher." },
       { s: "gnash", t: "Trees AND towers! Gnash smash tree, then smash tower! Efficient!", m: "happy" },
@@ -34,7 +34,7 @@ window.GameData.STORY_SCENARIOS["orc/elf+human"] = {
       { n: "Varg says nothing. Grukka notices." },
       { s: "varg", t: "The ancestors say avenge the fallen, Father. What if I don't want anyone to fall?", m: "sad" },
     ],
-    // The fence, seen whole.
+    // The cage, seen whole.
     B3: [
       { n: "A lonely hill at the edge of the bog, the only high ground for a day's ride. Grukka has climbed it with his son." },
       { n: "To the north, the silver trees of the Silverwood, a wall of green that never ends. To the west, the grey mage-towers of Westmarch, standing right up to the reeds." },
@@ -52,7 +52,7 @@ window.GameData.STORY_SCENARIOS["orc/elf+human"] = {
       { n: "At the heart of the Marches, the split Marchstone speaks." },
       { s: "stone", t: "HELD." },
       { n: "Across the Marches, the orc settlements have become real towns. Their roads bend. Their groves have gates." },
-      { s: "grukka", t: "Not a fence. A hearth. …Don't tell anyone I said hearth.", m: "happy" },
+      { s: "grukka", t: "Not a cage. A hearth. …Don't tell anyone I said hearth.", m: "happy" },
       { s: "gnash", t: "EVERYONE HEARD. Gnash tell everyone anyway, to be sure.", m: "happy" },
       { s: "maren", t: "*(in Westmarch)* The Warchief holds the Marches. …I owe him an apology. Help me write it.", m: "sad", req: { alive: "human" } },
       { s: "vaelis", t: "*(in the Silverwood)* The orcs hold the Marches. I shall have to learn the Warchief's name. …How tiresome.", m: "aloof", req: { alive: "elf" } },
@@ -61,8 +61,8 @@ window.GameData.STORY_SCENARIOS["orc/elf+human"] = {
       { n: "The Orcs have won by destroying the Silverwood and Westmarch. The forest and the river cities are silent." },
       { n: "At the heart of the Marches, the split Marchstone speaks." },
       { s: "stone", t: "REMAINS." },
-      { n: "Grukka climbs the lonely hill again. The trees are ash. The towers are empty. There is no fence at all." },
-      { s: "grukka", t: "No fence. No one on the other side of it, either.", m: "sad" },
+      { n: "Grukka climbs the lonely hill again. The trees are ash. The towers are empty. There is no cage at all." },
+      { s: "grukka", t: "No cage. No one outside it, either.", m: "sad" },
       { s: "varg", t: "Each other, Father. That's all that's left to keep. Try that.", m: "sad" },
     ],
     "E-Fallen": [
@@ -83,8 +83,8 @@ window.GameData.STORY_SCENARIOS["orc/elf+human"] = {
         alt: "Westmarch has won by holding the Marches, but the Bloodmire Clans still stand." },
       { n: "Far away, the split Marchstone speaks, and not to the Orcs." },
       { s: "stone", t: "HELD." },
-      { s: "grukka", t: "Root and tower. The old fence, put back up.", m: "angry" },
-      { s: "grukka", t: "New fence. Same bog. …This time, we build inside it. And we make them *look*.", m: "defiant" },
+      { s: "grukka", t: "Root and tower. The old cage, its bars back in place.", m: "angry" },
+      { s: "grukka", t: "New cage. Same bog. …This time, we build inside it. And we make them *look*.", m: "defiant" },
     ],
   },
 };
