@@ -534,16 +534,33 @@
 
   /** Average lit fraction across a source's windows -- drives its broad
    *  glow, so the halo over a building grows as its windows come on rather
-   *  than appearing fully formed. */
+   *  than appearing fully formed.
+   *
+   *  Perf (2026-09-26): also stashes each window's own lit amount on
+   *  `source._litAmounts`, so drawWindowDots's later per-window pass (same
+   *  frame, same source) can reuse them instead of recomputing
+   *  windowSchedule + windowLitAmount from scratch for every window a
+   *  SECOND time -- windowSchedule alone is a hash plus six rand01 draws,
+   *  and this was doing it twice per window per frame for every lit
+   *  building/city on screen. `source` is a fresh plain object built fresh
+   *  each frame in addStructureLight/addCityLight (never reused across
+   *  frames), so stashing a field on it here is safe -- nothing else reads
+   *  it, and it's garbage the instant this frame's windowSources list is
+   *  discarded. Left unset (n === 0, the single-synthetic-window case)
+   *  since drawWindowDots never iterates that source's (nonexistent)
+   *  windows anyway. */
   function sourceLitAmount(source, spec, sinceTurn) {
     const n = spec.windows.length;
     if (n === 0) {
       return windowLitAmount(windowSchedule(source, spec, 0), state.slot, sinceTurn);
     }
+    const amounts = new Array(n);
     let sum = 0;
     for (let i = 0; i < n; i++) {
-      sum += windowLitAmount(windowSchedule(source, spec, i), state.slot, sinceTurn);
+      amounts[i] = windowLitAmount(windowSchedule(source, spec, i), state.slot, sinceTurn);
+      sum += amounts[i];
     }
+    source._litAmounts = amounts;
     return sum / n;
   }
 
@@ -1416,9 +1433,14 @@
         const win = spec.windows[i];
         // Unit lamps opt out of the whole go-to-bed schedule (see
         // addUnitLight) and simply track the unit-light ramp; everything
-        // built into the ground runs its per-window on/off schedule.
+        // built into the ground runs its per-window on/off schedule --
+        // already computed once this frame by sourceLitAmount (see its own
+        // doc comment), reused here rather than redone. The recompute
+        // fallback is defensive only: every building/city source reaches
+        // this loop precisely because sourceLitAmount already ran for it.
         const lit = source.alwaysOn != null
           ? source.alwaysOn
+          : source._litAmounts ? source._litAmounts[i]
           : windowLitAmount(windowSchedule(source, spec, i), state.slot, sinceTurn);
         if (lit <= 0.02) continue;
 

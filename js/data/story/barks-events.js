@@ -528,7 +528,7 @@ Object.assign(window.GameData.STORY_BARKS.world, {
       { s: "aldric", t: "*(his letter)* “Mistress Trickgrin. Enclosed: forty silver toward my tab, and a blessing for the new ale. The Dawn approves of the new ale.”", m: "happy",
         then: [{ s: "goldie", t: "*(her reply)* “Forty silver, received. Three hundred and sixty to go. The ale doesn't need blessing, love. It needs *drinking*.”", m: "happy" }] },
       { s: "goldie", t: "*(her letter)* “Lord-Paladin. Your knights came through last week and nobody broke a single chair. I'm told you gave a speech about it. Thank you.”", m: "happy",
-        then: [{ s: "aldric", t: "*(his reply)* “It was a *short* speech, Mistress Trickgrin. For me.”", m: "happy" }] },
+        then: [{ s: "aldric", t: "*(his reply)* “It was a *brief* speech, Mistress Trickgrin. For me.”", m: "happy" }] },
       { s: "aldric", t: "*(his letter)* “I have been asked, by the Archmage, whether you and I are *friends*. I told him the Dawn smiles on anyone who keeps a warm hearth for strangers.”", m: "fervent",
         then: [{ s: "goldie", t: "*(her reply)* “Tell the Archmage yes. And tell him his tab's open too, now. He had two pies.”", m: "happy" }] },
       { s: "goldie", t: "*(her letter)* “Sending a pie for your paladins. Apple. Don't let the Temple bless it, it'll go cold.”", m: "happy",
