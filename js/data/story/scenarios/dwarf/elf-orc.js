@@ -71,7 +71,7 @@ window.GameData.STORY_SCENARIOS["dwarf/elf+orc"] = {
       { s: "stone", t: "HELD." },
       { s: "oskar", t: "Entry the First: struck out. Volume Seven, last page: *crossed out*. Two grudges, one night. I need to sit down.", m: "happy" },
       { n: "At the victory feast, Sigrun plays her song for Varg aloud for the first time. Grukka Ironjaw, Warchief of the Orcs, stands in the doorway, alone and unarmed.", req: { alive: "orc" } },
-      { s: "grukka", t: "I heard there was singing.", m: "happy", req: { alive: "orc" } },
+      { s: "grukka", t: "I heard there was singing. The elves heard it too. They sent me to tell you it was too loud.", m: "happy", req: { alive: "orc" } },
       { s: "brunna", t: "Stay by the door, Warchief.", req: { alive: "orc" } },
       { s: "vaelis", t: "*(by letter)* “The Silverwood notes that a dwarf and an orc are now attending the same *feasts*. It declines to comment further.”", m: "aloof", req: { alive: "elf" } },
     ],

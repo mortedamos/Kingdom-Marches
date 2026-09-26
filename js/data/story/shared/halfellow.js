@@ -75,7 +75,7 @@ Object.assign(window.GameData.STORY_SHARED.halfellow, {
     { s: "vaelis", t: "*(in the Silverwood)* The Trickgrin woman's people. Count the geese. Count them *twice*.", m: "aloof" },
   ],
   "meet:human": [
-    { n: "Halfellow carts reach the river cities of Westmarch, the Human kingdom, loaded with bread for its cities as they have been for generations." },
+    { n: "Halfellow carts reach the river cities of Westmarch, the Human kingdom, loaded with bread, as they have been for generations." },
     { s: "hobby", t: "Westmarch. They eat our bread and forget to say thank you. Always have.", m: "angry" },
     { s: "goldie", t: "And the Lord-Paladin still owes this pub four hundred silver.", m: "stern", alt: { s: "barnaby", t: "And the Lord-Paladin still owes The Goose & Kettle four hundred silver. Goldie would want it collected.", m: "sad" } },
   ],
@@ -222,7 +222,7 @@ Object.assign(window.GameData.STORY_SHARED.halfellow, {
   ],
   "built:farmers_market": [
     { n: "In {city}, a Farmers Market opens, and every soldier trained there will march well-fed." },
-    { s: "hobby", t: "Nobody fights well on an empty stomach, dear. That's not strategy. It's *common sense*.", m: "scheming" },
+    { s: "hobby", t: "Nobody fights well on an empty stomach. That's not strategy. It's *common sense*.", m: "scheming" },
   ],
   "built:armory": [
     { n: "In {city}, an Armory is raised, and the town's own militia will fight hardest for their own streets." },
@@ -272,7 +272,7 @@ Object.assign(window.GameData.STORY_SHARED.halfellow, {
   ],
   "rival-vs-rival:elf:human": [
     { n: "News at The Goose & Kettle: the Elves have taken {enemyCity}, a human town." },
-    { s: "barnaby", t: "Elves against Westmarch. The Warden used to teach their Queen's grandmother to read, you know. It's in the Archive.", m: "flustered" },
+    { s: "barnaby", t: "Elves against Westmarch. The Warden used to teach their Queen's great-great-grandmother to read, you know. It's in the Archive.", m: "flustered" },
   ],
   "rival-vs-rival:elf:orc": [
     { n: "News at The Goose & Kettle: the Elves have burned the Orcs out of {enemyCity}." },
@@ -302,4 +302,25 @@ Object.assign(window.GameData.STORY_SHARED.halfellow, {
     { n: "News at The Goose & Kettle: the Orcs have taken {enemyCity} from Westmarch." },
     { s: "barnaby", t: "The Lord-Paladin will call it a crusade. The Archmage will call it bad maths. They'll both be a bit right.", m: "happy" },
   ],
+});
+
+// ---------------------------------------------------------------------------
+// 2026-09-26, user-directed: first blood between the Hearthlands and
+// Westmarch, as Goldie and Aldric feel it (js/engine/story.js pollState).
+// ---------------------------------------------------------------------------
+Object.assign(window.GameData.STORY_SHARED.halfellow, {
+  "rift:aldric-goldie": {
+    when: { charAlive: ["aldric", "goldie"], alive: ["human", "halfellow"] },
+    lines: [
+    { n: "The first battle between the Hearthlands and Westmarch. That night, The Goose & Kettle is full and silent. Tom Bramblewick's stool at the end of the bar is empty." },
+    { s: "goldie", t: "Tom taught the Lord-Paladin to throw darts. Right there. Laughed himself sick. *Lord Paladin Two-Pints*, he called him.", m: "sad" },
+    { s: "hobby", t: "Goldie…", m: "sad", req: { charAlive: "hobby" } },
+    { s: "goldie", t: "I'm writing to him. Somebody over there has to *hear* it.", m: "angry" },
+    { n: "The answer comes back from Westmarch a week later, sealed with the Dawn's sunburst." },
+    { s: "aldric", t: "*(his letter)* “I mourn Tom Bramblewick. I will pray for him every morning I have left. But your militia put three of my knights in the ground at the same ford. The Hearthlands could lay down their pitchforks too, Goldie.”", m: "sad" },
+    { s: "goldie", t: "*Pitchforks*. We have pitchforks because they have *swords*.", m: "angry" },
+    { s: "barnaby", t: "He did say he'd pray for Tom. Every morning. That's… not nothing, Goldie.", m: "sad" },
+    { s: "goldie", t: "It's not enough, either.", m: "stern" },
+    ],
+  },
 });

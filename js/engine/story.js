@@ -106,6 +106,9 @@ window.GameEngine.story = (function () {
   const GATHER_CHANCE = 1 / 6;         // per gathering unit per round
   const TAUNT_TIER_BY_COUNT = [0, 0, 1, 1, 2, 3];
   const FEUD_GAP_ROUNDS = 10;          // between steps of the witches' feud / Vaelis's whispers
+  const ALDRIC_GOLDIE_GAP_ROUNDS = 14; // between Aldric and Goldie's exchanges
+  const MAREN_ORDERS_GAP_ROUNDS = 12;  // between Maren's unprompted orders (after maren:resolve)
+  const DUEL_CHANCE = 1 / 4;           // per poll, once a duel is possible
 
   let buffer = [];
 
@@ -322,8 +325,11 @@ window.GameEngine.story = (function () {
         const civ = arg ? civOfRace(gs, arg) : player;
         return capitalName(civ) || (civ ? REALMS[civ.raceId] : whole);
       }
+      // An advancement's name is always shown in bold (2026-09-26,
+      // user-directed) -- js/ui/story.js formatText renders **...**.
+      if (name === "tech") return E.ctx.tech != null ? `**${E.ctx.tech}**` : "";
       if (name === "city" || name === "enemyCity" || name === "unit" || name === "enemyUnit" || name === "item"
-        || name === "tech" || name === "building" || name === "rival") {
+        || name === "building" || name === "rival") {
         // No event city: fall back to the capital, then the realm (turn 1
         // has no cities at all -- bible §12 rule 23).
         return E.ctx[name] != null ? E.ctx[name] : name === "city" ? (capitalName(player) || REALMS[player.raceId]) : "";
@@ -438,9 +444,9 @@ window.GameEngine.story = (function () {
   function optionalPriority(key) {
     if (key.startsWith("lovers")) return 1;
     if (key.startsWith("eliminated") || key === "mercy" || key === "bloodline") return 2;
-    if (key.startsWith("relic")) return 3;
+    if (key.startsWith("relic") || key === "maren:resolve" || key.startsWith("rift:")) return 3;
     if (key.startsWith("capture") || key.startsWith("lost") || key.startsWith("rival-vs-rival")
-      || key.startsWith("feud") || key.startsWith("whisper")) return 4;
+      || key.startsWith("feud") || key.startsWith("whisper") || key.startsWith("faith")) return 4;
     if (key.startsWith("ultimate") || key.startsWith("titan")) return 5;
     return 6;
   }
@@ -448,7 +454,10 @@ window.GameEngine.story = (function () {
   function skipsBudget(key) {
     // built:* too (2026-09-25, user-directed): a first building should
     // always get its moment, not expire behind other optional scenes.
-    return key.startsWith("eliminated:") || key.startsWith("meet:") || key.startsWith("built:") || key === "lovers:reveal";
+    // duel:* too (2026-09-26, user-directed): a duel of honour is a major
+    // moment, queued rarely and never allowed to expire unplayed.
+    return key.startsWith("eliminated:") || key.startsWith("meet:") || key.startsWith("built:") || key.startsWith("duel:")
+      || key === "lovers:reveal";
   }
 
   function enqueue(gs, humanCivId, key, ctx = {}) {
@@ -609,6 +618,43 @@ window.GameEngine.story = (function () {
     if (st.flags.elfTookHuman) q("mercy", { city: st.counters.mercyCity, enemyCity: st.counters.mercyCity });
     if (st.flags.elfOrcCombat) enqueueChainStep(gs, humanCivId, "feud", 3);
 
+    // 2026-09-26, user-directed threads:
+    // Maren stops refereeing and starts leading (a few rounds after First Blood).
+    if (st.playerRace === "human" && st.seen.B2 != null && round(gs) - st.seen.B2 >= 3) q("maren:resolve");
+    // …and from then on she moves first, now and then, unprompted.
+    if (st.playerRace === "human" && st.seen["maren:resolve"] != null
+      && round(gs) - (st.counters.marenOrdersRound ?? st.seen["maren:resolve"]) >= MAREN_ORDERS_GAP_ROUNDS && Math.random() < 0.5) {
+      const bark = homeBark(gs, humanCivId, "marenOrders", {});
+      if (bark) { st.counters.marenOrdersRound = round(gs); queueBark(gs, humanCivId, bark); }
+    }
+    // Aldric's faith, vindicated: two steps once the war is under way.
+    if (st.playerRace === "human" && st.seen.B2 != null && st.dead.aldric == null) enqueueChainStep(gs, humanCivId, "faith", 2);
+    // The first blood between Westmarch and the Hearthlands, as Aldric and
+    // Goldie feel it (each kingdom's own side of it).
+    if (st.flags.humanHalfellowCombat && (st.playerRace === "human" || st.playerRace === "halfellow")) q("rift:aldric-goldie");
+    // Aldric and Goldie's running exchange: friendly, until their peoples
+    // have fought; hurt and angry after.
+    if ((st.playerRace === "human" || st.playerRace === "halfellow")
+      && civOfRace(gs, "human") && civOfRace(gs, "halfellow")
+      && speakerAvailable(gs, "aldric") && speakerAvailable(gs, "goldie")
+      && round(gs) - (st.counters.aldricGoldieRound ?? -99) >= ALDRIC_GOLDIE_GAP_ROUNDS && Math.random() < 0.5) {
+      const bark = worldBark(gs, humanCivId, st.flags.humanHalfellowCombat ? "aldricGoldieSour" : "aldricGoldieFriendly", {});
+      if (bark) { st.counters.aldricGoldieRound = round(gs); queueBark(gs, humanCivId, bark); }
+    }
+    // Duels of honour, later in the war (after the arc's midpoint): the
+    // player's leader and a rival's champion. Each champion fights only one
+    // duel (2026-09-26, user-directed), and the player's own champion is in
+    // every one, so a game gets at most ONE duel, however many kingdoms.
+    if (st.seen.B4 != null && st.counters.duelRound == null && Math.random() < DUEL_CHANCE) {
+      const rivals = st.rivals.filter((race) => st.firstCombat[race] != null)
+        .sort(() => Math.random() - 0.5);
+      for (const race of rivals) {
+        const civ = civOfRace(gs, race);
+        if (!civ || civ.eliminated) continue;
+        if (q(`duel:${[st.playerRace, race].sort().join(":")}`)) { st.counters.duelRound = round(gs); break; }
+      }
+    }
+
     // Poll-born barks.
     const weather = window.GameEngine.turns.currentWeather ? window.GameEngine.turns.currentWeather(gs) : null;
     const storming = !!(weather && weather.storming);
@@ -743,6 +789,10 @@ window.GameEngine.story = (function () {
       case "trow": return "The Treasure Trow";
       case "found": return `The ${a === "3" ? "Third" : "Sixth"} City`;
       case "tech": return "New Learning";
+      case "duel": return `A Duel of Honour: ${race(a)} and ${race(b)}`;
+      case "faith": return a === "1" ? "The Fever Vigil" : "The Wards That Failed";
+      case "maren": return "The Queen's Resolve";
+      case "rift": return "The Lord-Paladin and the Innkeeper";
       case "capital-threat": return "The Capital Threatened";
       case "E-Held": case "E-Remains": case "E-Fallen": case "E-Eclipsed": return "The Ending";
       default: return kind.charAt(0).toUpperCase() + kind.slice(1);
@@ -830,8 +880,10 @@ window.GameEngine.story = (function () {
    *  skips the pacing checks (events that should ALWAYS get a line: first
    *  buildings, advancements, a city falling) -- it still never talks over
    *  a scene: in a scene round the bark is deferred via pendingBarks.
+   *  `noDefer` skips that scene-round deferral, for barks main.js holds
+   *  back itself (advancements wait for their own "complete" window).
    *  `prefer(line)` > 0 picks from the best-scoring lines first. */
-  function poolBark(gs, humanCivId, pool, poolKey, ctx, { triggerKey = poolKey, filter, cap = false, force = false, recycle = false, prefer } = {}) {
+  function poolBark(gs, humanCivId, pool, poolKey, ctx, { triggerKey = poolKey, filter, cap = false, force = false, recycle = false, prefer, noDefer = false } = {}) {
     const st = gs.story;
     if (!pool) return null;
     const r = round(gs);
@@ -850,7 +902,7 @@ window.GameEngine.story = (function () {
     if (!line) return null;
     recordBark(st, r, triggerKey, line.s);
     const bark = toBark(st, line, pool.caption, E);
-    if (force && r === st.lastSceneRound) { queueBark(gs, humanCivId, bark); return null; }
+    if (force && !noDefer && r === st.lastSceneRound) { queueBark(gs, humanCivId, bark); return null; }
     return bark;
   }
 
@@ -888,7 +940,7 @@ window.GameEngine.story = (function () {
     if (!speakerAvailable(gs, "vaelis")) return null;
     const B = window.GameData.STORY_BARKS;
     const pool = B && B.vaelisScoffs && B.vaelisScoffs[who];
-    return poolBark(gs, humanCivId, pool, `vaelisScoff:${who}`, ctx, { triggerKey: "vaelisScoff", recycle: true, force: who === "player" });
+    return poolBark(gs, humanCivId, pool, `vaelisScoff:${who}`, ctx, { triggerKey: "vaelisScoff", recycle: true, force: who === "player", noDefer: who === "player" });
   }
 
   /** Every advancement the player makes gets a line (2026-09-25,
@@ -901,7 +953,7 @@ window.GameEngine.story = (function () {
     const B = window.GameData.STORY_BARKS;
     const pool = B && B.advance && B.advance[gs.story.playerRace];
     return poolBark(gs, humanCivId, pool, `advance:${gs.story.playerRace}`, { tech: techLabel(tech) }, {
-      triggerKey: null, force: true, recycle: true,
+      triggerKey: null, force: true, recycle: true, noDefer: true,
       filter: (l) => (!l.techs || l.techs.includes(techId)) && (!l.cat || l.cat === tech.category),
       prefer: (l) => (l.techs ? 1 : 0),
     });
@@ -1006,6 +1058,7 @@ window.GameEngine.story = (function () {
         }
         flagPair(st, races, "dwarf", "orc", "dwarfOrcCombat", r);
         flagPair(st, races, "human", "elf", "humanElfCombat", r);
+        flagPair(st, races, "human", "halfellow", "humanHalfellowCombat", r);
         if (races.includes("elf") && races.includes("orc")) st.flags.elfOrcCombat = true;
       } else if (evt.type === "unitKilled") {
         const victim = evt.victimCivId, killer = evt.killerCivId;
@@ -1092,7 +1145,10 @@ window.GameEngine.story = (function () {
             if (bark && scoff) { let t = bark; while (t.reply) t = t.reply; t.reply = { ...scoff, caption: "" }; }
             else bark = bark || scoff;
           }
-          if (bark) barks.push(bark);
+          // Held by main.js until the "advancement complete" window for this
+          // tech has been shown and closed -- the event fires mid-turn, well
+          // before that window opens (see main.js's pumpStory).
+          if (bark) { bark.afterTech = evt.techId; barks.push(bark); }
         } else if (st.playerRace === "elf" && advRace && advRace !== "elf" && tech && Math.random() < VAELIS_SCOFF_CHANCE / 2) {
           // Playing the Elves: he sneers at the other kingdoms' advances.
           const scoff = vaelisScoff(gs, humanCivId, "rival", { tech: techLabel(tech), rival: REALMS[advRace] });

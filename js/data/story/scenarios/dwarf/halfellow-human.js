@@ -70,7 +70,7 @@ window.GameData.STORY_SCENARIOS["dwarf/halfellow+human"] = {
       { n: "The Dwarves have won by destroying the Halfellows and Westmarch. The market hall stands empty." },
       { s: "stone", t: "REMAINS." },
       { s: "oskar", t: "No one to sell to. No one to buy from. No one to owe us anything. The ledger's balanced, Thane. It's also blank.", m: "sad" },
-      { s: "kazra", t: "Stone endures. It doesn't trade much.", m: "sad" },
+      { s: "kazra", t: "Stone endures, Oskar. It just doesn't trade much. We'll be a long time alone with it.", m: "sad" },
     ],
     "E-Fallen": [
       { n: "Karrak has fallen. {capital} is the last dwarf stronghold standing, and its gates have been unlocked from the inside." },

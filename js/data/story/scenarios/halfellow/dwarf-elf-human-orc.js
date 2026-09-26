@@ -125,7 +125,7 @@ window.GameData.STORY_SCENARIOS["halfellow/dwarf+elf+human+orc"] = {
             alt: "The Orcs have won by holding the Marches, but the Hearthlands still stand." } } },
       { n: "Far away, the split Marchstone speaks, and not to the Halfellows." },
       { s: "stone", t: "HELD." },
-      { s: "hobby", t: "Crowns come and go, dear. Supper's still at six. And they'll always remember the week.", m: "happy" },
+      { s: "hobby", t: "Four crowns, and not one of them could beat supper. It's still at six. And they'll always remember the week.", m: "happy" },
       { s: "goldie", t: "And *you* are still going to be late for it.", m: "stern" },
     ],
   },

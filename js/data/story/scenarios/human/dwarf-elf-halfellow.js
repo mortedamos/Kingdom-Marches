@@ -32,7 +32,7 @@ window.GameData.STORY_SCENARIOS["human/dwarf+elf+halfellow"] = {
         alt: "Westmarch's surveyors and priests ride out together to choose the site of a second city. Neither will let the other choose." },
       { s: "aldric", t: "It must be consecrated before a single stone is laid, Majesty.", m: "fervent" },
       { s: "corvin", t: "It must be *surveyed*. And, Majesty, the halfellows have written. *Again*. About the Moot.", m: "wry" },
-      { s: "maren", t: "Consecrate it. Survey it. Tell the Mayor… we'll think about it.", m: "resolute" },
+      { s: "maren", t: "Consecrate it. Survey it. And draft me terms for the Mayor's Moot. If there's to be a table, Westmarch sets the agenda.", m: "resolute" },
     ],
     B2: [
       { n: "The northern foothills, at dusk. Human soldiers and dwarf warriors have clashed over a surveyor's camp, the first battle of the war.", req: { firstBlood: "dwarf" },
@@ -40,7 +40,8 @@ window.GameData.STORY_SCENARIOS["human/dwarf+elf+halfellow"] = {
           alt: "The road to the Hearthlands, at dusk. Human soldiers and halfellow militia have clashed over a bread cart, the first battle of the war." } },
       { s: "aldric", t: "Victory! The Dawn guided our swords!", m: "fervent" },
       { s: "corvin", t: "The *Collegium's maps* guided our swords, Lord-Paladin. The Dawn was busy setting.", m: "wry" },
-      { s: "maren", t: "Sensible neighbours. With armies. You did warn me, Archmage.", m: "sad" },
+      { s: "aldric", t: "Then we'll share it, Archmage. Your maps found the ford. The Dawn kept my knights standing in it when the arrows came.", m: "fervent" },
+      { s: "maren", t: "Sensible neighbours. With armies. You did warn me, Archmage. So we talk first, before they decide what we are.", m: "sad" },
     ],
     // The kingdom everyone fears.
     B3: [

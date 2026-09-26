@@ -65,9 +65,9 @@ window.GameConfig = {
     /** Local date this build was cut, YYYY-MM-DD. */
     date: "2026-09-26",
     /** Local time this build was cut, 24-hour HH:MM. */
-    time: "00:07",
+    time: "10:57",
     /** Monotonic build counter -- increment it, don't recompute it. */
-    number: 337,
+    number: 338,
   },
 
   // =========================================================================
@@ -1886,6 +1886,17 @@ window.GameConfig = {
          *  intensity reads brighter there than it does on a wall. */
         bridgeRadius: 1.2,
         bridgeIntensity: 0.32,
+        /** Perf floor (2026-09-26, user-reported night-time lag): below this
+         *  zoom, wall and bridge segments stop emitting a light at all --
+         *  see daynight.js's addStructureLight. They're the dimmest,
+         *  smallest-radius tier here and by far the most NUMEROUS (a single
+         *  wall ring can be dozens of segments, each paying for its own
+         *  per-frame window-schedule math plus two stamp draws), so at a
+         *  zoomed-out view where their individual pools are a couple of
+         *  pixels anyway, cutting them is the single biggest lever on frame
+         *  time. Same value as windows.minZoom below, on purpose: the
+         *  player already accepts that floor for individual window dots. */
+        wallBridgeMinZoom: 0.55,
         /**
          * Civ-influence tile overlays -- the small per-race farmstead /
          * pig pen / graveyard sprites drawn on owned tiles (see render.js's

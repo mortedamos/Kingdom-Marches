@@ -165,7 +165,7 @@ Object.assign(window.GameData.STORY_SHARED.dwarf, {
   "eliminated:halfellow": [
     { n: "The last halfellow town has fallen. The Hearthlands are no more." },
     { n: "Somewhere on a back lane, Mayor Hobby Trickgrin leads the last families away in silence, her goose feather still in her hat." },
-    { s: "hobby", t: "Crowns come and go, dear. We'll plant somewhere else.", m: "sad" },
+    { s: "hobby", t: "Well. We'll plant somewhere else. We always have.", m: "sad" },
     { s: "sigrun", t: "*(in Karrak)* No more halfellow ale. Ever. …Mother, what have we *done*?", m: "sad", alt: { s: "kazra", t: "*(in Karrak)* No more halfellow ale. Sigrun will never forgive us.", m: "sad" } },
   ],
   "eliminated:human": [
@@ -194,7 +194,7 @@ Object.assign(window.GameData.STORY_SHARED.dwarf, {
     { s: "kazra", t: "A Dragon.", m: "focused" },
     { s: "brunna", t: "Then the Titan walks.", m: "proud", req: { unit: "self:runeforged_titan" }, alt: "Then we'd better have a Titan by the time it lands." },
     { s: "kazra", t: "It walks.", m: "focused", req: { unit: "self:runeforged_titan" }, alt: "It will." },
-    { s: "sigrun", t: "Your mother has a Dragon, Varg…", m: "sad", req: { alive: "orc", seen: "lovers:meet" } },
+    { s: "sigrun", t: "Your father has a Dragon, Varg…", m: "sad", req: { alive: "orc", seen: "lovers:meet" } },
   ],
   "ultimate:human": [
     { n: "News from Westmarch: the Humans' Collegium has made its first Grand Magus, a wizard master of every discipline, fire and flight and invisibility alike." },

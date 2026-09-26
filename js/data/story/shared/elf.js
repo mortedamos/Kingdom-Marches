@@ -69,8 +69,8 @@ Object.assign(window.GameData.STORY_SHARED.elf, {
   ],
   "meet:human": [
     { n: "Elf scouts watch Collegium scholars of Westmarch measuring the silver trees at the forest's edge." },
-    { s: "vaelis", t: "Mayflies with axes. They have come to measure the forest, so they know how much of it to cut.", m: "aloof" },
-    { s: "aelthir", t: "I taught their Queen's grandmother to read. She always cut the pages too short.", m: "wistful" },
+    { s: "vaelis", t: "Mayflies with measuring rods. They have come to learn what the forest is, so they can decide how much of it to take.", m: "aloof" },
+    { s: "aelthir", t: "I taught their Queen's great-great-grandmother to read. She always turned the page before I had finished the line. I expect the girl is the same.", m: "wistful" },
   ],
   "meet:orc": [
     { n: "Smoke on the southern wind. Orc war-bands have lit their first fires at the edge of the Silverwood." },
@@ -113,7 +113,7 @@ Object.assign(window.GameData.STORY_SHARED.elf, {
   ],
   "lost:human": [
     { n: "Human soldiers of Westmarch have taken {city}, an elf grove-town. Their woodcutters arrived with the soldiers." },
-    { s: "vaelis", t: "Mayflies with axes. I did *say*.", m: "aloof" },
+    { s: "vaelis", t: "First the measuring rods, then the axes. I did *say*.", m: "aloof" },
     { s: "aelthir", t: "They are cutting the oldest trees first. They always do.", m: "sad" },
   ],
   "lost:orc": [
@@ -135,7 +135,7 @@ Object.assign(window.GameData.STORY_SHARED.elf, {
   ],
   "eliminated:human": [
     { n: "The last human city has fallen. Westmarch is no more." },
-    { s: "maren", t: "Tell the Warden… his blood was good to us.", m: "sad", req: { seen: "bloodline" }, alt: "Tell the Warden he taught my grandmother well." },
+    { s: "maren", t: "Tell the Warden… his blood was good to us.", m: "sad", req: { seen: "bloodline" }, alt: "Tell the Warden he taught my great-great-grandmother well." },
     { s: "aelthir", t: "I held the torch when their ancestors swore. I have outlived them too.", m: "sad" },
     { s: "vaelis", t: "Brief things end, great-uncle. That is what brief *means*.", m: "aloof" },
   ],

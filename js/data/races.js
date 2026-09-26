@@ -213,7 +213,7 @@ window.GameData.RACES = {
     aggressiveness: 0.3,
 
     // Personality traits
-    militarism:      0.8, // strong standing armies
+    militarism:      0.7, // strong standing armies (2026-09-26, user-directed: reduced from 0.8)
     expansionism:    0.4,
     curiosity:       0.4,
     industriousness: 0.6, // deeply invested in city development and grove infrastructure

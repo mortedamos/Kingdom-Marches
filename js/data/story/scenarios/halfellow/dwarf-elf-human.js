@@ -71,8 +71,8 @@ window.GameData.STORY_SCENARIOS["halfellow/dwarf+elf+human"] = {
         alt: "Every crown is still in the war. None of them will come twice." },
       { s: "goldie", t: "Sit. Eat. And then promise me something.", m: "stern" },
       { s: "hobby", t: "I've a war to finish, Goldie.", m: "scheming" },
-      { s: "goldie", t: "Whatever you're planning next, it's the last one. And when it's over, you call the Moot again. Whoever's left.", m: "stern" },
-      { s: "hobby", t: "…The last one. And whoever's left, dear. Every chair.", m: "sad" },
+      { s: "goldie", t: "Then make the next one count, love, because it's the last. And when it's over, you call the Moot again. Whoever's left.", m: "stern" },
+      { s: "hobby", t: "…The last one. And whoever's left. Every chair.", m: "sad" },
     ],
 
     "E-Held": [
@@ -110,7 +110,7 @@ window.GameData.STORY_SCENARIOS["halfellow/dwarf+elf+human"] = {
           alt: "Westmarch has won by holding the Marches, but the Hearthlands still stand." } },
       { n: "Far away, the split Marchstone speaks, and not to the Halfellows." },
       { s: "stone", t: "HELD." },
-      { s: "hobby", t: "Crowns come and go, dear. Supper's still at six. And the Moot is still open.", m: "happy" },
+      { s: "hobby", t: "Somebody else holds the Marches, and the long table is still ours. Supper's at six, and the Moot is still open.", m: "happy" },
       { s: "goldie", t: "And *you* are still going to be late for it.", m: "stern" },
     ],
   },

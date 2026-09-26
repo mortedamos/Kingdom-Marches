@@ -32,7 +32,7 @@ window.GameData.STORY_SCENARIOS["human/elf+halfellow"] = {
         alt: "Westmarch's surveyors and priests ride out together to choose the site of a second city. Neither will let the other choose." },
       { s: "aldric", t: "It must be consecrated before a single stone is laid, Majesty.", m: "fervent" },
       { s: "corvin", t: "It must be *surveyed*. And, Majesty, it's on land the halfellows have farmed for two hundred years. Someone should tell them.", m: "wry" },
-      { s: "maren", t: "…Someone should. Consecrate it. Survey it. And send the halfellows *compensation*.", m: "sad" },
+      { s: "maren", t: "…I'll tell them. Myself. Consecrate it. Survey it. And pay the halfellows before the first stone is laid, not after.", m: "sad" },
     ],
     B2: [
       { n: "The forest's edge, at dusk. Human soldiers and elf rangers have clashed over a surveyor's stake, the first battle of the war.", req: { firstBlood: "elf" },
@@ -64,7 +64,7 @@ window.GameData.STORY_SCENARIOS["human/elf+halfellow"] = {
       { s: "maren", t: "No, brother. It's the land. And we took it from people who didn't want to fight. We'll spend my whole reign paying for it.", m: "resolute" },
       { n: "The new charter's first clause: every generation must renew it. Its second: *reparations to the Silverwood and the Hearthlands, in full*." },
       { s: "hobby", t: "*(in the Hearthlands)* Reparations! In *writing*! Goldie, frame it.", m: "happy", req: { alive: "halfellow" } },
-      { s: "aelthir", t: "*(in the Silverwood)* She asked forgiveness. Late. But she asked. Her grandmother would have too.", m: "wistful", req: { alive: "elf" } },
+      { s: "aelthir", t: "*(in the Silverwood)* She asked forgiveness. Late. But she asked. Her great-great-grandmother would have too.", m: "wistful", req: { alive: "elf" } },
       { s: "corvin", t: "A renewable Omen, and an apology. How very *efficient*.", m: "wry" },
     ],
     "E-Remains": [

@@ -39,7 +39,7 @@ window.GameData.STORY_SCENARIOS["orc/dwarf+human"] = {
     // The ledger and the anvil, robbed on the same road.
     B3: [
       { n: "A crossroads between the mountains and the river. Orc raiders have ambushed two convoys on the same morning: a Westmarch wagon of gold, and a dwarf escort sent to collect it." },
-      { n: "The gold is the first payment on the Cathedral debt, the loan Karrak made Westmarch a thousand years ago. The Clans now have all of it." },
+      { n: "The gold is the first payment on the Cathedral debt, the loan Karrak made Westmarch four hundred years ago. The Clans now have all of it." },
       { s: "gnash", t: "*(sitting on the pile)* Shiny! Gnash rich! Gnash buy… more cleaver!", m: "happy" },
       { s: "grukka", t: "The Humans paid it. The Dwarves never got it. Each one will blame the other.", m: "defiant" },
       { s: "varg", t: "Father, we could give it back. To either one. They'd owe us.", m: "bashful" },
@@ -75,11 +75,11 @@ window.GameData.STORY_SCENARIOS["orc/dwarf+human"] = {
       { n: "Skarra staggers out of the smoke, back from exile, clutching Destiny the frog to her chest." },
       { s: "skarra", t: "Look what you've DONE, little Warchief! You lost the bog! Skarra always said so—", m: "angry" },
       { s: "skarra", t: "*(her voice cracks)* …You were always the favourite. I HATE you. Don't die.", m: "sad" },
-      { s: "grukka", t: "I'll die with my axe in my hand, sister. Like I always said.", m: "defiant" },
-      { s: "grukka", t: "Take Moss. Ride. Don't look back.", m: "sad" },
+      { s: "grukka", t: "I'll die with my axe in my hand, sister. Not sitting on a pile of their gold.", m: "defiant" },
+      { s: "grukka", t: "Take Moss, and take some of the gold. Ride. Buy the Clans a future somewhere.", m: "sad" },
       { n: "Varg rides into the bog on his dire wolf. No one follows." },
       { s: "oskar", t: "*(in Karrak)* The last entry in Volume Seven: “The Bloodmire Clans. Broken.” …And the gold, recovered. Amend it. “Worthy foe.”", m: "grudging", req: { conqueror: "dwarf" } },
-      { s: "maren", t: "*(in the ashes)* Their Warchief went to our parley unarmed.", m: "sad", req: { conqueror: "human" } },
+      { s: "maren", t: "*(in the ashes)* Their Warchief came to our parley unarmed. We never gave him a second one.", m: "sad", req: { conqueror: "human" } },
       { s: "stone", t: "NOT YOU." },
     ],
     "E-Eclipsed": [
@@ -87,7 +87,7 @@ window.GameData.STORY_SCENARIOS["orc/dwarf+human"] = {
         alt: "Westmarch has won by holding the Marches, but the Bloodmire Clans still stand." },
       { n: "Far away, the split Marchstone speaks, and not to the Orcs." },
       { s: "stone", t: "HELD." },
-      { s: "grukka", t: "New cage. Same bog. …This time, we build inside it. We've the gold for it.", m: "defiant" },
+      { s: "grukka", t: "Their borders, their cage. But we've their gold. …This time, we build inside it, and they can watch us do it with their money.", m: "defiant" },
       { s: "varg", t: "Father, I'm riding to Karrak.", m: "bashful", req: { alive: "dwarf" }, alt: "Then let's build, Father." },
       { s: "grukka", t: "…Knock loud. And take them their gold back. *Some* of it.", m: "happy", req: { alive: "dwarf" } },
     ],

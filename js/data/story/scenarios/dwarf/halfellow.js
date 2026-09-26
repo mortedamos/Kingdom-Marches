@@ -25,7 +25,7 @@ window.GameData.STORY_SCENARIOS["dwarf/halfellow"] = {
       { n: "Far to the south, in the Hearthlands, home of the halfellows, Mayor Hobby Trickgrin is reading the same clause in The Goose & Kettle, the halfellows' oldest pub." },
       { s: "hobby", t: "No more Accord, Goldie. Which means no more *frozen tariff*.", m: "scheming" },
       { s: "goldie", t: "Hobby Trickgrin, you are not starting a war over *ale*.", m: "stern" },
-      { s: "hobby", t: "Not over ale, dear. Over the *principle* of ale.", m: "scheming" },
+      { s: "hobby", t: "Not over ale, Thane. Over the *principle* of ale.", m: "scheming" },
       { n: "Back in Karrak, Sigrun, the Thane's daughter and a Metal Singer, looks from her mother to her great-uncle and back." },
       { s: "sigrun", t: "Are we going to war with the *halfellows*? They make the *pies*!", m: "sad" },
       { s: "brunna", t: "We're going to war for the Heartstone, daughter. If the barley comes with it, so be it.", m: "proud" },

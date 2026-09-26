@@ -53,7 +53,7 @@ window.GameData.STORY_SCENARIOS["halfellow/human"] = {
       { n: "The Goose & Kettle, early evening. Goldie has cleared a table, laid a proper supper for one, and is standing over it with her arms folded." },
       { s: "goldie", t: "Sit. Eat. And then promise me something.", m: "stern" },
       { s: "hobby", t: "I've got a Moot in ten minutes.", m: "scheming" },
-      { s: "goldie", t: "Whatever you're planning next, it's the last one. And when this is over, you're going to Westmarch and you're collecting that tab *in person*.", m: "stern" },
+      { s: "goldie", t: "No more after the next one, love. And when this is over, you're going to Westmarch and you're collecting that tab *in person*.", m: "stern" },
       { s: "hobby", t: "…The last one. And yes. In person. With interest.", m: "scheming" },
     ],
 
@@ -86,7 +86,7 @@ window.GameData.STORY_SCENARIOS["halfellow/human"] = {
       { n: "Westmarch has won by holding the Marches. Westmarch's banners fly from the river to the hills, but the Hearthlands still stand." },
       { n: "Far away, the split Marchstone speaks, and not to the Halfellows." },
       { s: "stone", t: "HELD." },
-      { s: "hobby", t: "Crowns come and go, dear. Supper's still at six. And they'll still need our bread.", m: "happy" },
+      { s: "hobby", t: "Westmarch holds the Marches, and Westmarch still can't bake. Supper's at six. They'll be back for bread.", m: "happy" },
       { s: "goldie", t: "And *you* are still going to be late for it.", m: "stern" },
       { n: "A messenger from Westmarch arrives at The Goose & Kettle with a heavy purse and a note: “Four hundred silver. And thank you. For the bread. All of it. — M.”" },
     ],

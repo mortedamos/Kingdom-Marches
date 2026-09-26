@@ -21,7 +21,7 @@ window.GameData.STORY_SCENARIOS["human/dwarf+elf"] = {
       { s: "aldric", t: "Majesty. The Cathedral bells rang without a hand on the ropes. It is a sign from the Dawn.", m: "fervent" },
       { s: "corvin", t: "It is an *earthquake*, Lord-Paladin. The Marchstone has split. The closing clause: the Marches pass to the crown that *holds* them, or failing that, to the crown that *remains*.", m: "wry" },
       { s: "corvin", t: "And, Majesty. The Dwarves and the Elves. The Rootcut, the oldest feud in the Marches: dwarf tunnels that killed an elf grove, eight hundred years ago. The Accord was all that kept it quiet.", m: "wry" },
-      { s: "maren", t: "Then they'll be at each other's throats by midsummer. And we're standing between them.", m: "resolute" },
+      { s: "maren", t: "Then they'll be at each other's throats by midsummer. So we choose where we stand before they choose it for us. Envoys to both, tonight.", m: "resolute" },
       { n: "In Karrak, the Dwarves' Loremaster Oskar Grimgate opens the Book of Grudges to Entry the First: the Rootcut. In the Silverwood, Lord Vaelis Nightbloom, heir to the Elves' Warden, reads the same news, bored." },
       { s: "oskar", t: "Entry the First. The Elves, for blaming us. We'll be needing a fresh volume.", m: "grudging" },
       { s: "vaelis", t: "The mud-folk will dig. The mayflies will build. We shall wait. We are very good at waiting.", m: "aloof" },
@@ -31,14 +31,15 @@ window.GameData.STORY_SCENARIOS["human/dwarf+elf"] = {
         alt: "Westmarch's surveyors and priests ride out together to choose the site of a second city. Neither will let the other choose." },
       { s: "aldric", t: "It must be consecrated before a single stone is laid, Majesty.", m: "fervent" },
       { s: "corvin", t: "It must be *surveyed*. With neither dwarf stone nor elf timber. We don't want to be accused of taking sides.", m: "wry" },
-      { s: "maren", t: "Consecrate it at sunrise. Survey it at noon. Build it by evening.", m: "resolute" },
+      { s: "maren", t: "I chose the site myself, where both their borders can be watched. Consecrate it at sunrise. Survey it at noon. Build it by evening.", m: "resolute" },
     ],
     B2: [
       { n: "The northern foothills, at dusk. Human soldiers and dwarf warriors have clashed over a surveyor's camp, the first battle of the war.", req: { firstBlood: "dwarf" },
         alt: "The forest's edge, at dusk. Human soldiers and elf rangers have clashed over a surveyor's stake, the first battle of the war." },
       { s: "aldric", t: "Victory! The Dawn guided our swords!", m: "fervent" },
       { s: "corvin", t: "The *Collegium's maps* guided our swords, Lord-Paladin. The Dawn was busy setting.", m: "wry" },
-      { s: "maren", t: "So much for standing between them. We're in it now.", m: "sad" },
+      { s: "aldric", t: "Then we'll share it, Archmage. Your maps found the ford. The Dawn kept my knights standing in it when the arrows came.", m: "fervent" },
+      { s: "maren", t: "So much for standing between them. We're in it now, so we set the terms. Not them.", m: "sad" },
     ],
     // Broker or vulture: the council chamber as second battlefield.
     B3: [

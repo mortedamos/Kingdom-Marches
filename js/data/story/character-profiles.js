@@ -23,16 +23,16 @@ window.GameData.STORY_CHARACTER_PROFILES = {
     virtues: ["Decisive: she makes the call and stands by it.", "Pragmatic: she cares what works, not who gets the credit.", "A believer in institutions, and in keeping them honest."],
     flaws: ["Secretive: she keeps her own counsel, sometimes too long.", "Her pragmatism reads as godlessness to the Temple."],
     quirks: "Speaks in plans. Never says \"the gods willed it.\" Stands between her brother and her old tutor so often she has worn a groove in the council floor.",
-    relations: "Sister to Lord-Paladin Aldric. Former student of Archmage Corvin. As a girl she learned to read from the elf Warden Aelthir, who taught her grandmother before her.",
+    relations: "Sister to Lord-Paladin Aldric. Former student of Archmage Corvin. As a girl she learned to read from the elf Warden Aelthir, who had taught her great-great-grandmother before her.",
     quote: "The Temple says I was chosen. The Collegium says I was *elected*. I say the war won't win itself.",
   },
   aldric: {
     role: "Lord-Paladin of the Temple of the Dawn",
     background: "Maren's elder brother, raised to be king and trained as a Knight of the Dawn, then passed over when the Omen chose his little sister. He commands the Temple's paladins and speaks for the Temple at court, where he and the Collegium's Archmage have not agreed on anything in living memory.",
-    virtues: ["Brave: first into every breach, and he means it.", "Sincere: he believes every word he says, loudly."],
+    virtues: ["Brave: first into every breach, and he means it.", "Sincere: he believes every word he says, loudly.", "Faithful: his faith is real, and sometimes it sees what the Collegium's reason misses."],
     flaws: ["Over-proud: he cannot bear to be wrong in front of the Collegium.", "Sanctimonious to the point of absurdity."],
     quirks: "Prays at people. Near their windows. Runs a famously large bar tab at The Goose & Kettle, which he insists is a tithe.",
-    relations: "Brother to Queen Maren, whom he serves loyally. Open rival of Archmage Corvin. Owes the halfellows' oldest pub a great deal of silver.",
+    relations: "Brother to Queen Maren, whom he serves loyally. Open rival of Archmage Corvin. An unlikely friend of Goldie Trickgrin, keeper of The Goose & Kettle, whose pub he owes a great deal of silver.",
     quote: "The Dawn guides my blade. And my blade has *opinions*.",
   },
   corvin: {
@@ -52,7 +52,7 @@ window.GameData.STORY_CHARACTER_PROFILES = {
     virtues: ["Wise: a thousand years of seeing how things end.", "Patient: the forest's own patience, which has buried cities."],
     flaws: ["Stuck in the past: he cannot let the old promises go.", "His grief for mortal friends can look like weakness."],
     quirks: "Measures time in centuries. Addresses other rulers by their ancestors' names. Remembers every name, including his enemies'.",
-    relations: "Great-uncle to Lord Vaelis, his heir. Uncle to the Archdruid Ysolde. Once taught the grandmother of Westmarch's queen to read.",
+    relations: "Great-uncle to Lord Vaelis, his heir. Uncle to the Archdruid Ysolde. Once taught the great-great-grandmother of Westmarch's queen to read.",
     quote: "I held the torch when your ancestors swore. I remember how young they all looked.",
   },
   ysolde: {
@@ -166,7 +166,7 @@ window.GameData.STORY_CHARACTER_PROFILES = {
     virtues: ["Kind: she feeds everyone who comes through her door.", "Shrewd: nothing gets past her."],
     flaws: ["Meddlesome: she minds everyone's business.", "A dreadful gossip, and proud of it."],
     quirks: "The only person who can make Hobby sit down. Hates Hobby's riskier tricks. Keeps the Lord-Paladin of Westmarch's bar tab, with interest.",
-    relations: "Younger sister of Mayor Hobby. Niece of Professor Barnaby. Creditor of Lord-Paladin Aldric.",
+    relations: "Younger sister of Mayor Hobby. Niece of Professor Barnaby. Creditor, and unlikely friend, of Lord-Paladin Aldric of Westmarch.",
     quote: "Sit. Eat. The war will still be there after pie.",
   },
   barnaby: {

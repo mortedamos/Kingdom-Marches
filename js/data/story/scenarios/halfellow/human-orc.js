@@ -111,7 +111,7 @@ window.GameData.STORY_SCENARIOS["halfellow/human+orc"] = {
         alt: "The Orcs have won by holding the Marches, but the Hearthlands still stand." },
       { n: "Far away, the split Marchstone speaks, and not to the Halfellows." },
       { s: "stone", t: "HELD." },
-      { s: "hobby", t: "Crowns come and go. Supper's still at six. And they'll still need our bread.", m: "sad" },
+      { s: "hobby", t: "Let them have the Marches. Supper's still at six, and they'll still need our bread by winter.", m: "sad" },
       { s: "goldie", t: "And *you* are still going to be late for it, love.", m: "stern", alt: { s: "barnaby", t: "And you'll still be late for it. She'd have said that.", m: "sad" } },
     ],
   },

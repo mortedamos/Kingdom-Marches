@@ -37,7 +37,7 @@ window.GameData.STORY_SCENARIOS["dwarf/human"] = {
       { s: "brunna", t: "A second hold. Stone foundations, good walls, and a vault. A *large* vault. For the collections.", m: "proud" },
       { s: "oskar", t: "Westmarch has replied, Thane. They offer to pay the debt in *spells*. Collegium ward-work, for our walls.", m: "grudging" },
       { s: "brunna", t: "Spells. From *conjurors*, Uncle?", m: "angry" },
-      { s: "oskar", t: "To us, presumably. So they can march here faster.", m: "grudging" },
+      { s: "oskar", t: "From the Collegium, Thane. Wards that turn a battering ram. Though I suspect the wardwrights would also learn exactly where our walls are weakest.", m: "grudging" },
     ],
     B2: [
       { n: "The river crossings at the foot of the mountains, at dusk. Dwarf and human soldiers have clashed over a surveyor's camp: the first battle of the war." },
@@ -45,7 +45,7 @@ window.GameData.STORY_SCENARIOS["dwarf/human"] = {
       { s: "kazra", t: "I've started a Titan.", m: "focused", req: { tech: "self:dwarf_runeforged_titan" }, alt: "I've stoked every forge. The day we learn the runes for a Titan, I'll build one." },
       { n: "In Westmarch, the Lord-Paladin and the Archmage are, as ever, arguing." },
       { s: "aldric", t: "The Dawn guided our swords against the moneylenders!", m: "fervent" },
-      { s: "corvin", t: "The *moneylenders*, Lord-Paladin, are also the masons who built your Cathedral. Try not to pray *too* hard at them.", m: "wry" },
+      { s: "corvin", t: "The *moneylenders*, Lord-Paladin, are also the masons who built your Cathedral. Try not to pray *too* hard at them.", m: "wry" }, { s: "aldric", t: "Then I shall pray for the masons too, Archmage. The Dawn has room for honest workmen, even ones who charge interest.", m: "happy" },
     ],
     B3: [
       { n: "The Thane's Hall. A human envoy has arrived under a white flag: Archmage Corvin Varro himself, with a satchel of coin and a very dry expression." },
@@ -75,7 +75,7 @@ window.GameData.STORY_SCENARIOS["dwarf/human"] = {
       { s: "stone", t: "REMAINS." },
       { n: "On the steps of the Dawn Cathedral, the stone Karrak quarried for it lies cold and silent. There is no one left to pay the debt, and no one left to owe it to." },
       { s: "oskar", t: "Collected, Thane. In full. …It doesn't feel like it balanced.", m: "sad" },
-      { s: "brunna", t: "No. It doesn't.", m: "sad", alt: { s: "sigrun", t: "No. It doesn't. Mother wanted it *paid*, Uncle. Not *taken*.", m: "sad" } },
+      { s: "brunna", t: "No. It doesn't. I wanted them to pay, Uncle. Not to be gone.", m: "sad", alt: { s: "sigrun", t: "No. It doesn't. Mother wanted it *paid*, Uncle. Not *taken*.", m: "sad" } },
     ],
     "E-Fallen": [
       { n: "Westmarch has broken the Dwarves. {capital} is the last dwarf stronghold standing, and the Temple's knights are at its gates." },

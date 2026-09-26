@@ -35,7 +35,7 @@ Object.assign(window.GameData.STORY_SHARED.human, {
     { s: "aldric", t: "The stone is broken, and the Marches are godless without it! Westmarch must march under the Dawn's banner: a holy war, blessed by the Temple!", m: "fervent" },
     { s: "corvin", t: "A holy war. Against *whom*, Lord-Paladin? You haven't said. I suspect the Dawn hasn't told you yet.", m: "wry" },
     { n: "Half the nobles cheer Aldric. The other half laugh with Corvin. Maren watches her court split down the middle, Temple on one side, Collegium on the other." },
-    { s: "maren", t: "We are not fighting a holy war. We are not fighting a clever war. We are fighting *this* war. Sit down, both of you.", m: "angry" },
+    { s: "maren", t: "We are not fighting a holy war. We are not fighting a clever war. We are fighting *this* war, and I've already drawn the plan. Sit down, both of you, and read it.", m: "angry" },
     { s: "maren", t: "*(to the clerk)* …And write it down. Both versions.", m: "resolute" },
   ],
   B4: [
@@ -56,7 +56,7 @@ Object.assign(window.GameData.STORY_SHARED.human, {
     { n: "Across the square, Corvin stands on the Collegium steps with a scroll of his own." },
     { s: "corvin", t: "And the Collegium declares: if the Queen submits to *superstition*, the magi will withdraw her election. A monarch of Westmarch is chosen by reason, not by weather.", m: "angry" },
     { n: "The crowd falls silent. If Maren obeys either man, she loses the other half of her kingdom." },
-    { s: "maren", t: "I will not stand trial for the sun, and I will not be elected by a tantrum. I am your Queen *because Westmarch needs one*, today, in a war.", m: "angry" },
+    { s: "maren", t: "I will not stand trial before the sun, and I will not be un-crowned by a tantrum. I am your Queen *because Westmarch needs one*, today, in a war.", m: "angry" },
     { s: "maren", t: "Lord-Paladin. Archmage. You will both return to the council chamber, and you will both *sit down*.", m: "resolute" },
     { n: "Slowly, first Aldric, then Corvin, lowers his scroll. Westmarch holds, for now." },
   ],
@@ -70,7 +70,7 @@ Object.assign(window.GameData.STORY_SHARED.human, {
     { s: "aldric", t: "The ground shook, and I thought the Orcs had set an ambush. I drew my sword. I struck first. The Orcs never broke faith. *I* did.", m: "sad", req: { inGame: "orc" } },
     { s: "maren", t: "And for a year you let me call Grukka Ironjaw an oath-breaker.", m: "angry", req: { inGame: "orc" } },
     { s: "aldric", t: "Yes. I was passed over for the crown, sister. I could not also be the man who started a war.", m: "sad", req: { inGame: "orc" } },
-    { n: "The sun rises through the eastern window and falls across them both. Maren does not know whether it means anything.", req: { inGame: "orc" } },
+    { n: "The sun rises through the eastern window and falls across them both. Maren does not know whether the light means anything.", req: { inGame: "orc" } },
     { s: "maren", t: "Then you'll be the man who helps end one. Get up, Aldric.", m: "resolute", req: { inGame: "orc" } },
     // No orcs: Corvin finds it.
     { s: "corvin", t: "*(reading, alone)* “The Lord-Paladin drew first.” …Well. Well, well, well.", m: "wry", req: { notInGame: "orc" } },
@@ -79,7 +79,7 @@ Object.assign(window.GameData.STORY_SHARED.human, {
     { s: "aldric", t: "…You'll take this to the council.", m: "sad", req: { notInGame: "orc" } },
     { s: "corvin", t: "No. Not like this. I'll beat you *honestly*, Aldric. Tell her yourself. Tonight.", m: "wry", req: { notInGame: "orc" } },
     { s: "aldric", t: "*(after a long silence)* …Thank you, Archmage.", m: "sad", req: { notInGame: "orc" } },
-    { s: "corvin", t: "Don't. It's unbearable.", m: "wry", req: { notInGame: "orc" } },
+    { s: "corvin", t: "Don't thank me. Being noble at you is bad enough. Being *thanked* for it is unbearable.", m: "wry", req: { notInGame: "orc" } },
   ],
 
   // ---------------------------------------------------------------- first contact
@@ -91,9 +91,9 @@ Object.assign(window.GameData.STORY_SHARED.human, {
     { s: "corvin", t: "*(in {capital}, reading the same report)* The Dwarves. Our creditors. The debt was the *Temple's* idea, you know. I say so often.", m: "wry" },
   ],
   "meet:elf": [
-    { n: "Collegium scholars reach the edge of the Silverwood, the Elves' ancient forest. Their instruments go quiet at the first silver tree. Nobody told them to." },
-    { s: "maren", t: "Aelthir Moonveil taught my grandmother to read. He sent a sapling to my coronation. …I let it die. I've always wondered if he knows.", m: "sad" },
-    { n: "In the Silverwood, Lord Vaelis Nightbloom, heir to the Warden's seat, reads the surveyors' report without interest." },
+    { n: "Collegium scholars reach the edge of the Silverwood, the Elves' ancient forest. At the first silver tree, their instruments go quiet, as if something had told them to." },
+    { s: "maren", t: "Aelthir Moonveil taught my great-great-grandmother to read. He sent a sapling to my coronation. …I let it die. I've always wondered if he knows.", m: "sad" },
+    { n: "In the Silverwood, Lord Vaelis Nightbloom, heir to the Warden's seat, reads the scholars' report without interest." },
     { s: "vaelis", t: "The mayflies have brought their little instruments to our trees. How industrious. Someone take them away.", m: "aloof" },
   ],
   "meet:halfellow": [
@@ -136,7 +136,7 @@ Object.assign(window.GameData.STORY_SHARED.human, {
   "lost:dwarf": [
     { n: "Dwarf warriors have taken {city}, a city of Westmarch. Collateral, they call it." },
     { s: "brunna", t: "*(in the captured city)* The Cathedral debt, Majesty. One city down. I'll send you a receipt.", m: "proud", alt: { s: "oskar", t: "*(in the captured city)* Collateral, collected. I'll send Westmarch a receipt.", m: "grudging" } },
-    { s: "corvin", t: "The Temple's debt, and the Collegium's city. As usual.", m: "wry" },
+    { s: "corvin", t: "The Temple ran up the debt, and a Collegium city pays it. As usual.", m: "wry" },
   ],
   "lost:elf": [
     { n: "Elf warriors on black Shadowsteeds have taken {city}, a city of Westmarch." },
@@ -163,7 +163,7 @@ Object.assign(window.GameData.STORY_SHARED.human, {
   "eliminated:elf": [
     { n: "The last elf grove has fallen. The Silverwood Court is no more." },
     { s: "vaelis", t: "…The mayflies. *The mayflies*. We were supposed to watch them die.", m: "sad" },
-    { s: "maren", t: "He taught my grandmother to read. And I let his sapling die. …Write it down, Corvin. All of it.", m: "sad" },
+    { s: "maren", t: "He taught my great-great-grandmother to read. And I let his sapling die. …Write it down, Corvin. All of it.", m: "sad" },
   ],
   "eliminated:halfellow": [
     { n: "The last halfellow town has fallen. The Hearthlands Moot is no more." },
@@ -261,7 +261,7 @@ Object.assign(window.GameData.STORY_SHARED.human, {
   "found:3": [
     { n: "A third city of Westmarch is founded, {city}. The Temple blesses the square, and the Collegium wards the walls, on the same morning." },
     { s: "maren", t: "Three cities. Three altars, three towers, one crown. That's how a kingdom starts to look like one.", m: "happy" },
-    { s: "corvin", t: "And a chapel *and* a survey in every one. We've learned to schedule them.", m: "wry" },
+    { s: "corvin", t: "An altar *and* a ward-stone in every one, blessed and cast on the same morning. We've finally learned to share a calendar.", m: "wry" },
   ],
   "found:6": [
     { n: "{city} is founded, Westmarch's sixth city. The Queen's banners now fly from the river to the hills." },
@@ -317,12 +317,12 @@ Object.assign(window.GameData.STORY_SHARED.human, {
   // ---------------------------------------------------------------- rival against rival
   "rival-vs-rival:dwarf:elf": [
     { n: "News reaches {capital}: the Dwarves have taken {enemyCity}, an elf grove-town. The Rootcut, the oldest feud in the Marches, has flared again." },
-    { s: "corvin", t: "Eight hundred years, and they're still arguing about one grove. The Collegium has *nothing* on that.", m: "wry" },
+    { s: "corvin", t: "Eight hundred years, and they're still arguing about one grove. Even the Collegium's faculty feuds don't last *that* long.", m: "wry" },
     { s: "vaelis", t: "*(in the Silverwood)* The mud-folk have taken {enemyCity}. They will dig it up, I suppose. They dig *everything* up.", m: "aloof" },
   ],
   "rival-vs-rival:dwarf:halfellow": [
     { n: "News reaches {capital}: the Dwarves have taken {enemyCity} from the halfellows. The ale tariff has become a war." },
-    { s: "maren", t: "We brokered that trade. We should have seen this coming.", m: "sad" },
+    { s: "maren", t: "Westmarch brokered the ale trade between those two. We should have seen this coming.", m: "sad" },
     { s: "hobby", t: "*(in the Hearthlands)* They took the brewery first. Of *course* they did.", m: "angry" },
   ],
   "rival-vs-rival:dwarf:orc": [
@@ -378,4 +378,59 @@ Object.assign(window.GameData.STORY_SHARED.human, {
     { s: "skarra", t: "*(in the captured town)* The goose-girl's town is MINE! Where are the geese? WHERE ARE THE GEESE?", m: "gleeful" },
     { s: "maren", t: "Half our bread comes from the Hearthlands. If the Orcs keep burning it, Westmarch starves.", m: "sad" },
   ],
+});
+
+// ---------------------------------------------------------------------------
+// 2026-09-26, user-directed threads (js/engine/story.js pollState):
+//   maren:resolve     -- Maren stops refereeing and starts leading.
+//   faith:1, faith:2  -- Aldric's faith, vindicated; Corvin is wrong.
+//   rift:aldric-goldie -- first blood between Westmarch and the Hearthlands.
+// ---------------------------------------------------------------------------
+Object.assign(window.GameData.STORY_SHARED.human, {
+  "maren:resolve": [
+    { n: "The council chamber of {capital}, past midnight. Aldric and Corvin have argued for three hours about the war. Maren has listened to all of it, and ruled on every point, as she always does." },
+    { s: "corvin", t: "Majesty. May I say something as your old tutor, not your Archmage?", m: "sad" },
+    { s: "corvin", t: "You've spent this whole war deciding which of *us* is right. Neither of us is running this war. Our enemies are. You answer them. You never make them answer *you*.", m: "wry" },
+    { s: "aldric", t: "*(quietly)* He's right, sister. I hate that he's right. You were the best student the College ever had. You never waited for anyone to tell you the answer.", m: "sad", req: { charAlive: "aldric" } },
+    { n: "Maren is silent for a long moment. Then she sweeps the reports off the war table, and unrolls a blank map." },
+    { s: "maren", t: "Then no more answering. From tonight, Westmarch moves first. Every time.", m: "resolute" },
+    { s: "maren", t: "Archmage: I want the Collegium's scouts on every border by dawn, and a report on what our enemies *fear*, not what they want. Lord-Paladin: pick your best knights. We strike where they haven't looked yet.", m: "resolute" },
+    { s: "corvin", t: "*(smiling for the first time in weeks)* There she is.", m: "happy" },
+    { s: "aldric", t: "The Dawn waited a long time for this, sister. So did I.", m: "fervent", req: { charAlive: "aldric" } },
+  ],
+  "faith:1": [
+    { n: "A fever sweeps through {capital}. The Collegium's physicians try every tincture in their books, and the sick keep dying. On the seventh night, Aldric opens the Dawn Cathedral to every family who has nowhere left to go." },
+    { s: "corvin", t: "Lord-Paladin, you're packing the sick into one room. That will *spread* it. It's the opposite of medicine.", m: "angry" },
+    { s: "aldric", t: "Your medicine has had seven days, Archmage. Give the Dawn one night.", m: "fervent" },
+    { n: "Aldric and his paladins keep vigil through the night, kneeling among the cots, praying aloud, holding the hands of the dying. At sunrise, light pours through the great eastern window and falls across the whole nave." },
+    { n: "By noon, the fevers have broken. Every one." },
+    { s: "corvin", t: "*(checking his instruments, three times)* The light… did something. My lenses measured it. My books have no word for it.", m: "sad" },
+    { s: "aldric", t: "I don't need you to believe, Archmage. I needed you to be here.", m: "happy" },
+    { s: "corvin", t: "…I was. All night. I held the Tanner girl's hand. I don't know why I stayed.", m: "sad" },
+    { s: "aldric", t: "I do.", m: "fervent" },
+  ],
+  "faith:2": [
+    { n: "The eve of the Feast of First Light. Aldric warns the council that the enemy will strike tonight: on the holiest night of the Temple's year, when every soldier would rather be at prayer." },
+    { s: "corvin", t: "Armies don't keep the Temple's calendar, Lord-Paladin. The wards on the walls are the finest the Collegium has ever cast. Nothing is getting through them tonight.", m: "wry" },
+    { s: "maren", t: "Aldric. Take your knights to the walls anyway. If you're wrong, you'll have missed a feast.", m: "resolute" },
+    { n: "At midnight, the Collegium's wards gutter out, all at once, like candles in a draught. The enemy is already at the walls. Aldric's knights are already waiting for them." },
+    { n: "The paladins hold the breach until dawn, singing the Hymn of First Light. When the sun comes up behind them, the attackers break and run." },
+    { s: "corvin", t: "*(in council, the next morning)* The wards failed. My wards. The Lord-Paladin was right, and I was wrong, and I'd like that in the record, Majesty. Exactly as I said it.", m: "sad" },
+    { s: "maren", t: "I'll do better. I'll have it carved over the Collegium door.", m: "happy" },
+    { s: "aldric", t: "Don't, sister. He came to the walls himself at midnight, with every mage he had. He was wrong about the wards. He was right about his people.", m: "happy" },
+    { s: "corvin", t: "…Now you're just being *gracious* at me. It's unbearable.", m: "wry" },
+  ],
+  "rift:aldric-goldie": {
+    when: { charAlive: ["aldric", "goldie"], alive: ["human", "halfellow"] },
+    lines: [
+    { n: "The first battle between Westmarch and the Hearthlands. By nightfall, the names of the dead are read out in both kingdoms: knights of the Dawn, and farmers from the villages around The Goose & Kettle." },
+    { n: "Aldric reads the halfellow list twice. He knows some of the names. He has bought them drinks." },
+    { s: "aldric", t: "Old Tom Bramblewick. He taught me to throw darts. He called me *Lord Paladin Two-Pints*.", m: "sad" },
+    { n: "A letter arrives from The Goose & Kettle, in Goldie Trickgrin's round, careful hand. It has no greeting." },
+    { s: "goldie", t: "*(her letter)* “Your knights rode through Tom Bramblewick's barley with their swords out. You told me once your Dawn protected the weak. Tell your Queen to stop this, or don't come back to my pub.”", m: "angry" },
+    { s: "aldric", t: "*(to Maren)* I've asked you. I've asked the Temple. Does she think I *want* this?", m: "angry" },
+    { s: "maren", t: "She thinks you're the one of us she can reach. That's the cruellest compliment there is.", m: "sad" },
+    { s: "aldric", t: "Then I'll write back. And I'll tell her the Hearthlands could lay down their pitchforks too.", m: "angry" },
+    ],
+  },
 });

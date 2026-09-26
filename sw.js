@@ -39,7 +39,7 @@
 // thing that invalidates the precache -- unrelated to the game's own
 // GameConfig.build stamp, which exists for a human to read, not for cache
 // invalidation.
-const VERSION = "2026-09-26-story-9";
+const VERSION = "2026-09-26-story-17";
 const SHELL_CACHE = `km-shell-${VERSION}`;
 
 // Exactly the <script src> list index.html loads, plus the handful of
@@ -76,6 +76,7 @@ const SHELL_FILES = [
   "/js/data/story/barks-advance.js",
   "/js/data/story/barks-events.js",
   "/js/data/story/shared.js",
+  "/js/data/story/shared-duels.js",
   "/js/data/window-lights.js",
   "/js/engine/worldgen.js",
   "/js/engine/influence.js",

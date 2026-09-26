@@ -65,7 +65,7 @@ window.GameData.STORY_SCENARIOS["dwarf/human+orc"] = {
       { s: "maren", t: "*(by letter)* “The Cathedral debt, repaid in full. We have also, at Karrak's request, hired orc outriders to guard the western road.”", m: "happy", req: { alive: ["human", "orc"] } },
       { s: "oskar", t: "Volume Seven: crossed out. The Cathedral debt: struck out. Orc *caravan guards*: I have no column for this.", m: "grudging" },
       { n: "At the victory feast, Sigrun plays her song for Varg aloud for the first time. The Orc Warchief stands in the doorway, alone and unarmed.", req: { alive: "orc" } },
-      { s: "grukka", t: "I heard there was singing.", m: "happy", req: { alive: "orc" } },
+      { s: "grukka", t: "I heard there was singing. And that nobody's raiding the western road tonight.", m: "happy", req: { alive: "orc" } },
       { s: "brunna", t: "Stay by the door, Warchief.", m: "happy", req: { alive: "orc" } },
     ],
     "E-Remains": [

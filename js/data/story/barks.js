@@ -173,7 +173,7 @@ window.GameData.STORY_BARKS.home = {
     lines: [
       { s: "barnaby", t: "Third century! Nobody ever gets the third-century ones.", m: "happy" },
       { s: "barnaby", t: "That riddle has a footnote, you know. Three footnotes. The enemy read none of them.", m: "happy" },
-      { s: "hobby", t: "Stumped! Nothing beats a good riddle, dear. Except two riddles.", m: "happy" },
+      { s: "hobby", t: "Stumped! Nothing beats a good riddle. Except two riddles.", m: "happy" },
       { s: "goldie", t: "That one's been told at The Goose & Kettle for forty years. Nobody gets it there either.", m: "happy" },
     ],
   },
@@ -280,7 +280,7 @@ Object.assign(window.GameData.STORY_BARKS.rival, {
   "unlockGate:halfellow": {
     caption: "A halfellow Trouble Maker unlocked the gate at {city}.",
     lines: [
-      { s: "hobby", t: "Knock knock! Oh. You've no gate now. Never mind, dear.", m: "scheming" },
+      { s: "hobby", t: "Knock knock! Oh. You've no gate now. Never mind.", m: "scheming" },
       { s: "hobby", t: "Lovely walls. Shame about the lock.", m: "scheming" },
     ],
   },

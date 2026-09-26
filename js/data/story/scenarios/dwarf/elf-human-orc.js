@@ -84,7 +84,7 @@ window.GameData.STORY_SCENARIOS["dwarf/elf+human+orc"] = {
       { s: "stone", t: "HELD." },
       { s: "sigrun", t: "Held, Mother. You held the tunnel. I held the rest.", m: "happy", req: { charDead: "brunna" }, alt: { s: "brunna", t: "Held. Close the book, Uncle.", m: "proud" } },
       { n: "At the victory feast, the High Thane plays the song she wrote for Varg, aloud, for the first time. An orc Wolf Rider stands in the doorway, alone and unarmed.", req: { alive: "orc", charDead: "brunna" } },
-      { s: "varg", t: "I heard there was singing.", m: "bashful", req: { alive: "orc", charDead: "brunna" } },
+      { s: "varg", t: "I heard there was singing. Father said to come anyway, even if nobody opened the door.", m: "bashful", req: { alive: "orc", charDead: "brunna" } },
       { s: "kazra", t: "Stay by the door, boy. …She'd have said that. Then she'd have let you in.", m: "sad", req: { alive: "orc", charDead: "brunna" } },
       { s: "oskar", t: "Volume Seven. The last page. *(A long pause.)* Crossed out. For the one who carried her home.", m: "sad" },
     ],

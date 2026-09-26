@@ -79,7 +79,7 @@ window.GameData.STORY_SCENARIOS["dwarf/elf+halfellow+human"] = {
     B6: [
       { n: "Night, in the Thane's Hall of {capital}. High Thane Sigrun Stonefast has read the rune-rubbings through three times." },
       { s: "sigrun", t: "It says the stone is held by whoever keeps the Marches. Not owns. *Keeps*. Mother died for a sentence about gardening, Uncle.", m: "sad" },
-      { s: "oskar", t: "She died for Karrak, Thane. The sentence was just where she was standing.", m: "sad" },
+      { s: "oskar", t: "She didn't die for a sentence, Thane. She died for Karrak. The sentence is only what she left us.", m: "sad" },
       { s: "sigrun", t: "Then Karrak keeps the Marches. All of it. The surface can look up at us for a change.", m: "fierce" },
       { s: "kazra", t: "*(quietly)* She'd have said that. Louder, but she'd have said it.", m: "sad" },
     ],

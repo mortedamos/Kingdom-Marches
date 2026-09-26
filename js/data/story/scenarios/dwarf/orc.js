@@ -118,7 +118,7 @@ window.GameData.STORY_SCENARIOS["dwarf/orc"] = {
         alt: "In her great forge, Kazra unrolls the plans for something very large." },
       { s: "kazra", t: "It walks.", m: "focused", req: { unit: "self:runeforged_titan" }, alt: "It will." },
       { n: "That night, at their Underway door. Moss lays his great grey head in Sigrun's lap.", req: { alive: "orc" } },
-      { s: "sigrun", t: "Your mother has a Dragon, Varg.", m: "sad", req: { alive: "orc" } },
+      { s: "sigrun", t: "Your father has a Dragon, Varg.", m: "sad", req: { alive: "orc" } },
       { s: "varg", t: "Your mother has a mountain that walks.", m: "sad", req: { unit: "self:runeforged_titan" }, alt: "Your mother has a mountain full of hammers." },
       { s: "sigrun", t: "They're building things to kill each other's families now.", m: "sad" },
       { s: "varg", t: "…Hum the song again.", m: "sad" },
@@ -202,7 +202,7 @@ window.GameData.STORY_SCENARIOS["dwarf/orc"] = {
       { n: "The great doors creak open. Grukka Ironjaw, Warchief of the Orcs, stands in the doorway, alone and unarmed." },
       { s: "grukka", t: "I heard there was singing.", m: "happy" },
       { s: "brunna", t: "Stay by the door, Warchief.", m: "happy" },
-      { s: "grukka", t: "I'll stay by the door.", m: "happy" },
+      { s: "grukka", t: "I'll stay by the door. It's the closest any orc has come to this hall in peace. That's enough for one night.", m: "happy" },
       { n: "Neither parent leaves. And Kazra, who never sings, hums along." },
     ],
     "E-Remains": [

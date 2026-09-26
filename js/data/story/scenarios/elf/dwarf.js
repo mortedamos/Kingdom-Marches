@@ -94,7 +94,7 @@ window.GameData.STORY_SCENARIOS["elf/dwarf"] = {
       { s: "stone", t: "HELD." },
       { s: "aelthir", t: "The Dwarves hold the stone they cut. Perhaps that is fitting. I will witness their Accord. The second of my life.", m: "wistful" },
       { s: "vaelis", t: "You will *witness* the mud-folk's treaty, great-uncle? I shall be elsewhere. Anywhere.", m: "aloof" },
-      { s: "ysolde", t: "Then I shall go with the Warden, my son. The trees want to see the stone kept by the people who were blamed for them.", m: "uncanny" },
+      { s: "ysolde", t: "Then I shall go with the Warden, my son. The trees want to see the stone kept by the people we blamed for killing their grove.", m: "uncanny" },
     ],
   },
 };

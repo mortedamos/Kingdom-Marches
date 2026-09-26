@@ -948,6 +948,20 @@
     const spriteKey = o.spriteKey || `building/${s.id}`;
     // Opt-in, not opt-out -- see the note above.
     if (kind === "influence" && !influenceEmits(spriteKey)) return;
+    // Perf LOD (2026-09-26, user-reported night-time lag): a wall/bridge
+    // lamp is already this file's dimmest, smallest-radius tier, and by far
+    // the most NUMEROUS -- a full wall ring can be dozens of segments, each
+    // otherwise paying for its own sourceLitAmount/windowSchedule math below
+    // plus two stamp draws a frame (buildLightMask's cutout, pass B's glow).
+    // Below the same zoom floor drawWindowDots already applies to individual
+    // window dots, skip it outright -- returning here, before that math ever
+    // runs, not just before the push. Excludes a burning wall (kept lit
+    // regardless of zoom, same as every other ablaze override in this file):
+    // a wall on fire should still visibly catch however zoomed out you are.
+    if ((kind === "wall" || kind === "bridge") && !s.burning) {
+      const minZoom = c.wallBridgeMinZoom != null ? c.wallBridgeMinZoom : 0;
+      if (ts < (window.GameConfig.view.tileSize || ts) * minZoom) return;
+    }
     const rect = o.rect || { x: drawX, y: drawY, w: drawW, h: drawH };
     const source = {
       spriteKey,

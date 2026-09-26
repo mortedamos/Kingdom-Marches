@@ -414,14 +414,22 @@
         </label>
         <label class="launch-row">
           <span>Opponents</span>
+          <select id="opponent-mode">
+            <option value="random" selected>Random</option>
+            <option value="choose">Choose</option>
+          </select>
+        </label>
+        <label class="launch-row" id="opponent-count-row">
+          <span>Number of Opponents</span>
           <select id="opponent-count">
             <option value="1">1</option>
             <option value="2" selected>2</option>
             <option value="3">3</option>
             <option value="4">4</option>
-            <option value="5">5</option>
           </select>
         </label>
+        <div id="opponent-race-list" class="launch-race-list" style="display:none;"></div>
+        <p class="launch-hint" id="opponent-hint">Your rivals are drawn at random from the other kingdoms.</p>
       </div>
 
       <div class="launch-section" id="spectator-race-section" style="display:none;">
@@ -910,6 +918,33 @@
         ${window.GameData.getRace(r).label}
       </label>
     `).join("");
+
+    // Single Player opponents (2026-09-26, user-directed): "Random" keeps
+    // the old behaviour (a random draw sized by Number of Opponents);
+    // "Choose" swaps that dropdown for a checklist of the other kingdoms.
+    // The player's own kingdom is hidden from the checklist, and re-hidden
+    // whenever Select Your Kingdom changes.
+    $("opponent-race-list").innerHTML = RACE_LIST.map((r) => `
+      <label class="launch-race-item" data-race="${r}">
+        <input type="checkbox" class="opponent-race-checkbox" value="${r}" checked>
+        ${window.GameData.getRace(r).label}
+      </label>
+    `).join("");
+    const syncOpponentControls = () => {
+      const choose = $("opponent-mode").value === "choose";
+      const humanRace = $("human-race-select").value;
+      $("opponent-count-row").style.display = choose ? "none" : "";
+      $("opponent-race-list").style.display = choose ? "" : "none";
+      $("opponent-hint").textContent = choose
+        ? "Pick at least one kingdom to fight."
+        : "Your rivals are drawn at random from the other kingdoms.";
+      document.querySelectorAll("#opponent-race-list .launch-race-item").forEach((item) => {
+        item.style.display = item.dataset.race === humanRace ? "none" : "";
+      });
+    };
+    $("opponent-mode").addEventListener("change", syncOpponentControls);
+    $("human-race-select").addEventListener("change", syncOpponentControls);
+    syncOpponentControls();
 
     $("spectator-toggle").addEventListener("change", (e) => {
       const isSpectator = e.target.checked;
@@ -1974,6 +2009,14 @@
       return;
     }
     const opponentCount = parseInt($("opponent-count").value, 10);
+    const chooseOpponents = !spectatorMode && $("opponent-mode").value === "choose";
+    const chosenOpponents = [...document.querySelectorAll(".opponent-race-checkbox:checked")]
+      .map((cb) => cb.value)
+      .filter((r) => r !== $("human-race-select").value);
+    if (chooseOpponents && chosenOpponents.length < 1) {
+      window.alert("Select at least 1 kingdom to play against.");
+      return;
+    }
     applyGameSpeed(GAME_SPEED_LEVELS[parseInt($("game-speed-slider").value, 10)].percent);
     // Universal -- applies in Spectator mode too, not just Single Player,
     // same as Game Speed/Max Monsters above. MUST run before createNewGame
@@ -1993,7 +2036,9 @@
       humanCivId = null;
     } else {
       const humanRace = $("human-race-select").value;
-      const others = shuffledRaces.filter((r) => r !== humanRace).slice(0, opponentCount);
+      const others = chooseOpponents
+        ? chosenOpponents
+        : shuffledRaces.filter((r) => r !== humanRace).slice(0, opponentCount);
       racesInPlay = [humanRace, ...others];
       humanCivId = humanRace.toUpperCase();
     }
@@ -2095,6 +2140,7 @@
     // This lineup's story scenario file (lazy -- only the active one loads;
     // always resolves, even if the file is missing).
     window.GameEngine.story.resetBuffer();
+    heldTechBarks = []; shownTechDialogs.clear();
     window.UI.story.clearBarks();
     const storyPromise = window.UI.story.loadScenario(gameState.story && gameState.story.id);
     const LOADING_FAILSAFE_MS = 30000;
@@ -3349,6 +3395,7 @@
     setLoadingProgress("sfx", 1, 1);
     const spritesPromise = window.UI.sprites.preloadAll(racesInPlay, (done, total) => setLoadingProgress("sprites", done, total));
     window.GameEngine.story.resetBuffer();
+    heldTechBarks = []; shownTechDialogs.clear();
     window.UI.story.clearBarks();
     const storyPromise = window.UI.story.loadScenario(payload.gameState.story && payload.gameState.story.id);
     const LOADING_FAILSAFE_MS = 30000;
@@ -4205,6 +4252,11 @@
         onKeepFighting: (victoryType === "territory" && !spectatorMode) ? () => {
           gameState.disableTerritorialVictory = true;
           window.UI.fireworks.stop();
+          // Music (2026-09-26, user-reported): notifyVictory's theme is a
+          // one-way pin for the rest of the session -- right for a game that
+          // actually ended, wrong here, since Keep Fighting drops straight
+          // back into this SAME game rather than ending it.
+          window.MusicSystem.resumeNormalMusic();
           // Story: the Marchstone answers the refusal ("NOT YET") at the
           // start of the next human turn.
           window.GameEngine.story.noteRefusal(gameState);
@@ -4379,6 +4431,11 @@
       // Return to Title.
       onKeepFighting: influenceInfo ? () => {
         gameState.disableTerritorialVictory = true;
+        // Music (2026-09-26, user-reported, win-side counterpart): same
+        // one-way pin problem as notifyVictory's -- notifyGameOver's
+        // game_over.mp3 would otherwise keep playing for the rest of this
+        // SAME game even though the player just declined to end it.
+        window.MusicSystem.resumeNormalMusic();
       } : undefined,
       onReturnToTitle: handleReturnToTitle,
     };
@@ -4584,6 +4641,7 @@
       .filter((id) => window.GameData.getTech(id).prereqs.includes(techId))
       .map((id) => ({ id, label: window.GameData.getTech(id).label }));
     window.SfxSystem.playResearchComplete();
+    shownTechDialogs.add(techId); // its held story bark may play once this closes
     viewState.dialog = {
       kind: "techResearched",
       techLabel: tech.label,
@@ -4868,9 +4926,39 @@
   function pumpStory() {
     if (!gameState || !gameState.story || !humanCivId || spectatorMode) {
       window.GameEngine.story.resetBuffer();
+      heldTechBarks = []; shownTechDialogs.clear();
       return;
     }
-    for (const bark of window.GameEngine.story.pump(gameState, humanCivId)) window.UI.story.showBark(bark);
+    for (const bark of window.GameEngine.story.pump(gameState, humanCivId)) {
+      // An advancement's bark waits for its "advancement complete" window
+      // (2026-09-26, user-directed: the bark was showing BEFORE the
+      // window announcing the advancement).
+      if (bark.afterTech) heldTechBarks.push({ bark, round: gameState.turnNumber || 0 });
+      else window.UI.story.showBark(bark);
+    }
+    releaseHeldTechBarks();
+  }
+
+  /** Advancement barks held by pumpStory: each is released once the
+   *  techResearched window for its tech has been shown and closed (and the
+   *  tech tree, if the player clicked through to it, is shut too). If that
+   *  window never comes (the game ended that round, say), a held bark is
+   *  released anyway two rounds later so it can't pile up. */
+  let heldTechBarks = [];
+  const shownTechDialogs = new Set();
+  function releaseHeldTechBarks() {
+    if (!heldTechBarks.length) return;
+    // Waits for the whole turn-start notice chain to finish (any window at
+    // all, or the tech tree), so the bark never lands on top of the
+    // unit-built notice or story scene that follows the tech window.
+    const windowOpen = !!viewState.dialog || !!viewState.techTreeCivId;
+    if (windowOpen) return;
+    const r = gameState.turnNumber || 0;
+    heldTechBarks = heldTechBarks.filter((h) => {
+      const ready = shownTechDialogs.has(h.bark.afterTech) || r - h.round >= 2;
+      if (ready) window.UI.story.showBark(h.bark);
+      return !ready;
+    });
   }
 
   /** Drains and shows this round's revealed Neighborhood Pub rumors, one

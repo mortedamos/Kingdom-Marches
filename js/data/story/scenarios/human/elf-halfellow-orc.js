@@ -32,7 +32,7 @@ window.GameData.STORY_SCENARIOS["human/elf+halfellow+orc"] = {
         alt: "Westmarch's surveyors and priests ride out together to choose the site of a second city. Neither will let the other choose." },
       { s: "aldric", t: "It must be consecrated before a single stone is laid, Majesty.", m: "fervent" },
       { s: "corvin", t: "It must be *surveyed*. And well away from the halfellow farms. Every one of them.", m: "wry" },
-      { s: "maren", t: "Consecrate it. Survey it. Keep clear of the farms.", m: "resolute" },
+      { s: "maren", t: "Consecrate it. Survey it. Keep clear of the farms. And send Collegium healers to the nearest halfellow village before anyone asks. Let them meet our magic as a gift first.", m: "resolute" },
     ],
     B2: [
       { n: "The forest's edge, at dusk. Human soldiers and elf rangers have clashed over a surveyor's stake, the first battle of the war.", req: { firstBlood: "elf" },
@@ -40,7 +40,8 @@ window.GameData.STORY_SCENARIOS["human/elf+halfellow+orc"] = {
           alt: "The road to the Hearthlands, at dusk. Human soldiers and halfellow militia have clashed over a bread cart, the first battle of the war." } },
       { s: "aldric", t: "Victory! The Dawn guided our swords!", m: "fervent" },
       { s: "corvin", t: "The *Collegium's maps* guided our swords, Lord-Paladin. The Dawn was busy setting.", m: "wry" },
-      { s: "maren", t: "Grukka still thinks this is about the parley.", m: "sad", req: { firstBlood: "orc" },
+      { s: "aldric", t: "Then we'll share it, Archmage. Your maps found the ford. The Dawn kept my knights standing in it when the arrows came.", m: "fervent" },
+      { s: "maren", t: "Grukka still thinks this is about the parley. Let him. We'll be three moves ahead while he's still remembering.", m: "sad", req: { firstBlood: "orc" },
         alt: "Over a *boundary stone*. Of all the things to bleed for." },
       { n: "Aldric stares at the floor and says nothing, which is not like him.", req: { firstBlood: "orc" } },
     ],

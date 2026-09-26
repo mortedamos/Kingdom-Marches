@@ -39,7 +39,7 @@ window.GameData.STORY_SCENARIOS["elf/dwarf+orc"] = {
     ],
     B6: [
       { n: "Night, beneath the Heartwood. Aelthir has not slept. Smoke from the Mountain War drifts through the branches." },
-      { s: "aelthir", t: "I wanted to stand apart, Ysolde. The stone would not let me. There is no neutral ground in a Marches without an oath.", m: "sad" },
+      { s: "aelthir", t: "I wanted to stand apart, Ysolde. The stone would not let me. Once the oaths are gone, there is no neutral ground anywhere in the Marches.", m: "sad" },
       { s: "ysolde", t: "There never was, Warden. The Accord only let us pretend.", m: "uncanny" },
       { s: "vaelis", t: "Then stop pretending, great-uncle. Choose a side. Preferably *ours*.", m: "aloof" },
       { s: "aelthir", t: "I have, Vaelis. I chose the two in the tunnels. I will not let their parents' war end them.", m: "wistful", req: { seen: "lovers:meet" },

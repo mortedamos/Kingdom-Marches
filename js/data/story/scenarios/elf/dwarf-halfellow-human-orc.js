@@ -32,7 +32,7 @@ window.GameData.STORY_SCENARIOS["elf/dwarf+halfellow+human+orc"] = {
       { s: "vaelis", t: "A grove, great-uncle. The land was wasted on the brief before.", m: "aloof" },
       { s: "aelthir", t: "The land was *lent* to the brief before, Vaelis. By an Accord I swore to.", m: "angry" },
       { s: "vaelis", t: "An Accord that no longer exists.", m: "aloof" },
-      { s: "aelthir", t: "I do. That will have to be enough for now.", m: "wistful" },
+      { s: "aelthir", t: "I still exist, Vaelis. So does the oath I swore. That will have to be enough for now.", m: "wistful" },
     ],
     B2: [
       { n: "The forest's edge, at dawn. Elf rangers have clashed with dwarf warriors.", req: { firstBlood: "dwarf" } },

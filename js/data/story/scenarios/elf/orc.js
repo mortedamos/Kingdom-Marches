@@ -20,7 +20,7 @@ window.GameData.STORY_SCENARIOS["elf/orc"] = {
       { n: "On the southern wind comes the smell of smoke. The Orcs of the Bloodmire, the swamp country beyond the forest, have lit their fires." },
       { s: "ysolde", t: "And I smell *her*. Skarra. The bog-witch. She has been waiting eighty years for the Accord to break, so she can finish what she started.", m: "angry" },
       { s: "aelthir", t: "The Midsummer Fair, eighty years ago. You and she, at the Marchstone. I never learned what happened.", m: "wistful" },
-      { s: "ysolde", t: "She insulted my trees. I drowned her frog. It lived. She has never forgiven either.", m: "uncanny" },
+      { s: "ysolde", t: "She insulted my trees, so I threw her frog into the Wellspring. It lived; I made quite sure of that. She has never forgiven me for the insult, or for the frog.", m: "uncanny" },
       { n: "In the Bloodmire, at the Speaking Stones, Skarra the Bog-Mother cackles over a pot. Beside her, the ogre Gnash sharpens a cleaver the size of a door." },
       { s: "skarra", t: "The elf-witch's precious forest! Skarra will BURN it, root and branch!", m: "gleeful" },
       { s: "gnash", t: "Gnash want to smash pretty one. The shiny elf. Pretty one never look at Gnash. Gnash make him *look*.", m: "angry" },

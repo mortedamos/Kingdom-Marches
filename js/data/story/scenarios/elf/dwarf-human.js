@@ -22,7 +22,7 @@ window.GameData.STORY_SCENARIOS["elf/dwarf+human"] = {
       { s: "vaelis", t: "Westmarch and Karrak. The two peoples who cut. One from above, one from below. Everyone wants a piece of the trees today.", m: "aloof" },
       { s: "aelthir", t: "And they owe each other money. The Humans' Dawn Cathedral was built on dwarf credit.", m: "wistful" },
       { s: "vaelis", t: "Then let the creditor and the debtor exhaust each other, great-uncle. I shall help, if they need encouragement.", m: "aloof" },
-      { n: "In Westmarch, Queen Maren Ashcroft sends Collegium scholars to measure the silver trees. In Karrak, High Thane Brunna Stonefast plans tunnels beneath it. Neither has asked the forest." },
+      { n: "In Westmarch, Queen Maren Ashcroft sends Collegium scholars to measure the silver trees. In Karrak, High Thane Brunna Stonefast plans tunnels beneath the forest. Neither has asked it." },
     ],
     B1: [
       { n: "{city}, a new grove-town of the Silverwood, is planted where the human scholars' camps and the dwarves' tunnels would meet.", req: { cities: 2 },
@@ -41,7 +41,7 @@ window.GameData.STORY_SCENARIOS["elf/dwarf+human"] = {
       { s: "vaelis", t: "Eleven battles, great-uncle. Axe against pick. And not one of them near a tree.", m: "happy" },
       { s: "aelthir", t: "And how many of those battles began with a letter sealed in silver leaves, Vaelis?", m: "angry" },
       { s: "vaelis", t: "*(after a pause)* …Some." },
-      { s: "aelthir", t: "Then you have saved the forest by feeding them to each other. I will never be able to thank you for it.", m: "sad" },
+      { s: "aelthir", t: "Then you have saved the forest by feeding them to each other. And I can never thank you for it without shame.", m: "sad" },
       { s: "vaelis", t: "I did not ask for thanks, great-uncle. I asked for *results*.", m: "aloof" },
     ],
 

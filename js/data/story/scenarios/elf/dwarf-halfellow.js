@@ -35,7 +35,7 @@ window.GameData.STORY_SCENARIOS["elf/dwarf+halfellow"] = {
     B2: [
       { n: "The forest's edge, at dawn. Elf warriors have clashed with the Dwarves for the first time since the Accord.", req: { firstBlood: "dwarf" },
         alt: "The meadows' edge, at dawn. Elf warriors have clashed with the halfellows for the first time since the Accord." },
-      { s: "aelthir", t: "First blood. And I wonder, Ysolde, how many of the ones who fell once shared a barrel with the ones who killed them.", m: "sad" },
+      { s: "aelthir", t: "First blood. And I wonder, Ysolde, how many of today's dead once shared a barrel with the people who killed them.", m: "sad" },
       { s: "oskar", t: "*(in Karrak)* Entry the First, the Rootcut. Reopened.", m: "grudging", req: { firstBlood: "dwarf" } },
       { s: "hobby", t: "*(in the Hearthlands)* First blood with the Elves. I used to take bets on who could make Lord Vaelis twitch.", m: "scheming", req: { firstBlood: "halfellow" } },
     ],

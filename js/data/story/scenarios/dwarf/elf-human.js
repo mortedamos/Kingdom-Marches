@@ -45,7 +45,7 @@ window.GameData.STORY_SCENARIOS["dwarf/elf+human"] = {
       { s: "kazra", t: "I've started a Titan.", m: "focused", req: { tech: "self:dwarf_runeforged_titan" }, alt: "I've stoked every forge. The day we learn the runes for a Titan, I'll build one." },
       { s: "vaelis", t: "*(in the Silverwood)* The mud-folk came to collect. We have paid them in arrows. Tell them there is plenty more where those came from.", m: "aloof", req: { firstBlood: "elf" } },
       { s: "aldric", t: "*(in Westmarch)* The Dawn guided our swords against the moneylenders!", m: "fervent", req: { firstBlood: "human" } },
-      { s: "corvin", t: "*(in Westmarch)* Those moneylenders built your Cathedral, Lord-Paladin. Pray more quietly.", m: "wry", req: { firstBlood: "human" } },
+      { s: "corvin", t: "*(in Westmarch)* Those moneylenders built your Cathedral, Lord-Paladin. Pray more quietly.", m: "wry", req: { firstBlood: "human" } }, { s: "aldric", t: "*(in Westmarch)* I'll pray exactly as loudly as the Dawn requires, Archmage. You may put your fingers in your ears.", m: "happy", req: { firstBlood: "human" } },
     ],
     B3: [
       { n: "The Thane's Hall, late at night. Oskar has split the Book of Grudges into two neat columns across the war table." },

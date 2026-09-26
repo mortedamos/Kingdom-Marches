@@ -151,7 +151,7 @@ Object.assign(window.GameData.STORY_BARKS.rival, {
   "tookCity:halfellow": {
     caption: "The Halfellows captured {city}.",
     lines: [
-      { s: "hobby", t: "{city} is ours now, dear! Don't worry, we'll put flower boxes in every window.", m: "scheming" },
+      { s: "hobby", t: "{city} is ours now! Don't worry, we'll put flower boxes in every window.", m: "scheming" },
       { s: "goldie", t: "Took {city}. First thing, a proper kitchen. Second thing, somebody sweep that square.", m: "stern" },
       { s: "barnaby", t: "{city}! Our first conquest! No. Our first *acquisition*. Conquest sounds rude.", m: "flustered" },
     ],
@@ -301,7 +301,7 @@ Object.assign(window.GameData.STORY_BARKS.home, {
       { s: "kazra", t: "Good stone, good mortar, good wall. Walls first, as the Thane says.", m: "focused" },
       { s: "grukka", t: "A wall? The Clans don't hide behind walls. …But the pups do sleep better.", m: "defiant" },
       { s: "gnash", t: "Wall! Gnash lean on wall! …Wall still up. GOOD wall.", m: "happy" },
-      { s: "hobby", t: "A wall at {city}. Not a big one, dear. Just big enough to be *rude*.", m: "scheming" },
+      { s: "hobby", t: "A wall at {city}. Not a big one. Just big enough to be *rude*.", m: "scheming" },
       { s: "goldie", t: "A good fence makes a good neighbour. A good wall makes a *quiet* one.", m: "stern" },
     ],
   },
@@ -400,7 +400,7 @@ Object.assign(window.GameData.STORY_BARKS.home, {
       { s: "brunna", t: "Farming. Up top. In the *sun*. Well, somebody has to." },
       { s: "gnash", t: "Gnash plant turnip! Turnip grow! Gnash very proud of turnip!", m: "happy" },
       { s: "goldie", t: "Good soil there. You can tell by the smell.", m: "happy" },
-      { s: "hobby", t: "Nothing like a good row of cabbages, dear. Nothing in the world.", m: "happy" },
+      { s: "hobby", t: "Nothing like a good row of cabbages. Nothing in the world.", m: "happy" },
     ],
   },
   "gather:mining": {
@@ -510,5 +510,89 @@ window.GameData.STORY_BARKS.luckyRock = {
     { s: "gnash", t: "Hey! That LUCKY ROCK! Give Gnash lucky rock! Gnash trade… Gnash trade you normal rock!", m: "angry", req: { holder: "other" } },
     { s: "gnash", t: "You got lucky rock?! Is not fair! Is lucky AND rock! Gnash only have rock!", m: "sad", req: { holder: "other" } },
     { s: "gnash", t: "Gnash coming for lucky rock. Not for war. Just rock. …Also war.", m: "angry", req: { holder: "other" } },
+  ],
+};
+
+// ---------------------------------------------------------------------------
+// ALDRIC AND GOLDIE (2026-09-26, user-directed): an unlikely friendship
+// between the Lord-Paladin and the keeper of The Goose & Kettle. Friendly
+// until Westmarch and the Hearthlands have fought ("aldricGoldieFriendly");
+// after that, hurt and angry, each sure the other should do more to end the
+// war ("aldricGoldieSour"). Fired now and then by js/engine/story.js
+// pollState when the player is human or halfellow and both are alive.
+// ---------------------------------------------------------------------------
+Object.assign(window.GameData.STORY_BARKS.world, {
+  aldricGoldieFriendly: {
+    caption: "A letter crosses between Westmarch and The Goose & Kettle.",
+    lines: [
+      { s: "aldric", t: "*(his letter)* “Mistress Trickgrin. Enclosed: forty silver toward my tab, and a blessing for the new ale. The Dawn approves of the new ale.”", m: "happy",
+        then: [{ s: "goldie", t: "*(her reply)* “Forty silver, received. Three hundred and sixty to go. The ale doesn't need blessing, love. It needs *drinking*.”", m: "happy" }] },
+      { s: "goldie", t: "*(her letter)* “Lord-Paladin. Your knights came through last week and nobody broke a single chair. I'm told you gave a speech about it. Thank you.”", m: "happy",
+        then: [{ s: "aldric", t: "*(his reply)* “It was a *short* speech, Mistress Trickgrin. For me.”", m: "happy" }] },
+      { s: "aldric", t: "*(his letter)* “I have been asked, by the Archmage, whether you and I are *friends*. I told him the Dawn smiles on anyone who keeps a warm hearth for strangers.”", m: "fervent",
+        then: [{ s: "goldie", t: "*(her reply)* “Tell the Archmage yes. And tell him his tab's open too, now. He had two pies.”", m: "happy" }] },
+      { s: "goldie", t: "*(her letter)* “Sending a pie for your paladins. Apple. Don't let the Temple bless it, it'll go cold.”", m: "happy",
+        then: [{ s: "aldric", t: "*(his reply)* “We blessed it anyway. It was still warm. I believe that counts as a miracle.”", m: "fervent" }] },
+      { s: "aldric", t: "*(his letter)* “Mistress Trickgrin. There is a war coming to the Marches. Whatever happens between our crowns, your door will always be safe from my knights. On my oath.”", m: "fervent",
+        then: [{ s: "goldie", t: "*(her reply)* “And yours from my pitchforks, love. Mind you keep it.”", m: "stern" }] },
+    ],
+  },
+  aldricGoldieSour: {
+    caption: "A letter crosses between Westmarch and The Goose & Kettle.",
+    lines: [
+      { s: "goldie", t: "*(her letter)* “Another farm burned near the river. You swore on your Dawn my door would be safe. Is a farmhouse not a door?”", m: "angry",
+        then: [{ s: "aldric", t: "*(his reply)* “I swore for my own knights, and I have kept it. Ask your Mayor who sent militia against our supply wagons.”", m: "angry" }] },
+      { s: "aldric", t: "*(his letter)* “Goldie. Your pies are still being eaten in the Cathedral kitchens. Nobody will say where they came from. Please ask your sister to talk to mine.”", m: "sad",
+        then: [{ s: "goldie", t: "*(her reply)* “I've asked her every night. Have *you* asked yours? Or just prayed at her?”", m: "angry" }] },
+      { s: "goldie", t: "*(her letter)* “I closed your tab today. Not because you paid it. Because I don't want your name in my book any more.”", m: "sad",
+        then: [{ s: "aldric", t: "*(his reply)* “Then I'll pay it anyway. Every silver. And I'll keep praying for your regulars, whether you want my prayers or not.”", m: "sad" }] },
+      { s: "aldric", t: "*(his letter)* “Your militia laid a trap on the ford road. Two of my squires, Goldie. *Squires*. They were fourteen.”", m: "angry",
+        then: [{ s: "goldie", t: "*(her reply)* “Tom Bramblewick was seventy. He taught you darts. Don't you dare count your dead at me as if mine don't count.”", m: "angry" }] },
+      { s: "goldie", t: "*(her letter)* “You're the only one of them I ever liked. That's why I'm so angry with you, you great tin fool. *Do* something.”", m: "sad",
+        then: [{ s: "aldric", t: "*(his reply)* “I am trying. You have no idea how hard I am trying. …Save me a stool. For after.”", m: "sad" }] },
+    ],
+  },
+});
+
+// Aldric, right: faith that holds when reason doesn't (2026-09-26, user-
+// directed: he shouldn't only ever lose to Corvin).
+window.GameData.STORY_BARKS.home.unitWin.lines.push(
+  { s: "aldric", t: "The line held, Archmage. Your wards broke at the second charge. My knights didn't.", m: "fervent",
+    then: [{ s: "corvin", t: "…Noted. With some irritation.", m: "wry" }] },
+  { s: "aldric", t: "They broke when the sun rose behind us. Explain *that* in your lecture, Archmage.", m: "fervent",
+    then: [{ s: "corvin", t: "Morale, glare, and timing. …I'll admit the timing was *uncanny*.", m: "wry" }] },
+);
+window.GameData.STORY_BARKS.home.unitLost.lines.push(
+  { s: "aldric", t: "I sat with him at the end. He wasn't afraid. That's what the Dawn is for, Archmage. Not for winning.", m: "sad",
+    then: [{ s: "corvin", t: "…I've never once seen a lens that could do that.", m: "sad" }] },
+);
+window.GameData.STORY_BARKS.world.storm.lines.push(
+  { s: "corvin", t: "Lightning, Lord-Paladin. Simple weather. It strikes at random.", m: "wry", req: { alive: "human" },
+    then: [{ s: "aldric", t: "Then explain why it missed every chapel and hit the enemy siege tower. *Twice*.", m: "fervent" }, { s: "corvin", t: "…I'm working on it.", m: "sad" }] },
+);
+window.GameData.STORY_BARKS.advance.human.lines.push(
+  { s: "corvin", t: "{tech}. Odd. The spell only takes when the caster is certain it will. We don't have a word for that in the Collegium.", cat: "mystic", m: "wry",
+    then: [{ s: "aldric", t: "The Temple does, Archmage. We call it faith.", m: "fervent" }, { s: "corvin", t: "…I'll need to think about that. Quietly. Somewhere you aren't.", m: "wry" }] },
+  { s: "aldric", t: "{tech}. My knights will carry it into battle with a prayer on their lips. It will not fail them. Nothing has, yet.", cat: "military", m: "fervent",
+    then: [{ s: "maren", t: "He's right, Archmage. Their losses are half what the Collegium predicted. Every time.", m: "resolute" }] },
+);
+
+// ---------------------------------------------------------------------------
+// MAREN'S ORDERS (2026-09-26, user-directed: Maren should be proactive).
+// After the "maren:resolve" scene, now and then she moves first -- see
+// js/engine/story.js pollState.
+// ---------------------------------------------------------------------------
+window.GameData.STORY_BARKS.home.marenOrders = {
+  caption: "The Queen's orders go out from {capital}.",
+  lines: [
+    { s: "maren", t: "New orders. We don't wait for their next move. We find out what they're planning, and we get there first.", m: "resolute" },
+    { s: "maren", t: "Archmage, I want every enemy border scouted by the week's end. Lord-Paladin, have your knights ready to ride the day he reports.", m: "resolute",
+      then: [{ s: "corvin", t: "The week's end. Yes, Majesty.", m: "happy" }] },
+    { s: "maren", t: "I've read the reports. Our enemies expect us to defend. So we won't.", m: "resolute" },
+    { s: "maren", t: "Send envoys to every crown in the Marches. Not to beg. To tell them what Westmarch will do, before they have to guess.", m: "resolute",
+      then: [{ s: "aldric", t: "Finally. The Dawn favours the bold, sister.", m: "fervent" }] },
+    { s: "maren", t: "I'm moving the war council to the front. If I'm going to give orders, I'd like to see where they land.", m: "resolute" },
+    { s: "maren", t: "The Collegium and the Temple will both have their say. After I've already decided.", m: "happy" },
+    { s: "maren", t: "Every city strengthens its walls this season, and every one of them is told *why*. A kingdom that knows the plan fights harder.", m: "resolute" },
   ],
 };

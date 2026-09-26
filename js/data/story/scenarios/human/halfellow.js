@@ -32,7 +32,7 @@ window.GameData.STORY_SCENARIOS["human/halfellow"] = {
         alt: "Westmarch's surveyors and priests ride out together to choose the site of a second city. Neither will let the other choose." },
       { s: "aldric", t: "It must be consecrated before a single stone is laid, Majesty.", m: "fervent" },
       { s: "corvin", t: "It must be *surveyed*. And it needs its own fields. We can't keep buying bread from people we're at war with.", m: "wry" },
-      { s: "maren", t: "Consecrate it. Survey it. And plant wheat.", m: "resolute" },
+      { s: "maren", t: "Consecrate it. Survey it. And plant wheat. We'll grow our own bread before the halfellows think of holding theirs back.", m: "resolute" },
     ],
     B2: [
       { n: "The road to the Hearthlands, at dusk. Human soldiers and halfellow militia have clashed over a bread cart, the first battle of the war." },
@@ -62,7 +62,7 @@ window.GameData.STORY_SCENARIOS["human/halfellow"] = {
       { s: "maren", t: "No, brother. It's the land. It was always the land.", m: "happy" },
       { n: "Maren writes the first line of the new charter for the Marches. Its first clause: every generation must renew it, or it lapses. Its second: *Westmarch thanks the Hearthlands for the bread*." },
       { s: "hobby", t: "*(reading it in the Hearthlands)* Three hundred years. And they finally said it. In *writing*.", m: "happy", req: { alive: "halfellow" } },
-      { s: "corvin", t: "A renewable Omen, and a thank-you note. How very *efficient*.", m: "wry" },
+      { s: "corvin", t: "A renewable Omen, and a thank-you note. How very *efficient*.", m: "wry" }, { s: "aldric", t: "The thank-you note was mine, Archmage. I wrote it myself. I owed them that long before I owed them four hundred silver.", m: "happy" },
     ],
     "E-Remains": [
       { n: "Westmarch has won by destroying the Hearthlands. The hedgerows are quiet, and the pub is shut." },
@@ -71,7 +71,7 @@ window.GameData.STORY_SCENARIOS["human/halfellow"] = {
       { s: "aldric", t: "The Temple proclaims a divine victory, Majesty.", m: "fervent" },
       { s: "corvin", t: "Over the people who fed us. I'd keep that proclamation short, Lord-Paladin.", m: "wry" },
       { s: "maren", t: "Three hundred years of bread. And we never said thank you. Put that in the charter. First.", m: "sad" },
-      { s: "corvin", t: "Every Accord begins with someone who won, Majesty. The trick is being the one who *stops*.", m: "sad" },
+      { s: "corvin", t: "Every Accord begins with someone who won, Majesty. The trick is being the one who *stops*.", m: "sad" }, { s: "maren", t: "Then we stop here, today. Before there's no one left to stop *for*.", m: "resolute" },
     ],
     "E-Fallen": [
       { n: "The halfellows have broken Westmarch. {capital} is the last human city standing, and nobody can quite work out how it happened." },

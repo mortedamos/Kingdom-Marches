@@ -169,7 +169,7 @@ window.GameData.STORY_SHARED = {
         { s: "aelthir", t: "You started a war.", m: "angry" },
         { s: "vaelis", t: "I *redirected* one. They were always going to fight someone. Better each other than us.", m: "aloof" },
         { s: "aelthir", t: "And when they find the seal, Vaelis?", m: "angry" },
-        { s: "vaelis", t: "They will blame each other for forging it. Trust me.", m: "aloof" },
+        { s: "vaelis", t: "They will blame each other for forging it, great-uncle. A grudge is always easier to believe than the truth.", m: "aloof" },
       ],
     },
     "whisper:2": {

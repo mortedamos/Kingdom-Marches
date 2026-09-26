@@ -51,7 +51,7 @@ window.GameData.STORY_SCENARIOS["halfellow/elf+human+orc"] = {
     B3: [
       { n: "The Goose & Kettle, on market day. By pure accident (which is to say, by Goldie's careful planning) an elf envoy, a human envoy and an orc envoy have all come in out of the rain at once." },
       { s: "goldie", t: "Sit down, all of you. No swords on the bar. Tea's on.", m: "stern" },
-      { n: "The orc is enormous. He sits on a halfellow stool, very carefully, and it holds. He holds his teacup with two fingers." },
+      { n: "The orc is enormous. He sits on a halfellow stool, very carefully, and it survives. He takes his teacup between two fingers." },
       { s: "goldie", t: "*(to the elf)* Milk?", m: "stern" },
       { s: "hobby", t: "*(whispering to Barnaby)* She's going to make them *friends*, Uncle. In one afternoon. With *scones*.", m: "happy" },
       { s: "barnaby", t: "She did it to me at your christening. I've never recovered.", m: "flustered" },
@@ -130,7 +130,7 @@ window.GameData.STORY_SCENARIOS["halfellow/elf+human+orc"] = {
           alt: "The Orcs have won by holding the Marches, but the Hearthlands still stand." } },
       { n: "Far away, the split Marchstone speaks, and not to the Halfellows." },
       { s: "stone", t: "HELD." },
-      { s: "hobby", t: "Crowns come and go. Supper's still at six. And the kettle's on.", m: "sad" },
+      { s: "hobby", t: "It's someone else's Marches now. But supper's still at six, and the kettle's on.", m: "sad" },
       { s: "goldie", t: "And *you* are still going to be late for it, love.", m: "stern", alt: { s: "barnaby", t: "And you'll still be late for it. She'd have said that.", m: "sad" } },
     ],
   },

@@ -41,7 +41,7 @@ window.GameData.STORY_SCENARIOS["elf/dwarf+halfellow+human"] = {
     B6: [
       { n: "Night, beneath the Heartwood. Aelthir walks the forest's edge. On every side, the lights of things being built: forges, farms, towers." },
       { s: "aelthir", t: "The new world will be built, Ysolde, whatever I do. The only question is who builds it.", m: "wistful" },
-      { s: "ysolde", t: "And who inherits the Silverwood when it is.", m: "uncanny" },
+      { s: "ysolde", t: "And who will inherit the Silverwood when they have finished.", m: "uncanny" },
       { n: "They both look at Vaelis, who is polishing his mythril collar and pretending not to listen." },
       { s: "vaelis", t: "I am *right here*, great-uncle.", m: "angry" },
       { s: "aelthir", t: "I know, Vaelis. That is precisely what worries me.", m: "sad" },

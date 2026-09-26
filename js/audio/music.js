@@ -470,10 +470,19 @@ window.MusicSystem = (function () {
     clearInterval(fadeIntervalId);
     const steps = FADE_MS / FADE_STEP_MS;
     let step = 0;
-    const targetVol = effectiveVolume();
     fadeIntervalId = setInterval(() => {
       step++;
       const t = Math.min(1, step / steps);
+      // Re-sampled every tick, not captured once at the start (2026-09-26,
+      // user-reported: game-over music not respecting mute/music volume) --
+      // a mute toggle or volume drag mid-fade used to call setMuted/
+      // setMusicVolume (which correctly sets currentAudio.volume once), only
+      // for THIS interval's very next 50ms tick to immediately overwrite it
+      // back onto the stale trajectory captured when the fade started. A
+      // fresh track transition -- exactly what a dramatic Game Over swap is
+      // -- runs a full FADE_MS-long fade-in, which is exactly the window a
+      // player reaches for mute in response to it.
+      const targetVol = effectiveVolume();
       if (oldAudio) oldAudio.volume = Math.max(0, targetVol * (1 - t));
       if (newAudio) newAudio.volume = Math.min(targetVol, targetVol * t);
       if (t >= 1) {
@@ -573,6 +582,21 @@ window.MusicSystem = (function () {
    *  notifyVictory/victoryRace -- see setRace for the reset point). */
   function notifyGameOver() {
     gameOverActive = true;
+    refreshNowPlaying();
+  }
+
+  /** Public: lifts a pinned victory/game-over theme and resumes the current
+   *  race's ordinary music (2026-09-26, user-directed) -- "Keep Fighting!"
+   *  (both the win-side and the loss-side versions) declines the ending and
+   *  drops the player straight back into the SAME game, but nothing used to
+   *  undo notifyVictory/notifyGameOver's one-way pin, so the victory fanfare
+   *  (or, on the loss side, game_over.mp3) played on forever even though the
+   *  game plainly hadn't ended. Deliberately NOT setRace: that also resets
+   *  currentRace, which is for a genuinely NEW game starting, not this same
+   *  one continuing -- currentRace is already correct and untouched here. */
+  function resumeNormalMusic() {
+    victoryRace = null;
+    gameOverActive = false;
     refreshNowPlaying();
   }
 
@@ -735,6 +759,7 @@ window.MusicSystem = (function () {
     notifySituation,
     notifyVictory,
     notifyGameOver,
+    resumeNormalMusic,
     setMusicVolume,
     getMusicVolume: () => musicVolume,
     setMuted,

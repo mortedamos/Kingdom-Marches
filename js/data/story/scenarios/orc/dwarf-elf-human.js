@@ -66,7 +66,7 @@ window.GameData.STORY_SCENARIOS["orc/dwarf+elf+human"] = {
       { s: "gnash", t: "Gnash stay. Witch never has snacks.", m: "confused" },
       { n: "Skarra flees into the mist, shrieking. Destiny the frog hops the other way." },
       { s: "skarra", t: "This isn't over! The bog remembers! Destiny remembers! …Destiny! Come BACK, you ungrateful FROG!", m: "angry" },
-      { s: "vaelis", t: "*(in the Silverwood, on hearing)* She chose the boy over the grievance. …I did not think orcs *could*.", m: "aloof", req: { alive: "elf" } },
+      { s: "vaelis", t: "*(in the Silverwood, on hearing)* He chose the boy over the grievance. …I did not think orcs *could*.", m: "aloof", req: { alive: "elf" } },
     ],
 
     "E-Held": [
@@ -84,7 +84,7 @@ window.GameData.STORY_SCENARIOS["orc/dwarf+elf+human"] = {
       { n: "The Orcs have won by destroying every other crown in the Marches. The mountains, the forest and the river cities are silent." },
       { n: "At the heart of the Marches, the split Marchstone speaks." },
       { s: "stone", t: "REMAINS." },
-      { s: "grukka", t: "Three bars. All burned off the map. So what do we keep inside it now?", m: "sad" },
+      { s: "grukka", t: "Three bars, all burned off the map. I spent my whole life wanting out of the cage. I never once asked what was out here.", m: "sad" },
       { s: "varg", t: "You told me to keep talking, Father, so I'll say it. I wanted a door. You burned the whole wall, and everyone behind it.", m: "sad" },
       { n: "Varg turns and rides away on Moss. At the edge of the bog, the great wolf stops beside an Underway door that will never open again, and lies down to wait." },
     ],
@@ -95,7 +95,7 @@ window.GameData.STORY_SCENARIOS["orc/dwarf+elf+human"] = {
       { n: "Skarra staggers out of the smoke, back from exile, clutching Destiny the frog to her chest." },
       { s: "skarra", t: "Look what you've DONE, little Warchief! All three bars of the cage came for us at ONCE! Skarra always said so—", m: "angry" },
       { s: "skarra", t: "*(her voice cracks)* …You were always the favourite. I HATE you. Don't die.", m: "sad" },
-      { s: "grukka", t: "I'll die with my axe in my hand, sister. Like I always said.", m: "defiant" },
+      { s: "grukka", t: "Three bars, all closing at once. I'll stand in the gap with my axe, sister. Somebody has to be the door.", m: "defiant" },
       { s: "grukka", t: "Take Moss. Ride north. Knock loud.", m: "sad" },
       { n: "Varg rides north on his dire wolf. No one follows." },
       { s: "stone", t: "NOT YOU." },
@@ -106,9 +106,9 @@ window.GameData.STORY_SCENARIOS["orc/dwarf+elf+human"] = {
           alt: "Westmarch has won by holding the Marches, but the Bloodmire Clans still stand." } },
       { n: "Far away, the split Marchstone speaks, and not to the Orcs." },
       { s: "stone", t: "HELD." },
-      { s: "grukka", t: "New cage. Same bog. …This time, we build inside it. And we put a door in it.", m: "defiant" },
+      { s: "grukka", t: "Three bars, back in place. …This time, we build inside them. And we put a door in one.", m: "defiant" },
       { s: "varg", t: "Father, I'm riding to Karrak.", m: "bashful", req: { alive: "dwarf" }, alt: "Then let's build, Father." },
-      { s: "grukka", t: "…Knock loud. Dwarves are deaf from all that singing.", m: "happy", req: { alive: "dwarf" } },
+      { s: "grukka", t: "…Knock loud, boy. And if they open it, walk through. That's what doors are for.", m: "happy", req: { alive: "dwarf" } },
     ],
   },
 };

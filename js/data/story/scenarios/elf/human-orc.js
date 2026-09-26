@@ -70,7 +70,7 @@ window.GameData.STORY_SCENARIOS["elf/human+orc"] = {
       { s: "ysolde", t: "The oaks are going back to sleep, Warden.", m: "sad" },
       { s: "aelthir", t: "Tell them, Ysolde. Whoever comes. Tell them the ground shook first.", m: "sad" },
       { s: "vaelis", t: "*(mounting his Shadowsteed)* I shall remember all of you. Briefly.", m: "aloof" },
-      { s: "maren", t: "*(in the ruins)* …He taught my grandmother to read. Write that down.", m: "sad", req: { conqueror: "human" } },
+      { s: "maren", t: "*(in the ruins)* …He taught my great-great-grandmother to read. Write that down.", m: "sad", req: { conqueror: "human" } },
       { s: "skarra", t: "*(in the ruins)* The elf-witch's forest, ASH! Ha! HA!", m: "gleeful", req: { conqueror: "orc" } },
       { s: "stone", t: "NOT YOU." },
     ],
