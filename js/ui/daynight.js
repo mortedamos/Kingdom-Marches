@@ -1058,18 +1058,23 @@
   // ---------------------------------------------------------------------
   // Compositing
   // ---------------------------------------------------------------------
-  let scratch = null;
-  let scratchCtx = null;
   let lightMask = null;
   let lightMaskCtx = null;
 
-  function getScratch(w, h) {
-    if (!scratch) { scratch = document.createElement("canvas"); scratchCtx = scratch.getContext("2d"); }
+  // Passes A/A2/B each get their own persistent buffer (rather than one
+  // shared scratch reused three times in a row) so their CONTENT can be
+  // baked once and reused across several frames -- see drawWorldLighting's
+  // rebuild-throttle, which is the whole reason these need to outlive a
+  // single call now.
+  const bakeBufs = {};
+  function getBakeCanvas(name, w, h) {
+    let b = bakeBufs[name];
+    if (!b) { const c = document.createElement("canvas"); b = { c, ctx: c.getContext("2d") }; bakeBufs[name] = b; }
     // Assigning width/height reallocates and clears, so only do it on a real
     // size change -- main.js's resizeMapCanvas guards the same way, for the
     // same reason.
-    if (scratch.width !== w || scratch.height !== h) { scratch.width = w; scratch.height = h; }
-    return scratchCtx;
+    if (b.c.width !== w || b.c.height !== h) { b.c.width = w; b.c.height = h; }
+    return b;
   }
 
   /**
@@ -1239,6 +1244,13 @@
    * Passes A and B. Called from render.js after villagers, before the
    * path/reticle/effect layers.
    */
+  // Bake-throttle state for the block below -- see config's rebuildIntervalMs
+  // doc comment for why this exists and what it trades away.
+  let bakeKey = null;
+  let bakeAt = 0;
+  let bakeHasA2 = false;
+  let bakeHasB = false;
+
   function drawWorldLighting(ctx, canvas, gameState, viewState, offsetX, offsetY, ts, visible, now) {
     if (!isActive()) { beginFrame(); return; }
     const c = cfg();
@@ -1248,152 +1260,184 @@
     const scale = Math.max(0.25, Math.min(1, c.scratchScale || 1));
     const sw = Math.max(1, Math.round(w * scale));
     const sh = Math.max(1, Math.round(h * scale));
-    const sctx = getScratch(sw, sh);
 
     const fogPath = buildFogClip(gameState, visible, offsetX, offsetY, ts, w, h, scale);
 
-    // Capped below 1 so even a bonfire's own core keeps a trace of night in
-    // it. Fully clearing the darkness makes the lit tile read as a hole
-    // punched through to the daytime map, which breaks the illusion harder
-    // than being slightly too dark ever would.
-    const maxCut = c.lights.maxCutout != null ? c.lights.maxCutout : 1;
-    const mask = buildLightMask(sw, sh, scale, maxCut, now);
-
-    // Computed once and reused by both the darkness-cutout pass below and
-    // the glow pass further down -- they used to each call moonSurfacePaths
-    // themselves with identical arguments, rebuilding the same hash-bucketed
-    // Path2Ds from the same moonSurfaces array twice a frame. Exactly the
-    // "built the same stamps twice" duplication buildLightMask's own comment
-    // above already diagnosed and fixed for light stamps; this is the same
-    // bug in the water-shimmer path, just not caught by that pass (2026-09-22).
-    const moonGroups = moonSurfaces.length ? moonSurfacePaths(scale, offsetX, offsetY, ts, now) : null;
-
-    // ---- Pass A: the darkness sheet, with holes where the lights are ----
-    sctx.setTransform(1, 0, 0, 1, 0, 0);
-    sctx.globalCompositeOperation = "source-over";
-    sctx.globalAlpha = 1;
-    sctx.clearRect(0, 0, sw, sh);
-    sctx.fillStyle = state.tint;
-    sctx.fillRect(0, 0, sw, sh);
-
-    if (mask) {
-      sctx.globalCompositeOperation = "destination-out";
-      sctx.drawImage(mask, 0, 0);
-      sctx.globalCompositeOperation = "source-over";
-    }
-
-    // Moonlit water lightens the darkness sheet -- and ONLY this sheet. It
-    // deliberately does NOT punch the colorize pass below, which is the one
-    // difference between a reflection and a lamp and the whole reason it
-    // can't just ride the light mask above.
-    //
-    // A torch cuts the blue because it is a warm light overpowering the
-    // moon: ground inside its pool should show its true daylight colour.
-    // Moonlight IS the blue. Cutting the colorize where the moon lands made
-    // lit water measurably LESS blue than the dry ground beside it (-7 on a
-    // blue-minus-red metric where it should be positive), which read as a
-    // patch of daylight rather than as a reflection. So: brighter here,
-    // fully blue there.
-    if (moonGroups) {
-      const mAlpha = moonAlpha();
-      const surf = c.moonlight.surfaces || {};
-      sctx.globalCompositeOperation = "destination-out";
-      sctx.fillStyle = "#fff";
-      for (const g of moonGroups.values()) {
-        const cut = (surf[g.kind] && surf[g.kind].cutout) || 0;
-        if (cut <= 0) continue;
-        sctx.globalAlpha = Math.max(0, Math.min(maxCut, cut * mAlpha * g.mul * maxCut));
-        sctx.fill(g.path);
-      }
-      sctx.globalAlpha = 1;
-      sctx.globalCompositeOperation = "source-over";
-    }
-
-    // Fogged tiles go back to full darkness, so a light's falloff can never
-    // brighten a tile the player isn't supposed to be able to see into.
-    if (fogPath) { sctx.fillStyle = state.tint; sctx.fill(fogPath); }
-
-    ctx.save();
-    if (tuning.multiply) ctx.globalCompositeOperation = "multiply";
-    ctx.globalAlpha = state.alpha;
-    ctx.drawImage(scratch, 0, 0, sw, sh, 0, 0, w, h);
-    ctx.restore();
-
-    // ---- Pass A2: push the hue toward night ("day for night") ----
-    // The wash above darkens but cannot recolour -- see config's
-    // colorizeScale for why. Masked by the same light stamps, so ground
-    // inside a torch's pool keeps its warm daylight hue while everything
-    // around it turns blue.
     // Deliberately NOT multiplied by tuning.darknessMul: that dev slider
     // controls how dark the wash is, and the whole point of authoring
     // colorize per slot is that "how blue" and "how dark" move separately.
     const coolStrength = state.colorize * (c.colorizeScale != null ? c.colorizeScale : 1);
-    if (coolStrength > 0.01 && supportsColorBlend(ctx)) {
-      sctx.setTransform(1, 0, 0, 1, 0, 0);
-      sctx.globalCompositeOperation = "source-over";
-      sctx.globalAlpha = 1;
-      sctx.clearRect(0, 0, sw, sh);
-      sctx.fillStyle = state.cool;
-      sctx.fillRect(0, 0, sw, sh);
+    const glow = (c.lights.glowStrength || 0) * tuning.glowMul;
+
+    // The three passes below are each a function of (camera, lights, fog,
+    // tint/cool colour, flicker phase) and NOTHING about the live map under
+    // them -- so their CONTENT is reusable across frames as long as those
+    // inputs haven't meaningfully changed. Camera moving (pan/zoom, which
+    // changes offset/ts/size) invalidates immediately; otherwise a rebuild
+    // only happens once per rebuildIntervalMs. What still runs every frame
+    // regardless: the alpha each buffer is blitted at (so fades stay
+    // buttery), and Pass C's window dots (crisp points read differently
+    // than a soft pool -- see its own doc comment).
+    const bkey = offsetX + "|" + offsetY + "|" + ts + "|" + sw + "|" + sh;
+    const rebuildMs = c.rebuildIntervalMs || 0;
+    const stale = !bakeKey || bakeKey !== bkey || (now - bakeAt) >= rebuildMs;
+
+    if (stale) {
+      // Capped below 1 so even a bonfire's own core keeps a trace of night
+      // in it. Fully clearing the darkness makes the lit tile read as a
+      // hole punched through to the daytime map, which breaks the illusion
+      // harder than being slightly too dark ever would.
+      const maxCut = c.lights.maxCutout != null ? c.lights.maxCutout : 1;
+      const mask = buildLightMask(sw, sh, scale, maxCut, now);
+
+      // Computed once and reused by both the darkness-cutout pass below and
+      // the glow pass further down -- they used to each call
+      // moonSurfacePaths themselves with identical arguments, rebuilding
+      // the same hash-bucketed Path2Ds from the same moonSurfaces array
+      // twice a frame. Exactly the "built the same stamps twice"
+      // duplication buildLightMask's own comment above already diagnosed
+      // and fixed for light stamps; this is the same bug in the
+      // water-shimmer path, just not caught by that pass (2026-09-22).
+      const moonGroups = moonSurfaces.length ? moonSurfacePaths(scale, offsetX, offsetY, ts, now) : null;
+
+      // ---- Pass A content: the darkness sheet, with holes where the lights are ----
+      const bufA = getBakeCanvas("A", sw, sh);
+      const actx = bufA.ctx;
+      actx.setTransform(1, 0, 0, 1, 0, 0);
+      actx.globalCompositeOperation = "source-over";
+      actx.globalAlpha = 1;
+      actx.clearRect(0, 0, sw, sh);
+      actx.fillStyle = state.tint;
+      actx.fillRect(0, 0, sw, sh);
 
       if (mask) {
-        sctx.globalCompositeOperation = "destination-out";
-        sctx.drawImage(mask, 0, 0);
-        sctx.globalCompositeOperation = "source-over";
+        actx.globalCompositeOperation = "destination-out";
+        actx.drawImage(mask, 0, 0);
+        actx.globalCompositeOperation = "source-over";
       }
-      // Fogged tiles get recoloured too -- night falls on ground you can't
-      // see just the same, and leaving them warm would outline the fog
-      // boundary in colour.
-      if (fogPath) { sctx.fillStyle = state.cool; sctx.fill(fogPath); }
 
-      ctx.save();
-      ctx.globalCompositeOperation = "color";
-      ctx.globalAlpha = Math.min(1, coolStrength);
-      ctx.drawImage(scratch, 0, 0, sw, sh, 0, 0, w, h);
-      ctx.restore();
-    }
-
-    // ---- Pass B: the warm light itself ----
-    const glow = (c.lights.glowStrength || 0) * tuning.glowMul;
-    if (glow > 0 && (lights.length || moonSurfaces.length)) {
-      sctx.setTransform(1, 0, 0, 1, 0, 0);
-      sctx.globalCompositeOperation = "source-over";
-      sctx.globalAlpha = 1;
-      sctx.clearRect(0, 0, sw, sh);
-      // Water's cold cast, laid down before the warm lamps so a harbour
-      // lantern reads as sitting on top of the moonlit water rather than
-      // being tinted by it. Same batched paths as the mask above.
+      // Moonlit water lightens the darkness sheet -- and ONLY this sheet.
+      // It deliberately does NOT punch the colorize pass below, which is
+      // the one difference between a reflection and a lamp and the whole
+      // reason it can't just ride the light mask above.
+      //
+      // A torch cuts the blue because it is a warm light overpowering the
+      // moon: ground inside its pool should show its true daylight colour.
+      // Moonlight IS the blue. Cutting the colorize where the moon lands
+      // made lit water measurably LESS blue than the dry ground beside it
+      // (-7 on a blue-minus-red metric where it should be positive), which
+      // read as a patch of daylight rather than as a reflection. So:
+      // brighter here, fully blue there.
       if (moonGroups) {
         const mAlpha = moonAlpha();
         const surf = c.moonlight.surfaces || {};
-        sctx.fillStyle = c.moonlight.color;
-        for (const grp of moonGroups.values()) {
-          const g = (surf[grp.kind] && surf[grp.kind].glow) || 0;
-          if (g <= 0) continue;
-          sctx.globalAlpha = Math.max(0, Math.min(1, g * mAlpha * grp.mul));
-          sctx.fill(grp.path);
+        actx.globalCompositeOperation = "destination-out";
+        actx.fillStyle = "#fff";
+        for (const g of moonGroups.values()) {
+          const cut = (surf[g.kind] && surf[g.kind].cutout) || 0;
+          if (cut <= 0) continue;
+          actx.globalAlpha = Math.max(0, Math.min(maxCut, cut * mAlpha * g.mul * maxCut));
+          actx.fill(g.path);
         }
-        sctx.globalAlpha = 1;
-      }
-      for (const L of lights) {
-        const r = L.r * scale * flickerMul(L, now);
-        if (r <= 0) continue;
-        sctx.globalAlpha = Math.max(0, Math.min(1, L.intensity * flickerIntensityMul(L, now)));
-        sctx.drawImage(getGlowStamp(L.color), L.x * scale - r, L.y * scale - r, r * 2, r * 2);
-      }
-      sctx.globalAlpha = 1;
-      if (fogPath) {
-        sctx.globalCompositeOperation = "destination-out";
-        sctx.fill(fogPath);
-        sctx.globalCompositeOperation = "source-over";
+        actx.globalAlpha = 1;
+        actx.globalCompositeOperation = "source-over";
       }
 
+      // Fogged tiles go back to full darkness, so a light's falloff can
+      // never brighten a tile the player isn't supposed to be able to see
+      // into.
+      if (fogPath) { actx.fillStyle = state.tint; actx.fill(fogPath); }
+
+      // ---- Pass A2 content: push the hue toward night ("day for night") ----
+      // The wash above darkens but cannot recolour -- see config's
+      // colorizeScale note for why. Masked by the same light stamps, so
+      // ground inside a torch's pool keeps its warm daylight hue while
+      // everything around it turns blue.
+      bakeHasA2 = coolStrength > 0.01 && supportsColorBlend(ctx);
+      if (bakeHasA2) {
+        const bufA2 = getBakeCanvas("A2", sw, sh);
+        const a2ctx = bufA2.ctx;
+        a2ctx.setTransform(1, 0, 0, 1, 0, 0);
+        a2ctx.globalCompositeOperation = "source-over";
+        a2ctx.globalAlpha = 1;
+        a2ctx.clearRect(0, 0, sw, sh);
+        a2ctx.fillStyle = state.cool;
+        a2ctx.fillRect(0, 0, sw, sh);
+
+        if (mask) {
+          a2ctx.globalCompositeOperation = "destination-out";
+          a2ctx.drawImage(mask, 0, 0);
+          a2ctx.globalCompositeOperation = "source-over";
+        }
+        // Fogged tiles get recoloured too -- night falls on ground you
+        // can't see just the same, and leaving them warm would outline the
+        // fog boundary in colour.
+        if (fogPath) { a2ctx.fillStyle = state.cool; a2ctx.fill(fogPath); }
+      }
+
+      // ---- Pass B content: the warm light itself ----
+      bakeHasB = glow > 0 && (lights.length || moonSurfaces.length);
+      if (bakeHasB) {
+        const bufB = getBakeCanvas("B", sw, sh);
+        const bctx = bufB.ctx;
+        bctx.setTransform(1, 0, 0, 1, 0, 0);
+        bctx.globalCompositeOperation = "source-over";
+        bctx.globalAlpha = 1;
+        bctx.clearRect(0, 0, sw, sh);
+        // Water's cold cast, laid down before the warm lamps so a harbour
+        // lantern reads as sitting on top of the moonlit water rather than
+        // being tinted by it. Same batched paths as the mask above.
+        if (moonGroups) {
+          const mAlpha = moonAlpha();
+          const surf = c.moonlight.surfaces || {};
+          bctx.fillStyle = c.moonlight.color;
+          for (const grp of moonGroups.values()) {
+            const g = (surf[grp.kind] && surf[grp.kind].glow) || 0;
+            if (g <= 0) continue;
+            bctx.globalAlpha = Math.max(0, Math.min(1, g * mAlpha * grp.mul));
+            bctx.fill(grp.path);
+          }
+          bctx.globalAlpha = 1;
+        }
+        for (const L of lights) {
+          const r = L.r * scale * flickerMul(L, now);
+          if (r <= 0) continue;
+          bctx.globalAlpha = Math.max(0, Math.min(1, L.intensity * flickerIntensityMul(L, now)));
+          bctx.drawImage(getGlowStamp(L.color), L.x * scale - r, L.y * scale - r, r * 2, r * 2);
+        }
+        bctx.globalAlpha = 1;
+        if (fogPath) {
+          bctx.globalCompositeOperation = "destination-out";
+          bctx.fill(fogPath);
+          bctx.globalCompositeOperation = "source-over";
+        }
+      }
+
+      bakeKey = bkey;
+      bakeAt = now;
+    }
+
+    ctx.save();
+    if (tuning.multiply) ctx.globalCompositeOperation = "multiply";
+    ctx.globalAlpha = state.alpha;
+    ctx.drawImage(getBakeCanvas("A", sw, sh).c, 0, 0, sw, sh, 0, 0, w, h);
+    ctx.restore();
+
+    if (bakeHasA2) {
+      ctx.save();
+      ctx.globalCompositeOperation = "color";
+      ctx.globalAlpha = Math.min(1, coolStrength);
+      ctx.drawImage(getBakeCanvas("A2", sw, sh).c, 0, 0, sw, sh, 0, 0, w, h);
+      ctx.restore();
+    }
+
+    if (bakeHasB) {
       ctx.save();
       ctx.globalCompositeOperation = "lighter";
       // Scaled by how dark it actually is, so lamps are a hint at first
       // twilight and full strength at midnight.
       ctx.globalAlpha = Math.max(0, Math.min(1, glow * state.darkness));
-      ctx.drawImage(scratch, 0, 0, sw, sh, 0, 0, w, h);
+      ctx.drawImage(getBakeCanvas("B", sw, sh).c, 0, 0, sw, sh, 0, 0, w, h);
       ctx.restore();
     }
 

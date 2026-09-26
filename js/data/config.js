@@ -65,9 +65,9 @@ window.GameConfig = {
     /** Local date this build was cut, YYYY-MM-DD. */
     date: "2026-09-26",
     /** Local time this build was cut, 24-hour HH:MM. */
-    time: "15:54",
+    time: "19:59",
     /** Monotonic build counter -- increment it, don't recompute it. */
-    number: 342,
+    number: 343,
   },
 
   // =========================================================================
@@ -1758,6 +1758,22 @@ window.GameConfig = {
        *  cost. Per-window dots bypass this and draw at full resolution --
        *  they're ~3px at default zoom and would smear. 1 disables it. */
       scratchScale: 0.5,
+
+      /** The darkness/colorize/glow layers (the three big full-viewport
+       *  fills+stamps in drawWorldLighting) are only rebuilt this often;
+       *  every frame in between just re-blits the last build at that
+       *  frame's own alpha, which is still updated live so fades stay
+       *  smooth. Flicker rides the same cadence -- its own wave period
+       *  (~277-620ms, see flickerWave) is far below the ~10Hz this implies,
+       *  so the steps are not visible, and this is what keeps a screen full
+       *  of city/building lights from re-stamping every light's mask AND
+       *  glow AND recolour sheet 60 times a second regardless of whether
+       *  anything actually moved (2026-09-26, user-reported: "a lot of
+       *  small freezes" in a lategame night scene -- profiling showed this
+       *  rebuild, not entity count, as the dominant per-frame cost). 0
+       *  disables throttling (rebuild every frame, the old behaviour).
+       */
+      rebuildIntervalMs: 100,
 
       lights: {
         /** Multiplies every light radius below. The tuning panel drives this. */
