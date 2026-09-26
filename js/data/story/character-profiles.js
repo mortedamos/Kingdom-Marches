@@ -178,6 +178,15 @@ window.GameData.STORY_CHARACTER_PROFILES = {
     relations: "Uncle of Hobby and Goldie.",
     quote: "The ruins were wardhouses. The Society has known for two hundred years. Nobody ever *asks*.",
   },
+  gimlet: {
+    role: "Goldie's Dog",
+    background: "A small poodle-mix with a curl in her coat, a ribbon on her collar, and bright brown eyes, who has slept under the bar at The Goose & Kettle since she was a puppy. She isn't magical. She's just a very good dog, in a kingdom that has never needed her to be anything else.",
+    virtues: ["Loyal: never far from Goldie's heel, until she is.", "Fearless: chases things twice her size without a second thought."],
+    flaws: ["Easily distracted by anything that moves, smells interesting, or might be a snack.", "Has never once come when called on the first try."],
+    quirks: "Head tilts when confused, which is often, and endearing. Says everything in barks, growls and a very expressive tail. Goldie swears she understands every word.",
+    relations: "Goldie Trickgrin's dog. Tolerated, with visible reluctance, by Professor Barnaby, who insists the Archive is no place for muddy paws.",
+    quote: "Arf!",
+  },
 
   // --------------------------------------------------------- THE MARCHSTONE
   stone: {

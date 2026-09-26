@@ -109,6 +109,8 @@ window.GameEngine.story = (function () {
   const ALDRIC_GOLDIE_GAP_ROUNDS = 14; // between Aldric and Goldie's exchanges
   const MAREN_ORDERS_GAP_ROUNDS = 12;  // between Maren's unprompted orders (after maren:resolve)
   const DUEL_CHANCE = 1 / 4;           // per poll, once a duel is possible
+  const RESCUE_CHANCE = 1 / 4;         // per poll, once a rescue is possible
+  const GIMLET_GAP_ROUNDS = 12;        // between Gimlet's visits to each rival kingdom
 
   let buffer = [];
 
@@ -454,10 +456,14 @@ window.GameEngine.story = (function () {
   function skipsBudget(key) {
     // built:* too (2026-09-25, user-directed): a first building should
     // always get its moment, not expire behind other optional scenes.
-    // duel:* too (2026-09-26, user-directed): a duel of honour is a major
-    // moment, queued rarely and never allowed to expire unplayed.
+    // duel:*/rescue:* too (2026-09-26, user-directed): a duel of honour or a
+    // rescue across enemy lines is a major, rarely-queued moment that must
+    // never expire unplayed. gimlet:* too, same day: her whole thread is
+    // only a handful of scenes across an entire game, and losing one to the
+    // optional-scene budget would mean that rival kingdom's visit silently
+    // never happens.
     return key.startsWith("eliminated:") || key.startsWith("meet:") || key.startsWith("built:") || key.startsWith("duel:")
-      || key === "lovers:reveal";
+      || key.startsWith("rescue:") || key.startsWith("gimlet:") || key === "lovers:reveal";
   }
 
   function enqueue(gs, humanCivId, key, ctx = {}) {
@@ -654,6 +660,55 @@ window.GameEngine.story = (function () {
         if (q(`duel:${[st.playerRace, race].sort().join(":")}`)) { st.counters.duelRound = round(gs); break; }
       }
     }
+    // A rescue across enemy lines (2026-09-26, user-directed), later in the
+    // war: with real combat already fought against a rival and trust
+    // already gone, that rival's signature character saves someone from the
+    // player's own kingdom from an accident or monster attack -- or, the
+    // other way round, the player's own signature character does the same
+    // for one of the rival's. Same "at most one per game, only once real
+    // combat has happened" shape as the duel above. Both directions are
+    // tried in random order for each eligible rival, since only some
+    // (rescuer, victim) pairings actually have a scene written -- see
+    // shared-rescues.js's own header for why Sigrun and Varg never appear
+    // in this thread at all: they're saving no one but each other's story.
+    if (st.seen.B4 != null && st.counters.rescueRound == null && Math.random() < RESCUE_CHANCE) {
+      const rivals = st.rivals.filter((race) => st.firstCombat[race] != null)
+        .sort(() => Math.random() - 0.5);
+      let rescued = false;
+      for (const race of rivals) {
+        if (rescued) break;
+        const civ = civOfRace(gs, race);
+        if (!civ || civ.eliminated) continue;
+        const keys = [`rescue:${race}:${st.playerRace}`, `rescue:${st.playerRace}:${race}`]
+          .sort(() => Math.random() - 0.5);
+        for (const key of keys) {
+          if (q(key)) { st.counters.rescueRound = round(gs); rescued = true; break; }
+        }
+      }
+    }
+    // Gimlet, Goldie's dog (2026-09-26, user-directed): halfellow player
+    // only. She goes missing once the game's under way, then turns up
+    // visiting one rival kingdom at a time (never the same one twice, never
+    // an eliminated one), gapped so they don't all land at once, and comes
+    // home once she's seen everyone still standing. Whichever races the
+    // player actually faces this game determines how many stops she makes.
+    if (st.playerRace === "halfellow") {
+      if (st.seen.B1 != null && st.seen["gimlet:missing"] == null && !st.queued["gimlet:missing"]) {
+        q("gimlet:missing");
+      } else if (st.seen["gimlet:missing"] != null
+          && round(gs) - (st.counters.gimletRound ?? st.seen["gimlet:missing"]) >= GIMLET_GAP_ROUNDS) {
+        const unvisited = st.rivals.filter((race) => {
+          const civ = civOfRace(gs, race);
+          return civ && !civ.eliminated && st.seen[`gimlet:${race}`] == null;
+        });
+        if (unvisited.length) {
+          const race = unvisited[Math.floor(Math.random() * unvisited.length)];
+          if (q(`gimlet:${race}`)) st.counters.gimletRound = round(gs);
+        } else if (st.seen["gimlet:home"] == null) {
+          if (q("gimlet:home")) st.counters.gimletRound = round(gs);
+        }
+      }
+    }
 
     // Poll-born barks.
     const weather = window.GameEngine.turns.currentWeather ? window.GameEngine.turns.currentWeather(gs) : null;
@@ -790,6 +845,8 @@ window.GameEngine.story = (function () {
       case "found": return `The ${a === "3" ? "Third" : "Sixth"} City`;
       case "tech": return "New Learning";
       case "duel": return `A Duel of Honour: ${race(a)} and ${race(b)}`;
+      case "rescue": return `A Rescue Across the Lines: ${race(a)} and ${race(b)}`;
+      case "gimlet": return a === "missing" ? "Gimlet Goes Missing" : a === "home" ? "Gimlet Comes Home" : `Gimlet Visits: ${race(a)}`;
       case "faith": return a === "1" ? "The Fever Vigil" : "The Wards That Failed";
       case "maren": return "The Queen's Resolve";
       case "rift": return "The Lord-Paladin and the Innkeeper";

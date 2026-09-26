@@ -52,6 +52,11 @@ window.GameData.STORY_CHARACTERS = {
   hobby:   { name: "Mayor Hobby Trickgrin", title: "Mayor of the Hearthlands", race: "halfellow", initials: "HT", signature: "scheming", portrait: true },
   goldie:  { name: "Goldie Trickgrin", title: "Keeper of The Goose & Kettle", race: "halfellow", initials: "GT", signature: "stern", portrait: true },
   barnaby: { name: "Professor Barnaby Pickwort", title: "Keeper of the Hearthlands Archive", race: "halfellow", initials: "BP", signature: "flustered", portrait: true },
+  // Portrait set added 2026-09-27 (Gemini art via tools/gemini-generate.ps1,
+  // prompts in tools/prompts/portraits/gimlet_*.txt) -- her signature mood
+  // is "confused", matching the head-tilt mannerism written into her lines
+  // in js/data/story/shared.js's "gimlet:*" scenes.
+  gimlet:  { name: "Gimlet", title: "Goldie's Dog", race: "halfellow", initials: "🐾", signature: "confused", portrait: true },
 };
 
 /** Moods every character has a portrait for; each also has one signature
