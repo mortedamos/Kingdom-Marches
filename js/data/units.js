@@ -425,7 +425,7 @@ window.GameData.UNITS = {
   militia: {
     id: "militia", label: "Militia", symbol: "⚔", category: "military", raceOnly: "halfellow",
     attack: 6, defense: 6, movement: 2, visionRadius: 4, siegePct: .3,
-    coinCost: 22, attackChars: ["🔪", "🔱"], biggerPct: .2, rare: true, nameSpecial: true,
+    coinCost: 22, attackChars: ["🔪", "🔱"], biggerPct: -.2, rare: true, nameSpecial: true,
   },
   // Deliberately unremarkable combat stats, same "the real value is the
   // kit, not front-line stats" philosophy as Human's Wizard -- see
