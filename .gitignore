@@ -13,3 +13,5 @@ AE Updates.txt
 .githooks/
 doc/
 tools/
+# Trailer renders (trailer/capture-server.pl output)
+trailer/out/

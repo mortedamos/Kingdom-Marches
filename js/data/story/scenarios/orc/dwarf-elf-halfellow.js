@@ -42,7 +42,7 @@ window.GameData.STORY_SCENARIOS["orc/dwarf+elf+halfellow"] = {
       { n: "Midnight, in the Underways, the ancient dwarf tunnels beneath the Marches. Varg sits beside a young dwarf with copper braids: Sigrun Stonefast, the Dwarf Thane's daughter. They have a map spread between them." },
       { s: "sigrun", t: "Here's the Hearthlands, here's the Silverwood, here's Karrak, here's your bog. Every border on this map is a war someone remembers.", m: "sad" },
       { s: "varg", t: "So we draw a new map. One where nobody's wall is anyone else's cage.", m: "bashful" },
-      { s: "sigrun", t: "My mother would call that treason.", m: "sad" },
+      { s: "sigrun", t: "My father would call that treason.", m: "sad" },
       { s: "varg", t: "Mine would call it *soft*. …And then he'd listen. He always listens, in the end.", m: "bashful" },
       { n: "Moss lifts his great grey head and growls at the dark. Behind them in the tunnel, a sickly green light flickers: a Wisp, one of Skarra's bog-spirits. It has heard every word." },
       { fx: { seen: "lovers:meet" } },

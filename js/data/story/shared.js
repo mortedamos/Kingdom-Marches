@@ -266,9 +266,9 @@ window.GameData.STORY_SHARED = {
       { n: "In Kazra's forge, the last rune of the great design is finally understood. The chalk lines on the floor now cover a space larger than the Thane's Hall." },
       { s: "kazra", t: "It's done. The design. Every rune for a Runeforged Titan.", m: "focused" },
       { s: "brunna", t: "Then build it, love.", m: "proud", req: { charAlive: "brunna" },
-        alt: { s: "sigrun", t: "Then build it, Mother Kazra. For her.", m: "sad" } },
+        alt: { s: "sigrun", t: "Then build it, Mother Kazra. For him.", m: "sad" } },
       { s: "kazra", t: "Now I just need a mountain.", m: "focused", req: { charAlive: "brunna" },
-        alt: "Now I just need a mountain. …She'd have liked to see it walk." },
+        alt: "Now I just need a mountain. …He'd have liked to see it walk." },
     ],
   },
 
@@ -348,8 +348,8 @@ Object.assign(window.GameData.STORY_SHARED.dwarf, {
     when: { notInGame: "orc" },
     lines: [
       { n: "Karrak's third hold is founded. In the Thane's Hall, Sigrun Stonefast, the Thane's daughter and a Metal Singer, has been waiting all day to ask something.", req: { charAlive: "brunna" },
-        alt: "Karrak's third hold is founded. In the Thane's Hall, High Thane Sigrun Stonefast, the young Metal Singer who inherited her mother's crown, paces with an idea." },
-      { s: "sigrun", t: "Three holds, Mother. That's three borders to guard. Give me a war-band. Metal Singers, all of us. We'll hold the loudest border in the Marches.", m: "fierce", req: { charAlive: "brunna" },
+        alt: "Karrak's third hold is founded. In the Thane's Hall, High Thane Sigrun Stonefast, the young Metal Singer who inherited her father's crown, paces with an idea." },
+      { s: "sigrun", t: "Three holds, Father. That's three borders to guard. Give me a war-band. Metal Singers, all of us. We'll hold the loudest border in the Marches.", m: "fierce", req: { charAlive: "brunna" },
         alt: "Three holds now. That's three borders. I'm Thane, so I'm giving *myself* a war-band. Metal Singers. The loudest border in the Marches." },
       { s: "oskar", t: "Entry {grudge} in the Book of Grudges, *pre-emptively*: the noise.", m: "grudging" },
       { s: "brunna", t: "…Fine. But you tune those axes before you march.", m: "proud", req: { charAlive: "brunna" } },
@@ -646,7 +646,7 @@ Object.assign(window.GameData.STORY_SHARED.human, {
   },
   "meet:dwarf": [
     { n: "Human scouts reach the northern foothills and the first dwarf hold. The Dwarves of Karrak have come down from their mountains." },
-    { n: "In Karrak, High Thane Brunna Stonefast reads the scouts' report beside her uncle, Loremaster Oskar Grimgate, keeper of the Book of Grudges." },
+    { n: "In Karrak, High Thane Brunna Stonefast reads the scouts' report beside his uncle, Loremaster Oskar Grimgate, keeper of the Book of Grudges." },
     { s: "brunna", t: "Westmarch's soldiers, at our door. The Cathedral debt is long overdue, Uncle.", m: "proud" },
     { s: "oskar", t: "Entry {grudge} in the Book of Grudges: Westmarch, interest unpaid. I've been saving it.", m: "grudging" },
     { s: "corvin", t: "*(in {capital}, reading the same report)* The Dwarves. Our creditors. The debt was the *Temple's* idea, you know. I say so often.", m: "wry" },
@@ -1131,12 +1131,12 @@ Object.assign(window.GameData.STORY_SHARED.dwarf, {
     { n: "The last halfellow town has fallen. The Hearthlands are no more." },
     { n: "Somewhere on a back lane, Mayor Hobby Trickgrin leads the last families away in silence, her goose feather still in her hat." },
     { s: "hobby", t: "Well. We'll plant somewhere else. We always have.", m: "sad" },
-    { s: "sigrun", t: "*(in Karrak)* No more halfellow ale. Ever. …Mother, what have we *done*?", m: "sad", alt: { s: "kazra", t: "*(in Karrak)* No more halfellow ale. Sigrun will never forgive us.", m: "sad" } },
+    { s: "sigrun", t: "*(in Karrak)* No more halfellow ale. Ever. …Father, what have we *done*?", m: "sad", alt: { s: "kazra", t: "*(in Karrak)* No more halfellow ale. Sigrun will never forgive us.", m: "sad" } },
   ],
   "eliminated:human": [
     { n: "The last human city has fallen. Westmarch is no more." },
     { n: "On the steps of the Dawn Cathedral, built with Karrak stone, the Queen of Westmarch lays down her circlet." },
-    { s: "maren", t: "Tell the Thane her debt is paid.", m: "sad" },
+    { s: "maren", t: "Tell the Thane the debt is paid.", m: "sad" },
     { s: "oskar", t: "*(in Karrak)* Entry {grudge} in the Book of Grudges: Westmarch. Debt settled. *Worthy* debtors, in the end.", m: "grudging" },
   ],
   "eliminated:orc": [
@@ -1214,7 +1214,7 @@ Object.assign(window.GameData.STORY_SHARED.dwarf, {
   ],
   "relic:found:kurganos": [
     { n: "Dwarf delvers return from a crumbling ruin, one of the old wardhouses from the days of the Accord. They carry a crown wreathed in fire, frost and crackling lightning." },
-    { s: "brunna", t: "Kurganos. The Crown of Elements. The crown of High Thane Kurganos himself.", m: "proud", alt: { s: "sigrun", t: "Kurganos. The Crown of Elements. Mother always said we'd find it.", m: "happy" } },
+    { s: "brunna", t: "Kurganos. The Crown of Elements. The crown of High Thane Kurganos himself.", m: "proud", alt: { s: "sigrun", t: "Kurganos. The Crown of Elements. Father always said we'd find it.", m: "happy" } },
     { s: "oskar", t: "Volume Seven of the Book of Grudges, first page: “The Orcs broke the great gates of Karrak and carried off the High Thane's crown.” Four hundred years, that entry's stood.", m: "grudging" },
     { s: "kazra", t: "Give it to our finest warrior. Let everyone see it coming.", m: "focused" },
   ],
@@ -1298,7 +1298,7 @@ Object.assign(window.GameData.STORY_SHARED.dwarf, {
   "ultimate:dwarf": [
     { n: "Deep in Kazra's forge, the chalk lines on the floor finally have a body standing on them. A Runeforged Titan, a giant golem of rune-carved stone, opens its glowing eyes for the first time." },
     { s: "kazra", t: "It walks.", m: "focused" },
-    { s: "brunna", t: "It walks. Kazra… it's beautiful.", m: "happy", alt: { s: "sigrun", t: "It walks. She'd have loved to see this, Mother Kazra.", m: "sad" } },
+    { s: "brunna", t: "It walks. Kazra… it's beautiful.", m: "happy", alt: { s: "sigrun", t: "It walks. He'd have loved to see this, Mother Kazra.", m: "sad" } },
     { s: "oskar", t: "Entry {grudge} in the Book of Grudges, *cancelled*: everyone who said a mountain couldn't march.", m: "happy" },
   ],
   "ultimate:human": [
@@ -1691,7 +1691,7 @@ Object.assign(window.GameData.STORY_SHARED.halfellow, {
       { s: "goldie", t: "Hobby. A traveller says the Dwarf Thane's daughter has been sneaking out at night, down the old tunnels, to meet the Orc Warchief's son.", m: "stern",
         alt: { s: "barnaby", t: "Hobby. A traveller in the pub says the Dwarf Thane's daughter has been meeting the Orc Warchief's son. In secret. Goldie would have known what to do with that.", m: "flustered" } },
       { s: "hobby", t: "A dwarf and an orc. The two oldest enemies in the Marches.", m: "scheming" },
-      { s: "barnaby", t: "One letter to either mother, Hobby, and Karrak and the Bloodmire tear each other apart. It would win us the war.", m: "flustered" },
+      { s: "barnaby", t: "One letter to either parent, Hobby, and Karrak and the Bloodmire tear each other apart. It would win us the war.", m: "flustered" },
       { s: "hobby", t: "…No. No, Uncle. We're going to *hide* them.", m: "scheming" },
       { s: "barnaby", t: "*Hide* them? From both their parents? In the middle of a war?", m: "flustered" },
       { s: "hobby", t: "It's the best trick I've ever been asked to play. And nobody even asked.", m: "happy" },

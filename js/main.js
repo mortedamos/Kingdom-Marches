@@ -5238,8 +5238,11 @@
     // introducing one, same "don't trust a reference blindly" caution
     // resolvePendingAIAttack takes for its own staged attacks.
     const civ = gameState.civs[unit.civId];
+    const targetAlive = target.kind === "structure"
+      ? !!target.structure && window.GameEngine.cities.findStructureAt(gameState, target.structure.record.x, target.structure.record.y)?.record === target.structure.record
+      : !!target.unit && target.unit.hp > 0;
     const stillValid = civ && civ.units.includes(unit) && unit.hp > 0
-      && target.unit && target.unit.hp > 0 && target.civ && !target.civ.eliminated;
+      && targetAlive && target.civ && !target.civ.eliminated;
     if (!stillValid) { processPendingSentryAttacks(onDone); return; }
     const onScreen = window.UI.render.isTileOnScreen(unit.x, unit.y, $("map-canvas"), gameState, viewState);
     if (!onScreen) centerViewOn(unit.x, unit.y);

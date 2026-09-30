@@ -517,7 +517,8 @@ window.GameEngine = window.GameEngine || {};
    * -------
    * A standing order: do nothing until an enemy unit comes within this
    * unit's own attack range, then attack the closest one -- no player input
-   * either turn. Called once per turn for every sentried unit (see turns.js's
+   * either turn. With no unit in range, it attacks the closest enemy
+   * structure in range instead (units always take priority). Called once per turn for every sentried unit (see turns.js's
    * finishCivTurn, same hook point as advanceGotoOrder above), so the check
    * re-runs fresh every turn for as long as the order stays active (cleared
    * only by main.js's Cancel Sentry, or implicitly by any other order
@@ -564,6 +565,22 @@ window.GameEngine = window.GameEngine || {};
         bestDist = dist;
       }
     }
+    // No unit in range: fall back to the nearest enemy structure (2026-09-30,
+    // user-directed: "target any nearby units first, but if there are none,
+    // check for enemy structures to attack"). Reuses attackTargets' structure
+    // pass so range/visibility/line-of-sight/garrison validity is the exact
+    // same as a hand-ordered strike. Cities are deliberately not included --
+    // a standing order shouldn't capture or raze one unattended.
+    if (!best) {
+      let bestStructDist = Infinity;
+      for (const t of attackTargets(unit, gameState, unit.civId)) {
+        if (!t.structure) continue;
+        const dist = window.GameEngine.influence.chebyshev(unit.x, unit.y, t.x, t.y);
+        if (dist >= bestStructDist) continue;
+        best = { kind: "structure", structure: t.structure, civ: t.structure.civ };
+        bestStructDist = dist;
+      }
+    }
     if (best) {
       // Staged, not resolved immediately (2026-09-12, user-directed: "center
       // the map on that unit [...] similar to zooming in on enemy units
@@ -578,7 +595,9 @@ window.GameEngine = window.GameEngine || {};
       // attack, never resolves it directly, from this point on.
       gameState.pendingSentryAttacks = gameState.pendingSentryAttacks || [];
       gameState.pendingSentryAttacks.push({ unit, target: best });
-      unit.currentMission = "On Sentry — engaging a spotted target";
+      unit.currentMission = best.kind === "structure"
+        ? "On Sentry — attacking a nearby enemy structure"
+        : "On Sentry — engaging a spotted target";
     } else {
       unit.currentMission = "On Sentry";
     }

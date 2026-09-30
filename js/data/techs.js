@@ -833,7 +833,7 @@ window.GameData.TECHS = {
   elf_druidism: {
     id: "elf_druidism", label: "Druidism", category: "mystic", layer: 2, cost: 32,
     prereqs: ["elf_murmuring_of_leaves", "elf_whispering_waters"], raceOnly: "elf",
-    description: "Unlocks the Druid, a utility spellcaster who may also found cities, in addition to the normal Pioneer.",
+    description: "Unlocks the Druid, a utility spellcaster who uses nature magic.",
     costBreakdown: { lore: 22, coin: 10 },
     effects: [{ type: "unlock_unit", unit: "druid" }],
   },

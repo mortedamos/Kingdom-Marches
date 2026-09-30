@@ -16,7 +16,7 @@ window.GameData.STORY_SCENARIOS["dwarf/human"] = {
       { n: "Karrak, the mountain realm of the Dwarves. Deep beneath the peaks, every forge falls silent as the whole mountain shudders." },
       { n: "Far away, at the heart of the Marches, the ancient Marchstone splits with a crack of gold, and speaks." },
       { s: "stone", t: "HOLD… OR REMAIN." },
-      { n: "In the Thane's Hall, the ancient throne room of Karrak, High Thane Brunna Stonefast reads the tremor-reports with her wife, the runesmith Kazra Emberdeep." },
+      { n: "In the Thane's Hall, the ancient throne room of Karrak, High Thane Brunna Stonefast reads the tremor-reports with his wife, the runesmith Kazra Emberdeep." },
       { s: "brunna", t: "The Marchstone has split, Kazra. The Accord is over.", m: "sad" },
       { n: "Brunna's uncle, Loremaster Oskar Grimgate, arrives with the Book of Grudges under one arm and a very old contract under the other." },
       { s: "oskar", t: "The Marches pass to the crown that *holds* them, or failing that, the crown that *remains*. And there's this, Thane. The Dawn Cathedral contract.", m: "grudging" },
@@ -75,7 +75,7 @@ window.GameData.STORY_SCENARIOS["dwarf/human"] = {
       { s: "stone", t: "REMAINS." },
       { n: "On the steps of the Dawn Cathedral, the stone Karrak quarried for it lies cold and silent. There is no one left to pay the debt, and no one left to owe it to." },
       { s: "oskar", t: "Collected, Thane. In full. …It doesn't feel like it balanced.", m: "sad" },
-      { s: "brunna", t: "No. It doesn't. I wanted them to pay, Uncle. Not to be gone.", m: "sad", alt: { s: "sigrun", t: "No. It doesn't. Mother wanted it *paid*, Uncle. Not *taken*.", m: "sad" } },
+      { s: "brunna", t: "No. It doesn't. I wanted them to pay, Uncle. Not to be gone.", m: "sad", alt: { s: "sigrun", t: "No. It doesn't. Father wanted it *paid*, Uncle. Not *taken*.", m: "sad" } },
     ],
     "E-Fallen": [
       { n: "Westmarch has broken the Dwarves. {capital} is the last dwarf stronghold standing, and the Temple's knights are at its gates." },

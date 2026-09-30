@@ -80,7 +80,7 @@ window.GameData.STORY_SCENARIOS["orc/dwarf+elf+halfellow+human"] = {
       { s: "gnash", t: "EVERYONE HEARD. Gnash tell everyone anyway, to be sure.", m: "happy" },
       { n: "Somewhere deep in the bog, Skarra's distant shriek echoes as she curses destiny from exile. Destiny the frog, sunning on a lily pad, ignores her." },
       { n: "That night Grukka rides north to Karrak, the Dwarf capital, where music thunders through the Thane's Hall. Sigrun is playing her song for Varg out loud, for the first time.", req: { alive: "dwarf" } },
-      { n: "Grukka stands in the doorway, alone and unarmed. At the far end of the hall, the Dwarf Thane Brunna rises from her seat.", req: { alive: "dwarf" } },
+      { n: "Grukka stands in the doorway, alone and unarmed. At the far end of the hall, the Dwarf Thane Brunna rises from his seat.", req: { alive: "dwarf" } },
       { s: "grukka", t: "I heard there was singing. I could hear it from the bog.", m: "happy", req: { alive: "dwarf" } },
       { s: "brunna", t: "Stay by the door, Warchief.", m: "happy", req: { alive: "dwarf" } },
       { s: "grukka", t: "I'll stay by the door.", m: "happy", req: { alive: "dwarf" } },

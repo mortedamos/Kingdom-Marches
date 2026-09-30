@@ -21,7 +21,7 @@ window.GameData.STORY_SCENARIOS["halfellow/dwarf+human+orc"] = {
       { s: "barnaby", t: "The Marchstone has split! The closing clause: the Marches pass to the crown that *holds* them, or failing that, the crown that *remains*. See footnote one. And two. And, Hobby, *all* of them.", m: "flustered" },
       { s: "hobby", t: "Dwarves, Humans and Orcs, Uncle. I haven't *time* for footnotes.", m: "scheming" },
       { s: "barnaby", t: "You never have. That's why I write them.", m: "flustered" },
-      { n: "In Karrak, High Thane Brunna Stonefast calls her war council. In Westmarch, Queen Maren Ashcroft calls hers. In the Bloodmire, the Bog Witch Skarra Ironjaw simply screams at the Speaking Stones." },
+      { n: "In Karrak, High Thane Brunna Stonefast calls his war council. In Westmarch, Queen Maren Ashcroft calls hers. In the Bloodmire, the Bog Witch Skarra Ironjaw simply screams at the Speaking Stones." },
       { s: "brunna", t: "The halfellows will fold to whoever reaches them first. Make sure it's us.", m: "proud" },
       { s: "maren", t: "The Hearthlands are our granary. Nobody else touches them.", m: "resolute" },
       { s: "skarra", t: "The goose-girl's pub! Skarra wants the goose-girl's PUB!", m: "gleeful" },

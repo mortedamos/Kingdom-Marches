@@ -16,7 +16,7 @@ window.GameData.STORY_SCENARIOS["dwarf/elf"] = {
       { n: "Karrak, the mountain realm of the Dwarves. Deep beneath the peaks, every forge falls silent as the whole mountain shudders." },
       { n: "Far away, at the heart of the Marches, the ancient Marchstone splits with a crack of gold, and speaks." },
       { s: "stone", t: "HOLD… OR REMAIN." },
-      { n: "In the Thane's Hall, the ancient throne room of Karrak, High Thane Brunna Stonefast steadies herself against a pillar. Her wife, the runesmith Kazra Emberdeep, climbs up from the forges." },
+      { n: "In the Thane's Hall, the ancient throne room of Karrak, High Thane Brunna Stonefast steadies himself against a pillar. His wife, the runesmith Kazra Emberdeep, climbs up from the forges." },
       { s: "kazra", t: "The Deep is shaking, Brunna. Every forge in the mountain just went cold.", m: "focused" },
       { s: "brunna", t: "The Marchstone has split. The great stone our ancestors cut from under this mountain and lent to the Long Accord. A thousand years of peace, gone.", m: "sad" },
       { n: "Brunna's uncle, Loremaster Oskar Grimgate, arrives hugging the Book of Grudges, the iron-bound tome where the Dwarves record every wrong ever done to them." },
@@ -72,7 +72,7 @@ window.GameData.STORY_SCENARIOS["dwarf/elf"] = {
     B6: [
       { n: "Night, on the walls of {capital}. Brunna finds Oskar alone, the Book of Grudges open to its first page." },
       { s: "oskar", t: "I could strike it out, Thane. Entry the First. We *know* now. The Elves just won't hear it.", m: "grudging" },
-      { s: "brunna", t: "Then strike it out anyway, Uncle. We don't keep grudges for them. We keep them for us.", m: "proud", alt: { s: "sigrun", t: "Then strike it out anyway, Uncle. Mother would have. We don't keep grudges for them." } },
+      { s: "brunna", t: "Then strike it out anyway, Uncle. We don't keep grudges for them. We keep them for us.", m: "proud", alt: { s: "sigrun", t: "Then strike it out anyway, Uncle. Father would have. We don't keep grudges for them." } },
       { s: "oskar", t: "…Not yet. When this is over. When it's *held*.", m: "grudging" },
       { s: "kazra", t: "Then let's get it held.", m: "focused" },
     ],
@@ -85,7 +85,7 @@ window.GameData.STORY_SCENARIOS["dwarf/elf"] = {
       { s: "oskar", t: "Entry the First: *the Rootcut*. Struck out. Not because they forgave us. Because it was never ours.", m: "happy" },
       { n: "A letter arrives from the Silverwood, sealed in moon-silver wax. It is from the Warden, Aelthir Moonveil, and it is one line long." },
       { s: "aelthir", t: "“I stood in that grove. I should have listened. I am sorry.”", m: "sad" },
-      { s: "brunna", t: "…Frame that, Uncle.", m: "happy", alt: { s: "sigrun", t: "…Frame that, Uncle. Mother would've.", m: "happy" } },
+      { s: "brunna", t: "…Frame that, Uncle.", m: "happy", alt: { s: "sigrun", t: "…Frame that, Uncle. Father would've.", m: "happy" } },
     ],
     "E-Remains": [
       { n: "The Dwarves have won by destroying the Elves. The Silverwood is silent." },

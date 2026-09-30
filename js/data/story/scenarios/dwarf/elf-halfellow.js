@@ -15,7 +15,7 @@ window.GameData.STORY_SCENARIOS["dwarf/elf+halfellow"] = {
       { n: "Karrak, the mountain realm of the Dwarves. Deep beneath the peaks, every forge falls silent as the whole mountain shudders." },
       { n: "Far away, at the heart of the Marches, the ancient Marchstone splits with a crack of gold, and speaks." },
       { s: "stone", t: "HOLD… OR REMAIN." },
-      { n: "In the Thane's Hall, the ancient throne room of Karrak, High Thane Brunna Stonefast gathers her family: her wife Kazra the runesmith, her uncle Oskar with the Book of Grudges, and her daughter Sigrun." },
+      { n: "In the Thane's Hall, the ancient throne room of Karrak, High Thane Brunna Stonefast gathers his family: his wife Kazra the runesmith, his uncle Oskar with the Book of Grudges, and his daughter Sigrun." },
       { s: "oskar", t: "The Accord's closing clause, Thane: the Marches pass to the crown that *holds* them, or failing that, the crown that *remains*." },
       { s: "brunna", t: "Then Karrak holds. We cut that stone from under this mountain. I'll have our Heartstone back.", m: "proud" },
       { s: "oskar", t: "Two neighbours stand in the way. The Elves' forest to the west. The halfellows' meadows to the south." },
@@ -52,7 +52,7 @@ window.GameData.STORY_SCENARIOS["dwarf/elf+halfellow"] = {
     ],
     B6: [
       { n: "Night, on the walls of {capital}. Brunna looks out over forest to the west and meadow to the south." },
-      { s: "brunna", t: "Soft ground, all of it. Roots and barley. And they've held against us longer than I thought they could.", m: "proud", alt: { s: "sigrun", t: "Soft ground, all of it. And they've held against us longer than Mother thought they could." } },
+      { s: "brunna", t: "Soft ground, all of it. Roots and barley. And they've held against us longer than I thought they could.", m: "proud", alt: { s: "sigrun", t: "Soft ground, all of it. And they've held against us longer than Father thought they could." } },
       { s: "kazra", t: "Soft ground holds, love. It just holds *differently*.", m: "happy" },
       { s: "brunna", t: "Then let's see which kind holds longest.", m: "proud", alt: { s: "sigrun", t: "Then let's see which kind holds longest.", m: "fierce" } },
     ],

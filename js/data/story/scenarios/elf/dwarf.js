@@ -82,7 +82,7 @@ window.GameData.STORY_SCENARIOS["elf/dwarf"] = {
       { n: "The Dwarves have broken the Silverwood. The Heartwood still stands, and the forest is falling around it." },
       { s: "ysolde", t: "The oaks are going back to sleep, Warden. I have told them it is time.", m: "sad" },
       { n: "Beneath the Heartwood, Aelthir sits very still. The last witness of the Accord is going with it." },
-      { s: "aelthir", t: "Tell the Thane of Karrak… it was never them. The grove. Tell her I knew.", m: "sad" },
+      { s: "aelthir", t: "Tell the Thane of Karrak… it was never them. The grove. Tell them I knew.", m: "sad" },
       { s: "vaelis", t: "*(mounting his Shadowsteed)* I shall remember all of you. Briefly.", m: "aloof" },
       { n: "In the ruins, the Dwarves' Loremaster opens his Book of Grudges to its very first page." },
       { s: "oskar", t: "Entry the First. The Rootcut. …Struck out. Too late. It's always too late.", m: "sad" },

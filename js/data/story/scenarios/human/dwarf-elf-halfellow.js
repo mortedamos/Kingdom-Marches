@@ -22,7 +22,7 @@ window.GameData.STORY_SCENARIOS["human/dwarf+elf+halfellow"] = {
       { s: "corvin", t: "It is an *earthquake*, Lord-Paladin. The Marchstone has split. The closing clause: the Marches pass to the crown that *holds* them, or failing that, to the crown that *remains*.", m: "wry" },
       { s: "maren", t: "Karrak, the Silverwood, the Hearthlands. Dwarves, Elves, halfellows. No Orcs, no raiders. Just sensible neighbours.", m: "happy" },
       { s: "corvin", t: "Sensible neighbours with armies, Majesty.", m: "wry" },
-      { n: "In Karrak, High Thane Brunna Stonefast reaches for her ledgers. In the Hearthlands, Mayor Hobby Trickgrin reaches for a pen. In the Silverwood, Lord Vaelis Nightbloom does not reach for anything." },
+      { n: "In Karrak, High Thane Brunna Stonefast reaches for his ledgers. In the Hearthlands, Mayor Hobby Trickgrin reaches for a pen. In the Silverwood, Lord Vaelis Nightbloom does not reach for anything." },
       { s: "brunna", t: "Westmarch owes us for the Cathedral. We'll start there.", m: "proud" },
       { s: "hobby", t: "Everyone's being so *reasonable*. Let's have a Moot! All four crowns, one table, and a very large pie.", m: "happy" },
       { s: "vaelis", t: "A war between the reasonable. How *exhausting*. Wake me when it becomes interesting.", m: "aloof" },

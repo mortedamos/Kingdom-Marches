@@ -49,7 +49,7 @@ window.GameData.STORY_SCENARIOS["halfellow/dwarf+elf+human"] = {
     // The Moot.
     B3: [
       { n: "The great hall of {capital}, on a rainy evening. There is a long table, and on it a very large pot of Goldie's stew." },
-      { n: "They come. Nobody expected them to, and they come anyway: the High Thane of Karrak with her Loremaster, the Queen of Westmarch with her brother and her Archmage, and old Aelthir Moonveil, Warden of the Silverwood." },
+      { n: "They come. Nobody expected them to, and they come anyway: the High Thane of Karrak with his Loremaster, the Queen of Westmarch with her brother and her Archmage, and old Aelthir Moonveil, Warden of the Silverwood." },
       { n: "And, at the very last moment, looking as if he has arrived somewhere by mistake, Lord Vaelis.", req: { alive: "elf" } },
       { s: "hobby", t: "Welcome to the Moot! Nobody can swear anything, so nobody has to. Eat. Talk. Argue, if you like. Just don't draw steel on the tablecloth. Goldie ironed it.", m: "happy" },
       { s: "brunna", t: "*(to Maren)* Your Cathedral debt, Majesty.", m: "angry" },

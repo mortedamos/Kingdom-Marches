@@ -77,11 +77,11 @@ window.GameData.STORY_CHARACTER_PROFILES = {
   // ----------------------------------------------------------------- KARRAK
   brunna: {
     role: "High Thane of Karrak",
-    background: "A master mason before she was Thane. Karrak's rune-lore says the Marchstone was quarried from beneath her own mountain, the Heartstone of Karrak, lent to the Accord and never returned, and she means to have it back.",
-    virtues: ["Steadfast: when Brunna holds a wall, the wall holds.", "Practical: she builds for the next thousand years."],
-    flaws: ["Unforgiving: slow to anger and slower still to forgive.", "A fierce mother, and a somewhat oblivious one."],
-    quirks: "\"Walls first\" is her answer to most questions. Would like her daughter to tune that axe.",
-    relations: "Wife of the runesmith Kazra for thirty years, the steadiest thing in Karrak. Mother of Sigrun. Niece of Loremaster Oskar.",
+    background: "A master mason before he was Thane. Karrak's rune-lore says the Marchstone was quarried from beneath his own mountain, the Heartstone of Karrak, lent to the Accord and never returned, and he means to have it back.",
+    virtues: ["Steadfast: when Brunna holds a wall, the wall holds.", "Practical: he builds for the next thousand years."],
+    flaws: ["Unforgiving: slow to anger and slower still to forgive.", "A fierce father, and a somewhat oblivious one."],
+    quirks: "\"Walls first\" is his answer to most questions. Would like his daughter to tune that axe.",
+    relations: "Husband of the runesmith Kazra for thirty years, the steadiest thing in Karrak. Father of Sigrun. Nephew of Loremaster Oskar.",
     quote: "We cut that stone. We carried it. We lent it for a peace. The peace is over. I'll have it back.",
   },
   kazra: {
@@ -106,7 +106,7 @@ window.GameData.STORY_CHARACTER_PROFILES = {
     role: "Metal Singer of Karrak",
     background: "The Thane's daughter and the loudest dwarf in Karrak: a Metal Singer, whose war-axe is also an electric guitar. Dwarven music is a weapon, and she plays it at full volume. Her dream is to find the legendary Axe of Doom.",
     virtues: ["Brave: she'll charge anything, singing.", "Passionate and funny, with a big heart."],
-    flaws: ["Keeps things close to her chest, despite being very, very loud.", "Defiant, especially toward her mother."],
+    flaws: ["Keeps things close to her chest, despite being very, very loud.", "Defiant, especially toward her father."],
     quirks: "Heavy Metal for the walls, Power Metal for the charge. Writes songs about everything, including battles she's still in.",
     relations: "Daughter of High Thane Brunna and the runesmith Kazra. Great-niece of Oskar, whose Book she is frequently in.",
     quote: "Heavy Metal for the walls, Power Metal for the charge, and a *very* quiet ballad for later.",

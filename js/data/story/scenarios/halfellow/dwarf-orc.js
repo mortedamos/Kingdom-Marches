@@ -49,7 +49,7 @@ window.GameData.STORY_SCENARIOS["halfellow/dwarf+orc"] = {
       { s: "hobby", t: "Skarra's Wisps are hunting them, Goldie. The Thane's daughter and the Warchief's son. She wants the secret, so she can use it to take her brother's throne.", m: "scheming" },
       { s: "goldie", t: "And you're going to *hide* them. From a Bog Witch. With *cellars*.", m: "stern" },
       { s: "hobby", t: "Wisps can't see underground. And halfellows have been hiding things in cellars since before there *was* an Accord.", m: "scheming" },
-      { s: "barnaby", t: "Hobby. If either mother finds out we hid them, we'll have both Karrak and the Bloodmire at our door.", m: "flustered" },
+      { s: "barnaby", t: "Hobby. If either parent finds out we hid them, we'll have both Karrak and the Bloodmire at our door.", m: "flustered" },
       { s: "hobby", t: "Then they'd best not find out, Uncle.", m: "scheming" },
       { n: "For a month, a young dwarf with copper braids and an orc on a grey dire wolf move from cellar to cellar across the Hearthlands, always one step ahead of the green lights in the sky." },
       { n: "Skarra's Wisps search every meadow, every barn, every hedge. They never think to look *down*." },

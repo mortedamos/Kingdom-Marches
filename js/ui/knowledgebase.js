@@ -900,7 +900,7 @@ window.UI = window.UI || {};
     },
     {
       key: "sentry", label: "Sentry", icon: "👁️",
-      description: "A standing order for a unit with an attack stat: holds position doing nothing until an enemy comes within range, then attacks it on its own, without waiting for a fresh order. Persists turn after turn until cancelled (Cancel Sentry) or the unit is given something else to do.",
+      description: "A standing order for a unit with an attack stat: holds position doing nothing until an enemy comes within range, then attacks it on its own, without waiting for a fresh order. Enemy units are always targeted first; with none in range, it attacks the nearest enemy structure instead. Persists turn after turn until cancelled (Cancel Sentry) or the unit is given something else to do.",
     },
     {
       key: "follow", label: "Follow…", icon: "🚶",

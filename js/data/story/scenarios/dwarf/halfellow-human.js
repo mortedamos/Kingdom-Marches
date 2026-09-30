@@ -15,7 +15,7 @@ window.GameData.STORY_SCENARIOS["dwarf/halfellow+human"] = {
       { n: "Karrak, the mountain realm of the Dwarves. Deep beneath the peaks, every forge falls silent as the whole mountain shudders." },
       { n: "Far away, at the heart of the Marches, the ancient Marchstone splits with a crack of gold, and speaks." },
       { s: "stone", t: "HOLD… OR REMAIN." },
-      { n: "In the Thane's Hall, the ancient throne room of Karrak, High Thane Brunna Stonefast gathers her family: her wife Kazra the runesmith, her uncle Oskar with the Book of Grudges, and her daughter Sigrun, a Metal Singer." },
+      { n: "In the Thane's Hall, the ancient throne room of Karrak, High Thane Brunna Stonefast gathers his family: his wife Kazra the runesmith, his uncle Oskar with the Book of Grudges, and his daughter Sigrun, a Metal Singer." },
       { s: "oskar", t: "The Accord's closing clause, Thane: the Marches pass to the crown that *holds* them, or failing that, the crown that *remains*." },
       { s: "brunna", t: "Then Karrak holds.", m: "proud" },
       { s: "oskar", t: "Our two best customers stand in the way, Thane. The halfellows sell us barley. Westmarch, the Humans, owes us for their Cathedral. Half our treasury walks in through those two doors.", m: "grudging" },
@@ -33,7 +33,7 @@ window.GameData.STORY_SCENARIOS["dwarf/halfellow+human"] = {
       { s: "brunna", t: "A second hold. A market hall in the middle, so we can sell to whoever's still talking to us.", m: "proud" },
       { s: "oskar", t: "The halfellows have raised the price of barley, Thane. Westmarch has stopped paying the Cathedral instalments.", m: "grudging" },
       { s: "brunna", t: "Then we'll brew with *mushrooms* if we have to.", m: "angry" },
-      { s: "sigrun", t: "Mother, *no*.", m: "angry" },
+      { s: "sigrun", t: "Father, *no*.", m: "angry" },
     ],
     B2: [
       { n: "The barley fields at the edge of the Hearthlands, at dawn. Dwarf and halfellow warriors have clashed for the first time since the Accord.", req: { firstBlood: "halfellow" },

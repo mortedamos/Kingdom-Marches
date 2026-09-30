@@ -119,7 +119,7 @@ Object.assign(window.GameData.STORY_SHARED.any, {
   "rescue:elf:dwarf": {
     when: { inGame: ["elf", "dwarf"], alive: ["elf", "dwarf"], charAlive: ["aelthir", "oskar"] },
     lines: [
-      { n: "The edge of the Silverwood, where old dwarf boundary-stones still stand from before the Accord. Oskar, Karrak's Loremaster, has come to read the runes on one, alone, against his niece's advice." },
+      { n: "The edge of the Silverwood, where old dwarf boundary-stones still stand from before the Accord. Oskar, Karrak's Loremaster, has come to read the runes on one, alone, against his nephew's advice." },
       { n: "The stone is hollow. It gives way beneath him into a buried cairn, and the roof begins to come down." },
       { s: "oskar", t: "*(muffled, under falling earth)* …Of course it's a trap. Entry four thousand and one.", m: "grudging" },
       { n: "Ancient roots punch through the collapsing earth and hold the roof up like a second set of rafters. Warden Aelthir stands at the cairn's mouth, one hand still raised." },
@@ -292,13 +292,13 @@ Object.assign(window.GameData.STORY_SHARED.any, {
   "rescue:halfellow:dwarf": {
     when: { inGame: ["halfellow", "dwarf"], alive: ["halfellow", "dwarf"], charAlive: ["hobby", "brunna"] },
     lines: [
-      { n: "A border quarry between Karrak and the Hearthlands, where High Thane Brunna has come to inspect stone for a wall she hasn't announced yet. The quarry face chooses that moment to give way." },
-      { n: "She's buried to the waist before the dust settles, one arm pinned under rubble she can't shift alone." },
+      { n: "A border quarry between Karrak and the Hearthlands, where High Thane Brunna has come to inspect stone for a wall he hasn't announced yet. The quarry face chooses that moment to give way." },
+      { n: "He's buried to the waist before the dust settles, one arm pinned under rubble he can't shift alone." },
       { s: "brunna", t: "*(grim, not calling for help)* …Walls first. Should've remembered that applies to quarries too.", m: "proud" },
       { n: "Mayor Hobby Trickgrin, out checking a militia post nearby, hears the rockfall and comes running with two farmhands and a length of rope." },
       { s: "hobby", t: "Hold on, Thane! We'll have you out before the dust even settles properly!", m: "scheming" },
-      { n: "Between the three of them, and a lot of complaining from the rope, Brunna comes free, filthy and furious at her own carelessness." },
-      { s: "brunna", t: "*(catching her breath)* Why, Mayor. We haven't shared a barrel since the duel.", m: "sad" },
+      { n: "Between the three of them, and a lot of complaining from the rope, Brunna comes free, filthy and furious at his own carelessness." },
+      { s: "brunna", t: "*(catching his breath)* Why, Mayor. We haven't shared a barrel since the duel.", m: "sad" },
       { s: "hobby", t: "Because it was the right thing to do, dear. A barrel's a barrel. This was just a Thane.", m: "scheming" },
       { n: "Brunna sends a cask of Karrak's own to The Goose & Kettle that winter. No note is needed; Hobby already knows exactly who it's from." },
       { fx: { flag: "rescueHalfellowDwarf" } },

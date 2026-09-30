@@ -15,7 +15,7 @@ window.GameData.STORY_SCENARIOS["dwarf/halfellow+human+orc"] = {
       { n: "Karrak, the mountain realm of the Dwarves. Deep beneath the peaks, every forge falls silent as the whole mountain shudders." },
       { n: "Far away, at the heart of the Marches, the ancient Marchstone splits with a crack of gold, and speaks." },
       { s: "stone", t: "HOLD… OR REMAIN." },
-      { n: "In the Thane's Hall, the ancient throne room of Karrak, High Thane Brunna Stonefast gathers her family: her wife Kazra the runesmith, her uncle Oskar with the Book of Grudges, and her daughter Sigrun, a Metal Singer." },
+      { n: "In the Thane's Hall, the ancient throne room of Karrak, High Thane Brunna Stonefast gathers his family: his wife Kazra the runesmith, his uncle Oskar with the Book of Grudges, and his daughter Sigrun, a Metal Singer." },
       { s: "oskar", t: "The closing clause, Thane: the Marches pass to the crown that *holds* them, or failing that, the crown that *remains*." },
       { s: "oskar", t: "And three neighbours. Westmarch owes us money, for their Dawn Cathedral. The halfellows sell us our bread and barley. And the Orcs want everything we have.", m: "grudging" },
       { s: "brunna", t: "The ledger, the larder and the axe. Karrak can't live without the first two, and can't live *with* the third.", m: "proud" },
@@ -24,7 +24,7 @@ window.GameData.STORY_SCENARIOS["dwarf/halfellow+human+orc"] = {
       { s: "hobby", t: "Barley's gone up, Goldie. War prices.", m: "scheming" },
       { s: "grukka", t: "Dwarves, bread, and human gold, all in one place. The clans will eat for a year.", m: "defiant" },
       { n: "Back in Karrak, Sigrun has gone very quiet at the word *Orcs*." },
-      { s: "sigrun", t: "Mother, the orcs at the Midsummer Fair… they weren't all like the stories.", m: "sad" },
+      { s: "sigrun", t: "Father, the orcs at the Midsummer Fair… they weren't all like the stories.", m: "sad" },
       { s: "brunna", t: "They were orcs, Sigrun.", m: "angry" },
     ],
     B1: [
@@ -44,17 +44,17 @@ window.GameData.STORY_SCENARIOS["dwarf/halfellow+human+orc"] = {
     ],
     B3: [
       { n: "The Thane's Hall. Sigrun has been asking, for weeks, to lead a war-band of Metal Singers south toward the Orc bogs. Tonight she asks again." },
-      { s: "sigrun", t: "Let me take the southern border, Mother. I know the ground. Better than anyone.", m: "fierce" },
+      { s: "sigrun", t: "Let me take the southern border, Father. I know the ground. Better than anyone.", m: "fierce" },
       { s: "brunna", t: "How do you know the bog-edge better than my scouts, daughter?", m: "angry" },
       { n: "Sigrun doesn't answer. Oskar writes something in the Book, then very carefully crosses it out." },
       { s: "kazra", t: "Let her take it, Brunna. She'll keep it safer than you'd think.", m: "happy" },
     ],
     B6: [
-      { n: "Night, on the walls of {capital}. Brunna finds her daughter alone, looking south toward the Orc bogs." },
+      { n: "Night, on the walls of {capital}. Brunna finds his daughter alone, looking south toward the Orc bogs." },
       { s: "brunna", t: "I've spent this whole war deciding which of three things Karrak can live without. The gold. The bread. The Orcs.", m: "sad" },
       { s: "sigrun", t: "And?" },
       { s: "brunna", t: "I got it wrong. The thing I can't live without is *you* trusting me. So. Is he worth it?", m: "sad" },
-      { s: "sigrun", t: "He's worth not killing, Mother. That's all I'm asking.", m: "sad" },
+      { s: "sigrun", t: "He's worth not killing, Father. That's all I'm asking.", m: "sad" },
       { s: "brunna", t: "Then that's what I'll give you. Tell the boy to keep his wolf out of the granaries.", m: "happy" },
     ],
 
