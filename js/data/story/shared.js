@@ -482,7 +482,7 @@ Object.assign(window.GameData.STORY_SHARED.halfellow, {
       { n: "The Bloodmire's outer camp, where Gnash is delighted to discover a small, extremely muddy dog has wandered in and decided to stay." },
       { s: "gnash", t: "SMALL LOUD THING! Gnash like! Gnash keep? Gnash keep!", m: "happy" },
       { s: "gimlet", t: "*(tail wagging furiously)* Arf! Arf!", m: "happy" },
-      { n: "Skarra arrives to find her frog, Destiny, puffed up to twice his size on her shoulder, and the dog staring at him with intense, focused interest." },
+      { n: "Skarra arrives to find her frog, Destiny, puffed up to twice her size on her shoulder, and the dog staring at her with intense, focused interest." },
       { s: "skarra", t: "*(stepping between them)* NO. Stay AWAY from Destiny, you horrible little— thing!", m: "angry" },
       { s: "gimlet", t: "*(crouched low, tail up)* Grrr… Arf!", m: "confused" },
       { s: "skarra", t: "Destiny is a fearsome swamp familiar, not a CHEW TOY! Back! Back, I say!", m: "angry" },

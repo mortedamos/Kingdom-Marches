@@ -594,9 +594,9 @@
     return { t, v: tileVar(x, y) };
   });
   const CITIES1 = [
-    { name: "Silverwood", race: "elf", x: 6, y: 6, t0: -5, tiers: [[-5, 2], [0.9, 3], [2.1, 4], [3.4, 5], [4.8, 6]] },
-    { name: "Ironhold", race: "dwarf", x: 21, y: 7, t0: -5, tiers: [[-5, 2], [1.4, 3], [2.8, 4], [4.2, 5]] },
-    { name: "Moonglade", race: "elf", x: 8, y: 11, t0: 2.3, tiers: [[2.3, 1], [3.9, 2], [5.3, 3]] },
+    { name: "Sylvaneth", race: "elf", x: 6, y: 6, t0: -5, tiers: [[-5, 2], [0.9, 3], [2.1, 4], [3.4, 5], [4.8, 6]] },
+    { name: "Grimgate", race: "dwarf", x: 21, y: 7, t0: -5, tiers: [[-5, 2], [1.4, 3], [2.8, 4], [4.2, 5]] },
+    { name: "Thalindor", race: "elf", x: 8, y: 11, t0: 2.3, tiers: [[2.3, 1], [3.9, 2], [5.3, 3]] },
   ];
   const OWN1 = computeClaims(MAP1, [
     { race: "elf", x: 6, y: 6, t: -0.8, r: 8.2, speed: 0.42 },
@@ -617,7 +617,7 @@
     drawMap(c, MAP1, cam, lt);
     drawInfluence(c, MAP1, OWN1, cam, lt, CITY_KEYS1);
     for (const city of CITIES1) drawCity(c, city, cam, lt);
-    // Pioneer walks out and founds Moonglade.
+    // Pioneer walks out and founds Thalindor.
     if (lt < 2.45) {
       const [px, py] = pathAt(PIONEER_PATH, ramp(lt, 0.5, 2.2));
       const [sx, sy] = toScreen(cam, px, py);
@@ -634,36 +634,6 @@
     if (y >= 3 && y <= 5 && x >= 3 && x <= 10) t = "plains";
     return { t, v: tileVar(x, y, 2) };
   });
-
-  function die(c, x, y, s, face, rot, rim) {
-    c.save();
-    c.translate(x, y); c.rotate(rot);
-    c.shadowColor = "rgba(0,0,0,0.6)"; c.shadowBlur = 14; c.shadowOffsetY = 6;
-    c.fillStyle = "#f4ecd8"; c.strokeStyle = rim; c.lineWidth = s * 0.07;
-    c.beginPath(); c.roundRect(-s / 2, -s / 2, s, s, s * 0.18); c.fill();
-    c.shadowColor = "transparent"; c.stroke();
-    const P = { 1: [[0, 0]], 2: [[-1, -1], [1, 1]], 3: [[-1, -1], [0, 0], [1, 1]], 4: [[-1, -1], [1, -1], [-1, 1], [1, 1]], 5: [[-1, -1], [1, -1], [0, 0], [-1, 1], [1, 1]], 6: [[-1, -1], [1, -1], [-1, 0], [1, 0], [-1, 1], [1, 1]] };
-    c.fillStyle = "#2a1a10";
-    for (const [px, py] of P[face]) { c.beginPath(); c.arc(px * s * 0.26, py * s * 0.26, s * 0.085, 0, Math.PI * 2); c.fill(); }
-    c.restore();
-  }
-
-  // Two dice tumbling from t0, settling on the given faces.
-  function diceRoll(c, lt, t0, x, y, fa, fd) {
-    const d = lt - t0;
-    if (d < 0 || d > 1.5) return;
-    const a = d < 0.1 ? d / 0.1 : 1 - ramp(d, 1.2, 1.5);
-    const roll = clamp(d / 0.6);
-    c.save(); c.globalAlpha = a;
-    [[fa, -70, "#d9a441", 1], [fd, 70, "#9b3b3b", 2]].forEach(([face, off, rim, sd]) => {
-      const f = roll < 1 ? 1 + Math.floor(hash(Math.floor(d * 8) + sd * 10) * 6) : face;
-      const hop = roll < 1 ? -Math.abs(Math.sin(roll * Math.PI * 2.5)) * 40 * (1 - roll) : 0;
-      die(c, x + off, y + hop, 92, f, (1 - easeOut(roll)) * 5 * (sd === 1 ? 1 : -1), rim);
-    });
-    text(c, "ATTACK", x - 70, y + 74, { size: 20, color: "#f0c867", alpha: a });
-    text(c, "DEFENSE", x + 70, y + 74, { size: 20, color: "#e08a7a", alpha: a });
-    c.restore();
-  }
 
   function hpBar(c, x, y, w, frac, col) {
     c.fillStyle = "rgba(0,0,0,0.7)"; c.fillRect(x - w / 2 - 2, y - 2, w + 4, 14);
@@ -719,8 +689,6 @@
       c.fillStyle = "#e8dcc0"; c.beginPath(); c.moveTo(22, 0); c.lineTo(6, -9); c.lineTo(6, 9); c.fill();
       c.restore();
     }
-    diceRoll(c, lt, 1.25, (kxs + ox) / 2, oy - ts * 1.75, 5, 2);
-    diceRoll(c, lt, 3.65, (kxs + ox) / 2, oy - ts * 1.75, 6, 1);
     floatText(c, "-5", ox, oy - ts * 1.2, lt - 1.9, "#ff6b4a", 64);
     floatText(c, "-1", kxs, kys - ts * 1.2, lt - 1.95, "#ff6b4a", 52);
     floatText(c, "-4", rx, ry - ts * 1.1, lt - 2.95, "#ff6b4a", 60);
@@ -742,7 +710,7 @@
     lightning(c, lt, 0.4, 37, W * 0.82);
     lightning(c, lt, 3.9, 51, W * 0.2);
     caption(c, "Clash through storm and steel.", lt, 0.2, 3.3, { y: 120 });
-    caption(c, "Every battle rolls the dice.", lt, 3.4, 6.2, { y: 120 });
+    caption(c, "Veterans rise from every battle.", lt, 3.4, 6.2, { y: 120 });
   }
 
   // --- Tech tree

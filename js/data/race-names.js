@@ -5,6 +5,11 @@
  * for naming. See realms_of_influence_city_naming_addendum.md for the
  * mechanic this data feeds (AI auto-assigns in order; list exhaustion
  * cycles back with " II", " III", etc.).
+ *
+ * A realm's own name (story.js's REALMS: Westmarch, the Silverwood, Karrak,
+ * the Bloodmire, the Hearthlands) must never appear as a city name in that
+ * realm's list (user rule, 2026-10-03) -- the story calls the whole kingdom
+ * by that name, so a town of the same name inside it reads as a mistake.
  */
 
 window.GameData = window.GameData || {};
@@ -12,27 +17,27 @@ window.GameData = window.GameData || {};
 window.GameData.CITY_NAMES = {
   human: [
     "Rivermeet", "Kingsford", "Ashbrook", "Thornwell", "Millhaven",
-    "Stonebridge", "Fairhollow", "Oakstead", "Westmarch", "Brightwater",
+    "Stonebridge", "Fairhollow", "Oakstead", "Larkspur", "Brightwater",
     "Hallowmere", "Eastgate", "Wheaton", "Crossford", "Dunmoor",
     "Greyfen", "Harrow's End", "Long Acre", "Allstone", "Drachenhorn", 
   ],
   elf: [
     "Sylvaneth", "Thalindor", "Aerivel", "Mistleaf", "Eldhollow",
-    "Silverwood", "Moonglade", "Liriel", "Thornveil", "Aelindra",
+    "Elarion", "Moonglade", "Liriel", "Thornveil", "Aelindra",
     "Whisperwood", "Caelthorn", "Faelyn", "Greenward", "Aurelune",
     "Verdantis", "Niraleth", "Sylmara",
   ],
   dwarf: [
     "Grimgate", "Ironhold", "Deepforge", "Stonereach", "Hammerfall",
     "Boulderhome", "Coalspire", "Underkeep", "Anvilrest", "Granitehall",
-    "Emberdeep", "Thrundak", "Karrak Hold", "Stonefast", "Drakenvault",
+    "Emberdeep", "Thrundak", "Hollowpeak", "Stonefast", "Drakenvault",
     "Moltenhearth", "Ridgehollow", "Darrowmine", "Brewhiem",
   ],
   orc: [
     "Gorewatch", "Skullfen", "Bloodfang Camp", "Ironjaw", "Warhost Reach",
     "Grimskar", "Ashmaw", "Direfang", "Bonecrush", "Ragefall",
     "Thornspike", "Skarvok", "Mauler's Rest", "Crimson Stake", "Wargrip",
-    "Bloodmire", "Ironscar", "Fangmoor",
+    "Grimtusk", "Ironscar", "Fangmoor",
   ],
   undead: [
     "Barrowdeep", "Hollowgrave", "Mournhold", "Ashen Rest", "Greyfall",

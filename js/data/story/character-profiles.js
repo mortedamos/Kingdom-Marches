@@ -127,7 +127,7 @@ window.GameData.STORY_CHARACTER_PROFILES = {
     background: "Grukka's elder sister, voice of the ancestors at the Speaking Stones, summoner of Wisps, and the most theatrical person in the Marches. The clans passed her over for Warchief twenty years ago, and she has made sure everyone regrets it. Her constant companion is her pet frog, Destiny, a fat green frog who rides on her shoulder.",
     virtues: ["Cunning: a genuinely clever schemer.", "Fearless in a crisis, and endlessly resourceful."],
     flaws: ["Cruel, and delighted by other people's misfortune.", "Needs an audience for everything, including her plots."],
-    quirks: "Cackles. Monologues. Calls her brother \"little Warchief\" and her enemies \"morsel.\" Talks to Destiny the frog constantly; Destiny occasionally runs away. Covets the legendary Umbral Ring and Mortedamos' Malefic Manuscript. Curses anyone who kills a Bog Witch.",
+    quirks: "Cackles. Monologues. Calls her brother \"little Warchief\" and her enemies \"morsel.\" Talks to Destiny the frog constantly; Destiny occasionally runs away, and comes back when she pleases. Covets the legendary Umbral Ring and Mortedamos' Malefic Manuscript. Curses anyone who kills a Bog Witch.",
     relations: "Elder sister of Warchief Grukka. Aunt of Varg. Keeper of Destiny the frog. Commander (in her own mind) of Gnash. Sworn enemy of the elf Archdruid Ysolde.",
     quote: "Weep! Wail! Write sad little songs! Skarra *feeds* on sad little songs!",
   },
