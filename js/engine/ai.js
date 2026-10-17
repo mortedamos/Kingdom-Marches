@@ -438,6 +438,18 @@ window.GameEngine = window.GameEngine || {};
     };
   }
 
+  /** "Missed!" popup above the target for every RANGED miss in a round --
+   *  the first hit and a Double Strike follow-up each get their own, so two
+   *  misses read as two. A Flying-evasion miss is left silent, as before. */
+  function spawnRangedMissText(target, result) {
+    if (result.fullMissed && result.fullMissReason === "range") {
+      window.GameEngine.floatingText.spawnFloatingText(target, "Missed!", "warning");
+    }
+    if (result.doubleStruck && result.doubleMissed && result.doubleMissReason === "range") {
+      window.GameEngine.floatingText.spawnFloatingText(target, "Missed!", "warning");
+    }
+  }
+
   /** Quick win-probability estimate via sampling rather than exact Markov
    *  computation -- a pragmatic prototype-scale approximation of the
    *  exact-lookup approach the design doc describes.
@@ -10203,6 +10215,7 @@ window.GameEngine = window.GameEngine || {};
     };
     window.SfxSystem.playAction(monsterCiv.raceId, monster.typeId, "attack", monster.x, monster.y);
     const result = window.GameEngine.combat.resolveRound(monster, target, civs, combatContext);
+    spawnRangedMissText(target, result);
     window.GameEngine.combat.recordCombatEvent({
       ax: monster.x, ay: monster.y, atkUnit: monster, dx: target.x, dy: target.y, defUnit: target,
     });
@@ -15073,9 +15086,7 @@ window.GameEngine = window.GameEngine || {};
       if (result.returnFirst) {
         window.GameEngine.floatingText.spawnFloatingText(bestTarget, "First Strike!", "strike");
       }
-      if (result.fullMissed && result.fullMissReason === "range") {
-        window.GameEngine.floatingText.spawnFloatingText(bestTarget, "Missed!", "warning");
-      }
+      spawnRangedMissText(bestTarget, result);
       markCombatEngaged(civ);
       markCombatEngaged(defenderCiv);
       // Hidden: attacking reveals the attacker, regardless of target type.
