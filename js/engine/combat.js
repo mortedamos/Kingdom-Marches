@@ -1009,6 +1009,30 @@ window.GameEngine = window.GameEngine || {};
    *  (symmetric) places this is rolled. */
   const FLYING_EVASION_MISS_CHANCE = CFG.flyingEvasionMissChance;
 
+  /** Chance a forward hit from `attacker` at `dist` tiles (Chebyshev) misses
+   *  outright. 0 for an adjacent shot, so only genuine ranged fire can miss.
+   *  Every situational input arrives on `context` (built by the caller, which
+   *  has the map and weather this file doesn't): `defenderTerrain`,
+   *  `defenderGarrisoned`/`defenderInCover`, `weatherRaining`/`weatherStorming`,
+   *  `attackerMoved`; `noRangedMiss` opts a strike out entirely. Missing
+   *  fields simply contribute nothing, so a bare context still gets the base
+   *  chance. See config.js's combat.rangedMiss for the numbers. */
+  function rangedMissChance(attackerUnit, defenderUnit, dist, context) {
+    const R = CFG.rangedMiss;
+    if (!R || !R.enabled || dist <= 1 || (context && context.noRangedMiss)) return 0;
+    const ctx = context || {};
+    let p = R.base + R.perExtraTile * Math.max(0, dist - 2);
+    p += (R.coverByTerrain && R.coverByTerrain[ctx.defenderTerrain]) || 0;
+    if (ctx.defenderGarrisoned || ctx.defenderInCover) p += R.garrisonedCover;
+    if (hasCondition(defenderUnit, "defending")) p += R.defendingCover;
+    if (ctx.weatherStorming) p += R.storm;
+    else if (ctx.weatherRaining) p += R.rain;
+    if (ctx.attackerMoved) p += R.movedPenalty;
+    p -= R.perVeteranLevel * (attackerUnit.level || 0);
+    p += window.GameData.getUnit(attackerUnit.typeId).rangedMissAdjust || 0;
+    return Math.max(R.min, Math.min(R.max, p));
+  }
+
   /**
    * Resolves ONE exchange between attacker and defender unit objects (each
    * must have .hp, .x, .y, .typeId, .civId set -- .x/.y are read here to
@@ -1134,10 +1158,10 @@ window.GameEngine = window.GameEngine || {};
       counterAtkStat *= 1.50;
     }
 
-    let fullDamage = 0, fullNegated = false, fullMissed = false;
+    let fullDamage = 0, fullNegated = false, fullMissed = false, fullMissReason = null;
     let counterDamage = 0, counterNegated = false, counterDenied = false, counterMissed = false;
     let forwardSkipped = false, returnSkipped = false, counterOutOfRange = false;
-    let doubleStruck = false, doubleDamage = 0, doubleNegated = false, doubleMissed = false;
+    let doubleStruck = false, doubleDamage = 0, doubleNegated = false, doubleMissed = false, doubleMissReason = null;
 
     /** One forward hit from attacker to defender, applied to the defender's
      *  HP. Split out from dealForward so Double Strike's follow-up swing can
@@ -1150,7 +1174,13 @@ window.GameEngine = window.GameEngine || {};
       // first, before anything else, since a miss never connects at all.
       if (isFlying(defenderUnit) && effectiveRange(attackerUnit, attackerCiv) < 2
           && Math.random() < FLYING_EVASION_MISS_CHANCE) {
-        return { damage: 0, negated: false, missed: true };
+        return { damage: 0, negated: false, missed: true, missReason: "flying" };
+      }
+      // Ranged miss: a shot from more than one tile away can simply miss.
+      // Same "a miss never connects" placement as the evasion check above.
+      if (!isAdjacent && Math.random() < rangedMissChance(attackerUnit, defenderUnit,
+          Math.max(Math.abs(attackerUnit.x - defenderUnit.x), Math.abs(attackerUnit.y - defenderUnit.y)), context)) {
+        return { damage: 0, negated: false, missed: true, missReason: "range" };
       }
       if (rollsInvulnerable(defenderUnit, defenderCiv)) {
         return { damage: 0, negated: true, missed: false };
@@ -1181,6 +1211,7 @@ window.GameEngine = window.GameEngine || {};
       fullDamage = hit.damage;
       fullNegated = hit.negated;
       fullMissed = hit.missed;
+      fullMissReason = hit.missReason || null;
     }
     function dealReturn() {
       // context.noCounter: a strike that can't be answered (The Riddle of Steel).
@@ -1267,12 +1298,13 @@ window.GameEngine = window.GameEngine || {};
         doubleDamage = hit.damage;
         doubleNegated = hit.negated;
         doubleMissed = hit.missed;
+        doubleMissReason = hit.missReason || null;
       }
     }
 
-    return { fullDamage, fullNegated, fullMissed, counterDamage, counterNegated, counterDenied, counterMissed,
+    return { fullDamage, fullNegated, fullMissed, fullMissReason, counterDamage, counterNegated, counterDenied, counterMissed,
       forwardSkipped, returnSkipped, counterOutOfRange,
-      doubleStruck, doubleDamage, doubleNegated, doubleMissed,
+      doubleStruck, doubleDamage, doubleNegated, doubleMissed, doubleMissReason,
       // First Strike's ORDER effect actually deciding who went first this
       // round (see the doc comment above) -- exposed so a caller can narrate
       // it the same way doubleStruck narrates Double Strike's follow-up hit.
@@ -2011,6 +2043,7 @@ window.GameEngine = window.GameEngine || {};
     isCityWallDefenseSuppressed,
     countAdjacentMilitaryAllies,
     resolveRound,
+    rangedMissChance,
     resolveToTheDeath,
     initUnitHP,
     healUnit,

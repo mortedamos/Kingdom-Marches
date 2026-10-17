@@ -163,7 +163,10 @@ window.GameEngine = window.GameEngine || {};
           return { kind: "blocked", reason: "Out of range" };
         }
         const odds = window.GameEngine.ai.estimateWinProbability(unit, target.unit, gameState.civs, {}, 20);
-        return { kind: "attack", target, odds };
+        const missChance = window.GameEngine.combat.rangedMissChance(unit, target.unit,
+          window.GameEngine.influence.chebyshev(unit.x, unit.y, target.unit.x, target.unit.y),
+          window.GameEngine.ai.rangedMissContext(unit, target.unit));
+        return { kind: "attack", target, odds, missChance };
       }
       // City/structure: range and line-of-sight are checked inside
       // considerAttackOrGarrison itself, so this only reports the odds it can

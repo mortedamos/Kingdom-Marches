@@ -63,11 +63,11 @@ window.GameConfig = {
   // stamp, and the only cost of forgetting is being told the wrong thing.
   build: {
     /** Local date this build was cut, YYYY-MM-DD. */
-    date: "2026-10-03",
+    date: "2026-10-17",
     /** Local time this build was cut, 24-hour HH:MM. */
-    time: "16:11",
+    time: "12:28",
     /** Monotonic build counter -- increment it, don't recompute it. */
-    number: 346,
+    number: 347,
   },
 
   // =========================================================================
@@ -737,6 +737,36 @@ window.GameConfig = {
      *  counter against a Flying attacker just as much as to a melee
      *  attacker's forward hit against a Flying defender. */
     flyingEvasionMissChance: 0.25,
+
+    /** Ranged miss chance (2026-10-17, user-directed: archery builds were
+     *  too strong for bots to answer). Applies only to a forward hit from
+     *  MORE than one tile away -- an adjacent shot never misses, and a
+     *  counterattack is always adjacent. Stacks additively and is clamped to
+     *  [min, max]; see combat.js's rangedMissChance. Set `enabled: false` to
+     *  restore the old always-hits behaviour. Not rolled for city/structure
+     *  attacks, the Riddle of Steel, or blade sweeps. */
+    rangedMiss: {
+      enabled: true,
+      /** Any shot at range 2 or more. */
+      base: 0.15,
+      /** Extra per tile beyond 2 (only range-3 units reach this). */
+      perExtraTile: 0.05,
+      /** Target standing on this terrain (cover). */
+      coverByTerrain: { forest: 0.10, hills: 0.10, mountains: 0.15, swamp: 0.05 },
+      /** Target inside a city or on a structure tile. */
+      garrisonedCover: 0.10,
+      /** Target on Rest and Defend. */
+      defendingCover: 0.10,
+      /** Weather: a storm replaces rain, they do not stack. */
+      rain: 0.05,
+      storm: 0.10,
+      /** The shooter moved earlier this same turn -- the anti-kiting term. */
+      movedPenalty: 0.10,
+      /** Each veteran level the shooter has. */
+      perVeteranLevel: 0.02,
+      min: 0.05,
+      max: 0.60,
+    },
 
     /** Death-save techs (Halfellow "Resilient Spirit", Dwarf "Unyielding"):
      *  each successful save permanently costs THAT UNIT this many percentage

@@ -417,6 +417,27 @@ window.GameEngine = window.GameEngine || {};
     };
   }
 
+  /** The situational inputs combat.js's rangedMissChance needs but can't see
+   *  (it only gets `civs`): the target's terrain, the weather, and whether the
+   *  shooter already moved this turn. Spread into every combat context that
+   *  can involve a ranged shot, and into the win-probability simulations, so
+   *  the AI's odds and the preview label price the miss chance the same way
+   *  the real hit does. Reads the module's current game state; with none yet
+   *  it returns {} and the shot just gets the base chance. */
+  function rangedMissContext(attackerUnit, defenderUnit) {
+    const gs = currentGameStateRef;
+    if (!gs || !gs.map) return {};
+    const tile = gs.map.tiles[defenderUnit.y * gs.map.width + defenderUnit.x];
+    const weather = window.GameEngine.turns.currentWeather(gs);
+    return {
+      defenderTerrain: tile ? tile.terrain : null,
+      defenderInCover: !!gs.civs[defenderUnit.civId] && isGarrisoned(defenderUnit, gs.civs[defenderUnit.civId]),
+      weatherRaining: !!weather.raining,
+      weatherStorming: !!weather.storming,
+      attackerMoved: attackerUnit.movedOnTurn != null && attackerUnit.movedOnTurn === (gs.turnNumber || 0),
+    };
+  }
+
   /** Quick win-probability estimate via sampling rather than exact Markov
    *  computation -- a pragmatic prototype-scale approximation of the
    *  exact-lookup approach the design doc describes.
@@ -428,7 +449,7 @@ window.GameEngine = window.GameEngine || {};
    *  fight that isn't really happening. The save itself still ROLLS, so the
    *  estimate stays honest about how survivable the unit is. */
   function estimateWinProbability(attackerUnit, defenderUnit, civs, context, samples = 30) {
-    const simContext = { ...(context || {}), simulated: true };
+    const simContext = { ...rangedMissContext(attackerUnit, defenderUnit), ...(context || {}), simulated: true };
     let wins = 0;
     for (let i = 0; i < samples; i++) {
       const a = cloneUnitForSim(attackerUnit);
@@ -2871,6 +2892,9 @@ window.GameEngine = window.GameEngine || {};
     if (walked.length > 1) {
       unit._walkPath = walked;
       unit._walkSeq = (unit._walkSeq || 0) + 1;
+      // Read by rangedMissContext: a unit that shoots after moving is less
+      // accurate. A plain turn number (not a flag) so it needs no reset.
+      unit.movedOnTurn = currentGameStateRef ? (currentGameStateRef.turnNumber || 0) : currentTurnNumber;
     }
     return unit.movesRemaining;
   }
@@ -8201,6 +8225,7 @@ window.GameEngine = window.GameEngine || {};
         attackerInForest: map.tiles[unit.y * map.width + unit.x].terrain === "forest",
         defenderInForest: map.tiles[target.y * map.width + target.x].terrain === "forest",
         attackDamageMult: attackMult, counterDamageMult: counterMult,
+        noRangedMiss: true,
       };
       // Position captured before the round -- see considerAttackOrGarrison's
       // matching comment (a struck Treasure Trow relocates inside it).
@@ -10170,6 +10195,7 @@ window.GameEngine = window.GameEngine || {};
     const combatContext = {
       attackerGarrisoned: false,
       defenderGarrisoned: isGarrisoned(target, targetCiv),
+      ...rangedMissContext(monster, target),
       attackerOnHills: map.tiles[monster.y * map.width + monster.x].terrain === "hills",
       defenderOnHills: map.tiles[target.y * map.width + target.x].terrain === "hills",
       attackerInForest: map.tiles[monster.y * map.width + monster.x].terrain === "forest",
@@ -11023,6 +11049,7 @@ window.GameEngine = window.GameEngine || {};
     const targetCiv = civs[target.civId];
     const combatContext = {
       noCounter: true,
+      noRangedMiss: true,
       attackerGarrisoned: isGarrisoned(unit, civ),
       defenderGarrisoned: isGarrisoned(target, targetCiv),
       attackerOnHills: map.tiles[unit.y * map.width + unit.x].terrain === "hills",
@@ -14997,6 +15024,7 @@ window.GameEngine = window.GameEngine || {};
       const combatContext = {
         attackerGarrisoned: isGarrisoned(unit, civ),
         defenderGarrisoned: isGarrisoned(bestTarget, defenderCiv),
+        ...rangedMissContext(unit, bestTarget),
         // Halfellow "High Ground": which side (if either) is standing on Hills.
         attackerOnHills: map.tiles[unit.y * map.width + unit.x].terrain === "hills",
         defenderOnHills: map.tiles[bestTarget.y * map.width + bestTarget.x].terrain === "hills",
@@ -15045,6 +15073,9 @@ window.GameEngine = window.GameEngine || {};
       if (result.returnFirst) {
         window.GameEngine.floatingText.spawnFloatingText(bestTarget, "First Strike!", "strike");
       }
+      if (result.fullMissed && result.fullMissReason === "range") {
+        window.GameEngine.floatingText.spawnFloatingText(bestTarget, "Missed!", "warning");
+      }
       markCombatEngaged(civ);
       markCombatEngaged(defenderCiv);
       // Hidden: attacking reveals the attacker, regardless of target type.
@@ -15064,14 +15095,14 @@ window.GameEngine = window.GameEngine || {};
         unit._meleeAmbushVictim = bestTarget;
       }
       log.push(`Attack: ${civ.id}'s ${describeUnit(unit)} vs ${bestTarget.civId}'s ${describeUnit(bestTarget)} -> ` +
-        `${result.returnSkipped ? "first strike" : result.fullNegated ? "negated" : result.fullMissed ? "missed (flying)" : result.fullDamage + " dmg"}` +
+        `${result.returnSkipped ? "first strike" : result.fullNegated ? "negated" : result.fullMissed ? `missed (${result.fullMissReason || "flying"})` : result.fullDamage + " dmg"}` +
         (result.forwardSkipped ? ", attacker killed before landing a hit"
           : result.counterOutOfRange ? ", ranged (defender out of counter range)"
           : result.counterDenied ? ", counter denied (first strike)"
           : result.counterMissed ? ", counter missed (flying)"
           : result.counterNegated ? ", counter negated" : `, ${result.counterDamage} counter`) +
         (result.doubleStruck
-          ? `, DOUBLE STRIKE ${result.doubleNegated ? "negated" : result.doubleMissed ? "missed (flying)" : result.doubleDamage + " dmg"}`
+          ? `, DOUBLE STRIKE ${result.doubleNegated ? "negated" : result.doubleMissed ? `missed (${result.doubleMissReason || "flying"})` : result.doubleDamage + " dmg"}`
           : "") +
         (Math.abs(bestCoalitionShift) > 0.1
           ? ` [odds ${Math.round(bestWinProb * 100)}%, ${bestCoalitionShift > 0 ? "emboldened" : "wary"} by allies]`
@@ -16739,6 +16770,7 @@ window.GameEngine = window.GameEngine || {};
     buildOccupancySet,
     progressBuildQueues,
     canAttackUnitNow,
+    rangedMissContext,
     considerAttackOrGarrison,
     availableBuilds,
     maybeFoundCity,

@@ -2086,7 +2086,10 @@ window.UI = window.UI || {};
       ctx.arc(cx, cy, ts * 0.30, 0, Math.PI * 2);
       ctx.stroke();
       if (preview.odds != null) {
-        drawPreviewLabel(ctx, `${Math.round(preview.odds * 100)}%`, cx, screenY - 2, color);
+        // Ranged shots also show their miss chance ("62% · 20% miss"); the
+        // win odds already include it, this just says why they're lower.
+        const missTag = preview.missChance > 0 ? ` · ${Math.round(preview.missChance * 100)}% miss` : "";
+        drawPreviewLabel(ctx, `${Math.round(preview.odds * 100)}%${missTag}`, cx, screenY - 2, color);
       }
     } else if (preview.kind === "move") {
       // Spelled out rather than abbreviated ("mp") since it floats on the
